@@ -38,7 +38,9 @@ public class PanelEsterilizacion extends JPanel {
         btnIngresar.setFont(new Font("Arial", Font.PLAIN, 24));
 
         btnIngresar.addActionListener(e -> navegador.show(contenedor, "ES_ORTOPEDIA"));
-
+        //btnVer.addActionListener(e -> navegador.show(contenedor, "VER_CDE"));
+        btnVer.addActionListener(e -> navegador.show(contenedor, "VER_CDE_V2"));
+        
         botones.add(btnIngresar);
         botones.add(btnRegistrar);
         botones.add(btnVer);

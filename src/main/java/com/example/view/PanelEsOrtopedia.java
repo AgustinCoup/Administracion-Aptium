@@ -32,6 +32,7 @@ public class PanelEsOrtopedia extends JPanel {
 
         JButton btnEsOrtopedia = new JButton("Ortopedia");
         btnEsOrtopedia.setFont(new Font("Arial", Font.PLAIN, 24));
+        btnEsOrtopedia.addActionListener(e -> navegador.show(contenedor, "INGRESO_ORTOPEDIA"));
 
         JButton btnNoEsOrtopedia = new JButton("Otros");
         btnNoEsOrtopedia.setFont(new Font("Arial", Font.PLAIN, 24));
