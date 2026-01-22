@@ -159,7 +159,7 @@ public class PanelIngresoOrtopedia extends JPanel {
         btnVolver.addActionListener(e -> navegador.show(contenedor, "ESTERILIZACION"));
     }
 
-    // Crea y agrega una nueva fila de material (descripcion + litros)
+    // Crea y agrega una nueva fila de material (número + descripcion + litros)
     private void agregarFilaMaterial(JPanel listaMateriales) {
         GridBagConstraints gbcRow = new GridBagConstraints();
         gbcRow.insets = new Insets(5, 0, 5, 10);
@@ -167,12 +167,23 @@ public class PanelIngresoOrtopedia extends JPanel {
 
         int rowIndex = materialRows.size();
 
-        // Campo de descripción
+        // Campo de número (identificador del material)
+        JTextField txtNumero = new JTextField();
+        txtNumero.setFont(this.inputFont);
+        txtNumero.setColumns(5);
+        txtNumero.setMargin(new Insets(2, 6, 2, 6));
+        // Calcular ancho basado en caracteres + márgenes para asegurar visibilidad
+        int numeroWidth = txtNumero.getFontMetrics(this.inputFont).charWidth('0') * 5 + 12;
+        txtNumero.setPreferredSize(new Dimension(numeroWidth, this.inputHeight));
+        txtNumero.setMinimumSize(new Dimension(numeroWidth, this.inputHeight));
+
+        // Campo de descripción (no editable)
         JTextField txtDesc = new JTextField();
         txtDesc.setFont(this.inputFont);
-        txtDesc.setColumns(24);
+        txtDesc.setColumns(20);
         txtDesc.setMargin(new Insets(2, 6, 2, 6));
         txtDesc.setPreferredSize(new Dimension(0, this.inputHeight));
+        txtDesc.setEditable(false);
 
         // Campo de litros con JSpinner para evitar problemas de formato
         SpinnerNumberModel model = new SpinnerNumberModel(0.0, 0.0, null, 1.0);
@@ -187,16 +198,22 @@ public class PanelIngresoOrtopedia extends JPanel {
         spLitros.addChangeListener(e -> actualizarTotalLitros());
 
         // Agregar componentes a la fila en el panel de lista
-        gbcRow.gridx = 0; gbcRow.gridy = rowIndex; gbcRow.weightx = 1;
+        gbcRow.gridx = 0; gbcRow.gridy = rowIndex; gbcRow.weightx = 0;
+        gbcRow.fill = GridBagConstraints.NONE;
+        gbcRow.anchor = GridBagConstraints.WEST;
+        listaMateriales.add(txtNumero, gbcRow);
+
+        gbcRow.gridx = 1; gbcRow.gridy = rowIndex; gbcRow.weightx = 1;
+        gbcRow.fill = GridBagConstraints.HORIZONTAL;
         listaMateriales.add(txtDesc, gbcRow);
 
-        gbcRow.gridx = 1; gbcRow.gridy = rowIndex; gbcRow.weightx = 0;
+        gbcRow.gridx = 2; gbcRow.gridy = rowIndex; gbcRow.weightx = 0;
         gbcRow.fill = GridBagConstraints.NONE;
         gbcRow.anchor = GridBagConstraints.WEST;
         listaMateriales.add(spLitros, gbcRow);
 
         // Guardar referencia de la fila
-        materialRows.add(new MaterialRow(txtDesc, spLitros));
+        materialRows.add(new MaterialRow(txtNumero, txtDesc, spLitros));
 
         // Recalcular total
         actualizarTotalLitros();
@@ -227,10 +244,12 @@ public class PanelIngresoOrtopedia extends JPanel {
 
     // Clase interna para mantener referencias a los componentes de cada material
     private static class MaterialRow {
+        final JTextField numero;
         final JTextField descripcion;
         final JSpinner litros;
 
-        MaterialRow(JTextField descripcion, JSpinner litros) {
+        MaterialRow(JTextField numero, JTextField descripcion, JSpinner litros) {
+            this.numero = numero;
             this.descripcion = descripcion;
             this.litros = litros;
         }
