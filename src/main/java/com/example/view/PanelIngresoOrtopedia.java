@@ -237,9 +237,12 @@ public class PanelIngresoOrtopedia extends JPanel {
             return;
         }
         MaterialRow last = materialRows.remove(materialRows.size() - 1);
+        // Remover todos los componentes de la fila: número, descripción y litros
+        listaMateriales.remove(last.numero);
         listaMateriales.remove(last.descripcion);
         listaMateriales.remove(last.litros);
         actualizarTotalLitros();
+        // Asegurar que el panel se revalide y repinte tras la eliminación
     }
 
     // Clase interna para mantener referencias a los componentes de cada material
