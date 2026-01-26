@@ -5,6 +5,8 @@ import com.example.model.Equipo;
 import com.example.model.Material;
 import java.sql.*;
 import java.time.Year;
+import java.util.ArrayList;
+import java.util.List;
 
 public class EquipoDAO {
 
@@ -91,5 +93,29 @@ public class EquipoDAO {
                 return prefix + "1"; // Primer equipo del año
             }
         }
+    }
+
+    /**
+     * Obtiene todos los equipos con su estado y nombre de cliente.
+     */
+    public List<Equipo> obtenerTodosLosEquipos() {
+        List<Equipo> equipos = new ArrayList<>();
+        String sql = "SELECT codigo_equipo, cliente_nombre, estado FROM equipos ORDER BY estado, id DESC";
+        
+        try (Connection conn = Conexion.conectar();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while (rs.next()) {
+                Equipo eq = new Equipo();
+                eq.setCodigoEquipo(rs.getString("codigo_equipo"));
+                eq.setClienteNombre(rs.getString("cliente_nombre"));
+                eq.setEstado(rs.getString("estado"));
+                equipos.add(eq);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return equipos;
     }
 }

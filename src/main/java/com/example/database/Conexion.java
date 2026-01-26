@@ -1,8 +1,6 @@
 package com.example.database;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.Properties;
 import java.io.InputStream;
 import java.io.IOException;
@@ -11,49 +9,116 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class Conexion {
-    // Reemplaza 'localhost' por la IP de la PC servidor cuando estés en la empresa
     private static final Properties PROPS = new Properties();
 
     static {
-        // Carga config.properties desde el directorio demo
         try {
-            Path p = Paths.get("demo/config.properties");
+            Path p = Paths.get("Administracion-Aptium/config.properties");
             if (!Files.exists(p)) {
                 p = Paths.get("config.properties");
             }
             if (Files.exists(p)) {
-                InputStream is = Files.newInputStream(p);
-                PROPS.load(is);
-                is.close();
+                try (InputStream is = Files.newInputStream(p)) {
+                    PROPS.load(is);
+                }
             } else {
-                System.out.println("No se encontró config.properties en demo/; usando valores por defecto.");
+                System.out.println("No se encontró config.properties; usando valores por defecto.");
             }
         } catch (IOException e) {
             System.out.println("No se pudo cargar config.properties: " + e.getMessage());
         }
     }
 
-    private static String getDbIp() {
-        return PROPS.getProperty("db.ip", "localhost");
-    }
-
-    private static String getDbUser() {
-        return PROPS.getProperty("db.user", "root");
-    }
-
-    private static String getDbPassword() {
-        return PROPS.getProperty("db.pass", "tu_password_aqui");
-    }
+    private static String getDbIp() { return PROPS.getProperty("db.ip", "localhost"); }
+    private static String getDbUser() { return PROPS.getProperty("db.user", "root"); }
+    private static String getDbPassword() { return PROPS.getProperty("db.pass", "tu_password_aqui"); }
 
     public static Connection conectar() {
         try {
-            String url = "jdbc:mysql://" + getDbIp() + ":3306/sistema_empresa?serverTimezone=UTC";
-            Connection conn = DriverManager.getConnection(url, getDbUser(), getDbPassword());
-            System.out.println("¡Conexión exitosa a MySQL!");
-            return conn;
+            // Quitamos "sistema_empresa" de la URL para que conecte aunque no exista la DB
+            String url = "jdbc:mysql://" + getDbIp() + ":3306/?serverTimezone=UTC";
+            return DriverManager.getConnection(url, getDbUser(), getDbPassword());
         } catch (SQLException e) {
             System.out.println("Error al conectar a MySQL: " + e.getMessage());
             return null;
+        }
+    }
+
+    // --- NUEVOS MÉTODOS DE INICIALIZACIÓN ---
+
+    public static void inicializarBaseDeDatos() {
+        try (Connection conn = conectar(); Statement stmt = conn.createStatement()) {
+            if (conn == null) return;
+
+            // Crear la base de datos si no existe
+            stmt.execute("CREATE DATABASE IF NOT EXISTS sistema_empresa");
+            stmt.execute("USE sistema_empresa");
+
+        String tablaCatalogo = "CREATE TABLE IF NOT EXISTS catalogo_descripciones ("
+                + "codigo INT PRIMARY KEY, "
+                + "descripcion VARCHAR(255) NOT NULL);";
+
+        String tablaEquipos = "CREATE TABLE IF NOT EXISTS equipos ("
+                + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                + "codigo_equipo VARCHAR(20) UNIQUE, "
+                + "nro_cliente INT, "
+                + "cliente_nombre VARCHAR(100), "
+                + "profesional VARCHAR(150), "
+                + "paciente VARCHAR(150), "
+                + "nro_operador INT, "
+                + "operador_nombre VARCHAR(150), "
+                + "institucion VARCHAR(150), "
+                + "estado VARCHAR(50) DEFAULT 'Nuevo', "
+                + "fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP);";
+
+        String tablaMateriales = "CREATE TABLE IF NOT EXISTS equipo_materiales ("
+                + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                + "id_relacionado VARCHAR(50), "
+                + "equipo_codigo VARCHAR(20), "
+                + "codigo_catalogo INT, "
+                + "descripcion_copia VARCHAR(255), "
+                + "cantidad INT, "
+                + "FOREIGN KEY (equipo_codigo) REFERENCES equipos(codigo_equipo) ON DELETE CASCADE);";
+
+        
+
+            stmt.execute(tablaCatalogo);
+            stmt.execute(tablaEquipos);
+            stmt.execute(tablaMateriales);
+
+            // Verificar si el catálogo está vacío para cargar los datos iniciales
+            ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM catalogo_descripciones");
+            if (rs.next() && rs.getInt(1) == 0) {
+                cargarDatosCatalogo(conn);
+            }
+            System.out.println("Estructura de base de datos verificada.");
+        } catch (SQLException e) {
+            System.out.println("Error al inicializar tablas: " + e.getMessage());
+        }
+    }
+
+    private static void cargarDatosCatalogo(Connection conn) throws SQLException {
+        String sql = "INSERT INTO catalogo_descripciones (codigo, descripcion) VALUES (?, ?)";
+        Object[][] datos = {
+            {400, "Tornillera"}, {401, "Caja de Cirugía"}, {402, "Caja de Cirugía tamaño \"M\""},
+            {403, "Caja de Cirugía tamaño \"L\""}, {404, "Caja de Cirugía tamaño \"XL\""},
+            {405, "Caja de Cirugía tamaño \"XXL\""}, {406, "Makita - Perforador - Taladro"},
+            {407, "Sierra BTR o simil, con hojas + accesorios"}, {408, "Micromotores"},
+            {409, "Guias Metálicas - Instrumental pequeño"}, {410, "Instrumental grande"},
+            {411, "Prótesis"}, {412, "Baterías extras"}, {413, "Implantes"},
+            {414, "atornilladores/ dremmel"}, {415, "clavijas"}, {416, "alambre"},
+            {417, "SUPER XXL"}, {418, "clavos - placas"}, {419, "Makita APTIUM"},
+            {420, "Tornillo - elemento pequeño"}
+        };
+
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            for (Object[] fila : datos) {
+                pstmt.setInt(1, (int) fila[0]);
+                pstmt.setString(2, (String) fila[1]);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+            System.out.println("Catálogo inicial cargado con éxito.");
         }
     }
 }

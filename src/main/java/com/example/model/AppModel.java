@@ -8,8 +8,13 @@ public class AppModel {
 
     /**
      * Verifica que la aplicacion pueda abrir una conexion basica.
+     * También inicializa la estructura de la base de datos si es necesario.
      */
     public boolean validarConexion() {
+        // Primero inicializar la estructura de base de datos (crea BD y tablas si no existen)
+        Conexion.inicializarBaseDeDatos();
+        
+        // Luego verificar que la conexión funcione correctamente
         Connection conn = Conexion.conectar();
         if (conn == null) {
             return false;

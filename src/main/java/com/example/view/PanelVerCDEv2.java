@@ -3,12 +3,16 @@ package com.example.view;
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+
+import com.example.model.Equipo;
+
 import java.awt.*;
 import java.util.*;
 import java.util.List;
 
 public class PanelVerCDEv2 extends JPanel {
     
+    private DefaultTableModel modelo;
     private Map<String, Color> estadoColores;
     private static final String[] ORDEN_ESTADOS = {"Nuevo", "Lavando", "Lavado", "Empaquetado", "Esterilizando", "Esterilizado"};
 
@@ -45,24 +49,12 @@ public class PanelVerCDEv2 extends JPanel {
 
         // Crear tabla con dos columnas: Equipo y Estado
         String[] columnas = {"Equipo", "Estado"};
-        DefaultTableModel modelo = new DefaultTableModel(columnas, 0) {
+        this.modelo = new DefaultTableModel(columnas, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false; // No editable
             }
         };
-
-        // Datos de ejemplo ordenados por estado
-        modelo.addRow(new Object[]{"Pinzas Quirúrgicas #33", "Empaquetado"});
-        modelo.addRow(new Object[]{"Set Cardiovascular #67", "Empaquetado"});
-        modelo.addRow(new Object[]{"Caja de Instrumental #102", "Nuevo"});
-        modelo.addRow(new Object[]{"Set de Cirugía Menor #05", "Lavando"});
-        modelo.addRow(new Object[]{"Material de Sutura #21", "Esterilizando"});
-        modelo.addRow(new Object[]{"Instrumental Básico #12", "Lavando"});
-        modelo.addRow(new Object[]{"Set de Traumatología #88", "Lavado"});
-        modelo.addRow(new Object[]{"Kit de Endoscopia #99", "Esterilizado"});
-        modelo.addRow(new Object[]{"Caja de Cirugía Mayor #03", "Esterilizado"});
-        modelo.addRow(new Object[]{"Kit de Ortopedia #45", "Nuevo"});
 
         ordenarModeloPorEstado(modelo);
 
@@ -133,5 +125,13 @@ public class PanelVerCDEv2 extends JPanel {
             }
         }
         return Integer.MAX_VALUE; // Si no está en el orden, va al final
+    }
+
+    public void actualizarTabla(List<Equipo> equipos) {
+        modelo.setRowCount(0); // Limpiar tabla
+        for (Equipo eq : equipos) {
+            modelo.addRow(new Object[]{eq.getCodigoEquipo(), eq.getEstado()});
+        }
+        ordenarModeloPorEstado(modelo);
     }
 }

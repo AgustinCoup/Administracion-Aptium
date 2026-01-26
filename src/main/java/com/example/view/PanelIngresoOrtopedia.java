@@ -1,6 +1,7 @@
 package com.example.view;
 
 import java.awt.*;
+import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,7 +14,25 @@ public class PanelIngresoOrtopedia extends JPanel {
     private Font inputFont;
     private int inputHeight;
     private JPanel listaMaterialesPanel;
+    
+    // Campos del formulario
+    private JTextField txtCliente;
+    private JTextField txtProfesional;
+    private JTextField txtPaciente;
+    private JTextField txtInstitucion;
+    
+    // Botones
+    private JButton btnGuardar;
+    private JButton btnCancelar;
+    
+    // Referencias para navegación
+    private CardLayout navegador;
+    private JPanel contenedor;
+    
     public PanelIngresoOrtopedia(CardLayout navegador, JPanel contenedor) {
+        this.navegador = navegador;
+        this.contenedor = contenedor;
+        //INICIALIZACIÓN DE LA VENTANA
         setLayout(new BorderLayout());
 
         JPanel panelNorte = new JPanel();
@@ -37,13 +56,16 @@ public class PanelIngresoOrtopedia extends JPanel {
         Font labelFont = new Font("Arial", Font.BOLD, 18);
         this.inputFont = new Font("Arial", Font.PLAIN, 18);
 
+        //ACÁ ARRANCA EL FORMULARIO HASTA EL FINAL
         JPanel formulario = new JPanel(new GridBagLayout());
         formulario.setBorder(BorderFactory.createEmptyBorder(30, 50, 30, 50));
 
-        JTextField txtCliente = new JTextField();
-        JTextField txtProfesional = new JTextField();
-        JTextField txtPaciente = new JTextField();
-        JTextField txtInstitucion = new JTextField();
+        //Donde se mete el texto
+        txtCliente = new JTextField();
+        txtProfesional = new JTextField();
+        txtPaciente = new JTextField();
+        txtInstitucion = new JTextField();
+
         // Configuración común para inputs: fuente, margen y altura preferida
         this.inputHeight = formulario.getFontMetrics(this.inputFont).getHeight() + 6;
         for (JTextField tf : new JTextField[]{txtCliente, txtProfesional, txtPaciente, txtInstitucion}) {
@@ -53,10 +75,11 @@ public class PanelIngresoOrtopedia extends JPanel {
             tf.setPreferredSize(new Dimension(0, this.inputHeight));
         }
 
+        // Panel de botones Guardar / Cancelar
         JPanel botones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnGuardar = new JButton("Guardar");
+        btnGuardar = new JButton("Guardar");
         btnGuardar.setFont(new Font("Arial", Font.PLAIN, 18));
-        JButton btnCancelar = new JButton("Cancelar");
+        btnCancelar = new JButton("Cancelar");
         btnCancelar.setFont(new Font("Arial", Font.PLAIN, 18));
 
         botones.add(btnGuardar);
@@ -64,10 +87,9 @@ public class PanelIngresoOrtopedia extends JPanel {
 
         add(botones, BorderLayout.SOUTH);
 
-        btnCancelar.addActionListener(e -> navegador.show(contenedor, "MENU_PRINCIPAL"));
-        btnGuardar.addActionListener(e -> {
-            // Aquí iría la lógica para guardar los datos ingresados
-            JOptionPane.showMessageDialog(this, "Datos guardados correctamente.", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+        // Solo el botón cancelar tiene acción por defecto, el guardar será manejado por el controlador
+        btnCancelar.addActionListener(e -> {
+            limpiarFormulario();
             navegador.show(contenedor, "MENU_PRINCIPAL");
         });
 
@@ -76,6 +98,7 @@ public class PanelIngresoOrtopedia extends JPanel {
         gbc.insets = new Insets(10, 10, 10, 10);
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
+        //CLIENTE
         JLabel lblCliente = new JLabel("Cliente / Empresa:");
         lblCliente.setFont(labelFont);
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
@@ -84,20 +107,45 @@ public class PanelIngresoOrtopedia extends JPanel {
         gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 1;
         formulario.add(txtCliente, gbc);
 
+        //PROFESIONAL
         JLabel lblProfesional = new JLabel("Profesional a cargo:");
         lblProfesional.setFont(labelFont);
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
         formulario.add(lblProfesional, gbc);
+        
+        JPanel panelProfesional = new JPanel();
+        panelProfesional.setLayout(new BoxLayout(panelProfesional, BoxLayout.Y_AXIS));
+        panelProfesional.add(txtProfesional);
+        
+        JLabel lblAyudaProf = new JLabel("Formato: Apellido Nombre");
+        lblAyudaProf.setFont(new Font("Arial", Font.ITALIC, 10));
+        lblAyudaProf.setForeground(Color.GRAY);
+        lblAyudaProf.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panelProfesional.add(lblAyudaProf);
+        
         gbc.gridx = 1; gbc.gridy = 1; gbc.weightx = 1;
-        formulario.add(txtProfesional, gbc);
+        formulario.add(panelProfesional, gbc);
 
+        //PACIENTE
         JLabel lblPaciente = new JLabel("Nombre del Paciente:");
         lblPaciente.setFont(labelFont);
         gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
         formulario.add(lblPaciente, gbc);
+        
+        JPanel panelPaciente = new JPanel();
+        panelPaciente.setLayout(new BoxLayout(panelPaciente, BoxLayout.Y_AXIS));
+        panelPaciente.add(txtPaciente);
+        
+        JLabel lblAyudaPaciente = new JLabel("Formato: Apellido Nombre");
+        lblAyudaPaciente.setFont(new Font("Arial", Font.ITALIC, 10));
+        lblAyudaPaciente.setForeground(Color.GRAY);
+        lblAyudaPaciente.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panelPaciente.add(lblAyudaPaciente);
+        
         gbc.gridx = 1; gbc.gridy = 2; gbc.weightx = 1;
-        formulario.add(txtPaciente, gbc);
+        formulario.add(panelPaciente, gbc);
 
+        //INSTITUCIÓN
         JLabel lblInstitucion = new JLabel("Institución:");
         lblInstitucion.setFont(labelFont);
         gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0;
@@ -110,7 +158,7 @@ public class PanelIngresoOrtopedia extends JPanel {
         gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0;
         formulario.add(lblDescripcion, gbc);
 
-        // Panel contenedor de materiales (lista + botón agregar + total)
+        // Panel contenedor de materiales
         JPanel panelDescripcion = new JPanel(new BorderLayout(5, 5));
 
         // Botones para agregar y eliminar filas de material
@@ -144,6 +192,7 @@ public class PanelIngresoOrtopedia extends JPanel {
             listaMaterialesPanel.repaint();
         });
 
+        // Acción para eliminar la última fila
         btnEliminarMaterial.addActionListener(e -> {
             eliminarUltimaFilaMaterial(listaMaterialesPanel);
             listaMaterialesPanel.revalidate();
@@ -169,6 +218,7 @@ public class PanelIngresoOrtopedia extends JPanel {
 
         // Campo de número (identificador del material)
         JTextField txtNumero = new JTextField();
+        soloNumeros(txtNumero);
         txtNumero.setFont(this.inputFont);
         txtNumero.setColumns(5);
         txtNumero.setMargin(new Insets(2, 6, 2, 6));
@@ -256,5 +306,72 @@ public class PanelIngresoOrtopedia extends JPanel {
             this.descripcion = descripcion;
             this.litros = litros;
         }
+    }
+
+    // Método para restringir un JTextField a solo números
+    private void soloNumeros(JTextField campo) {
+        campo.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyTyped(KeyEvent e) {
+                char c = e.getKeyChar();
+                if (!Character.isDigit(c) && c != KeyEvent.VK_BACK_SPACE) {
+                    e.consume(); // Ignora la tecla si no es número
+                }
+            }
+        });
+    }
+
+    // Getters para los campos del formulario
+    public JTextField getTxtCliente() {
+        return txtCliente;
+    }
+
+    public JTextField getTxtProfesional() {
+        return txtProfesional;
+    }
+
+    public JTextField getTxtPaciente() {
+        return txtPaciente;
+    }
+
+    public JTextField getTxtInstitucion() {
+        return txtInstitucion;
+    }
+
+    public List<MaterialRow> getMaterialRows() {
+        return materialRows;
+    }
+    
+    public JButton getBtnGuardar() {
+        return btnGuardar;
+    }
+    
+    public JButton getBtnCancelar() {
+        return btnCancelar;
+    }
+    
+    // Método para limpiar todos los campos del formulario
+    public void limpiarFormulario() {
+        // Limpiar campos de texto
+        txtCliente.setText("");
+        txtProfesional.setText("");
+        txtPaciente.setText("");
+        txtInstitucion.setText("");
+        
+        // Limpiar materiales: eliminar todas las filas
+        while (!materialRows.isEmpty()) {
+            MaterialRow last = materialRows.remove(materialRows.size() - 1);
+            listaMaterialesPanel.remove(last.numero);
+            listaMaterialesPanel.remove(last.descripcion);
+            listaMaterialesPanel.remove(last.litros);
+        }
+        
+        // Agregar una fila vacía por defecto
+        agregarFilaMaterial(listaMaterialesPanel);
+        
+        // Actualizar UI
+        listaMaterialesPanel.revalidate();
+        listaMaterialesPanel.repaint();
+        actualizarTotalLitros();
     }
 }

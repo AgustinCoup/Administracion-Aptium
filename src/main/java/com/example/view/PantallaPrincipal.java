@@ -6,6 +6,7 @@ import java.awt.*;
 public class PantallaPrincipal extends JFrame {
     private CardLayout navegador = new CardLayout();
     private JPanel contenedor = new JPanel(navegador);
+    private PanelIngresoOrtopedia ingresoOrtopedia;
 
     public PantallaPrincipal() {
         setTitle("Sistema Empresa - v1.0");
@@ -19,7 +20,7 @@ public class PantallaPrincipal extends JFrame {
         PanelEsOrtopedia esOrtopedia = new PanelEsOrtopedia(navegador, contenedor);
         PanelVerCDEv1 verCDE = new PanelVerCDEv1(navegador, contenedor);
         PanelVerCDEv2 verCDEv2 = new PanelVerCDEv2(navegador, contenedor);
-        PanelIngresoOrtopedia ingresoOrtopedia = new PanelIngresoOrtopedia(navegador, contenedor);
+        ingresoOrtopedia = new PanelIngresoOrtopedia(navegador, contenedor);
 
         // Los registramos en el mazo de cartas con un nombre único
         contenedor.add(menu, "MENU_PRINCIPAL");
@@ -30,5 +31,17 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(ingresoOrtopedia, "INGRESO_ORTOPEDIA");
 
         add(contenedor);
+    }
+    
+    public PanelIngresoOrtopedia getPanelIngresoOrtopedia() {
+        return ingresoOrtopedia;
+    }
+    
+    public CardLayout getNavegador() {
+        return navegador;
+    }
+    
+    public JPanel getContenedor() {
+        return contenedor;
     }
 }

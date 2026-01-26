@@ -17,6 +17,7 @@ public class AppController {
     }
 
     public void iniciarAplicacion() {
+        // Validar conexión y inicializar BD (el model se encarga de la inicialización)
         if (!model.validarConexion()) {
             mostrarErrorConexion();
             return;
@@ -25,6 +26,15 @@ public class AppController {
         configurarLookAndFeel();
         SwingUtilities.invokeLater(() -> {
             vista = new PantallaPrincipal();
+            
+            // Crear controladores específicos para cada panel
+            new OrthopediaInputController(
+                vista.getPanelIngresoOrtopedia(), 
+                model, 
+                vista.getNavegador(), 
+                vista.getContenedor()
+            );
+            
             vista.setVisible(true);
         });
     }
