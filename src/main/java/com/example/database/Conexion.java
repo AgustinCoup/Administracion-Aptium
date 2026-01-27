@@ -35,9 +35,18 @@ public class Conexion {
 
     public static Connection conectar() {
         try {
-            // Quitamos "sistema_empresa" de la URL para que conecte aunque no exista la DB
+            // URL a MySQL sin especificar BD
             String url = "jdbc:mysql://" + getDbIp() + ":3306/?serverTimezone=UTC";
-            return DriverManager.getConnection(url, getDbUser(), getDbPassword());
+            Connection conn = DriverManager.getConnection(url, getDbUser(), getDbPassword());
+            
+            // Seleccionar la base de datos después de conectar
+            if (conn != null) {
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute("USE sistema_empresa");
+                }
+            }
+            
+            return conn;
         } catch (SQLException e) {
             System.out.println("Error al conectar a MySQL: " + e.getMessage());
             return null;

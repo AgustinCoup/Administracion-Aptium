@@ -6,7 +6,8 @@ import java.awt.*;
 public class PantallaPrincipal extends JFrame {
     private CardLayout navegador = new CardLayout();
     private JPanel contenedor = new JPanel(navegador);
-    private PanelIngresoOrtopedia ingresoOrtopedia;
+    private PantallaIngresoOrtopedia ingresoOrtopedia;
+    private PantallaVerCDEv2 verCDEv2;
 
     public PantallaPrincipal() {
         setTitle("Sistema Empresa - v1.0");
@@ -15,12 +16,12 @@ public class PantallaPrincipal extends JFrame {
         setLocationRelativeTo(null);
 
         // Instanciamos los paneles pasando el navegador y el contenedor
-        PanelMenu menu = new PanelMenu(navegador, contenedor);
-        PanelEsterilizacion esterilizacion = new PanelEsterilizacion(navegador, contenedor);
-        PanelEsOrtopedia esOrtopedia = new PanelEsOrtopedia(navegador, contenedor);
-        PanelVerCDEv1 verCDE = new PanelVerCDEv1(navegador, contenedor);
-        PanelVerCDEv2 verCDEv2 = new PanelVerCDEv2(navegador, contenedor);
-        ingresoOrtopedia = new PanelIngresoOrtopedia(navegador, contenedor);
+        PantallaMenu menu = new PantallaMenu(navegador, contenedor);
+        PantallaEsterilizacion esterilizacion = new PantallaEsterilizacion(navegador, contenedor);
+        PantallaEsOrtopedia esOrtopedia = new PantallaEsOrtopedia(navegador, contenedor);
+        PantallaVerCDEv1 verCDE = new PantallaVerCDEv1(navegador, contenedor);
+        verCDEv2 = new PantallaVerCDEv2(navegador, contenedor);
+        ingresoOrtopedia = new PantallaIngresoOrtopedia(navegador, contenedor);
 
         // Los registramos en el mazo de cartas con un nombre único
         contenedor.add(menu, "MENU_PRINCIPAL");
@@ -33,8 +34,12 @@ public class PantallaPrincipal extends JFrame {
         add(contenedor);
     }
     
-    public PanelIngresoOrtopedia getPanelIngresoOrtopedia() {
+    public PantallaIngresoOrtopedia getPanelIngresoOrtopedia() {
         return ingresoOrtopedia;
+    }
+    
+    public PantallaVerCDEv2 getPantallaVerCDEv2() {
+        return verCDEv2;
     }
     
     public CardLayout getNavegador() {

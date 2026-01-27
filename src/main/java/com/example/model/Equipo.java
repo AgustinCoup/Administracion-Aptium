@@ -3,6 +3,8 @@ package com.example.model;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.example.constants.Constantes;
+
 public class Equipo {
     // Identificación de Negocio (Ej: 20261)
     private String codigoEquipo;
@@ -16,13 +18,13 @@ public class Equipo {
     private String pacienteNombre;
 
     // Estado y Fecha
-    private String estado;
+    private EstadoEquipo estado;
     private List<Material> materiales;
 
     // Constructor
     public Equipo() {
         this.materiales = new ArrayList<>();
-        this.estado = "Nuevo"; // Estado inicial por defecto
+        this.estado = EstadoEquipo.NUEVO; // Estado inicial por defecto
     }
 
     // Método para facilitar la carga de materiales desde el Controlador
@@ -47,8 +49,8 @@ public class Equipo {
     public String getPacienteNombre() { return pacienteNombre; }
     public void setPacienteNombre(String pacienteNombre) { this.pacienteNombre = pacienteNombre; }
 
-    public String getEstado() { return estado; }
-    public void setEstado(String estado) { this.estado = estado; }
+    public EstadoEquipo getEstado() { return estado; }
+    public void setEstado(EstadoEquipo estado) { this.estado = estado; }
 
     public List<Material> getMateriales() { return materiales; }
     public void setMateriales(List<Material> materiales) { this.materiales = materiales; }

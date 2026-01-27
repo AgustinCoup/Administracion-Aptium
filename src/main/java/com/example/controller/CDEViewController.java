@@ -4,21 +4,28 @@ import java.util.List;
 
 import com.example.model.AppModel;
 import com.example.model.Equipo;
-import com.example.model.EquipoDAO;
-import com.example.view.PanelVerCDEv2;
+import com.example.view.PantallaVerCDEv2;
 
+/**
+ * Controlador para PantallaVerCDEv2.
+ * Responsabilidad: Cargar datos del Modelo y actualizar la Vista.
+ * Respeta MVC: Vista ← Controller ← Modelo
+ */
 public class CDEViewController {
-    private PanelVerCDEv2 panel;
-    private EquipoDAO equipoDAO;
+    private PantallaVerCDEv2 panel;
+    private AppModel model;
     
-    public CDEViewController(PanelVerCDEv2 panel, AppModel model) {
+    public CDEViewController(PantallaVerCDEv2 panel, AppModel model) {
         this.panel = panel;
-        this.equipoDAO = new EquipoDAO();
+        this.model = model;
         cargarDatos();
     }
     
+    /**
+     * Carga los equipos desde el Modelo y actualiza la Vista.
+     */
     public void cargarDatos() {
-        List<Equipo> equipos = equipoDAO.obtenerTodosLosEquipos();
+        List<Equipo> equipos = model.obtenerTodosLosEquipos();
         panel.actualizarTabla(equipos);
     }
 }

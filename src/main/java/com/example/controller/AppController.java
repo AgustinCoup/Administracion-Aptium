@@ -4,6 +4,7 @@ import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 
+import com.example.constants.Constantes;
 import com.example.model.AppModel;
 import com.example.view.PantallaPrincipal;
 
@@ -35,6 +36,12 @@ public class AppController {
                 vista.getContenedor()
             );
             
+            // Controller para PantallaVerCDEv2 - carga datos del modelo
+            new CDEViewController(
+                vista.getPantallaVerCDEv2(),
+                model
+            );
+            
             vista.setVisible(true);
         });
     }
@@ -54,9 +61,8 @@ public class AppController {
     private void mostrarErrorConexion() {
         JOptionPane.showMessageDialog(
                 null,
-                "No se pudo conectar con el servidor de base de datos.\n"
-                        + "Por favor, verifique que la PC Servidor esté encendida.",
-                "Error de Conexión",
+                Constantes.Mensajes.ERROR_CONEXION_BD,
+                Constantes.Mensajes.TITULO_ERROR_CONEXION,
                 JOptionPane.ERROR_MESSAGE);
         System.exit(0);
     }
