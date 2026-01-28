@@ -11,7 +11,8 @@ public class PantallaPrincipal extends JFrame {
 
     public PantallaPrincipal() {
         setTitle("Sistema Empresa - v1.0");
-        setSize(800, 600);
+        setSize(1280, 720);
+        setMinimumSize(new Dimension(1280, 720));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 

@@ -69,7 +69,6 @@ public class Conexion {
 
         String tablaEquipos = "CREATE TABLE IF NOT EXISTS equipos ("
                 + "id INT AUTO_INCREMENT PRIMARY KEY, "
-                + "codigo_equipo VARCHAR(20) UNIQUE, "
                 + "nro_cliente INT, "
                 + "cliente_nombre VARCHAR(100), "
                 + "profesional VARCHAR(150), "
@@ -82,12 +81,12 @@ public class Conexion {
 
         String tablaMateriales = "CREATE TABLE IF NOT EXISTS equipo_materiales ("
                 + "id INT AUTO_INCREMENT PRIMARY KEY, "
-                + "id_relacionado VARCHAR(50), "
-                + "equipo_codigo VARCHAR(20), "
+                + "equipo_id INT NOT NULL, "
                 + "codigo_catalogo INT, "
                 + "descripcion_copia VARCHAR(255), "
                 + "cantidad INT, "
-                + "FOREIGN KEY (equipo_codigo) REFERENCES equipos(codigo_equipo) ON DELETE CASCADE);";
+                + "estado VARCHAR(50) DEFAULT 'Nuevo', "
+                + "FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE)";
 
         
 

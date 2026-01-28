@@ -77,10 +77,10 @@ public class AppModel {
     }
 
     /**
-     * Obtiene un equipo específico por su código.
+     * Obtiene un equipo específico por su ID.
      */
-    public Equipo obtenerEquipoPorCodigo(String codigo) {
-        return equipoService.obtenerPorCodigo(codigo);
+    public Equipo obtenerEquipoPorId(String id) {
+        return equipoService.obtenerPorId(id);
     }
 
     /**

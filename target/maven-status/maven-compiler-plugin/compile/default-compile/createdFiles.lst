@@ -11,6 +11,7 @@ com\example\database\Conexion.class
 com\example\view\PantallaIngresoOrtopedia.class
 com\example\util\Validador$2.class
 com\example\constants\Constantes$Mensajes.class
+com\example\view\EquipoTableModel.class
 com\example\view\PanelMateriales$MaterialRow.class
 com\example\App.class
 com\example\constants\Constantes$BaseDatos.class
@@ -20,6 +21,8 @@ com\example\view\PantallaVerCDEv2$2.class
 com\example\model\EquipoDAO.class
 com\example\view\Estilos$Dimensiones.class
 com\example\view\PantallaEsterilizacion.class
+com\example\controller\OnEquipoGuardadoListener.class
+com\example\view\MaterialTableModel.class
 com\example\view\PantallaVerCDEv1.class
 com\example\model\DAO.class
 com\example\constants\Constantes$Defaults.class

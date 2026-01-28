@@ -24,12 +24,14 @@ public class OrthopediaInputController {
     private AppModel model;
     private CardLayout navegador;
     private JPanel contenedor;
+    private OnEquipoGuardadoListener onEquipoGuardadoListener;
     
-    public OrthopediaInputController(PantallaIngresoOrtopedia panel, AppModel model, CardLayout navegador, JPanel contenedor) {
+    public OrthopediaInputController(PantallaIngresoOrtopedia panel, AppModel model, CardLayout navegador, JPanel contenedor, OnEquipoGuardadoListener onEquipoGuardadoListener) {
         this.panel = panel;
         this.model = model;
         this.navegador = navegador;
         this.contenedor = contenedor;
+        this.onEquipoGuardadoListener = onEquipoGuardadoListener;
         inicializarEventos();
     }
     
@@ -67,7 +69,13 @@ public class OrthopediaInputController {
                 JOptionPane.INFORMATION_MESSAGE);
             
             panel.limpiarFormulario();
-            navegador.show(contenedor, Constantes.Pantallas.MENU_PRINCIPAL);
+            
+            // Notificar al listener que un equipo fue guardado
+            if (onEquipoGuardadoListener != null) {
+                onEquipoGuardadoListener.onEquipoGuardado();
+            }
+            
+            navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION);
             Logger.info("Equipo guardado exitosamente desde formulario");
         } else {
             // Error: mostrar mensaje de error
@@ -130,6 +138,7 @@ public class OrthopediaInputController {
         // Datos médicos
         equipo.setProfesionalNombre(panel.getTxtProfesional().getText().trim());
         equipo.setPacienteNombre(panel.getTxtPaciente().getText().trim());
+        equipo.setInstitucion(panel.getTxtInstitucion().getText().trim());
         
         // El estado inicial es NUEVO (definido en constructor de Equipo)
         
@@ -137,20 +146,18 @@ public class OrthopediaInputController {
         panel.getMaterialRows().forEach(row -> {
             String numeroStr = row.numero.getText().trim();
             
-            // Solo agregar si el número no está vacío
+            // Solo agregar si el número no está vacío y es numérico
             if (!numeroStr.isEmpty() && Validador.soloNumeros(numeroStr)) {
                 int codigoMaterial = Integer.parseInt(numeroStr);
                 String descripcion = row.descripcion.getText().trim();
-                Object litrosObj = row.litros.getValue();
+                Object ElementosObj = row.Elementos.getValue();
                 
                 int cantidad = 0;
-                if (litrosObj instanceof Number) {
-                    cantidad = ((Number) litrosObj).intValue();
+                if (ElementosObj instanceof Number) {
+                    cantidad = ((Number) ElementosObj).intValue();
                 }
                 
-                // El idRelacionado será generado por EquipoDAO en base de datos
-                String idRel = equipo.getCodigoEquipo() + "-" + codigoMaterial;
-                Material material = new Material(idRel, codigoMaterial, descripcion, cantidad);
+                Material material = new Material(codigoMaterial, descripcion, cantidad);
                 equipo.agregarMaterial(material);
             }
         });

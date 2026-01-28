@@ -28,18 +28,19 @@ public class AppController {
         SwingUtilities.invokeLater(() -> {
             vista = new PantallaPrincipal();
             
+            // Controller para PantallaVerCDEv2 - carga datos del modelo
+            CDEViewController cdeViewController = new CDEViewController(
+                vista.getPantallaVerCDEv2(),
+                model
+            );
+            
             // Crear controladores específicos para cada panel
             new OrthopediaInputController(
                 vista.getPanelIngresoOrtopedia(), 
                 model, 
                 vista.getNavegador(), 
-                vista.getContenedor()
-            );
-            
-            // Controller para PantallaVerCDEv2 - carga datos del modelo
-            new CDEViewController(
-                vista.getPantallaVerCDEv2(),
-                model
+                vista.getContenedor(),
+                () -> cdeViewController.cargarDatos()
             );
             
             vista.setVisible(true);

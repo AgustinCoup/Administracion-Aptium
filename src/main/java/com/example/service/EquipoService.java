@@ -61,16 +61,16 @@ public class EquipoService {
     }
 
     /**
-     * Obtiene un equipo específico por su código.
+     * Obtiene un equipo específico por su ID.
      * 
-     * @param codigo Código único del equipo
+     * @param id ID único del equipo
      * @return El equipo si existe, null si no
      */
-    public Equipo obtenerPorCodigo(String codigo) {
+    public Equipo obtenerPorId(String id) {
         try {
-            return equipoDAO.obtenerPorId(codigo);
+            return equipoDAO.obtenerPorId(id);
         } catch (Exception e) {
-            Logger.error("Error al obtener equipo con código: " + codigo, e);
+            Logger.error("Error al obtener equipo con ID: " + id, e);
             return null;
         }
     }
@@ -82,7 +82,7 @@ public class EquipoService {
      * @return true si se actualizó correctamente
      */
     public boolean actualizar(Equipo equipo) {
-        if (equipo == null || equipo.getCodigoEquipo() == null) {
+        if (equipo == null || equipo.getId() == null) {
             Logger.warning("Intento de actualizar equipo inválido");
             return false;
         }
@@ -90,7 +90,7 @@ public class EquipoService {
         try {
             boolean resultado = equipoDAO.actualizar(equipo);
             if (resultado) {
-                Logger.info("Equipo actualizado: " + equipo.getCodigoEquipo());
+                Logger.info("Equipo actualizado: " + equipo.getId());
             }
             return resultado;
         } catch (Exception e) {
@@ -114,14 +114,14 @@ public class EquipoService {
     }
 
     /**
-     * Verifica si existe un equipo con el código especificado.
+     * Verifica si existe un equipo con el ID especificado.
      * 
-     * @param codigo Código del equipo
+     * @param id ID del equipo
      * @return true si existe
      */
-    public boolean existe(String codigo) {
+    public boolean existe(String id) {
         try {
-            return equipoDAO.existe(codigo);
+            return equipoDAO.existe(id);
         } catch (Exception e) {
             Logger.error("Error al verificar existencia de equipo", e);
             return false;

@@ -1,0 +1,4 @@
+[2026-01-28 10:55:16] INFO: Equipo guardado exitosamente: GMRS
+
+[2026-01-28 10:55:18] INFO: Equipo guardado exitosamente desde formulario
+

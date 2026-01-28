@@ -38,7 +38,7 @@ public final class Estilos {
         public static final Font BOTON = new Font(FUENTE_PRINCIPAL, Font.PLAIN, 24);
         
         // Botones pequeños (+ / -)
-        public static final Font BOTON_PEQUENO = new Font(FUENTE_PRINCIPAL, Font.BOLD, 18);
+        public static final Font BOTON_PEQUENO = new Font(FUENTE_PRINCIPAL, Font.BOLD, 14);
         
         // Campos de entrada (TextFields, etc)
         public static final Font INPUT = new Font(FUENTE_PRINCIPAL, Font.PLAIN, 18);

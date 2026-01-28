@@ -1,8 +1,9 @@
 package com.example.view;
 
 import javax.swing.*;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
 
 import com.example.constants.Constantes;
 import com.example.model.Equipo;
@@ -14,13 +15,17 @@ import java.util.List;
 
 public class PantallaVerCDEv2 extends JPanel {
     
-    private DefaultTableModel modelo;
+    private EquipoTableModel modeloEquipos;
+    private MaterialTableModel modeloMateriales;
     private Map<String, Color> estadoColores;
+    private JTable tablaEquipos;
+    private JTable tablaMateriales;
 
     public PantallaVerCDEv2(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
+        setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        // Mapa de colores por estado usando el Enum
+        // Mapa de colores por estado
         estadoColores = new HashMap<>();
         for (EstadoEquipo estado : EstadoEquipo.values()) {
             estadoColores.put(estado.getNombre(), estado.getColor());
@@ -35,25 +40,76 @@ public class PantallaVerCDEv2 extends JPanel {
         );
         add(header, BorderLayout.NORTH);
 
-        // Crear tabla con dos columnas: Cliente y Estado
-        String[] columnas = {"Cliente", "Estado"};
-        this.modelo = new DefaultTableModel(columnas, 0) {
+        // Panel central con dos secciones: Equipos y Materiales
+        JPanel panelCentral = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1.0; // Expande horizontalmente
+
+        // ===== TABLA DE EQUIPOS =====
+        JLabel lblEquipos = new JLabel("Equipos / Clientes");
+        lblEquipos.setFont(new Font("Arial", Font.BOLD, 16));
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weighty = 0;
+        panelCentral.add(lblEquipos, gbc);
+
+        String[] columnasEquipos = {"Cliente", "Estado"};
+        this.modeloEquipos = new EquipoTableModel(columnasEquipos);
+        tablaEquipos = new JTable(modeloEquipos);
+        tablaEquipos.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
+        tablaEquipos.setRowHeight(Estilos.Dimensiones.ALTURA_FILA_TABLA);
+        tablaEquipos.getTableHeader().setFont(Estilos.Fuentes.TABLA_ENCABEZADO);
+        tablaEquipos.getColumnModel().getColumn(1).setCellRenderer(crearRendererEstado());
+
+        JScrollPane scrollEquipos = new JScrollPane(tablaEquipos);
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.weighty = 0.6;
+        panelCentral.add(scrollEquipos, gbc);
+
+        // Listener de selección para cargar materiales
+        tablaEquipos.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
             @Override
-            public boolean isCellEditable(int row, int column) {
-                return false; // No editable
+            public void valueChanged(ListSelectionEvent e) {
+                int selectedRow = tablaEquipos.getSelectedRow();
+                if (selectedRow >= 0) {
+                    Equipo equipoSeleccionado = modeloEquipos.getEquipoAt(selectedRow);
+                    modeloMateriales.cargarMateriales(equipoSeleccionado);
+                } else {
+                    modeloMateriales.limpiar();
+                }
             }
-        };
+        });
 
-        JTable tabla = new JTable(modelo);
-        tabla.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
-        tabla.setRowHeight(Estilos.Dimensiones.ALTURA_FILA_TABLA);
-        tabla.getTableHeader().setFont(Estilos.Fuentes.TABLA_ENCABEZADO);
+        // ===== TABLA DE MATERIALES =====
+        JLabel lblMateriales = new JLabel("Materiales del Equipo Seleccionado");
+        lblMateriales.setFont(new Font("Arial", Font.BOLD, 16));
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        gbc.weighty = 0;
+        panelCentral.add(lblMateriales, gbc);
 
-        // Renderizador personalizado para colorear la celda de estado (columna 1)
-        tabla.getColumnModel().getColumn(1).setCellRenderer(crearRendererEstado());
+        this.modeloMateriales = new MaterialTableModel();
+        tablaMateriales = new JTable(modeloMateriales);
+        tablaMateriales.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
+        tablaMateriales.setRowHeight(Estilos.Dimensiones.ALTURA_FILA_TABLA);
+        tablaMateriales.getTableHeader().setFont(Estilos.Fuentes.TABLA_ENCABEZADO);
+        tablaMateriales.getColumnModel().getColumn(2).setCellRenderer(crearRendererEstado());
 
-        JScrollPane scroll = new JScrollPane(tabla);
-        add(scroll, BorderLayout.CENTER);
+        // Centrar la columna de Cantidad
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        tablaMateriales.getColumnModel().getColumn(1).setCellRenderer(centerRenderer);
+
+        JScrollPane scrollMateriales = new JScrollPane(tablaMateriales);
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        gbc.weighty = 0.4;
+        panelCentral.add(scrollMateriales, gbc);
+
+        add(panelCentral, BorderLayout.CENTER);
     }
 
     private DefaultTableCellRenderer crearRendererEstado() {
@@ -77,36 +133,8 @@ public class PantallaVerCDEv2 extends JPanel {
         };
     }
 
-    /**
-     * Ordena el modelo de la tabla por estado según el orden definido en EstadoEquipo.
-     * Extrae todas las filas, las ordena y luego las reinsertas en el modelo.
-     */
-    private void ordenarModeloPorEstado(DefaultTableModel modelo) {
-        // Extraer todas las filas como una lista de arrays
-        List<Object[]> filas = new ArrayList<>();
-        for (int i = 0; i < modelo.getRowCount(); i++) {
-            Object[] fila = modelo.getDataVector().elementAt(i).toArray();
-            filas.add(fila);
-        }
-
-        // Ordenar por el orden del estado en el enum
-        filas.sort((fila1, fila2) -> {
-            int indice1 = EstadoEquipo.desdeBD(fila1[1].toString()).getOrden();
-            int indice2 = EstadoEquipo.desdeBD(fila2[1].toString()).getOrden();
-            return Integer.compare(indice1, indice2);
-        });
-
-        // Reinsertar las filas ordenadas
-        modelo.setRowCount(0);
-        filas.forEach(modelo::addRow);
-    }
-
     public void actualizarTabla(List<Equipo> equipos) {
-        modelo.setRowCount(0); // Limpiar tabla
-        equipos.forEach(eq -> modelo.addRow(new Object[]{
-            eq.getClienteNombre(),
-            eq.getEstado().getNombre()
-        }));
-        ordenarModeloPorEstado(modelo);
+        modeloEquipos.actualizarDatos(equipos);
+        modeloMateriales.limpiar();
     }
 }

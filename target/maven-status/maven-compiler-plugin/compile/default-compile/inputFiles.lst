@@ -1,4 +1,6 @@
+C:\Trabajo\Administracion-Aptium\src\main\java\com\example\view\EquipoTableModel.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\model\Material.java
+C:\Trabajo\Administracion-Aptium\src\main\java\com\example\view\MaterialTableModel.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\database\Conexion.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\view\PantallaVerCDEv1.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\controller\CDEViewController.java
@@ -9,6 +11,7 @@ C:\Trabajo\Administracion-Aptium\src\main\java\com\example\App.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\util\Validador.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\view\PantallaPrincipal.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\view\PantallaMenu.java
+C:\Trabajo\Administracion-Aptium\src\main\java\com\example\controller\OnEquipoGuardadoListener.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\model\DAO.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\model\EstadoEquipo.java
 C:\Trabajo\Administracion-Aptium\src\main\java\com\example\constants\Constantes.java

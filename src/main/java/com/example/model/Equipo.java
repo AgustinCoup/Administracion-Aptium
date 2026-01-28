@@ -6,8 +6,8 @@ import java.util.List;
 import com.example.constants.Constantes;
 
 public class Equipo {
-    // Identificación de Negocio (Ej: 20261)
-    private String codigoEquipo;
+    // Identificación de Base de Datos
+    private Integer id;
 
     // Datos del Cliente
     private int nroCliente;
@@ -16,6 +16,7 @@ public class Equipo {
     // Datos Médicos
     private String profesionalNombre;
     private String pacienteNombre;
+    private String institucion;
 
     // Estado y Fecha
     private EstadoEquipo estado;
@@ -32,10 +33,38 @@ public class Equipo {
         this.materiales.add(material);
     }
 
+    /**
+     * Calcula y retorna el estado del equipo basado en el material más atrasado.
+     * El estado del equipo = estado del material con el menor orden (más atrasado).
+     * 
+     * Si no hay materiales, retorna NUEVO.
+     * Si hay materiales, busca el que tenga el menor número de orden.
+     * 
+     * Orden: NUEVO(1) < LAVANDO(2) < LAVADO(3) < EMPAQUETADO(4) < ESTERILIZANDO(5) < ESTERILIZADO(6) < ENTREGADO(7)
+     */
+    public EstadoEquipo calcularEstado() {
+        if (materiales.isEmpty()) {
+            return EstadoEquipo.NUEVO;
+        }
+        
+        // Buscar el material con el menor orden (más atrasado)
+        EstadoEquipo estadoMasAtrasado = EstadoEquipo.ENTREGADO; // Comienza con el más avanzado
+        
+        for (Material material : materiales) {
+            EstadoEquipo estadoMaterial = material.getEstado();
+            // Si el estado actual es más atrasado que el guardado, actualiza
+            if (estadoMaterial.getOrden() < estadoMasAtrasado.getOrden()) {
+                estadoMasAtrasado = estadoMaterial;
+            }
+        }
+        
+        return estadoMasAtrasado;
+    }
+
     // --- Getters y Setters ---
 
-    public String getCodigoEquipo() { return codigoEquipo; }
-    public void setCodigoEquipo(String codigoEquipo) { this.codigoEquipo = codigoEquipo; }
+    public Integer getId() { return id; }
+    public void setId(Integer id) { this.id = id; }
 
     public int getNroCliente() { return nroCliente; }
     public void setNroCliente(int nroCliente) { this.nroCliente = nroCliente; }
@@ -48,6 +77,9 @@ public class Equipo {
 
     public String getPacienteNombre() { return pacienteNombre; }
     public void setPacienteNombre(String pacienteNombre) { this.pacienteNombre = pacienteNombre; }
+
+    public String getInstitucion() { return institucion; }
+    public void setInstitucion(String institucion) { this.institucion = institucion; }
 
     public EstadoEquipo getEstado() { return estado; }
     public void setEstado(EstadoEquipo estado) { this.estado = estado; }

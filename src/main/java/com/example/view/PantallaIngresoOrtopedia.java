@@ -95,7 +95,7 @@ public class PantallaIngresoOrtopedia extends JPanel {
         agregarFila(formulario, gbc, labelFont, 3, "Institución:", txtInstitucion, null);
 
         // Fila 4: Panel de Materiales
-        JLabel lblDescripcion = new JLabel("Descripción del Material:");
+        JLabel lblDescripcion = new JLabel("Material:");
         lblDescripcion.setFont(labelFont);
         gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0;
         gbc.anchor = GridBagConstraints.WEST;

@@ -18,7 +18,8 @@ public enum EstadoEquipo {
     LAVADO("Lavado", new Color(135, 206, 250), 3),            // SKY_BLUE
     EMPAQUETADO("Empaquetado", Color.ORANGE, 4),
     ESTERILIZANDO("Esterilizando", Color.PINK, 5),
-    ESTERILIZADO("Esterilizado", Color.GREEN, 6);             // Estado final
+    ESTERILIZADO("Esterilizado", Color.GREEN, 6),
+    ENTREGADO("Entregado", Color.GRAY, 7);               // Estado final
     
     private final String nombre;
     private final Color color;

@@ -23,7 +23,7 @@ import java.util.function.BiConsumer;
 public class PanelMateriales extends JPanel {
     
     private List<MaterialRow> materialRows = new ArrayList<>();
-    private JLabel lblTotalLitros;
+    private JLabel lblTotalElementos;
     private Font inputFont;
     private int inputHeight;
     private JPanel listaMaterialesPanel;
@@ -49,15 +49,22 @@ public class PanelMateriales extends JPanel {
         panelAgregar.add(btnAgregarMaterial);
         add(panelAgregar, BorderLayout.NORTH);
 
-        // Lista de materiales (cada fila: número + descripción + litros)
+        // Lista de materiales (cada fila: número + descripción + Elementos)
         listaMaterialesPanel = new JPanel(new GridBagLayout());
-        add(listaMaterialesPanel, BorderLayout.CENTER);
+        
+        // Envolver en JScrollPane para permitir scroll vertical ilimitado
+        JScrollPane scrollPane = new JScrollPane(listaMaterialesPanel);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        scrollPane.setBorder(null); // Eliminar el marco gris
+        add(scrollPane, BorderLayout.CENTER);
 
-        // Total de litros
-        lblTotalLitros = new JLabel("Total litros: 0");
-        lblTotalLitros.setFont(new Font("Arial", Font.BOLD, 16));
+        // Total de Elementos
+        lblTotalElementos = new JLabel("Total Elementos: 0");
+        lblTotalElementos.setFont(Estilos.Fuentes.LABEL);
         JPanel panelTotal = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 5));
-        panelTotal.add(lblTotalLitros);
+        panelTotal.add(lblTotalElementos);
         add(panelTotal, BorderLayout.SOUTH);
 
         // Agregar primera fila por defecto
@@ -88,7 +95,7 @@ public class PanelMateriales extends JPanel {
     }
 
     /**
-     * Crea y agrega una nueva fila de material (número + descripción + litros)
+     * Crea y agrega una nueva fila de material (número + descripción + Elementos + botón eliminar)
      */
     private void agregarFilaMaterial() {
         GridBagConstraints gbcRow = new GridBagConstraints();
@@ -110,9 +117,10 @@ public class PanelMateriales extends JPanel {
         // Campo de descripción (no editable)
         JTextField txtDesc = new JTextField();
         txtDesc.setFont(this.inputFont);
-        txtDesc.setColumns(20);
+        txtDesc.setColumns(40);
         txtDesc.setMargin(Estilos.Espaciados.INSETS_INPUT);
-        txtDesc.setPreferredSize(new Dimension(0, this.inputHeight));
+        txtDesc.setPreferredSize(new Dimension(200, this.inputHeight));
+        txtDesc.setMinimumSize(new Dimension(100, this.inputHeight));
         txtDesc.setEditable(false);
         txtDesc.setBackground(Color.LIGHT_GRAY); // Indica visualmente que no es editable
 
@@ -134,16 +142,29 @@ public class PanelMateriales extends JPanel {
             }
         });
 
-        // Campo de litros con JSpinner
-        SpinnerNumberModel model = new SpinnerNumberModel(0.0, 0.0, null, 1.0);
-        JSpinner spLitros = new JSpinner(model);
-        spLitros.setFont(this.inputFont);
-        JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spLitros, "#0.##");
-        spLitros.setEditor(editor);
+        // Campo de Elementos con JSpinner
+        SpinnerNumberModel model = new SpinnerNumberModel(1.0, 1.0, null, 1.0);
+        JSpinner spElementos = new JSpinner(model);
+        spElementos.setFont(this.inputFont);
+        JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spElementos, "#0.##");
+        spElementos.setEditor(editor);
         editor.getTextField().setColumns(4);
 
         // Escuchar cambios para actualizar el total
-        spLitros.addChangeListener(e -> actualizarTotalLitros());
+        spElementos.addChangeListener(e -> actualizarTotalElementos());
+
+        // Botón eliminar para esta fila específica
+        JButton btnEliminarFila = new JButton("X");
+        btnEliminarFila.setFont(Estilos.Fuentes.BOTON_PEQUENO);
+        btnEliminarFila.setPreferredSize(new Dimension(45, this.inputHeight));
+        btnEliminarFila.setMargin(new Insets(0, 0, 0, 0));
+        btnEliminarFila.setToolTipText("Eliminar esta fila");
+        
+        MaterialRow materialRow = new MaterialRow(txtNumero, txtDesc, spElementos, btnEliminarFila);
+        
+        btnEliminarFila.addActionListener(e -> {
+            eliminarFilaMaterial(materialRow);
+        });
 
         // Agregar componentes a la fila
         gbcRow.gridx = 0; gbcRow.gridy = rowIndex; gbcRow.weightx = 0;
@@ -153,29 +174,36 @@ public class PanelMateriales extends JPanel {
 
         gbcRow.gridx = 1; gbcRow.gridy = rowIndex; gbcRow.weightx = 1;
         gbcRow.fill = GridBagConstraints.HORIZONTAL;
+        gbcRow.anchor = GridBagConstraints.WEST;
         listaMaterialesPanel.add(txtDesc, gbcRow);
 
         gbcRow.gridx = 2; gbcRow.gridy = rowIndex; gbcRow.weightx = 0;
         gbcRow.fill = GridBagConstraints.NONE;
-        gbcRow.anchor = GridBagConstraints.WEST;
-        listaMaterialesPanel.add(spLitros, gbcRow);
+        gbcRow.anchor = GridBagConstraints.EAST;
+        listaMaterialesPanel.add(spElementos, gbcRow);
 
-        materialRows.add(new MaterialRow(txtNumero, txtDesc, spLitros));
-        actualizarTotalLitros();
+        gbcRow.gridx = 3; gbcRow.gridy = rowIndex; gbcRow.weightx = 0;
+        gbcRow.fill = GridBagConstraints.NONE;
+        gbcRow.anchor = GridBagConstraints.EAST;
+        gbcRow.insets = new Insets(5, 5, 5, 0);
+        listaMaterialesPanel.add(btnEliminarFila, gbcRow);
+
+        materialRows.add(materialRow);
+        actualizarTotalElementos();
     }
 
     /**
-     * Suma los litros de todas las filas y actualiza el label
+     * Suma los Elementos de todas las filas y actualiza el label
      */
-    private void actualizarTotalLitros() {
+    private void actualizarTotalElementos() {
         double total = 0.0;
         for (MaterialRow row : materialRows) {
-            Object v = row.litros.getValue();
+            Object v = row.Elementos.getValue();
             if (v instanceof Number) {
                 total += ((Number) v).doubleValue();
             }
         }
-        lblTotalLitros.setText(String.format("Total litros: %.2f", total));
+        lblTotalElementos.setText(String.format("Total Elementos: %d", (int) total));
     }
 
     /**
@@ -185,11 +213,23 @@ public class PanelMateriales extends JPanel {
         if (materialRows.isEmpty()) {
             return;
         }
-        MaterialRow last = materialRows.remove(materialRows.size() - 1);
-        listaMaterialesPanel.remove(last.numero);
-        listaMaterialesPanel.remove(last.descripcion);
-        listaMaterialesPanel.remove(last.litros);
-        actualizarTotalLitros();
+        MaterialRow last = materialRows.get(materialRows.size() - 1);
+        eliminarFilaMaterial(last);
+    }
+
+    /**
+     * Elimina una fila de material específica
+     */
+    private void eliminarFilaMaterial(MaterialRow row) {
+        if (materialRows.remove(row)) {
+            listaMaterialesPanel.remove(row.numero);
+            listaMaterialesPanel.remove(row.descripcion);
+            listaMaterialesPanel.remove(row.Elementos);
+            listaMaterialesPanel.remove(row.btnEliminar);
+            listaMaterialesPanel.revalidate();
+            listaMaterialesPanel.repaint();
+            actualizarTotalElementos();
+        }
     }
 
     /**
@@ -230,12 +270,13 @@ public class PanelMateriales extends JPanel {
             MaterialRow last = materialRows.remove(materialRows.size() - 1);
             listaMaterialesPanel.remove(last.numero);
             listaMaterialesPanel.remove(last.descripcion);
-            listaMaterialesPanel.remove(last.litros);
+            listaMaterialesPanel.remove(last.Elementos);
+            listaMaterialesPanel.remove(last.btnEliminar);
         }
         agregarFilaMaterial();
         listaMaterialesPanel.revalidate();
         listaMaterialesPanel.repaint();
-        actualizarTotalLitros();
+        actualizarTotalElementos();
     }
 
     // ==================== GETTERS ====================
@@ -248,12 +289,14 @@ public class PanelMateriales extends JPanel {
     public static class MaterialRow {
         public final JTextField numero;
         public final JTextField descripcion;
-        public final JSpinner litros;
+        public final JSpinner Elementos;
+        public final JButton btnEliminar;
 
-        public MaterialRow(JTextField numero, JTextField descripcion, JSpinner litros) {
+        public MaterialRow(JTextField numero, JTextField descripcion, JSpinner Elementos, JButton btnEliminar) {
             this.numero = numero;
             this.descripcion = descripcion;
-            this.litros = litros;
+            this.Elementos = Elementos;
+            this.btnEliminar = btnEliminar;
         }
     }
 }
