@@ -33,6 +33,24 @@ public class PantallaIngresoOrtopedia extends JPanel {
     // Referencias para navegación
     private CardLayout navegador;
     private JPanel contenedor;
+    
+    /**
+     * Identificador del cliente seleccionado desde el autocompletado.
+     * Valor -1 indica que no hay cliente seleccionado.
+     */
+    private int selectedClienteId = -1;
+    
+    /**
+     * Identificador del profesional seleccionado desde el autocompletado.
+     * Valor -1 indica que no hay profesional seleccionado.
+     */
+    private int selectedProfesionalId = -1;
+    
+    /**
+     * Identificador de la institución seleccionada desde el autocompletado.
+     * Valor -1 indica que no hay institución seleccionada.
+     */
+    private int selectedInstitucionId = -1;
 
     public PantallaIngresoOrtopedia(CardLayout navegador, JPanel contenedor) {
         this.navegador = navegador;
@@ -207,13 +225,96 @@ public class PantallaIngresoOrtopedia extends JPanel {
         return btnCancelar;
     }
 
-    // ==================== LIMPIAR FORMULARIO ====================
+    // ==================== GESTIÓN DE CLIENTE SELECCIONADO ====================
 
+    /**
+     * Retorna el identificador del cliente seleccionado.
+     * 
+     * Este valor es establecido por el Controller cuando el usuario
+     * selecciona un cliente desde el autocompletado.
+     * 
+     * @return ID del cliente, o -1 si no hay selección
+     */
+    public int getSelectedClienteId() {
+        return selectedClienteId;
+    }
+
+    /**
+     * Establece el identificador del cliente seleccionado.
+     * 
+     * Responsabilidad del Controller llamar a este método cuando
+     * el usuario selecciona un cliente desde el autocompletado.
+     * 
+     * @param clienteId Identificador del cliente seleccionado
+     */
+    public void setSelectedClienteId(int clienteId) {
+        this.selectedClienteId = clienteId;
+    }
+    
+    /**
+     * Obtiene el identificador del profesional seleccionado.
+     * 
+     * Este valor es establecido por el Controller cuando el usuario
+     * selecciona un profesional desde el autocompletado.
+     * 
+     * @return ID del profesional, o -1 si no hay selección
+     */
+    public int getSelectedProfesionalId() {
+        return selectedProfesionalId;
+    }
+    
+    /**
+     * Establece el identificador del profesional seleccionado.
+     * 
+     * Responsabilidad del Controller llamar a este método cuando
+     * el usuario selecciona un profesional desde el autocompletado.
+     * 
+     * @param profesionalId Identificador del profesional seleccionado
+     */
+    public void setSelectedProfesionalId(int profesionalId) {
+        this.selectedProfesionalId = profesionalId;
+    }
+    
+    /**
+     * Obtiene el identificador de la institución seleccionada.
+     * 
+     * Este valor es establecido por el Controller cuando el usuario
+     * selecciona una institución desde el autocompletado.
+     * 
+     * @return ID de la institución, o -1 si no hay selección
+     */
+    public int getSelectedInstitucionId() {
+        return selectedInstitucionId;
+    }
+    
+    /**
+     * Establece el identificador de la institución seleccionada.
+     * 
+     * Responsabilidad del Controller llamar a este método cuando
+     * el usuario selecciona una institución desde el autocompletado.
+     * 
+     * @param institucionId Identificador de la institución seleccionada
+     */
+    public void setSelectedInstitucionId(int institucionId) {
+        this.selectedInstitucionId = institucionId;
+    }
+
+    // ==================== OPERACIONES DE FORMULARIO ====================
+
+    /**
+     * Limpia todos los campos del formulario al estado inicial.
+     * 
+     * Responsabilidad del Controller llamar a este método después
+     * de guardar exitosamente un equipo.
+     */
     public void limpiarFormulario() {
         txtCliente.setText("");
         txtProfesional.setText("");
         txtPaciente.setText("");
         txtInstitucion.setText("");
         panelMateriales.limpiar();
+        selectedClienteId = -1;
+        selectedProfesionalId = -1;
+        selectedInstitucionId = -1;
     }
 }

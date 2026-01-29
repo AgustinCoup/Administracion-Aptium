@@ -33,16 +33,20 @@ public class EquipoDAO implements DAO<Equipo, String> {
             conn.setAutoCommit(false); // Iniciamos transacción
 
             // 1. Insertar el encabezado del Equipo (sin codigo_equipo)
-            String sqlEquipo = "INSERT INTO equipos (nro_cliente, cliente_nombre, profesional, paciente, institucion, estado) " +
+            String sqlEquipo = "INSERT INTO equipos (nro_cliente, cliente_nombre, nro_profesional, paciente, nro_institucion, estado) " +
                                "VALUES (?, ?, ?, ?, ?, ?)";
             
             int equipoId;
             try (PreparedStatement psE = conn.prepareStatement(sqlEquipo, Statement.RETURN_GENERATED_KEYS)) {
                 psE.setInt(1, equipo.getNroCliente());
                 psE.setString(2, equipo.getClienteNombre());
-                psE.setString(3, equipo.getProfesionalNombre());
+                if (equipo.getNroProfesional() != null) {
+                    psE.setInt(3, equipo.getNroProfesional());
+                } else {
+                    psE.setNull(3, Types.INTEGER);
+                }
                 psE.setString(4, equipo.getPacienteNombre());
-                psE.setString(5, equipo.getInstitucion());
+                psE.setInt(5, equipo.getNroInstitucion());
                 psE.setString(6, equipo.getEstado().getNombre());
                 psE.executeUpdate();
                 
@@ -95,7 +99,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     @Override
     public Equipo obtenerPorId(String id) {
-        String sql = "SELECT id, nro_cliente, cliente_nombre, profesional, paciente, institucion, estado FROM equipos WHERE id = ?";
+        String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id WHERE e.id = ?";
         
         try (Connection conn = Conexion.conectar();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -108,9 +112,12 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 eq.setId(rs.getInt("id"));
                 eq.setNroCliente(rs.getInt("nro_cliente"));
                 eq.setClienteNombre(rs.getString("cliente_nombre"));
-                eq.setProfesionalNombre(rs.getString("profesional"));
+                Integer nroProfesional = rs.getObject("nro_profesional", Integer.class);
+                eq.setNroProfesional(nroProfesional);
                 eq.setPacienteNombre(rs.getString("paciente"));
-                eq.setInstitucion(rs.getString("institucion"));
+                Integer nroInstitucion = rs.getObject("nro_institucion", Integer.class);
+                eq.setNroInstitucion(nroInstitucion);
+                eq.setInstitucionNombre(rs.getString("nombre"));
                 eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
                 
                 // Cargar materiales asociados con su estado
@@ -162,7 +169,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     public List<Equipo> obtenerTodosLosEquipos() {
         List<Equipo> equipos = new ArrayList<>();
-        String sql = "SELECT id, nro_cliente, cliente_nombre, profesional, paciente, institucion, estado FROM equipos ORDER BY estado, id DESC";
+        String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id ORDER BY e.estado, e.id DESC";
         
         try (Connection conn = Conexion.conectar();
              Statement stmt = conn.createStatement();
@@ -173,9 +180,12 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 eq.setId(rs.getInt("id"));
                 eq.setNroCliente(rs.getInt("nro_cliente"));
                 eq.setClienteNombre(rs.getString("cliente_nombre"));
-                eq.setProfesionalNombre(rs.getString("profesional"));
+                Integer nroProfesional = rs.getObject("nro_profesional", Integer.class);
+                eq.setNroProfesional(nroProfesional);
                 eq.setPacienteNombre(rs.getString("paciente"));
-                eq.setInstitucion(rs.getString("institucion"));
+                Integer nroInstitucion = rs.getObject("nro_institucion", Integer.class);
+                eq.setNroInstitucion(nroInstitucion);
+                eq.setInstitucionNombre(rs.getString("nombre"));
                 eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
                 
                 // Cargar materiales asociados con su estado

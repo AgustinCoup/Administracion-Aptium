@@ -63,32 +63,60 @@ public class Conexion {
             stmt.execute("CREATE DATABASE IF NOT EXISTS sistema_empresa");
             stmt.execute("USE sistema_empresa");
 
-        String tablaCatalogo = "CREATE TABLE IF NOT EXISTS catalogo_descripciones ("
-                + "codigo INT PRIMARY KEY, "
-                + "descripcion VARCHAR(255) NOT NULL);";
+            // PRIMERO: Crear tabla de clientes (otras tablas la referencian)
+            ClientesInitializer.crearTabla(conn);
 
-        String tablaEquipos = "CREATE TABLE IF NOT EXISTS equipos ("
-                + "id INT AUTO_INCREMENT PRIMARY KEY, "
-                + "nro_cliente INT, "
-                + "cliente_nombre VARCHAR(100), "
-                + "profesional VARCHAR(150), "
-                + "paciente VARCHAR(150), "
-                + "nro_operador INT, "
-                + "operador_nombre VARCHAR(150), "
-                + "institucion VARCHAR(150), "
-                + "estado VARCHAR(50) DEFAULT 'Nuevo', "
-                + "fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP);";
+            // Crear tabla de profesionales
+            String tablaProfesionales = "CREATE TABLE IF NOT EXISTS profesionales ("
+                    + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "nombre VARCHAR(150) NOT NULL UNIQUE);";
+            stmt.execute(tablaProfesionales);
 
-        String tablaMateriales = "CREATE TABLE IF NOT EXISTS equipo_materiales ("
-                + "id INT AUTO_INCREMENT PRIMARY KEY, "
-                + "equipo_id INT NOT NULL, "
-                + "codigo_catalogo INT, "
-                + "descripcion_copia VARCHAR(255), "
-                + "cantidad INT, "
-                + "estado VARCHAR(50) DEFAULT 'Nuevo', "
-                + "FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE)";
+            // Crear tabla de instituciones
+            String tablaInstituciones = "CREATE TABLE IF NOT EXISTS instituciones ("
+                    + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "nombre VARCHAR(150) NOT NULL UNIQUE);";
+            stmt.execute(tablaInstituciones);
 
-        
+            //AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+            //DATOS DE PRUEBA PARA INSTITUCIONES
+            String insertarInstituciones = "INSERT IGNORE INTO instituciones (nombre) VALUES "
+                    + "('HOSPITAL ITALIANO RIO CUARTO'), "
+                    + "('CLINICA RIO CUARTO S.A.'), "
+                    + "('CENTRO DE DIAGNOSTICO Y TRATAMIENTO MEDICO SRL');";
+            stmt.execute(insertarInstituciones);
+            //AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+            // Crear tabla del catálogo
+            String tablaCatalogo = "CREATE TABLE IF NOT EXISTS catalogo_descripciones ("
+                    + "codigo INT PRIMARY KEY, "
+                    + "descripcion VARCHAR(255) NOT NULL);";
+
+            // SEGUNDO: Crear tabla de equipos (referencia a clientes y profesionales)
+            String tablaEquipos = "CREATE TABLE IF NOT EXISTS equipos ("
+                    + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "nro_cliente INT NOT NULL, "
+                    + "cliente_nombre VARCHAR(100), "
+                    + "nro_profesional INT, "
+                    + "paciente VARCHAR(150), "
+                    + "nro_institucion INT NOT NULL, "
+                    + "nro_operador INT, "
+                    + "operador_nombre VARCHAR(150), "
+                    + "estado VARCHAR(50) DEFAULT 'Nuevo', "
+                    + "fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                    + "FOREIGN KEY (nro_cliente) REFERENCES clientes(id) ON DELETE RESTRICT, "
+                    + "FOREIGN KEY (nro_profesional) REFERENCES profesionales(id) ON DELETE RESTRICT, "
+                    + "FOREIGN KEY (nro_institucion) REFERENCES instituciones(id) ON DELETE RESTRICT);";
+
+            // TERCERO: Crear tabla de materiales de equipos (referencia a equipos)
+            String tablaMateriales = "CREATE TABLE IF NOT EXISTS equipo_materiales ("
+                    + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "equipo_id INT NOT NULL, "
+                    + "codigo_catalogo INT, "
+                    + "descripcion_copia VARCHAR(255), "
+                    + "cantidad INT, "
+                    + "estado VARCHAR(50) DEFAULT 'Nuevo', "
+                    + "FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE)";
 
             stmt.execute(tablaCatalogo);
             stmt.execute(tablaEquipos);
@@ -99,6 +127,9 @@ public class Conexion {
             if (rs.next() && rs.getInt(1) == 0) {
                 cargarDatosCatalogo(conn);
             }
+
+            // Cargar clientes iniciales si corresponde
+            ClientesInitializer.cargarDatosIniciales(conn);
             System.out.println("Estructura de base de datos verificada.");
         } catch (SQLException e) {
             System.out.println("Error al inicializar tablas: " + e.getMessage());

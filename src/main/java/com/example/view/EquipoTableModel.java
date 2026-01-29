@@ -61,7 +61,7 @@ public class EquipoTableModel extends AbstractTableModel {
 
     /**
      * Actualiza el modelo con una lista de equipos.
-     * Solo muestra: Cliente y Estado (calculado).
+     * Muestra: Cliente, Institución y Estado (calculado).
      */
     public void actualizarDatos(List<Equipo> equiposCompletos) {
         filas.clear();
@@ -88,6 +88,7 @@ public class EquipoTableModel extends AbstractTableModel {
 
             filas.add(new Object[]{
                 eq.getClienteNombre(),
+                eq.getInstitucionNombre(),
                 estadoCalculado.getNombre()
             });
             estados.add(estadoCalculado);

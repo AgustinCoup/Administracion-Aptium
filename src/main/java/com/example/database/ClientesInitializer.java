@@ -1,0 +1,149 @@
+package com.example.database;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+/**
+ * Inicializador de la tabla clientes.
+ * Crea la tabla y carga datos iniciales si está vacía.
+ */
+public class ClientesInitializer {
+
+    private ClientesInitializer() {
+        // Utilidad estática
+    }
+
+    public static void crearTabla(Connection conn) throws SQLException {
+        String tablaClientes = "CREATE TABLE IF NOT EXISTS clientes ("
+                + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                + "nombre VARCHAR(150) NOT NULL" 
+                + ")";
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(tablaClientes);
+        }
+    }
+
+    public static void cargarDatosIniciales(Connection conn) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM clientes");
+            if (rs.next() && rs.getInt(1) > 0) {
+                return; // Ya hay datos
+            }
+        }
+
+        String sql = "INSERT INTO clientes (nombre) VALUES (?)";
+        String[] clientes = {
+            "CENTRO PRIVADO DE RADIOTERAPIA RIO CUARTO SA",
+            "ORTOPEDIA Y CIRUGIA RIO CUARTO SRL",
+            "CLINICA REGIONAL DEL SUD S A",
+            "OFTALMOS SRL",
+            "MUNICIPALIDAD DE LAS VERTIENTES",
+            "COMUNA DE LAS ALBAHACAS",
+            "CENTRO DE DIAGNOSTICO Y TRATAMIENTO MEDICO SRL",
+            "SERPROMED S.A.S.",
+            "GMRS S.A.",
+            "GRUPO FIX S.R.L.",
+            "CLINICA URQUIA PRIVADA S.A.",
+            "CENTRO PRIVADO DERMI RIO CUARTO SA",
+            "INSTITUTO ONCOHEMATOLOGICO PRIVADO SRL",
+            "POLICLINICO PRIVADO SAN LUCAS S A",
+            "EVOLUCION MEDICA S.R.L.",
+            "CLINICA PRIVADA ITALIA SRL",
+            "BERGAGNA MARCOS ADELFI",
+            "ANGIOCOR SA",
+            "IMPLANTES RB S.R.L.",
+            "FUNDACION MATERNIDAD HORTENSIA GARDEY DE KOWALK",
+            "PIASTRELLINI LAURA EMILIA",
+            "CASASNOVAS FRANCISCO ANDRES",
+            "INSTITUTO MEDICO RIO CUARTO S A",
+            "DECOR MEDICA SRL",
+            "AMMANN MARIA VIRGINIA",
+            "MUNICIPALIDAD DE SAN BASILIO",
+            "MINISTERIO DE SALUD",
+            "UNIDAD RENAL RIO CUARTO SRL",
+            "CARE MEDICAL SOLUTIONS S.A.",
+            "OMICRON SRL",
+            "KINERET SA",
+            "PRIMA IMPLANTES S A",
+            "HARAS RIO DOIS IRMAOS S. R. L.",
+            "UNIVERSIDAD NACIONAL DE RIO CUARTO",
+            "ALISER GASTRONOMIA S.A.",
+            "POLIMANTI VIVIANA DEL CARMEN",
+            "LOPEZ LALLANA PABLO ENRIQUE",
+            "CARDIOMED S.A.",
+            "SM SALUD SOCIEDAD DE RESPONSABILIDAD LIMITADA",
+            "FEHU S.A.",
+            "CAMPO BIOLOGICO SOCIEDAD POR ACCIONES SIMPLIFICADA",
+            "KREMER MAURICIO",
+            "ARMED SRL",
+            "IMPLANT CIRUGIA ARGENTINA SRL",
+            "MUNICIPALIDAD DE SAMPACHO",
+            "CLINICA DR GREGORIO MARAÑON SA",
+            "ETCHECHOURY JUAN MANUEL",
+            "ODONTO GEO S.A.S.",
+            "TRAUMACOR S.R.L.",
+            "BIOA S.A.",
+            "ZUVEL S.R.L.",
+            "RIVAS PRANTTE RICARDO",
+            "RAOMED S.A.",
+            "AMMANN JAVIER ROBERTO",
+            "FEIN MEC DE OSER Y CIA S.R.L.",
+            "MUNICIPALIDAD DE RIO CUARTO",
+            "BIOARTEC S.A.S.",
+            "HARAS VACACION S.A.",
+            "CONSULTORA DE RIESGO, SALUD Y AMBIENTE S.R.L.",
+            "INDUSTRIAS MEDICAS SA",
+            "DON ERCOLE SA COMERCIAL AGROPECUARIA INDUSTRIAL INMOBILIARIA Y FINANCIERA",
+            "BALLESTE LUCIANA",
+            "SARDOY MARIA CLARA",
+            "GARAIS JOSEFINA ANGELES",
+            "CLINICA PRIVADA DE PEDIATRIA Y NEONATO LOGIA SRL",
+            "SANATORIO PRIVADO SAN ROQUE SRL",
+            "SILMAG SOCIEDAD ANONIMA",
+            "SANATORIO PRIVADO DEL SUDESTE SRL",
+            "SOCIEDAD DE BENEFICENCIA HOSPITAL ITALIANO MONTE BUEY",
+            "LA BARRANCOSA SOCIEDAD ANONIMA",
+            "OCHOA FEDERICO GUILLERMO",
+            "S & I GROUP S.R.L.",
+            "INSTITUTO MULTIDISCIPLINARIO DE INVESTIGACION Y TRANSFERENCIA AGROALIMNETARIA Y BIOTECNOLOGICA IMITAB",
+            "CLINICA PRIVADA DE ESPECIALIDADES DE VILLA MARIA S RL",
+            "EQUIBIOTEC S.A.S.",
+            "CLINICA UNION PRIVADA SRL",
+            "ALQAZAR S.A.S.",
+            "MERCADO DE ABASTO DE RIO CUARTO S A",
+            "MUNICIPALIDAD DE BENGOLEA O. P.",
+            "OSTEOLIFE SRL",
+            "COCCO HECTOR CESAR",
+            "FISSORE S A",
+            "VERNA LUCIANO JOSE",
+            "CENTRO MEDICO PAULUCCI S.A.S.",
+            "INSTITUTO DE INVESTIGACION EN MICOLOGIA Y MICOTOXICOLOGIA IMICO",
+            "DALVIT ALEJANDRO ENRIQUE",
+            "GESTSAL S.R.L.",
+            "SANATORIO CRUZ AZUL SRL",
+            "MUNICIPALIDAD DE ALCIRA GIGENA",
+            "SCIENTIFIC S.A.",
+            "EMERG RC S.R.L.",
+            "AVED S.A.",
+            "TABARES MERCEDES LUISA DEL V",
+            "FERNIGRINI PAULA",
+            "SOUTH AMERICA IMPLANTS SA",
+            "SOLESAL S.A.",
+            "CREBIEQ S. A. S.",
+            "AMBUMED S.A.S.",
+            "ENDOVIA SA"
+        };
+
+        try (java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            for (String cliente : clientes) {
+                pstmt.setString(1, cliente);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+            System.out.println("Clientes iniciales cargados: " + clientes.length + " registros.");
+        }
+    }
+}

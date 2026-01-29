@@ -14,9 +14,11 @@ public class Equipo {
     private String clienteNombre;
 
     // Datos Médicos
+    private Integer nroProfesional;
     private String profesionalNombre;
     private String pacienteNombre;
-    private String institucion;
+    private Integer nroInstitucion;
+    private String institucionNombre;
 
     // Estado y Fecha
     private EstadoEquipo estado;
@@ -72,14 +74,20 @@ public class Equipo {
     public String getClienteNombre() { return clienteNombre; }
     public void setClienteNombre(String clienteNombre) { this.clienteNombre = clienteNombre; }
 
+    public Integer getNroProfesional() { return nroProfesional; }
+    public void setNroProfesional(Integer nroProfesional) { this.nroProfesional = nroProfesional; }
+
     public String getProfesionalNombre() { return profesionalNombre; }
     public void setProfesionalNombre(String profesionalNombre) { this.profesionalNombre = profesionalNombre; }
 
     public String getPacienteNombre() { return pacienteNombre; }
     public void setPacienteNombre(String pacienteNombre) { this.pacienteNombre = pacienteNombre; }
 
-    public String getInstitucion() { return institucion; }
-    public void setInstitucion(String institucion) { this.institucion = institucion; }
+    public Integer getNroInstitucion() { return nroInstitucion; }
+    public void setNroInstitucion(Integer nroInstitucion) { this.nroInstitucion = nroInstitucion; }
+
+    public String getInstitucionNombre() { return institucionNombre; }
+    public void setInstitucionNombre(String institucionNombre) { this.institucionNombre = institucionNombre; }
 
     public EstadoEquipo getEstado() { return estado; }
     public void setEstado(EstadoEquipo estado) { this.estado = estado; }

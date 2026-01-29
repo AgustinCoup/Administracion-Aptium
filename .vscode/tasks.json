@@ -16,6 +16,12 @@
             "group": {
                 "kind": "build",
                 "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
             }
         },
         {
@@ -24,6 +30,19 @@
             "command": "mvn",
             "args": [
                 "test"
+            ],
+            "isBackground": false,
+            "problemMatcher": [
+                "$javac"
+            ]
+        },
+        {
+            "label": "maven: package",
+            "type": "shell",
+            "command": "mvn",
+            "args": [
+                "clean",
+                "package"
             ],
             "isBackground": false,
             "problemMatcher": [

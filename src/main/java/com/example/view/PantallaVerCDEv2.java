@@ -55,13 +55,13 @@ public class PantallaVerCDEv2 extends JPanel {
         gbc.weighty = 0;
         panelCentral.add(lblEquipos, gbc);
 
-        String[] columnasEquipos = {"Cliente", "Estado"};
+        String[] columnasEquipos = {"Cliente", "Institución", "Estado"};
         this.modeloEquipos = new EquipoTableModel(columnasEquipos);
         tablaEquipos = new JTable(modeloEquipos);
         tablaEquipos.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
         tablaEquipos.setRowHeight(Estilos.Dimensiones.ALTURA_FILA_TABLA);
         tablaEquipos.getTableHeader().setFont(Estilos.Fuentes.TABLA_ENCABEZADO);
-        tablaEquipos.getColumnModel().getColumn(1).setCellRenderer(crearRendererEstado());
+        tablaEquipos.getColumnModel().getColumn(2).setCellRenderer(crearRendererEstado());
 
         JScrollPane scrollEquipos = new JScrollPane(tablaEquipos);
         gbc.gridx = 0;
