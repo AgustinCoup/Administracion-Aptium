@@ -1,2 +1,7 @@
 target/
+.vscode/
 config.properties
+logs/
+*.log
+app_logs.txt
+error_logs.txt

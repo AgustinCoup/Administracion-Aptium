@@ -9,13 +9,24 @@ import java.util.List;
 /**
  * Capa de servicio para lógica de negocio relacionada con profesionales.
  * Valida reglas de negocio antes de delegar al DAO.
+ * 
+ * DEPENDENCY INJECTION:
+ * - Recibe DAO por constructor para permitir testing
  */
 public class ProfesionalService {
     
     private final ProfesionalDAO profesionalDAO;
     
-    public ProfesionalService() {
-        this.profesionalDAO = new ProfesionalDAO();
+    /**
+     * Constructor con inyección de dependencias.
+     * 
+     * @param profesionalDAO DAO para acceso a datos
+     */
+    public ProfesionalService(ProfesionalDAO profesionalDAO) {
+        if (profesionalDAO == null) {
+            throw new IllegalArgumentException("ProfesionalDAO no puede ser nulo");
+        }
+        this.profesionalDAO = profesionalDAO;
     }
     
     /**

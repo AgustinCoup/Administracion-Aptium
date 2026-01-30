@@ -1,7 +1,10 @@
 package com.example.model;
 
-import com.example.database.Conexion;
-import com.example.util.Logger;
+import com.example.database.ConnectionPool;
+import com.example.exception.DatabaseException;
+import com.example.exception.ResourceNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,12 +13,21 @@ import java.util.List;
  * DAO para gestionar equipos en la base de datos.
  * Implementa todas las operaciones CRUD de la interfaz DAO<Equipo, String>.
  * Usa el id autoincrementable como clave primaria.
+ * 
+ * MANEJO DE ERRORES:
+ * - Lanza DatabaseException en caso de error SQL
+ * - Lanza ResourceNotFoundException cuando no encuentra un equipo
+ * - NO retorna null, lanza excepciones para flujo de error explícito
  */
 public class EquipoDAO implements DAO<Equipo, String> {
+
+    private static final Logger log = LoggerFactory.getLogger(EquipoDAO.class);
 
     /**
      * Guarda un equipo completo y su lista de materiales en una sola transacción.
      * Implementa el método guardar de la interfaz DAO.
+     * 
+     * @throws DatabaseException si hay error durante la transacción
      */
     @Override
     public boolean guardar(Equipo equipo) {
@@ -25,11 +37,13 @@ public class EquipoDAO implements DAO<Equipo, String> {
     /**
      * Guarda un equipo completo y su lista de materiales en una sola transacción.
      * Método público para compatibilidad con código existente.
+     * 
+     * @throws DatabaseException si hay error durante la transacción
      */
     public boolean guardarEquipo(Equipo equipo) {
         Connection conn = null;
         try {
-            conn = Conexion.conectar();
+            conn = ConnectionPool.getConnection();
             conn.setAutoCommit(false); // Iniciamos transacción
 
             // 1. Insertar el encabezado del Equipo (sin codigo_equipo)
@@ -78,17 +92,25 @@ public class EquipoDAO implements DAO<Equipo, String> {
             }
 
             conn.commit();
+            log.info("Equipo guardado exitosamente: ID={}", equipoId);
             return true;
 
         } catch (SQLException e) {
             if (conn != null) {
-                try { conn.rollback(); } catch (SQLException ex) { Logger.error("Error al hacer rollback", ex); }
+                try { 
+                    conn.rollback(); 
+                    log.warn("Transacción revertida por error");
+                } catch (SQLException ex) { 
+                    log.error("Error al hacer rollback", ex); 
+                }
             }
-            Logger.error("Error al guardar equipo", e);
-            return false;
+            log.error("Error al guardar equipo", e);
+            throw new DatabaseException("Error al guardar equipo en la base de datos", e);
         } finally {
             if (conn != null) {
-                try { conn.close(); } catch (SQLException e) { Logger.error("Error al cerrar conexión", e); }
+                try { conn.close(); } catch (SQLException e) { 
+                    log.error("Error al cerrar conexión", e); 
+                }
             }
         }
     }
@@ -96,12 +118,15 @@ public class EquipoDAO implements DAO<Equipo, String> {
     /**
      * Obtiene un equipo por su id.
      * Implementa el método obtenerPorId de la interfaz DAO.
+     * 
+     * @throws ResourceNotFoundException si el equipo no existe
+     * @throws DatabaseException si hay error de base de datos
      */
     @Override
     public Equipo obtenerPorId(String id) {
         String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id WHERE e.id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, Integer.parseInt(id));
@@ -124,11 +149,15 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 cargarMateriales(conn, eq);
                 
                 return eq;
+            } else {
+                throw new ResourceNotFoundException("Equipo", id);
             }
         } catch (SQLException e) {
-            Logger.error("Error al obtener equipo por id: " + id, e);
+            log.error("Error al obtener equipo por id: {}", id, e);
+            throw new DatabaseException("obtener", "Equipo", id, e);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("ID de equipo inválido: " + id, e);
         }
-        return null;
     }
 
     /**
@@ -171,7 +200,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         List<Equipo> equipos = new ArrayList<>();
         String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id ORDER BY e.estado, e.id DESC";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             
@@ -194,7 +223,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 equipos.add(eq);
             }
         } catch (SQLException e) {
-            Logger.error("Error al obtener todos los equipos", e);
+            log.error("Error al obtener todos los equipos", e);
         }
         return equipos;
     }
@@ -207,7 +236,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
     public boolean actualizar(Equipo equipo) {
         String sql = "UPDATE equipos SET estado = ? WHERE id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, equipo.getEstado().getNombre());
@@ -216,7 +245,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
             
             return filasActualizadas > 0;
         } catch (SQLException e) {
-            Logger.error("Error al actualizar equipo: " + equipo.getId(), e);
+            log.error("Error al actualizar equipo: {}", equipo.getId(), e);
             return false;
         }
     }
@@ -229,7 +258,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
     public boolean eliminar(String id) {
         String sql = "DELETE FROM equipos WHERE id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, Integer.parseInt(id));
@@ -237,7 +266,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
             
             return filasEliminadas > 0;
         } catch (SQLException e) {
-            Logger.error("Error al eliminar equipo: " + id, e);
+            log.error("Error al eliminar equipo: {}", id, e);
             return false;
         }
     }
@@ -250,7 +279,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
     public long contar() {
         String sql = "SELECT COUNT(*) FROM equipos";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             
@@ -258,7 +287,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 return rs.getLong(1);
             }
         } catch (SQLException e) {
-            Logger.error("Error al contar equipos", e);
+            log.error("Error al contar equipos", e);
         }
         return 0;
     }

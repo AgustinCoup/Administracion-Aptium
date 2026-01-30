@@ -1,6 +1,8 @@
 package com.example.model;
 
-import com.example.database.Conexion;
+import com.example.database.ConnectionPool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -11,6 +13,8 @@ import java.util.List;
  * Implementa operaciones CRUD y búsqueda para autocompletado.
  */
 public class InstitucionDAO implements DAO<Institucion, Integer> {
+
+    private static final Logger log = LoggerFactory.getLogger(InstitucionDAO.class);
     
     /**
      * Busca instituciones cuyo nombre contenga el texto especificado.
@@ -23,7 +27,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
         List<Institucion> instituciones = new ArrayList<>();
         String sql = "SELECT id, nombre FROM instituciones WHERE LOWER(nombre) LIKE LOWER(?) ORDER BY nombre";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, "%" + nombre + "%");
@@ -37,7 +41,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
                 }
             }
         } catch (SQLException e) {
-            System.out.println("Error al buscar instituciones: " + e.getMessage());
+            log.error("Error al buscar instituciones", e);
         }
         
         return instituciones;
@@ -47,7 +51,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
     public Institucion obtenerPorId(Integer id) {
         String sql = "SELECT id, nombre FROM instituciones WHERE id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, id);
@@ -61,7 +65,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
                 }
             }
         } catch (SQLException e) {
-            System.out.println("Error al obtener institución por ID: " + e.getMessage());
+            log.error("Error al obtener institución por ID: {}", id, e);
         }
         
         return null;
@@ -72,7 +76,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
         List<Institucion> instituciones = new ArrayList<>();
         String sql = "SELECT id, nombre FROM instituciones ORDER BY nombre";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             
@@ -83,7 +87,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
                 instituciones.add(institucion);
             }
         } catch (SQLException e) {
-            System.out.println("Error al obtener todas las instituciones: " + e.getMessage());
+            log.error("Error al obtener todas las instituciones", e);
         }
         
         return instituciones;
@@ -93,7 +97,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
     public boolean guardar(Institucion institucion) {
         String sql = "INSERT INTO instituciones (nombre) VALUES (?)";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             
             pstmt.setString(1, institucion.getNombre());
@@ -106,7 +110,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
             }
             return true;
         } catch (SQLException e) {
-            System.out.println("Error al insertar institución: " + e.getMessage());
+            log.error("Error al insertar institución", e);
             return false;
         }
     }
@@ -115,7 +119,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
     public boolean actualizar(Institucion institucion) {
         String sql = "UPDATE instituciones SET nombre = ? WHERE id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, institucion.getNombre());
@@ -123,7 +127,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
             int filasActualizadas = pstmt.executeUpdate();
             return filasActualizadas > 0;
         } catch (SQLException e) {
-            System.out.println("Error al actualizar institución: " + e.getMessage());
+            log.error("Error al actualizar institución", e);
             return false;
         }
     }
@@ -132,14 +136,14 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
     public boolean eliminar(Integer id) {
         String sql = "DELETE FROM instituciones WHERE id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, id);
             int filasEliminadas = pstmt.executeUpdate();
             return filasEliminadas > 0;
         } catch (SQLException e) {
-            System.out.println("Error al eliminar institución: " + e.getMessage());
+            log.error("Error al eliminar institución", e);
             return false;
         }
     }
@@ -164,7 +168,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
     public long contar() {
         String sql = "SELECT COUNT(*) FROM instituciones";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             
@@ -172,7 +176,7 @@ public class InstitucionDAO implements DAO<Institucion, Integer> {
                 return rs.getLong(1);
             }
         } catch (SQLException e) {
-            System.out.println("Error al contar instituciones: " + e.getMessage());
+            log.error("Error al contar instituciones", e);
         }
         
         return 0;

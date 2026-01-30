@@ -11,8 +11,9 @@ import com.example.model.Equipo;
 import com.example.model.Material;
 import com.example.view.AutocompleteListener;
 import com.example.util.Validador;
-import com.example.util.Logger;
 import com.example.view.PantallaIngresoOrtopedia;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.awt.CardLayout;
 import java.util.List;
@@ -24,6 +25,8 @@ import javax.swing.JPanel;
  * Gestiona validación de datos y guardado en base de datos.
  */
 public class OrthopediaInputController {
+
+    private static final Logger log = LoggerFactory.getLogger(OrthopediaInputController.class);
     
     private PantallaIngresoOrtopedia panel;
     private AppModel model;
@@ -143,14 +146,14 @@ public class OrthopediaInputController {
             }
             
             navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION);
-            Logger.info("Equipo guardado exitosamente desde formulario");
+            log.info("Equipo guardado exitosamente desde formulario");
         } else {
             // Error: mostrar mensaje de error
             JOptionPane.showMessageDialog(panel, 
                 "Error al guardar el equipo. Por favor, intente de nuevo.", 
                 "Error al Guardar", 
                 JOptionPane.ERROR_MESSAGE);
-            Logger.error("Fallo al guardar equipo desde formulario");
+            log.error("Fallo al guardar equipo desde formulario");
         }
     }
     

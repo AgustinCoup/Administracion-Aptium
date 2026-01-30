@@ -8,13 +8,24 @@ import java.util.List;
 /**
  * Servicio de negocio para gestionar clientes.
  * Valida las reglas de negocio antes de delegar al DAO.
+ * 
+ * DEPENDENCY INJECTION:
+ * - Recibe DAO por constructor para permitir testing
  */
 public class ClienteService {
     
-    private ClienteDAO clienteDAO;
+    private final ClienteDAO clienteDAO;
     
-    public ClienteService() {
-        this.clienteDAO = new ClienteDAO();
+    /**
+     * Constructor con inyección de dependencias.
+     * 
+     * @param clienteDAO DAO para acceso a datos
+     */
+    public ClienteService(ClienteDAO clienteDAO) {
+        if (clienteDAO == null) {
+            throw new IllegalArgumentException("ClienteDAO no puede ser nulo");
+        }
+        this.clienteDAO = clienteDAO;
     }
 
     /**

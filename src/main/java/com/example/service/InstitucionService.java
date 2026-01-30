@@ -9,13 +9,24 @@ import java.util.List;
 /**
  * Capa de servicio para lógica de negocio relacionada con instituciones.
  * Valida reglas de negocio antes de delegar al DAO.
+ * 
+ * DEPENDENCY INJECTION:
+ * - Recibe DAO por constructor para permitir testing
  */
 public class InstitucionService {
     
     private final InstitucionDAO institucionDAO;
     
-    public InstitucionService() {
-        this.institucionDAO = new InstitucionDAO();
+    /**
+     * Constructor con inyección de dependencias.
+     * 
+     * @param institucionDAO DAO para acceso a datos
+     */
+    public InstitucionService(InstitucionDAO institucionDAO) {
+        if (institucionDAO == null) {
+            throw new IllegalArgumentException("InstitucionDAO no puede ser nulo");
+        }
+        this.institucionDAO = institucionDAO;
     }
     
     /**

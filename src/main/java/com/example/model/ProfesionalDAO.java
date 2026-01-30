@@ -1,6 +1,8 @@
 package com.example.model;
 
-import com.example.database.Conexion;
+import com.example.database.ConnectionPool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -11,6 +13,8 @@ import java.util.List;
  * Implementa operaciones CRUD y búsqueda para autocompletado.
  */
 public class ProfesionalDAO implements DAO<Profesional, Integer> {
+
+    private static final Logger log = LoggerFactory.getLogger(ProfesionalDAO.class);
     
     /**
      * Busca profesionales cuyo nombre contenga el texto especificado.
@@ -23,7 +27,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
         List<Profesional> profesionales = new ArrayList<>();
         String sql = "SELECT id, nombre FROM profesionales WHERE LOWER(nombre) LIKE LOWER(?) ORDER BY nombre";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, "%" + nombre + "%");
@@ -37,7 +41,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
                 }
             }
         } catch (SQLException e) {
-            System.out.println("Error al buscar profesionales: " + e.getMessage());
+            log.error("Error al buscar profesionales", e);
         }
         
         return profesionales;
@@ -47,7 +51,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
     public Profesional obtenerPorId(Integer id) {
         String sql = "SELECT id, nombre FROM profesionales WHERE id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, id);
@@ -61,7 +65,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
                 }
             }
         } catch (SQLException e) {
-            System.out.println("Error al obtener profesional por ID: " + e.getMessage());
+            log.error("Error al obtener profesional por ID: {}", id, e);
         }
         
         return null;
@@ -72,7 +76,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
         List<Profesional> profesionales = new ArrayList<>();
         String sql = "SELECT id, nombre FROM profesionales ORDER BY nombre";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             
@@ -83,7 +87,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
                 profesionales.add(profesional);
             }
         } catch (SQLException e) {
-            System.out.println("Error al obtener todos los profesionales: " + e.getMessage());
+            log.error("Error al obtener todos los profesionales", e);
         }
         
         return profesionales;
@@ -93,7 +97,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
     public boolean guardar(Profesional profesional) {
         String sql = "INSERT INTO profesionales (nombre) VALUES (?)";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             
             pstmt.setString(1, profesional.getNombre());
@@ -106,7 +110,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
             }
             return true;
         } catch (SQLException e) {
-            System.out.println("Error al insertar profesional: " + e.getMessage());
+            log.error("Error al insertar profesional", e);
             return false;
         }
     }
@@ -115,7 +119,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
     public boolean actualizar(Profesional profesional) {
         String sql = "UPDATE profesionales SET nombre = ? WHERE id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, profesional.getNombre());
@@ -123,7 +127,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
             int filasActualizadas = pstmt.executeUpdate();
             return filasActualizadas > 0;
         } catch (SQLException e) {
-            System.out.println("Error al actualizar profesional: " + e.getMessage());
+            log.error("Error al actualizar profesional", e);
             return false;
         }
     }
@@ -132,14 +136,14 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
     public boolean eliminar(Integer id) {
         String sql = "DELETE FROM profesionales WHERE id = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, id);
             int filasEliminadas = pstmt.executeUpdate();
             return filasEliminadas > 0;
         } catch (SQLException e) {
-            System.out.println("Error al eliminar profesional: " + e.getMessage());
+            log.error("Error al eliminar profesional", e);
             return false;
         }
     }
@@ -164,7 +168,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
     public long contar() {
         String sql = "SELECT COUNT(*) FROM profesionales";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             
@@ -172,7 +176,7 @@ public class ProfesionalDAO implements DAO<Profesional, Integer> {
                 return rs.getLong(1);
             }
         } catch (SQLException e) {
-            System.out.println("Error al contar profesionales: " + e.getMessage());
+            log.error("Error al contar profesionales", e);
         }
         
         return 0;

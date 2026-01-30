@@ -1,8 +1,11 @@
 package com.example.service;
 
+import com.example.exception.DatabaseException;
+import com.example.exception.ValidationException;
 import com.example.model.Equipo;
 import com.example.model.EquipoDAO;
-import com.example.util.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
@@ -11,38 +14,70 @@ import java.util.List;
  * 
  * Esta clase tiene una única responsabilidad: gestionar equipos.
  * Delega el acceso a datos en EquipoDAO.
+ * 
+ * MANEJO DE EXCEPCIONES:
+ * - Valida datos antes de llamar al DAO
+ * - Propaga DatabaseException del DAO
+ * - Lanza ValidationException si los datos son inválidos
+ * 
+ * DEPENDENCY INJECTION:
+ * - Recibe DAO por constructor (permite testing con mocks)
+ * - Sin dependencias hardcodeadas
  */
 public class EquipoService {
 
-    private EquipoDAO equipoDAO;
+    private static final Logger log = LoggerFactory.getLogger(EquipoService.class);
 
-    public EquipoService() {
-        this.equipoDAO = new EquipoDAO();
+    private final EquipoDAO equipoDAO;
+
+    /**
+     * Constructor con inyección de dependencias.
+     * 
+     * @param equipoDAO DAO para acceso a datos
+     */
+    public EquipoService(EquipoDAO equipoDAO) {
+        if (equipoDAO == null) {
+            throw new IllegalArgumentException("EquipoDAO no puede ser nulo");
+        }
+        this.equipoDAO = equipoDAO;
     }
 
     /**
      * Guarda un nuevo equipo completo con sus materiales en la base de datos.
      * 
+     * VALIDACIONES:
+     * - El equipo no puede ser null
+     * - Debe tener al menos un material
+     * - Cliente y nombres deben estar completos
+     * 
      * @param equipo Objeto Equipo con todos los datos a guardar
-     * @return true si se guardó correctamente, false si hubo error
+     * @return true si se guardó correctamente
+     * @throws ValidationException si los datos son inválidos
+     * @throws DatabaseException si hay error en la base de datos
      */
     public boolean guardarEquipo(Equipo equipo) {
-        if (equipo == null) {
-            Logger.warning("Intento de guardar equipo nulo");
-            return false;
-        }
+        // Validaciones de negocio
+        ValidationException.Builder validationBuilder = ValidationException.builder();
+        
+        validationBuilder
+            .addErrorIf(equipo == null, "El equipo no puede ser nulo")
+            .addErrorIf(equipo != null && equipo.getMateriales().isEmpty(), 
+                       "El equipo debe tener al menos un material")
+            .addErrorIf(equipo != null && equipo.getClienteNombre() == null || 
+                       (equipo != null && equipo.getClienteNombre().trim().isEmpty()), 
+                       "El nombre del cliente es obligatorio");
+        
+        validationBuilder.throwIfHasErrors();
         
         try {
             boolean resultado = equipoDAO.guardarEquipo(equipo);
             if (resultado) {
-                Logger.info("Equipo guardado exitosamente: " + equipo.getClienteNombre());
-            } else {
-                Logger.error("Error al guardar equipo: " + equipo.getClienteNombre());
+                log.info("Equipo guardado exitosamente: {}", equipo.getClienteNombre());
             }
             return resultado;
-        } catch (Exception e) {
-            Logger.error("Excepción durante guardado de equipo", e);
-            return false;
+        } catch (DatabaseException e) {
+            log.error("Error al guardar equipo: {}", equipo.getClienteNombre(), e);
+            throw e; // Re-lanzar para que el Controller lo maneje
         }
     }
 
@@ -55,7 +90,7 @@ public class EquipoService {
         try {
             return equipoDAO.obtenerTodos();
         } catch (Exception e) {
-            Logger.error("Error al obtener equipos", e);
+            log.error("Error al obtener equipos", e);
             return List.of(); // Retorna lista vacía en caso de error
         }
     }
@@ -70,7 +105,7 @@ public class EquipoService {
         try {
             return equipoDAO.obtenerPorId(id);
         } catch (Exception e) {
-            Logger.error("Error al obtener equipo con ID: " + id, e);
+            log.error("Error al obtener equipo con ID: {}", id, e);
             return null;
         }
     }
@@ -83,18 +118,18 @@ public class EquipoService {
      */
     public boolean actualizar(Equipo equipo) {
         if (equipo == null || equipo.getId() == null) {
-            Logger.warning("Intento de actualizar equipo inválido");
+            log.warn("Intento de actualizar equipo inválido");
             return false;
         }
         
         try {
             boolean resultado = equipoDAO.actualizar(equipo);
             if (resultado) {
-                Logger.info("Equipo actualizado: " + equipo.getId());
+                log.info("Equipo actualizado: {}", equipo.getId());
             }
             return resultado;
         } catch (Exception e) {
-            Logger.error("Error al actualizar equipo", e);
+            log.error("Error al actualizar equipo", e);
             return false;
         }
     }
@@ -108,7 +143,7 @@ public class EquipoService {
         try {
             return equipoDAO.contar();
         } catch (Exception e) {
-            Logger.error("Error al contar equipos", e);
+            log.error("Error al contar equipos", e);
             return 0;
         }
     }
@@ -123,7 +158,7 @@ public class EquipoService {
         try {
             return equipoDAO.existe(id);
         } catch (Exception e) {
-            Logger.error("Error al verificar existencia de equipo", e);
+            log.error("Error al verificar existencia de equipo", e);
             return false;
         }
     }

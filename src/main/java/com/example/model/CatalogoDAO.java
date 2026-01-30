@@ -1,6 +1,6 @@
 package com.example.model;
 
-import com.example.database.Conexion;
+import com.example.database.ConnectionPool;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +25,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
         String sql = "INSERT INTO catalogo_descripciones (codigo, descripcion) VALUES (?, ?) " +
                      "ON DUPLICATE KEY UPDATE descripcion = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, codigo);
@@ -47,7 +47,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
      */
     public String obtenerDescripcion(int codigo) {
         String sql = "SELECT descripcion FROM catalogo_descripciones WHERE codigo = ?";
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, codigo);
@@ -71,7 +71,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
         Map<Integer, String> catalogo = new HashMap<>();
         String sql = "SELECT codigo, descripcion FROM catalogo_descripciones ORDER BY codigo";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             
@@ -112,7 +112,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
         String sql = "SELECT descripcion FROM catalogo_descripciones ORDER BY codigo";
         List<String> descripciones = new ArrayList<>();
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             
@@ -141,7 +141,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
     public boolean eliminar(Integer codigo) {
         String sql = "DELETE FROM catalogo_descripciones WHERE codigo = ?";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setInt(1, codigo);
@@ -160,7 +160,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
     public long contar() {
         String sql = "SELECT COUNT(*) FROM catalogo_descripciones";
         
-        try (Connection conn = Conexion.conectar();
+        try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             

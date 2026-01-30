@@ -1,7 +1,8 @@
 package com.example.service;
 
 import com.example.model.CatalogoDAO;
-import com.example.util.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /**
@@ -10,13 +11,26 @@ import java.util.Map;
  * 
  * Esta clase tiene una única responsabilidad: gestionar el catálogo de materiales.
  * Delega el acceso a datos en CatalogoDAO.
+ * 
+ * DEPENDENCY INJECTION:
+ * - Recibe DAO por constructor para permitir testing
  */
 public class CatalogoService {
 
-    private CatalogoDAO catalogoDAO;
+    private static final Logger log = LoggerFactory.getLogger(CatalogoService.class);
 
-    public CatalogoService() {
-        this.catalogoDAO = new CatalogoDAO();
+    private final CatalogoDAO catalogoDAO;
+
+    /**
+     * Constructor con inyección de dependencias.
+     * 
+     * @param catalogoDAO DAO para acceso a datos
+     */
+    public CatalogoService(CatalogoDAO catalogoDAO) {
+        if (catalogoDAO == null) {
+            throw new IllegalArgumentException("CatalogoDAO no puede ser nulo");
+        }
+        this.catalogoDAO = catalogoDAO;
     }
 
     /**
@@ -29,7 +43,7 @@ public class CatalogoService {
         try {
             return catalogoDAO.obtenerTodasLasDescripciones();
         } catch (Exception e) {
-            Logger.error("Error al obtener catálogo", e);
+            log.error("Error al obtener catálogo", e);
             return Map.of(); // Retorna mapa vacío en caso de error
         }
     }
@@ -44,7 +58,7 @@ public class CatalogoService {
         try {
             return catalogoDAO.obtenerDescripcion(codigo);
         } catch (Exception e) {
-            Logger.error("Error al obtener descripción del material: " + codigo, e);
+            log.error("Error al obtener descripción del material: {}", codigo, e);
             return null;
         }
     }
@@ -58,14 +72,14 @@ public class CatalogoService {
      */
     public boolean guardarDescripcion(int codigo, String descripcion) {
         if (descripcion == null || descripcion.trim().isEmpty()) {
-            Logger.warning("Intento de guardar descripción vacía para código: " + codigo);
+            log.warn("Intento de guardar descripción vacía para código: {}", codigo);
             return false;
         }
         
         try {
             return catalogoDAO.guardarDescripcion(codigo, descripcion);
         } catch (Exception e) {
-            Logger.error("Error al guardar descripción", e);
+            log.error("Error al guardar descripción", e);
             return false;
         }
     }
@@ -79,7 +93,7 @@ public class CatalogoService {
         try {
             return catalogoDAO.contar();
         } catch (Exception e) {
-            Logger.error("Error al contar materiales del catálogo", e);
+            log.error("Error al contar materiales del catálogo", e);
             return 0;
         }
     }
