@@ -8,6 +8,9 @@ import javax.swing.*;
 
 import com.example.constants.Constantes;
 import com.example.util.Validador;
+import com.example.view.helpers.Estilos;
+import com.example.view.helpers.PanelHeader;
+import com.example.view.helpers.PanelMateriales;
 
 /**
  * Pantalla para ingreso de ortopedia.

@@ -1,13 +1,13 @@
 package com.example.model;
 
-import com.example.database.ConnectionPool;
+import com.example.database.Conexion;
 import com.example.service.EquipoService;
 import com.example.service.CatalogoService;
 import com.example.service.ClienteService;
 import com.example.service.ProfesionalService;
 import com.example.service.InstitucionService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.example.service.MaterialService;
+import com.example.util.Logger;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
@@ -26,72 +26,46 @@ import java.util.Map;
  * 
  * Arquitectura: Service Layer con inyección de dependencias.
  * Respeta Single Responsibility Principle.
- * 
- * DEPENDENCY INJECTION:
- * - Recibe todos los servicios por constructor
- * - Permite testing con mocks
- * - Facilita cambio de implementaciones
  */
 public class AppModel {
-
-    private static final Logger log = LoggerFactory.getLogger(AppModel.class);
 
     /**
      * Servicio de gestión de equipos ortopédicos.
      */
-    private final EquipoService equipoService;
+    private EquipoService equipoService;
     
     /**
      * Servicio de gestión del catálogo de materiales.
      */
-    private final CatalogoService catalogoService;
+    private CatalogoService catalogoService;
     
     /**
      * Servicio de gestión de clientes para autocompletado.
      */
-    private final ClienteService clienteService;
+    private ClienteService clienteService;
     
     /**
      * Servicio de gestión de profesionales para autocompletado.
      */
-    private final ProfesionalService profesionalService;
+    private ProfesionalService profesionalService;
     
     /**
      * Servicio de gestión de instituciones para autocompletado.
      */
-    private final InstitucionService institucionService;
+    private InstitucionService institucionService;
 
     /**
-     * Constructor con inyección de dependencias.
-     * 
-     * VENTAJAS:
-     * - Permite tests con mocks
-     * - Configuración explícita de dependencias
-     * - Cumple con Dependency Inversion Principle
-     * 
-     * @param equipoService Servicio de equipos
-     * @param catalogoService Servicio de catálogo
-     * @param clienteService Servicio de clientes
-     * @param profesionalService Servicio de profesionales
-     * @param institucionService Servicio de instituciones
+     * Servicio de gestión de materiales.
      */
-    public AppModel(
-        EquipoService equipoService,
-        CatalogoService catalogoService,
-        ClienteService clienteService,
-        ProfesionalService profesionalService,
-        InstitucionService institucionService
-    ) {
-        if (equipoService == null || catalogoService == null || clienteService == null ||
-            profesionalService == null || institucionService == null) {
-            throw new IllegalArgumentException("Ningún servicio puede ser nulo");
-        }
-        
-        this.equipoService = equipoService;
-        this.catalogoService = catalogoService;
-        this.clienteService = clienteService;
-        this.profesionalService = profesionalService;
-        this.institucionService = institucionService;
+    private MaterialService materialService;
+
+    public AppModel() {
+        this.equipoService = new EquipoService();
+        this.catalogoService = new CatalogoService();
+        this.clienteService = new ClienteService();
+        this.profesionalService = new ProfesionalService();
+        this.institucionService = new InstitucionService();
+        this.materialService = new MaterialService();
     }
 
     /**
@@ -99,20 +73,27 @@ public class AppModel {
      * También inicializa la estructura de la base de datos si es necesario.
      */
     public boolean validarConexion() {
-        // El ConnectionPool ya inicializó todo en App.java, solo verificamos que funcione
-        try (Connection conn = ConnectionPool.getConnection()) {
-            return conn != null;
-        } catch (SQLException e) {
-            log.error("Error al validar conexión", e);
+        // Primero inicializar la estructura de base de datos (crea BD y tablas si no existen)
+        Conexion.inicializarBaseDeDatos();
+        
+        // Luego verificar que la conexión funcione correctamente
+        Connection conn = Conexion.conectar();
+        if (conn == null) {
             return false;
         }
+        try {
+            conn.close();
+        } catch (SQLException ignored) {
+            // Ignoramos errores al cerrar la prueba de conexion.
+        }
+        return true;
     }
 
     /**
      * Devuelve una nueva conexion para operaciones posteriores.
      */
-    public Connection nuevaConexion() throws SQLException {
-        return ConnectionPool.getConnection();
+    public Connection nuevaConexion() {
+        return Conexion.conectar();
     }
 
     // ==================== DELEGACIÓN A EQUIPO SERVICE ====================
@@ -222,6 +203,15 @@ public class AppModel {
      */
     public ClienteService getClienteService() {
         return clienteService;
+    }
+
+    /**
+     * Proporciona acceso directo al servicio de materiales.
+     * 
+     * @return Servicio de materiales
+     */
+    public MaterialService getMaterialService() {
+        return materialService;
     }
     
     // ==================== DELEGACIÓN A PROFESIONAL SERVICE ====================

@@ -24,6 +24,7 @@ public final class Constantes {
         public static final String INGRESO_ORTOPEDIA = "INGRESO_ORTOPEDIA";
         public static final String VER_CDE = "VER_CDE";
         public static final String VER_CDE_V2 = "VER_CDE_V2";
+        public static final String REGISTRAR_ESTADO = "REGISTRAR_ESTADO";
         
         private Pantallas() {}
     }
@@ -67,6 +68,7 @@ public final class Constantes {
         public static final String INGRESO = "INGRESO";
         public static final String INGRESO_ORTOPEDIA = "INGRESO ORTOPEDIA";
         public static final String ESTADO_PROCESOS = "ESTADO DE PROCESOS EN TIEMPO REAL";
+        public static final String REGISTRAR_ESTADO = "REGISTRAR ESTADO";
         
         private Titulos() {}
     }

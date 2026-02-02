@@ -4,6 +4,8 @@ import javax.swing.*;
 import java.awt.*;
 
 import com.example.constants.Constantes;
+import com.example.view.helpers.Estilos;
+import com.example.view.helpers.PanelHeader;
 
 public class PantallaEsOrtopedia extends JPanel {
     // Pasamos el navegador y el contenedor para poder cambiar de pantalla desde aquí

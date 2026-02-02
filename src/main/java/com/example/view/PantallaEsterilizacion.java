@@ -4,6 +4,8 @@ import javax.swing.*;
 import java.awt.*;
 
 import com.example.constants.Constantes;
+import com.example.view.helpers.Estilos;
+import com.example.view.helpers.PanelHeader;
 
 public class PantallaEsterilizacion extends JPanel {
     // Pasamos el navegador y el contenedor para poder cambiar de pantalla desde aquí
@@ -34,6 +36,8 @@ public class PantallaEsterilizacion extends JPanel {
         btnIngresar.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.ES_ORTOPEDIA));
         //btnVer.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_CDE));
         btnVer.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_CDE_V2));
+
+        btnRegistrar.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.REGISTRAR_ESTADO));
         
         botones.add(btnIngresar);
         botones.add(btnRegistrar);

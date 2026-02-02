@@ -42,6 +42,13 @@ public class AppController {
                 vista.getContenedor(),
                 () -> cdeViewController.cargarDatos()
             );
+
+            // Controller para PantallaRegistrarEstado - actualiza CDE al confirmar
+            new RegistrarEstadoController(
+                vista.getPantallaRegistrarEstado(),
+                model,
+                () -> cdeViewController.cargarDatos()
+            );
             
             vista.setVisible(true);
         });
