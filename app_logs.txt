@@ -77,3 +77,71 @@
 2026-01-30 18:36:22.254 [Thread-1] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown initiated...
 2026-01-30 18:36:22.262 [Thread-1] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown completed.
 2026-01-30 18:36:22.266 [Thread-1] INFO  com.example.database.ConnectionPool - Connection Pool cerrado correctamente
+2026-02-02 12:17:30.351 [main] INFO  com.example.service.EquipoService - Equipo guardado exitosamente: Cliente Test
+2026-02-02 12:18:52.005 [main] INFO  com.example.database.ConnectionPool - Configuración cargada desde: C:\Trabajo\Administracion-Aptium\config.properties
+2026-02-02 12:18:52.384 [main] INFO  com.example.database.ConnectionPool - Base de datos 'sistema_empresa' verificada/creada
+2026-02-02 12:18:52.400 [main] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Starting...
+2026-02-02 12:18:52.450 [main] INFO  com.zaxxer.hikari.pool.HikariPool - AptiumPool - Added connection com.mysql.cj.jdbc.ConnectionImpl@609db546
+2026-02-02 12:18:52.452 [main] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Start completed.
+2026-02-02 12:18:52.452 [main] INFO  com.example.database.ConnectionPool - Connection Pool inicializado correctamente
+2026-02-02 12:18:52.453 [main] INFO  com.example.database.ConnectionPool - Pool: AptiumPool
+2026-02-02 12:18:52.453 [main] INFO  com.example.database.ConnectionPool - Max conexiones: 10
+2026-02-02 12:18:52.454 [main] INFO  com.example.database.ConnectionPool - Min idle: 5
+2026-02-02 12:18:52.495 [main] INFO  c.e.database.DatabaseInitializer - Script ejecutado: /db/schema.sql
+2026-02-02 12:18:52.502 [main] INFO  c.e.database.DatabaseInitializer - Base de datos inicializada correctamente
+2026-02-02 12:19:59.643 [Thread-0] INFO  com.example.App - Cerrando aplicación...
+2026-02-02 12:19:59.644 [Thread-0] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown initiated...
+2026-02-02 12:19:59.648 [Thread-0] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown completed.
+2026-02-02 12:19:59.649 [Thread-0] INFO  com.example.database.ConnectionPool - Connection Pool cerrado correctamente
+2026-02-02 13:49:26.881 [main] INFO  com.example.database.ConnectionPool - Configuración cargada desde: C:\Trabajo\Administracion-Aptium\config.properties
+2026-02-02 13:49:27.256 [main] INFO  com.example.database.ConnectionPool - Base de datos 'sistema_empresa' verificada/creada
+2026-02-02 13:49:27.270 [main] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Starting...
+2026-02-02 13:49:27.318 [main] INFO  com.zaxxer.hikari.pool.HikariPool - AptiumPool - Added connection com.mysql.cj.jdbc.ConnectionImpl@609db546
+2026-02-02 13:49:27.320 [main] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Start completed.
+2026-02-02 13:49:27.321 [main] INFO  com.example.database.ConnectionPool - Connection Pool inicializado correctamente
+2026-02-02 13:49:27.321 [main] INFO  com.example.database.ConnectionPool - Pool: AptiumPool
+2026-02-02 13:49:27.322 [main] INFO  com.example.database.ConnectionPool - Max conexiones: 10
+2026-02-02 13:49:27.322 [main] INFO  com.example.database.ConnectionPool - Min idle: 5
+2026-02-02 13:49:27.352 [main] INFO  c.e.database.DatabaseInitializer - Script ejecutado: /db/schema.sql
+2026-02-02 13:49:27.361 [main] INFO  c.e.database.DatabaseInitializer - Base de datos inicializada correctamente
+2026-02-02 13:50:52.510 [Thread-0] INFO  com.example.App - Cerrando aplicación...
+2026-02-02 13:50:52.511 [Thread-0] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown initiated...
+2026-02-02 13:50:52.517 [Thread-0] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown completed.
+2026-02-02 13:50:52.517 [Thread-0] INFO  com.example.database.ConnectionPool - Connection Pool cerrado correctamente
+2026-02-02 13:51:39.474 [main] INFO  com.example.database.ConnectionPool - Configuración cargada desde: C:\Trabajo\Administracion-Aptium\config.properties
+2026-02-02 13:51:39.864 [main] INFO  com.example.database.ConnectionPool - Base de datos 'sistema_empresa' verificada/creada
+2026-02-02 13:51:39.879 [main] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Starting...
+2026-02-02 13:51:39.920 [main] INFO  com.zaxxer.hikari.pool.HikariPool - AptiumPool - Added connection com.mysql.cj.jdbc.ConnectionImpl@609db546
+2026-02-02 13:51:39.923 [main] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Start completed.
+2026-02-02 13:51:39.923 [main] INFO  com.example.database.ConnectionPool - Connection Pool inicializado correctamente
+2026-02-02 13:51:39.923 [main] INFO  com.example.database.ConnectionPool - Pool: AptiumPool
+2026-02-02 13:51:39.924 [main] INFO  com.example.database.ConnectionPool - Max conexiones: 10
+2026-02-02 13:51:39.924 [main] INFO  com.example.database.ConnectionPool - Min idle: 5
+2026-02-02 13:51:39.954 [main] INFO  c.e.database.DatabaseInitializer - Script ejecutado: /db/schema.sql
+2026-02-02 13:51:39.963 [main] INFO  c.e.database.DatabaseInitializer - Base de datos inicializada correctamente
+2026-02-02 13:54:23.454 [Thread-0] INFO  com.example.App - Cerrando aplicación...
+2026-02-02 13:54:23.455 [Thread-0] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown initiated...
+2026-02-02 13:54:23.461 [Thread-0] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown completed.
+2026-02-02 13:54:23.461 [Thread-0] INFO  com.example.database.ConnectionPool - Connection Pool cerrado correctamente
+2026-02-02 13:54:45.886 [main] INFO  com.example.service.EquipoService - Equipo guardado exitosamente: Cliente Test
+2026-02-02 13:54:56.844 [main] INFO  com.example.database.ConnectionPool - Configuración cargada desde: C:\Trabajo\Administracion-Aptium\config.properties
+2026-02-02 13:54:57.222 [main] INFO  com.example.database.ConnectionPool - Base de datos 'sistema_empresa' verificada/creada
+2026-02-02 13:54:57.239 [main] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Starting...
+2026-02-02 13:54:57.285 [main] INFO  com.zaxxer.hikari.pool.HikariPool - AptiumPool - Added connection com.mysql.cj.jdbc.ConnectionImpl@609db546
+2026-02-02 13:54:57.288 [main] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Start completed.
+2026-02-02 13:54:57.288 [main] INFO  com.example.database.ConnectionPool - Connection Pool inicializado correctamente
+2026-02-02 13:54:57.289 [main] INFO  com.example.database.ConnectionPool - Pool: AptiumPool
+2026-02-02 13:54:57.289 [main] INFO  com.example.database.ConnectionPool - Max conexiones: 10
+2026-02-02 13:54:57.290 [main] INFO  com.example.database.ConnectionPool - Min idle: 5
+2026-02-02 13:54:57.317 [main] INFO  c.e.database.DatabaseInitializer - Script ejecutado: /db/schema.sql
+2026-02-02 13:54:57.327 [main] INFO  c.e.database.DatabaseInitializer - Base de datos inicializada correctamente
+2026-02-02 13:55:04.846 [AWT-EventQueue-0] INFO  c.e.c.helpers.GestorNuevasEntidades - Cliente agregado/a: Juan Perez
+2026-02-02 13:55:25.893 [AWT-EventQueue-0] INFO  c.e.c.helpers.GestorNuevasEntidades - Profesional agregado/a: Rigoberto Menchú
+2026-02-02 13:56:00.075 [AWT-EventQueue-0] INFO  c.e.c.helpers.GestorNuevasEntidades - Institución agregado/a: Clinica Americana
+2026-02-02 13:59:20.063 [AWT-EventQueue-0] INFO  com.example.model.EquipoDAO - Equipo guardado exitosamente: ID=1
+2026-02-02 13:59:20.064 [AWT-EventQueue-0] INFO  com.example.service.EquipoService - Equipo guardado exitosamente: Juan Perez
+2026-02-02 13:59:21.081 [AWT-EventQueue-0] INFO  c.e.c.OrthopediaInputController - Equipo guardado exitosamente desde formulario
+2026-02-02 14:13:02.398 [Thread-0] INFO  com.example.App - Cerrando aplicación...
+2026-02-02 14:13:02.398 [Thread-0] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown initiated...
+2026-02-02 14:13:02.405 [Thread-0] INFO  com.zaxxer.hikari.HikariDataSource - AptiumPool - Shutdown completed.
+2026-02-02 14:13:02.406 [Thread-0] INFO  com.example.database.ConnectionPool - Connection Pool cerrado correctamente

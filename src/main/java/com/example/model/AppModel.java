@@ -1,13 +1,14 @@
 package com.example.model;
 
-import com.example.database.Conexion;
+import com.example.database.ConnectionPool;
 import com.example.service.EquipoService;
 import com.example.service.CatalogoService;
 import com.example.service.ClienteService;
 import com.example.service.ProfesionalService;
 import com.example.service.InstitucionService;
 import com.example.service.MaterialService;
-import com.example.util.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
@@ -28,6 +29,8 @@ import java.util.Map;
  * Respeta Single Responsibility Principle.
  */
 public class AppModel {
+
+    private static final Logger log = LoggerFactory.getLogger(AppModel.class);
 
     /**
      * Servicio de gestión de equipos ortopédicos.
@@ -59,41 +62,43 @@ public class AppModel {
      */
     private MaterialService materialService;
 
-    public AppModel() {
-        this.equipoService = new EquipoService();
-        this.catalogoService = new CatalogoService();
-        this.clienteService = new ClienteService();
-        this.profesionalService = new ProfesionalService();
-        this.institucionService = new InstitucionService();
+    /**
+     * Constructor con inyección de dependencias.
+     * Todos los servicios deben ser inyectados por App.java
+     */
+    public AppModel(
+        EquipoService equipoService,
+        CatalogoService catalogoService,
+        ClienteService clienteService,
+        ProfesionalService profesionalService,
+        InstitucionService institucionService
+    ) {
+        this.equipoService = equipoService;
+        this.catalogoService = catalogoService;
+        this.clienteService = clienteService;
+        this.profesionalService = profesionalService;
+        this.institucionService = institucionService;
         this.materialService = new MaterialService();
     }
 
     /**
      * Verifica que la aplicacion pueda abrir una conexion basica.
-     * También inicializa la estructura de la base de datos si es necesario.
+     * La inicialización de la BD se hace en App.java con DatabaseInitializer.
      */
     public boolean validarConexion() {
-        // Primero inicializar la estructura de base de datos (crea BD y tablas si no existen)
-        Conexion.inicializarBaseDeDatos();
-        
-        // Luego verificar que la conexión funcione correctamente
-        Connection conn = Conexion.conectar();
-        if (conn == null) {
+        try (Connection conn = ConnectionPool.getConnection()) {
+            return conn != null;
+        } catch (SQLException e) {
+            log.error("Error al validar conexión", e);
             return false;
         }
-        try {
-            conn.close();
-        } catch (SQLException ignored) {
-            // Ignoramos errores al cerrar la prueba de conexion.
-        }
-        return true;
     }
 
     /**
      * Devuelve una nueva conexion para operaciones posteriores.
      */
-    public Connection nuevaConexion() {
-        return Conexion.conectar();
+    public Connection nuevaConexion() throws SQLException {
+        return ConnectionPool.getConnection();
     }
 
     // ==================== DELEGACIÓN A EQUIPO SERVICE ====================
@@ -173,6 +178,40 @@ public class AppModel {
      */
     public Cliente obtenerClientePorId(int id) {
         return clienteService.obtenerClientePorId(id);
+    }
+
+    /**
+     * Guarda un nuevo cliente en la base de datos.
+     * 
+     * @param cliente Cliente a guardar
+     * @return true si se guardó exitosamente, false en caso contrario
+     */
+    public boolean guardarCliente(Cliente cliente) {
+        return clienteService.guardarCliente(cliente);
+    }
+
+    // ==================== DELEGACIÓN A PROFESIONAL SERVICE ====================
+
+    /**
+     * Guarda un nuevo profesional en la base de datos.
+     * 
+     * @param profesional Profesional a guardar
+     * @return true si se guardó exitosamente, false en caso contrario
+     */
+    public boolean guardarProfesional(Profesional profesional) {
+        return profesionalService.guardarProfesional(profesional);
+    }
+
+    // ==================== DELEGACIÓN A INSTITUCIÓN SERVICE ====================
+
+    /**
+     * Guarda una nueva institución en la base de datos.
+     * 
+     * @param institucion Institución a guardar
+     * @return true si se guardó exitosamente, false en caso contrario
+     */
+    public boolean guardarInstitucion(Institucion institucion) {
+        return institucionService.guardarInstitucion(institucion);
     }
 
     // ==================== ACCESO DIRECTO A SERVICIOS ====================

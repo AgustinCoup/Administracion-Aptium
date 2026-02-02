@@ -20,7 +20,7 @@ public class RegistrarEstadoController {
 
     private final PantallaRegistrarEstado panel;
     private final AppModel model;
-    private final OnEstadosActualizadosListener onEstadosActualizadosListener;
+    private OnEstadosActualizadosListener onEstadosActualizadosListener;
 
     // Buffer de cambios pendientes: Map<EquipoId, Map<CodigoMaterial, NuevoEstado>>
     private final Map<Integer, Map<Integer, EstadoEquipo>> cambiosPendientes;
@@ -36,6 +36,14 @@ public class RegistrarEstadoController {
         cargarEquipos();
     }
 
+    /**
+     * Permite asignar el callback después de la construcción del objeto.
+     * Útil para evitar referencias circulares en la construcción.
+     */
+    public void setOnEstadosActualizados(OnEstadosActualizadosListener listener) {
+        this.onEstadosActualizadosListener = listener;
+    }
+
     private void inicializarEventos() {
         panel.setOnEquipoSeleccionado(this::actualizarEstadoBotones);
         panel.setOnAvanzar(e -> avanzarMaterialSeleccionado());
@@ -45,8 +53,9 @@ public class RegistrarEstadoController {
 
     /**
      * Carga los equipos que no están en estado ENTREGADO.
+     * PÚBLICO porque es llamado como callback desde OrthopediaInputController.
      */
-    private void cargarEquipos() {
+    public void cargarEquipos() {
         List<Equipo> todosEquipos = model.obtenerTodosLosEquipos();
         List<Equipo> equiposActivos = todosEquipos.stream()
             .filter(eq -> eq.calcularEstado() != EstadoEquipo.ENTREGADO)

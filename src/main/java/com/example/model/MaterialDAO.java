@@ -1,7 +1,8 @@
 package com.example.model;
 
-import com.example.database.Conexion;
-import com.example.util.Logger;
+import com.example.database.ConnectionPool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.sql.*;
 import java.util.Map;
 
@@ -10,6 +11,8 @@ import java.util.Map;
  * Permite actualizar el estado de materiales específicos.
  */
 public class MaterialDAO {
+
+    private static final Logger log = LoggerFactory.getLogger(MaterialDAO.class);
 
     /**
      * Actualiza el estado de un material específico en la base de datos.
@@ -23,7 +26,7 @@ public class MaterialDAO {
     public boolean actualizarEstadoMaterial(int equipoId, int codigoCatalogo, EstadoEquipo nuevoEstado) {
         Connection conn = null;
         try {
-            conn = Conexion.conectar();
+            conn = ConnectionPool.getConnection();
             conn.setAutoCommit(false); // Transacción
 
             // 1. Actualizar el estado del material
@@ -82,13 +85,13 @@ public class MaterialDAO {
 
         } catch (SQLException e) {
             if (conn != null) {
-                try { conn.rollback(); } catch (SQLException ex) { Logger.error("Error al hacer rollback", ex); }
+                try { conn.rollback(); } catch (SQLException ex) { log.error("Error al hacer rollback", ex); }
             }
-            Logger.error("Error al actualizar estado del material", e);
+            log.error("Error al actualizar estado del material", e);
             return false;
         } finally {
             if (conn != null) {
-                try { conn.close(); } catch (SQLException e) { Logger.error("Error al cerrar conexión", e); }
+                try { conn.close(); } catch (SQLException e) { log.error("Error al cerrar conexión", e); }
             }
         }
     }
@@ -108,7 +111,7 @@ public class MaterialDAO {
 
         Connection conn = null;
         try {
-            conn = Conexion.conectar();
+            conn = ConnectionPool.getConnection();
             conn.setAutoCommit(false);
 
             // 1. Actualizar cada material
@@ -165,13 +168,13 @@ public class MaterialDAO {
 
         } catch (SQLException e) {
             if (conn != null) {
-                try { conn.rollback(); } catch (SQLException ex) { Logger.error("Error al hacer rollback", ex); }
+                try { conn.rollback(); } catch (SQLException ex) { log.error("Error al hacer rollback", ex); }
             }
-            Logger.error("Error al actualizar múltiples materiales", e);
+            log.error("Error al actualizar múltiples materiales", e);
             return false;
         } finally {
             if (conn != null) {
-                try { conn.close(); } catch (SQLException e) { Logger.error("Error al cerrar conexión", e); }
+                try { conn.close(); } catch (SQLException e) { log.error("Error al cerrar conexión", e); }
             }
         }
     }

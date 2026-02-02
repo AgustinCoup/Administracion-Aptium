@@ -4,7 +4,7 @@ package com.example.model;
  * Representa un cliente del sistema.
  * Este modelo se usa para el autocompletado en el formulario de ingreso.
  */
-public class Cliente {
+public class Cliente implements Autocompletable {
     private int id;
     private String nombre;
 
@@ -16,12 +16,8 @@ public class Cliente {
         this.nombre = nombre;
     }
 
-    public int getId() {
+    public Integer getId() {
         return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
     }
 
     public String getNombre() {
@@ -49,5 +45,10 @@ public class Cliente {
     @Override
     public int hashCode() {
         return Integer.hashCode(id);
+    }
+
+    @Override
+    public void setId(Integer id) {
+        this.id = (id != null) ? id : 0;
     }
 }

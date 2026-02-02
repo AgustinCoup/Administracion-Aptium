@@ -111,9 +111,35 @@ public class ClienteDAO implements DAO<Cliente, Integer> {
         return clientes;
     }
 
+    /**
+     * Guarda un nuevo cliente en la base de datos.
+     * 
+     * @param entidad Cliente a guardar (id se ignora, se genera automáticamente)
+     * @return true si se guardó exitosamente, false en caso contrario
+     * @throws DatabaseException si hay error en la inserción
+     */
     @Override
     public boolean guardar(Cliente entidad) {
-        throw new UnsupportedOperationException("Guardar cliente no implementado");
+        String sql = "INSERT INTO clientes (nombre) VALUES (?)";
+        
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            
+            pstmt.setString(1, entidad.getNombre());
+            int rowsAffected = pstmt.executeUpdate();
+            
+            if (rowsAffected > 0) {
+                // Obtener el ID generado automáticamente
+                ResultSet generatedKeys = pstmt.getGeneratedKeys();
+                if (generatedKeys.next()) {
+                    entidad.setId(generatedKeys.getInt(1));
+                }
+                return true;
+            }
+            return false;
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al guardar cliente: " + entidad.getNombre(), e);
+        }
     }
 
     @Override

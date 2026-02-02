@@ -6,7 +6,7 @@ import java.util.Objects;
  * Representa un profesional médico en el sistema.
  * Usado para autocompletado en formularios de ingreso de equipos.
  */
-public class Profesional {
+public class Profesional implements Autocompletable {
     
     private Integer id;
     private String nombre;

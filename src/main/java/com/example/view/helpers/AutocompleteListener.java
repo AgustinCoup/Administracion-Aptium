@@ -52,6 +52,13 @@ public class AutocompleteListener<T> implements DocumentListener {
     private final Consumer<T> onItemSelected;
     
     /**
+     * Callback opcional ejecutado cuando el usuario sale del campo sin seleccionar
+     * una entidad existente (texto no coincide con ningún resultado).
+     * Permite al Controller ofrecer la opción de crear una nueva entidad.
+     */
+    private final Consumer<String> onNoMatch;
+    
+    /**
      * Entidad actualmente seleccionada por el usuario.
      * Nula si no hay selección activa.
      */
@@ -63,15 +70,18 @@ public class AutocompleteListener<T> implements DocumentListener {
      * @param textField Campo de texto donde el usuario escribe
      * @param searchFunction Función que consulta el Modelo para obtener resultados
      * @param onItemSelected Callback que notifica al Controller sobre la selección
+     * @param onNoMatch Callback opcional para cuando no hay coincidencia (puede ser null)
      */
     public AutocompleteListener(
             JTextField textField, 
             Function<String, List<T>> searchFunction,
-            Consumer<T> onItemSelected) {
+            Consumer<T> onItemSelected,
+            Consumer<String> onNoMatch) {
         
         this.textField = textField;
         this.searchFunction = searchFunction;
         this.onItemSelected = onItemSelected;
+        this.onNoMatch = onNoMatch;
         
         // Crear modelo de lista y JList
         this.listModel = new DefaultListModel<>();
@@ -95,6 +105,16 @@ public class AutocompleteListener<T> implements DocumentListener {
         // Configurar listeners de selección
         configurarListeners();
     }
+    
+    /**
+     * Constructor alternativo sin callback para onNoMatch (para compatibilidad hacia atrás).
+     */
+    public AutocompleteListener(
+            JTextField textField, 
+            Function<String, List<T>> searchFunction,
+            Consumer<T> onItemSelected) {
+        this(textField, searchFunction, onItemSelected, null);
+    }
 
     /**
      * Configura los listeners para interacción con teclado y mouse.
@@ -106,6 +126,30 @@ public class AutocompleteListener<T> implements DocumentListener {
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 1) {
                     seleccionarItemActual();
+                }
+            }
+        });
+        
+        // FocusListener: Detecta cuando el usuario sale del campo sin seleccionar
+        textField.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusLost(FocusEvent e) {
+                String texto = textField.getText().trim();
+                
+                // Si no hay texto, no hacer nada
+                if (texto.isEmpty()) {
+                    return;
+                }
+                
+                // Si se seleccionó un item, ya se procesó en seleccionarItemActual()
+                if (selectedItem != null && selectedItem.toString().equals(texto)) {
+                    return;
+                }
+                
+                // Si hay texto pero no coincide con ninguna entidad, notificar al Controller
+                if (onNoMatch != null && texto.length() >= 3) {
+                    popupMenu.setVisible(false);
+                    onNoMatch.accept(texto);
                 }
             }
         });
@@ -278,6 +322,15 @@ public class AutocompleteListener<T> implements DocumentListener {
      */
     public void resetSelection() {
         this.selectedItem = null;
+    }
+
+    /**
+     * Refuerza la búsqueda basado en el texto actual del campo.
+     * Útil después de agregar un nuevo item para que aparezca inmediatamente
+     * en las sugerencias.
+     */
+    public void refrescarBusqueda() {
+        actualizarSugerencias();
     }
 
     // ==================== IMPLEMENTACIÓN DE DocumentListener ====================

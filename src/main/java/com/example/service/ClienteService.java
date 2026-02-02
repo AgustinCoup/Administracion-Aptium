@@ -64,4 +64,25 @@ public class ClienteService {
     public List<Cliente> obtenerTodosLosClientes() {
         return clienteDAO.obtenerTodos();
     }
+
+    /**
+     * Guarda un nuevo cliente en la base de datos.
+     * 
+     * Valida que el nombre no sea vacío.
+     * 
+     * @param cliente Cliente a guardar
+     * @return true si se guardó exitosamente, false en caso contrario
+     * @throws IllegalArgumentException si el cliente es nulo o el nombre está vacío
+     */
+    public boolean guardarCliente(Cliente cliente) {
+        if (cliente == null) {
+            throw new IllegalArgumentException("Cliente no puede ser nulo");
+        }
+        
+        if (cliente.getNombre() == null || cliente.getNombre().trim().isEmpty()) {
+            throw new IllegalArgumentException("Nombre del cliente no puede estar vacío");
+        }
+        
+        return clienteDAO.guardar(cliente);
+    }
 }

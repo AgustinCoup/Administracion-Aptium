@@ -6,7 +6,7 @@ import java.util.Objects;
  * Representa una institución en el sistema.
  * Usado para autocompletado en formularios de ingreso de equipos.
  */
-public class Institucion {
+public class Institucion implements Autocompletable {
     
     private Integer id;
     private String nombre;

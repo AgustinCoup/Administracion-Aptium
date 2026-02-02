@@ -5,6 +5,8 @@ import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 
 import com.example.constants.Constantes;
+import com.example.controller.listeners.OnEquipoGuardadoListener;
+import com.example.controller.listeners.OnEstadosActualizadosListener;
 import com.example.model.AppModel;
 import com.example.view.PantallaPrincipal;
 
@@ -34,20 +36,32 @@ public class AppController {
                 model
             );
             
+            // Controller para PantallaRegistrarEstado - sin callback inicialmente
+            RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
+                vista.getPantallaRegistrarEstado(),
+                model,
+                null
+            );
+            
+            // Callback maestro que mantiene ambas pantallas actualizadas
+            Runnable refrescarPantallas = () -> {
+                cdeViewController.cargarDatos();
+                registrarEstadoController.cargarEquipos();
+            };
+            
+            OnEstadosActualizadosListener refrescarPantallasEstados = refrescarPantallas::run;
+            OnEquipoGuardadoListener refrescarPantallasEquipos = refrescarPantallas::run;
+            
+            // Asignar el callback al RegistrarEstadoController (después de su construcción)
+            registrarEstadoController.setOnEstadosActualizados(refrescarPantallasEstados);
+            
             // Crear controladores específicos para cada panel
             new OrthopediaInputController(
                 vista.getPanelIngresoOrtopedia(), 
                 model, 
                 vista.getNavegador(), 
                 vista.getContenedor(),
-                () -> cdeViewController.cargarDatos()
-            );
-
-            // Controller para PantallaRegistrarEstado - actualiza CDE al confirmar
-            new RegistrarEstadoController(
-                vista.getPantallaRegistrarEstado(),
-                model,
-                () -> cdeViewController.cargarDatos()
+                refrescarPantallasEquipos  // Callback específico para cuando se guarda un equipo
             );
             
             vista.setVisible(true);

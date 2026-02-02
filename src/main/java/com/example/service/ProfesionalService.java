@@ -60,4 +60,25 @@ public class ProfesionalService {
     public List<Profesional> obtenerTodosLosProfesionales() {
         return profesionalDAO.obtenerTodos();
     }
+
+    /**
+     * Guarda un nuevo profesional en la base de datos.
+     * 
+     * Valida que el nombre no sea vacío.
+     * 
+     * @param profesional Profesional a guardar
+     * @return true si se guardó exitosamente, false en caso contrario
+     * @throws IllegalArgumentException si el profesional es nulo o el nombre está vacío
+     */
+    public boolean guardarProfesional(Profesional profesional) {
+        if (profesional == null) {
+            throw new IllegalArgumentException("Profesional no puede ser nulo");
+        }
+        
+        if (profesional.getNombre() == null || profesional.getNombre().trim().isEmpty()) {
+            throw new IllegalArgumentException("Nombre del profesional no puede estar vacío");
+        }
+        
+        return profesionalDAO.guardar(profesional);
+    }
 }

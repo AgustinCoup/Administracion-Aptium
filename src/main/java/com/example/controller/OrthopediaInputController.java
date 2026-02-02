@@ -10,14 +10,21 @@ import com.example.model.Institucion;
 import com.example.model.Equipo;
 import com.example.model.Material;
 import com.example.util.Validador;
-import com.example.util.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.example.view.PantallaIngresoOrtopedia;
+import com.example.view.dialogs.AgregarAutocompletableDialog;
 import com.example.view.helpers.AutocompleteListener;
+import com.example.controller.helpers.GestorValidacionFormulario;
+import com.example.controller.helpers.ConstructorEquipo;
+import com.example.controller.helpers.GestorNuevasEntidades;
 import com.example.controller.listeners.OnEquipoGuardadoListener;
 
 import java.awt.CardLayout;
+import java.awt.Frame;
 import java.util.List;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 
 /**
  * Controlador para el panel de ingreso de ortopedia.
@@ -25,12 +32,34 @@ import javax.swing.JPanel;
  * Gestiona validación de datos y guardado en base de datos.
  */
 public class OrthopediaInputController {
+
+    private static final Logger log = LoggerFactory.getLogger(OrthopediaInputController.class);
     
     private PantallaIngresoOrtopedia panel;
     private AppModel model;
     private CardLayout navegador;
     private JPanel contenedor;
     private OnEquipoGuardadoListener onEquipoGuardadoListener;
+    
+    /**
+     * Gestor de validación del formulario de ingreso de ortopedia.
+     * Encapsula toda la lógica de validación.
+     */
+    private GestorValidacionFormulario gestorValidacion;
+    
+    /**
+     * Constructor de equipos a partir de los datos del formulario.
+     * Encapsula la lógica de mapeo Vista → Modelo.
+     */
+    private ConstructorEquipo constructorEquipo;
+    
+    /**
+     * Gestores de nuevas entidades (uno por cada tipo).
+     * Encapsulan la lógica de crear Cliente, Profesional, Institución.
+     */
+    private GestorNuevasEntidades<Cliente> gestorNuevosClientes;
+    private GestorNuevasEntidades<Profesional> gestorNuevosProfesionales;
+    private GestorNuevasEntidades<Institucion> gestorNuevasInstituciones;
     
     /**
      * Listener del componente de autocompletado.
@@ -56,6 +85,13 @@ public class OrthopediaInputController {
         this.navegador = navegador;
         this.contenedor = contenedor;
         this.onEquipoGuardadoListener = onEquipoGuardadoListener;
+        
+        // Inicializar clases auxiliares
+        this.gestorValidacion = new GestorValidacionFormulario(panel);
+        this.constructorEquipo = new ConstructorEquipo(panel, model);
+        
+        // Los gestores se completarán en inicializarEventos() después de crear los autocompletados
+        
         inicializarEventos();
     }
     
@@ -78,6 +114,7 @@ public class OrthopediaInputController {
          * Componentes:
          * - searchFunction: Consulta el Modelo para obtener clientes que coincidan
          * - onClienteSelected: Callback que notifica al Controller la selección
+         * - onNoMatch: Callback si el usuario ingresa un cliente no existente
          * 
          * Patrón Callback: El autocompletado no accede directamente a la Vista,
          * solo notifica al Controller a través del callback.
@@ -85,7 +122,8 @@ public class OrthopediaInputController {
         autocompleteClientListener = new AutocompleteListener<>(
             panel.getTxtCliente(),
             texto -> model.buscarClientes(texto),
-            cliente -> panel.setSelectedClienteId(cliente.getId())
+            cliente -> panel.setSelectedClienteId(cliente.getId()),
+            nombreNoExistente -> gestorNuevosClientes.manejarEntidadNoExistente(nombreNoExistente)
         );
         
         panel.getTxtCliente().getDocument().addDocumentListener(autocompleteClientListener);
@@ -97,7 +135,8 @@ public class OrthopediaInputController {
         autocompleteProfesionalListener = new AutocompleteListener<>(
             panel.getTxtProfesional(),
             texto -> model.buscarProfesionales(texto),
-            profesional -> panel.setSelectedProfesionalId(profesional.getId())
+            profesional -> panel.setSelectedProfesionalId(profesional.getId()),
+            nombreNoExistente -> gestorNuevosProfesionales.manejarEntidadNoExistente(nombreNoExistente)
         );
         
         panel.getTxtProfesional().getDocument().addDocumentListener(autocompleteProfesionalListener);
@@ -109,22 +148,68 @@ public class OrthopediaInputController {
         autocompleteInstitucionListener = new AutocompleteListener<>(
             panel.getTxtInstitucion(),
             texto -> model.buscarInstituciones(texto),
-            institucion -> panel.setSelectedInstitucionId(institucion.getId())
+            institucion -> panel.setSelectedInstitucionId(institucion.getId()),
+            nombreNoExistente -> gestorNuevasInstituciones.manejarEntidadNoExistente(nombreNoExistente)
         );
         
         panel.getTxtInstitucion().getDocument().addDocumentListener(autocompleteInstitucionListener);
+        
+        /**
+         * AHORA inicializamos completamente los gestores de nuevas entidades,
+         * después de crear los autocompletados, con todas las referencias necesarias.
+         */
+        initializeEntityManagers();
+    }
+    
+    /**
+     * Completa la inicialización de los gestores de nuevas entidades.
+     * Debe llamarse DESPUÉS de crear los listeners de autocompletado.
+     */
+    private void initializeEntityManagers() {
+        // Gestor de nuevos clientes
+        this.gestorNuevosClientes = new GestorNuevasEntidades<>(
+            obtenerVentanaParente(),
+            "Cliente",
+            nombre -> panel.getTxtCliente().setText(nombre),
+            id -> panel.setSelectedClienteId(id),
+            autocompleteClientListener,
+            cliente -> model.guardarCliente(cliente),
+            Cliente::new
+        );
+        
+        // Gestor de nuevos profesionales
+        this.gestorNuevosProfesionales = new GestorNuevasEntidades<>(
+            obtenerVentanaParente(),
+            "Profesional",
+            nombre -> panel.getTxtProfesional().setText(nombre),
+            id -> panel.setSelectedProfesionalId(id),
+            autocompleteProfesionalListener,
+            profesional -> model.guardarProfesional(profesional),
+            Profesional::new
+        );
+        
+        // Gestor de nuevas instituciones
+        this.gestorNuevasInstituciones = new GestorNuevasEntidades<>(
+            obtenerVentanaParente(),
+            "Institución",
+            nombre -> panel.getTxtInstitucion().setText(nombre),
+            id -> panel.setSelectedInstitucionId(id),
+            autocompleteInstitucionListener,
+            institucion -> model.guardarInstitucion(institucion),
+            Institucion::new
+        );
     }
     
     /**
      * Lógica principal de guardar: valida, mapea datos, guarda y navega.
      */
     private void guardarOrtopedia() {
-        if (!validarFormulario()) {
+        if (!gestorValidacion.validar()) {
             return;
         }
         
         // Mapear datos del formulario a objeto Equipo
-        Equipo equipo = construirEquipoDesdeFormulario();
+        Equipo equipo = constructorEquipo.construir();
         
         // Guardar en base de datos a través del modelo
         boolean guardoExitoso = model.guardarEquipo(equipo);
@@ -144,156 +229,30 @@ public class OrthopediaInputController {
             }
             
             navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION);
-            Logger.info("Equipo guardado exitosamente desde formulario");
+            log.info("Equipo guardado exitosamente desde formulario");
         } else {
             // Error: mostrar mensaje de error
             JOptionPane.showMessageDialog(panel, 
                 "Error al guardar el equipo. Por favor, intente de nuevo.", 
                 "Error al Guardar", 
                 JOptionPane.ERROR_MESSAGE);
-            Logger.error("Fallo al guardar equipo desde formulario");
+            log.error("Fallo al guardar equipo desde formulario");
         }
     }
     
     /**
-     * Valida que todos los campos obligatorios sean correctos.
+     * Obtiene la ventana parente del panel para usarla en diálogos modales.
      * 
-     * Campos OBLIGATORIOS:
-     * - Cliente: debe estar no vacío y seleccionado del autocompletado
-     * - Institución: debe estar no vacío
-     * - Al menos un material agregado
-     * 
-     * Campos OPCIONALES:
-     * - Profesional: puede estar vacío o seleccionado del autocompletado
-     * - Paciente: puede estar vacío
-     * 
-     * @return true si todas las validaciones pasan, false en caso contrario
+     * @return Frame que contiene este componente
      */
-    public boolean validarFormulario() {
-        // Cliente es OBLIGATORIO
-        if (!Validador.noEstaVacio(panel.getTxtCliente().getText())) {
-            JOptionPane.showMessageDialog(panel, "El campo Cliente es obligatorio.");
-            return false;
-        }
-
-        if (panel.getSelectedClienteId() == -1) {
-            JOptionPane.showMessageDialog(panel, 
-                "Debe seleccionar un cliente de la lista de sugerencias.", 
-                "Cliente no seleccionado", 
-                JOptionPane.WARNING_MESSAGE);
-            return false;
-        }
-        
-        // Institución es OBLIGATORIA
-        if (!Validador.noEstaVacio(panel.getTxtInstitucion().getText())) {
-            JOptionPane.showMessageDialog(panel, "El campo Institución es obligatorio.");
-            return false;
-        }
-        
-        // Verificar que institución fue seleccionada del autocompletado
-        if (panel.getSelectedInstitucionId() == -1) {
-            JOptionPane.showMessageDialog(panel, 
-                "Debe seleccionar una institución de la lista de sugerencias.", 
-                "Institución no seleccionada", 
-                JOptionPane.WARNING_MESSAGE);
-            return false;
-        }
-        
-        // Profesional y Paciente son OPCIONALES
-        // Si se escribió algo en profesional, validar que sea del autocompletado y formato correcto
-        String txtProfesional = panel.getTxtProfesional().getText().trim();
-        if (!txtProfesional.isEmpty()) {
-            if (panel.getSelectedProfesionalId() == -1) {
-                JOptionPane.showMessageDialog(panel, 
-                    "Si ingresa un profesional, debe seleccionar uno de la lista de sugerencias.", 
-                    "Profesional no seleccionado", 
-                    JOptionPane.WARNING_MESSAGE);
-                return false;
-            }
-        }
-        
-        String txtPaciente = panel.getTxtPaciente().getText().trim();
-        if (!txtPaciente.isEmpty()) {
-            if (!Validador.esFormatoNombre(txtPaciente)) {
-                JOptionPane.showMessageDialog(panel, Constantes.Mensajes.FORMATO_PACIENTE_INVALIDO);
-                return false;
-            }
-        }
-
-        // Al menos un material es OBLIGATORIO
-        if (panel.getMaterialRows().isEmpty()) {
-            JOptionPane.showMessageDialog(panel, Constantes.Mensajes.DEBE_AGREGAR_MATERIAL);
-            return false;
-        }
-
-        return true;
+    private Frame obtenerVentanaParente() {
+        return (Frame) SwingUtilities.getWindowAncestor(panel);
     }
-    
+
     /**
-     * Construye un objeto Equipo a partir de los datos del formulario.
-     * Este método es responsable del mapeo (Vista → Modelo).
+     * Maneja la situación cuando el usuario ingresa un cliente que no existe en la BD.
+     * Ofrece un diálogo para crearlo.
      * 
-     * Campos obligatorios: cliente
-     * Campos opcionales: profesional, paciente (pueden ser null o vacío)
-     * 
-     * @return Equipo con todos los datos del formulario
+     * @param nombreCliente Nombre del cliente escrito por el usuario
      */
-    private Equipo construirEquipoDesdeFormulario() {
-        Equipo equipo = new Equipo();
-        
-        equipo.setClienteNombre(panel.getTxtCliente().getText().trim());
-        
-        /**
-         * El identificador del cliente ahora proviene de la selección
-         * del autocompletado, no de un valor hardcodeado.
-         * 
-         * Garantiza que equipoService.nroCliente sea válido según la FK
-         * hacia la tabla clientes.
-         */
-        equipo.setNroCliente(panel.getSelectedClienteId());
-        
-        /**
-         * El profesional es OPCIONAL.
-         * Solo se establece si fue seleccionado desde el autocompletado.
-         */
-        if (panel.getSelectedProfesionalId() != -1) {
-            equipo.setNroProfesional(panel.getSelectedProfesionalId());
-            equipo.setProfesionalNombre(panel.getTxtProfesional().getText().trim());
-        }
-        
-        /**
-         * El paciente es OPCIONAL.
-         * Se establece si el campo no está vacío.
-         */
-        String paciente = panel.getTxtPaciente().getText().trim();
-        if (!paciente.isEmpty()) {
-            equipo.setPacienteNombre(paciente);
-        }
-        
-        /**
-         * La institución es OBLIGATORIA y debe ser seleccionada del autocompletado.
-         * El identificador se utiliza como FK en la tabla instituciones.
-         */
-        equipo.setNroInstitucion(panel.getSelectedInstitucionId());
-        
-        panel.getMaterialRows().forEach(row -> {
-            String numeroStr = row.numero.getText().trim();
-            
-            if (!numeroStr.isEmpty() && Validador.soloNumeros(numeroStr)) {
-                int codigoMaterial = Integer.parseInt(numeroStr);
-                String descripcion = row.descripcion.getText().trim();
-                Object ElementosObj = row.Elementos.getValue();
-                
-                int cantidad = 0;
-                if (ElementosObj instanceof Number) {
-                    cantidad = ((Number) ElementosObj).intValue();
-                }
-                
-                Material material = new Material(codigoMaterial, descripcion, cantidad);
-                equipo.agregarMaterial(material);
-            }
-        });
-        
-        return equipo;
-    }
 }

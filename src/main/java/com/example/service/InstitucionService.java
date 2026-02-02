@@ -60,4 +60,25 @@ public class InstitucionService {
     public List<Institucion> obtenerTodasLasInstituciones() {
         return institucionDAO.obtenerTodos();
     }
+
+    /**
+     * Guarda una nueva institución en la base de datos.
+     * 
+     * Valida que el nombre no sea vacío.
+     * 
+     * @param institucion Institución a guardar
+     * @return true si se guardó exitosamente, false en caso contrario
+     * @throws IllegalArgumentException si la institución es nula o el nombre está vacío
+     */
+    public boolean guardarInstitucion(Institucion institucion) {
+        if (institucion == null) {
+            throw new IllegalArgumentException("Institución no puede ser nula");
+        }
+        
+        if (institucion.getNombre() == null || institucion.getNombre().trim().isEmpty()) {
+            throw new IllegalArgumentException("Nombre de la institución no puede estar vacío");
+        }
+        
+        return institucionDAO.guardar(institucion);
+    }
 }

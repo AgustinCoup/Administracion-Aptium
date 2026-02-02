@@ -2,7 +2,8 @@ package com.example.service;
 
 import com.example.model.EstadoEquipo;
 import com.example.model.MaterialDAO;
-import com.example.util.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /**
@@ -10,6 +11,8 @@ import java.util.Map;
  * Encapsula el acceso a datos en MaterialDAO.
  */
 public class MaterialService {
+
+    private static final Logger log = LoggerFactory.getLogger(MaterialService.class);
 
     private MaterialDAO materialDAO;
 
@@ -32,7 +35,7 @@ public class MaterialService {
         try {
             return materialDAO.actualizarMultiplesMateriales(equipoId, actualizaciones);
         } catch (Exception e) {
-            Logger.error("Error al actualizar múltiples materiales", e);
+            log.error("Error al actualizar múltiples materiales", e);
             return false;
         }
     }
