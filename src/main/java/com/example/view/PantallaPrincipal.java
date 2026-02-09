@@ -2,6 +2,7 @@ package com.example.view;
 
 import javax.swing.*;
 import java.awt.*;
+import com.example.constants.Constantes;
 
 public class PantallaPrincipal extends JFrame {
     private CardLayout navegador = new CardLayout();
@@ -11,7 +12,7 @@ public class PantallaPrincipal extends JFrame {
     private PantallaRegistrarEstado registrarEstado;
 
     public PantallaPrincipal() {
-        setTitle("Sistema Empresa - v1.0");
+        setTitle(Constantes.Titulos.APP);
         setSize(1280, 720);
         setMinimumSize(new Dimension(1280, 720));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -27,13 +28,13 @@ public class PantallaPrincipal extends JFrame {
         registrarEstado = new PantallaRegistrarEstado(navegador, contenedor);
 
         // Los registramos en el mazo de cartas con un nombre único
-        contenedor.add(menu, "MENU_PRINCIPAL");
-        contenedor.add(esterilizacion, "ESTERILIZACION");
-        contenedor.add(esOrtopedia, "ES_ORTOPEDIA");
-        contenedor.add(verCDE, "VER_CDE");
-        contenedor.add(verCDEv2, "VER_CDE_V2");
-        contenedor.add(ingresoOrtopedia, "INGRESO_ORTOPEDIA");
-        contenedor.add(registrarEstado, "REGISTRAR_ESTADO");
+        contenedor.add(menu, Constantes.Pantallas.MENU_PRINCIPAL);
+        contenedor.add(esterilizacion, Constantes.Pantallas.ESTERILIZACION);
+        contenedor.add(esOrtopedia, Constantes.Pantallas.ES_ORTOPEDIA);
+        contenedor.add(verCDE, Constantes.Pantallas.VER_CDE);
+        contenedor.add(verCDEv2, Constantes.Pantallas.VER_CDE_V2);
+        contenedor.add(ingresoOrtopedia, Constantes.Pantallas.INGRESO_ORTOPEDIA);
+        contenedor.add(registrarEstado, Constantes.Pantallas.REGISTRAR_ESTADO);
 
         add(contenedor);
     }

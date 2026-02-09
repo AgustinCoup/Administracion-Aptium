@@ -4,6 +4,8 @@ import javax.swing.table.AbstractTableModel;
 
 import com.example.model.Equipo;
 import com.example.model.Material;
+import com.example.constants.Constantes;
+import java.time.format.DateTimeFormatter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,8 +15,15 @@ import java.util.List;
  * Muestra: Descripción, Cantidad, Estado
  */
 public class MaterialTableModel extends AbstractTableModel {
-    private String[] columnas = {"Material", "Cantidad", "Estado"};
+    private String[] columnas = {
+        Constantes.Textos.COLUMNA_MATERIAL,
+        Constantes.Textos.COLUMNA_CANTIDAD,
+        Constantes.Textos.COLUMNA_ESTADO,
+        Constantes.Textos.COLUMNA_ULTIMO_MOVIMIENTO
+    };
     private List<Object[]> filas;
+    private static final DateTimeFormatter FECHA_FORMAT =
+        DateTimeFormatter.ofPattern(Constantes.Formatos.FORMATO_FECHA_HORA);
 
     public MaterialTableModel() {
         this.filas = new ArrayList<>();
@@ -58,10 +67,14 @@ public class MaterialTableModel extends AbstractTableModel {
 
         // Agregar cada material
         for (Material mat : equipo.getMateriales()) {
+            String ultimoMovimiento = mat.getUltimoMovimiento() != null
+                ? mat.getUltimoMovimiento().format(FECHA_FORMAT)
+                : Constantes.Textos.SIN_MOVIMIENTO;
             filas.add(new Object[]{
                 mat.getDescripcion(),
                 mat.getCantidad(),
-                mat.getEstado().getNombre()
+                mat.getEstado().getNombre(),
+                ultimoMovimiento
             });
         }
 

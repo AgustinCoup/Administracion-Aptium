@@ -38,17 +38,6 @@ public class PanelMateriales extends JPanel {
         
         setLayout(new BorderLayout(5, 5));
 
-        // Botones para agregar y eliminar filas de material
-        JButton btnAgregarMaterial = new JButton(Constantes.Botones.AGREGAR);
-        btnAgregarMaterial.setFont(Estilos.Fuentes.BOTON_PEQUENO);
-        JButton btnEliminarMaterial = new JButton(Constantes.Botones.ELIMINAR);
-        btnEliminarMaterial.setFont(Estilos.Fuentes.BOTON_PEQUENO);
-        
-        JPanel panelAgregar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-        panelAgregar.add(btnEliminarMaterial);
-        panelAgregar.add(btnAgregarMaterial);
-        add(panelAgregar, BorderLayout.NORTH);
-
         // Lista de materiales (cada fila: número + descripción + Elementos)
         listaMaterialesPanel = new JPanel(new GridBagLayout());
         
@@ -61,11 +50,24 @@ public class PanelMateriales extends JPanel {
         add(scrollPane, BorderLayout.CENTER);
 
         // Total de Elementos
-        lblTotalElementos = new JLabel("Total Elementos: 0");
+        lblTotalElementos = new JLabel(String.format(Constantes.Textos.TOTAL_ELEMENTOS, 0));
         lblTotalElementos.setFont(Estilos.Fuentes.LABEL);
         JPanel panelTotal = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 5));
         panelTotal.add(lblTotalElementos);
-        add(panelTotal, BorderLayout.SOUTH);
+
+        // Botones para agregar y eliminar filas de material
+        JButton btnAgregarMaterial = new JButton(Constantes.Botones.AGREGAR);
+        btnAgregarMaterial.setFont(Estilos.Fuentes.BOTON_PEQUENO);
+        JButton btnEliminarMaterial = new JButton(Constantes.Botones.ELIMINAR);
+        btnEliminarMaterial.setFont(Estilos.Fuentes.BOTON_PEQUENO);
+        JPanel panelAgregar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        panelAgregar.add(btnEliminarMaterial);
+        panelAgregar.add(btnAgregarMaterial);
+
+        JPanel panelInferior = new JPanel(new BorderLayout());
+        panelInferior.add(panelTotal, BorderLayout.WEST);
+        panelInferior.add(panelAgregar, BorderLayout.EAST);
+        add(panelInferior, BorderLayout.SOUTH);
 
         // Agregar primera fila por defecto
         agregarFilaMaterial();
@@ -146,7 +148,7 @@ public class PanelMateriales extends JPanel {
         SpinnerNumberModel model = new SpinnerNumberModel(1.0, 1.0, null, 1.0);
         JSpinner spElementos = new JSpinner(model);
         spElementos.setFont(this.inputFont);
-        JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spElementos, "#0.##");
+        JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spElementos, Constantes.Formatos.FORMATO_SPINNER_CANTIDAD);
         spElementos.setEditor(editor);
         editor.getTextField().setColumns(4);
 
@@ -154,11 +156,11 @@ public class PanelMateriales extends JPanel {
         spElementos.addChangeListener(e -> actualizarTotalElementos());
 
         // Botón eliminar para esta fila específica
-        JButton btnEliminarFila = new JButton("X");
+        JButton btnEliminarFila = new JButton(Constantes.Botones.ELIMINAR_FILA);
         btnEliminarFila.setFont(Estilos.Fuentes.BOTON_PEQUENO);
         btnEliminarFila.setPreferredSize(new Dimension(45, this.inputHeight));
         btnEliminarFila.setMargin(new Insets(0, 0, 0, 0));
-        btnEliminarFila.setToolTipText("Eliminar esta fila");
+        btnEliminarFila.setToolTipText(Constantes.Textos.TOOLTIP_ELIMINAR_FILA);
         
         MaterialRow materialRow = new MaterialRow(txtNumero, txtDesc, spElementos, btnEliminarFila);
         
@@ -203,7 +205,7 @@ public class PanelMateriales extends JPanel {
                 total += ((Number) v).doubleValue();
             }
         }
-        lblTotalElementos.setText(String.format("Total Elementos: %d", (int) total));
+        lblTotalElementos.setText(String.format(Constantes.Textos.TOTAL_ELEMENTOS, (int) total));
     }
 
     /**
@@ -247,7 +249,7 @@ public class PanelMateriales extends JPanel {
         
         // Verificar que sea un número válido
         if (!Validador.soloNumeros(numeroStr)) {
-            txtDesc.setText("Código inválido");
+            txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO);
             return;
         }
         
@@ -257,7 +259,7 @@ public class PanelMateriales extends JPanel {
                 int codigo = Integer.parseInt(numeroStr);
                 onNumeroChangedListener.accept(codigo, txtDesc);
             } catch (NumberFormatException e) {
-                txtDesc.setText("Código inválido");
+                txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO);
             }
         }
     }

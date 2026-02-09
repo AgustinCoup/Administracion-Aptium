@@ -40,29 +40,29 @@ public class GestorValidacionFormulario {
     public boolean validar() {
         // Cliente es OBLIGATORIO
         if (!Validador.noEstaVacio(panel.getTxtCliente().getText())) {
-            JOptionPane.showMessageDialog(panel, "El campo Cliente es obligatorio.");
+            JOptionPane.showMessageDialog(panel, Constantes.Mensajes.CAMPO_CLIENTE_OBLIGATORIO);
             return false;
         }
 
         if (panel.getSelectedClienteId() == -1) {
             JOptionPane.showMessageDialog(panel, 
-                "Debe seleccionar un cliente de la lista de sugerencias.", 
-                "Cliente no seleccionado", 
+                Constantes.Mensajes.CLIENTE_NO_SELECCIONADO,
+                Constantes.Mensajes.TITULO_CLIENTE_NO_SELECCIONADO,
                 JOptionPane.WARNING_MESSAGE);
             return false;
         }
         
         // Institución es OBLIGATORIA
         if (!Validador.noEstaVacio(panel.getTxtInstitucion().getText())) {
-            JOptionPane.showMessageDialog(panel, "El campo Institución es obligatorio.");
+            JOptionPane.showMessageDialog(panel, Constantes.Mensajes.CAMPO_INSTITUCION_OBLIGATORIO);
             return false;
         }
         
         // Verificar que institución fue seleccionada del autocompletado
         if (panel.getSelectedInstitucionId() == -1) {
             JOptionPane.showMessageDialog(panel, 
-                "Debe seleccionar una institución de la lista de sugerencias.", 
-                "Institución no seleccionada", 
+                Constantes.Mensajes.INSTITUCION_NO_SELECCIONADA,
+                Constantes.Mensajes.TITULO_INSTITUCION_NO_SELECCIONADA,
                 JOptionPane.WARNING_MESSAGE);
             return false;
         }
@@ -73,8 +73,8 @@ public class GestorValidacionFormulario {
         if (!txtProfesional.isEmpty()) {
             if (panel.getSelectedProfesionalId() == -1) {
                 JOptionPane.showMessageDialog(panel, 
-                    "Si ingresa un profesional, debe seleccionar uno de la lista de sugerencias.", 
-                    "Profesional no seleccionado", 
+                    Constantes.Mensajes.PROFESIONAL_NO_SELECCIONADO,
+                    Constantes.Mensajes.TITULO_PROFESIONAL_NO_SELECCIONADO,
                     JOptionPane.WARNING_MESSAGE);
                 return false;
             }

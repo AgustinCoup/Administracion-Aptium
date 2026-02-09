@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.ZoneId;
 
 /**
  * DAO para gestionar equipos en la base de datos.
@@ -47,8 +48,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
             conn.setAutoCommit(false); // Iniciamos transacción
 
             // 1. Insertar el encabezado del Equipo (sin codigo_equipo)
-            String sqlEquipo = "INSERT INTO equipos (nro_cliente, cliente_nombre, nro_profesional, paciente, nro_institucion, estado) " +
-                               "VALUES (?, ?, ?, ?, ?, ?)";
+            String sqlEquipo = "INSERT INTO equipos (nro_cliente, cliente_nombre, nro_profesional, paciente, nro_institucion, estado, requiere_lavado, requiere_empaque) " +
+                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             
             int equipoId;
             try (PreparedStatement psE = conn.prepareStatement(sqlEquipo, Statement.RETURN_GENERATED_KEYS)) {
@@ -62,6 +63,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 psE.setString(4, equipo.getPacienteNombre());
                 psE.setInt(5, equipo.getNroInstitucion());
                 psE.setString(6, equipo.getEstado().getNombre());
+                psE.setBoolean(7, equipo.isRequiereLavado());
+                psE.setBoolean(8, equipo.isRequiereEmpaque());
                 psE.executeUpdate();
                 
                 // Obtener el ID generado automáticamente
@@ -75,20 +78,39 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 }
             }
 
-            // 2. Insertar la lista de Materiales (con estado)
+            // 2. Insertar la lista de Materiales (con estado) y registrar movimiento inicial
             String sqlMaterial = "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, descripcion_copia, cantidad, estado) " +
                                  "VALUES (?, ?, ?, ?, ?)";
-            
-            try (PreparedStatement psM = conn.prepareStatement(sqlMaterial)) {
+            String sqlMovimiento = "INSERT INTO material_movimientos " +
+                                   "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
+                                   "VALUES (?, ?, ?, ?, ?)";
+
+            try (PreparedStatement psM = conn.prepareStatement(sqlMaterial, Statement.RETURN_GENERATED_KEYS);
+                 PreparedStatement psMov = conn.prepareStatement(sqlMovimiento)) {
                 for (Material mat : equipo.getMateriales()) {
                     psM.setInt(1, equipoId);
                     psM.setInt(2, mat.getCodigo());
                     psM.setString(3, mat.getDescripcion());
                     psM.setInt(4, mat.getCantidad());
                     psM.setString(5, mat.getEstado().getNombre());
-                    psM.addBatch();
+                    psM.executeUpdate();
+
+                    int materialId;
+                    try (ResultSet rsMat = psM.getGeneratedKeys()) {
+                        if (rsMat.next()) {
+                            materialId = rsMat.getInt(1);
+                        } else {
+                            throw new SQLException("No se generó ID para material");
+                        }
+                    }
+
+                    psMov.setInt(1, materialId);
+                    psMov.setInt(2, equipoId);
+                    psMov.setInt(3, mat.getCantidad());
+                    psMov.setNull(4, Types.VARCHAR);
+                    psMov.setString(5, mat.getEstado().getNombre());
+                    psMov.executeUpdate();
                 }
-                psM.executeBatch();
             }
 
             conn.commit();
@@ -124,7 +146,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     @Override
     public Equipo obtenerPorId(String id) {
-        String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id WHERE e.id = ?";
+        String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id WHERE e.id = ?";
         
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -144,6 +166,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 eq.setNroInstitucion(nroInstitucion);
                 eq.setInstitucionNombre(rs.getString("nombre"));
                 eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
+                eq.setRequiereLavado(rs.getBoolean("requiere_lavado"));
+                eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
                 
                 // Cargar materiales asociados con su estado
                 cargarMateriales(conn, eq);
@@ -165,18 +189,27 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * Incluye el estado de cada material.
      */
     private void cargarMateriales(Connection conn, Equipo equipo) throws SQLException {
-        String sql = "SELECT codigo_catalogo, descripcion_copia, cantidad, estado FROM equipo_materiales WHERE equipo_id = ?";
+        String sql = "SELECT em.id, em.codigo_catalogo, em.descripcion_copia, em.cantidad, em.estado, mm.ultimo_movimiento " +
+                 "FROM equipo_materiales em " +
+                 "LEFT JOIN (" +
+                 "  SELECT material_id, MAX(fecha) AS ultimo_movimiento " +
+                 "  FROM material_movimientos GROUP BY material_id" +
+                 ") mm ON em.id = mm.material_id " +
+                 "WHERE em.equipo_id = ? ORDER BY em.id";
         
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, equipo.getId());
             ResultSet rs = pstmt.executeQuery();
             
             while (rs.next()) {
+                Timestamp ts = rs.getTimestamp("ultimo_movimiento");
                 Material mat = new Material(
+                    rs.getInt("id"),
                     rs.getInt("codigo_catalogo"),
                     rs.getString("descripcion_copia"),
                     rs.getInt("cantidad"),
-                    EstadoEquipo.desdeBD(rs.getString("estado"))
+                    EstadoEquipo.desdeBD(rs.getString("estado")),
+                    ts != null ? java.time.LocalDateTime.ofInstant(ts.toInstant(), ZoneId.systemDefault()) : null
                 );
                 equipo.agregarMaterial(mat);
             }
@@ -198,7 +231,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     public List<Equipo> obtenerTodosLosEquipos() {
         List<Equipo> equipos = new ArrayList<>();
-        String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id ORDER BY e.estado, e.id DESC";
+        String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id ORDER BY e.estado, e.id DESC";
         
         try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
@@ -216,6 +249,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 eq.setNroInstitucion(nroInstitucion);
                 eq.setInstitucionNombre(rs.getString("nombre"));
                 eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
+                eq.setRequiereLavado(rs.getBoolean("requiere_lavado"));
+                eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
                 
                 // Cargar materiales asociados con su estado
                 cargarMateriales(conn, eq);

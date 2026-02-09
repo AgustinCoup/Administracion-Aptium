@@ -70,6 +70,10 @@ public class ConstructorEquipo {
          * El identificador se utiliza como FK en la tabla instituciones.
          */
         equipo.setNroInstitucion(panel.getSelectedInstitucionId());
+
+        // Configuración del flujo de trabajo
+        equipo.setRequiereLavado(panel.isRequiereLavado());
+        equipo.setRequiereEmpaque(panel.isRequiereEmpaque());
         
         /**
          * Agregar materiales: itera sobre las filas del panel de materiales

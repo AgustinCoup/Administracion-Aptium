@@ -1,8 +1,10 @@
 package com.example.view;
 
 import javax.swing.*;
+import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import com.example.constants.Constantes;
@@ -26,6 +28,7 @@ public class PantallaRegistrarEstado extends JPanel {
     private JButton btnAvanzar;
     private JButton btnConfirmar;
     private JButton btnCancelar;
+    private JButton btnEntregarEquipo;
     private JLabel lblCambiosPendientes;
     
     public PantallaRegistrarEstado(CardLayout navegador, JPanel contenedor) {
@@ -42,8 +45,8 @@ public class PantallaRegistrarEstado extends JPanel {
 
         // Panel central con tablas reutilizables
         panelTablas = new PanelEquipoMaterial(
-            "Equipos / Clientes", 
-            "Materiales del Equipo (Seleccione para avanzar)", 
+            Constantes.Textos.TABLA_EQUIPOS_TITULO,
+            Constantes.Textos.TABLA_MATERIALES_TITULO,
             true  // Materiales editables
         );
         
@@ -63,7 +66,7 @@ public class PantallaRegistrarEstado extends JPanel {
         
         // Panel izquierdo: información de cambios pendientes
         JPanel panelInfo = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        lblCambiosPendientes = new JLabel("Cambios pendientes: 0");
+        lblCambiosPendientes = new JLabel(String.format(Constantes.Textos.CAMBIOS_PENDIENTES, 0));
         lblCambiosPendientes.setFont(Estilos.Fuentes.LABEL);
         panelInfo.add(lblCambiosPendientes);
         panel.add(panelInfo, BorderLayout.WEST);
@@ -71,19 +74,26 @@ public class PantallaRegistrarEstado extends JPanel {
         // Panel derecho: botones de acción
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         
-        btnAvanzar = new JButton("Avanzar Material Seleccionado");
+        btnAvanzar = new JButton(Constantes.Textos.BOTON_SELECCIONE_MATERIAL);
         btnAvanzar.setFont(Estilos.Fuentes.BOTON);
         btnAvanzar.setEnabled(false);
+        btnAvanzar.setVisible(false);
         
         btnCancelar = new JButton(Constantes.Botones.CANCELAR);
         btnCancelar.setFont(Estilos.Fuentes.BOTON);
         btnCancelar.setEnabled(false);
         
-        btnConfirmar = new JButton("Confirmar y Guardar");
+        btnConfirmar = new JButton(Constantes.Botones.CONFIRMAR_GUARDAR);
         btnConfirmar.setFont(Estilos.Fuentes.BOTON);
         btnConfirmar.setEnabled(false);
+
+        btnEntregarEquipo = new JButton(Constantes.Botones.ENTREGAR_EQUIPO);
+        btnEntregarEquipo.setFont(Estilos.Fuentes.BOTON);
+        btnEntregarEquipo.setEnabled(false);
+        btnEntregarEquipo.setVisible(false);
         
         panelBotones.add(btnAvanzar);
+        panelBotones.add(btnEntregarEquipo);
         panelBotones.add(btnCancelar);
         panelBotones.add(btnConfirmar);
         
@@ -110,8 +120,16 @@ public class PantallaRegistrarEstado extends JPanel {
         panelTablas.recargarMateriales();
     }
 
+    public void refrescarEstadosEquipos() {
+        panelTablas.refrescarEstadosEquipos();
+    }
+
     public void setOnEquipoSeleccionado(Consumer<Equipo> listener) {
         panelTablas.setOnEquipoSeleccionado(listener);
+    }
+
+    public void setOnMaterialSeleccionado(ListSelectionListener listener) {
+        panelTablas.getTablaMateriales().getSelectionModel().addListSelectionListener(listener);
     }
 
     public void setOnAvanzar(java.awt.event.ActionListener listener) {
@@ -122,16 +140,28 @@ public class PantallaRegistrarEstado extends JPanel {
         btnConfirmar.addActionListener(listener);
     }
 
+    public void setOnEntregarEquipo(java.awt.event.ActionListener listener) {
+        btnEntregarEquipo.addActionListener(listener);
+    }
+
     public void setOnCancelar(java.awt.event.ActionListener listener) {
         btnCancelar.addActionListener(listener);
     }
 
     public void setCambiosPendientesCount(int total) {
-        lblCambiosPendientes.setText("Cambios pendientes: " + total);
+        lblCambiosPendientes.setText(String.format(Constantes.Textos.CAMBIOS_PENDIENTES, total));
     }
 
     public void setAvanzarEnabled(boolean enabled) {
         btnAvanzar.setEnabled(enabled);
+    }
+
+    public void setAvanzarVisible(boolean visible) {
+        btnAvanzar.setVisible(visible);
+    }
+
+    public void setAvanzarTexto(String texto) {
+        btnAvanzar.setText(texto);
     }
 
     public void setConfirmarEnabled(boolean enabled) {
@@ -142,9 +172,73 @@ public class PantallaRegistrarEstado extends JPanel {
         btnCancelar.setEnabled(enabled);
     }
 
+    public void setEntregarEquipoEnabled(boolean enabled) {
+        btnEntregarEquipo.setEnabled(enabled);
+    }
+
+    public void setEntregarEquipoVisible(boolean visible) {
+        btnEntregarEquipo.setVisible(visible);
+    }
+
     public void mostrarAdvertencia(String mensaje) {
         JOptionPane.showMessageDialog(this, mensaje,
             Constantes.Mensajes.TITULO_ADVERTENCIA, JOptionPane.WARNING_MESSAGE);
+    }
+
+    public Integer pedirCantidadParaAvanzar(String descripcion, int cantidadDisponible,
+                                            BiConsumer<JCheckBox, JSpinner> configurarTodos) {
+        if (cantidadDisponible <= 1) {
+            return cantidadDisponible;
+        }
+
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        JLabel lbl = new JLabel(String.format(Constantes.Mensajes.CANTIDAD_AVANZAR_PROMPT, descripcion, cantidadDisponible));
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.gridwidth = 2;
+        panel.add(lbl, gbc);
+
+        SpinnerNumberModel model = new SpinnerNumberModel(1, 1, cantidadDisponible, 1);
+        JSpinner spinner = new JSpinner(model);
+        JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner, "0");
+        spinner.setEditor(editor);
+        editor.getTextField().setColumns(4);
+
+        gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        panel.add(spinner, gbc);
+
+        JCheckBox chkTodos = new JCheckBox(Constantes.Mensajes.CANTIDAD_AVANZAR_TODOS);
+        if (configurarTodos != null) {
+            configurarTodos.accept(chkTodos, spinner);
+        }
+
+        gbc.gridx = 1;
+        panel.add(chkTodos, gbc);
+
+        int opcion = JOptionPane.showConfirmDialog(
+            this,
+            panel,
+            Constantes.Mensajes.TITULO_AVANZAR_SUBCANTIDAD,
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.QUESTION_MESSAGE
+        );
+
+        if (opcion != JOptionPane.OK_OPTION) {
+            return null;
+        }
+
+        int cantidad = (Integer) spinner.getValue();
+        if (cantidad <= 0 || cantidad > cantidadDisponible) {
+            mostrarAdvertencia(String.format(Constantes.Mensajes.CANTIDAD_AVANZAR_RANGO, cantidadDisponible));
+            return null;
+        }
+
+        return cantidad;
     }
 
     public void mostrarInfo(String mensaje) {

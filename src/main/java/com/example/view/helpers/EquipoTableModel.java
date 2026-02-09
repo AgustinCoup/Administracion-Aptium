@@ -97,4 +97,24 @@ public class EquipoTableModel extends AbstractTableModel {
 
         fireTableDataChanged();
     }
+
+    /**
+     * Recalcula el estado mostrado sin reordenar filas.
+     * Usado para previews en memoria.
+     */
+    public void refrescarEstados() {
+        if (equipos.isEmpty()) {
+            return;
+        }
+
+        for (int i = 0; i < equipos.size(); i++) {
+            EstadoEquipo estadoCalculado = equipos.get(i).calcularEstado();
+            filas.get(i)[2] = estadoCalculado.getNombre();
+            if (i < estados.size()) {
+                estados.set(i, estadoCalculado);
+            }
+        }
+
+        fireTableRowsUpdated(0, filas.size() - 1);
+    }
 }

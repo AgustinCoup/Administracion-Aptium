@@ -1,7 +1,7 @@
 package com.example.view;
 
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.ActionListener;
 import java.util.List;
 
 import javax.swing.*;
@@ -26,6 +26,8 @@ public class PantallaIngresoOrtopedia extends JPanel {
     private JTextField txtProfesional;
     private JTextField txtPaciente;
     private JTextField txtInstitucion;
+    private JCheckBox chkRequiereLavado;
+    private JCheckBox chkRequiereEmpaque;
     
     private JButton btnGuardar;
     private JButton btnCancelar;
@@ -104,26 +106,38 @@ public class PantallaIngresoOrtopedia extends JPanel {
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         // Fila 0: Cliente
-        agregarFila(formulario, gbc, labelFont, 0, "Cliente / Empresa:", txtCliente, null);
+        agregarFila(formulario, gbc, labelFont, 0, Constantes.Textos.LABEL_CLIENTE, txtCliente, null);
 
         // Fila 1: Profesional con hint
-        agregarFila(formulario, gbc, labelFont, 1, "Profesional a cargo:", txtProfesional, "Formato: Apellido Nombre");
+        agregarFila(formulario, gbc, labelFont, 1, Constantes.Textos.LABEL_PROFESIONAL, txtProfesional, Constantes.Textos.AYUDA_FORMATO_APELLIDO_NOMBRE);
 
         // Fila 2: Paciente con hint
-        agregarFila(formulario, gbc, labelFont, 2, "Nombre del Paciente:", txtPaciente, "Formato: Apellido Nombre");
+        agregarFila(formulario, gbc, labelFont, 2, Constantes.Textos.LABEL_PACIENTE, txtPaciente, Constantes.Textos.AYUDA_FORMATO_APELLIDO_NOMBRE);
 
         // Fila 3: Institución
-        agregarFila(formulario, gbc, labelFont, 3, "Institución:", txtInstitucion, null);
+        agregarFila(formulario, gbc, labelFont, 3, Constantes.Textos.LABEL_INSTITUCION, txtInstitucion, null);
 
-        // Fila 4: Panel de Materiales
-        JLabel lblDescripcion = new JLabel("Material:");
-        lblDescripcion.setFont(labelFont);
+        // Fila 4: Opciones de proceso
+        JPanel panelOpciones = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        chkRequiereLavado = new JCheckBox(Constantes.Textos.CHECK_REQUIERE_LAVADO, true);
+        chkRequiereEmpaque = new JCheckBox(Constantes.Textos.CHECK_REQUIERE_EMPAQUE, true);
+        chkRequiereEmpaque.setEnabled(false);
+        panelOpciones.add(chkRequiereLavado);
+        panelOpciones.add(chkRequiereEmpaque);
+
         gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0;
+        gbc.anchor = GridBagConstraints.WEST;
+        formulario.add(panelOpciones, gbc);
+
+        // Fila 5: Panel de Materiales
+        JLabel lblDescripcion = new JLabel(Constantes.Textos.LABEL_MATERIAL);
+        lblDescripcion.setFont(labelFont);
+        gbc.gridx = 0; gbc.gridy = 5; gbc.weightx = 0;
         gbc.anchor = GridBagConstraints.WEST;
         formulario.add(lblDescripcion, gbc);
 
         panelMateriales = new PanelMateriales(inputFont, inputHeight);
-        gbc.gridx = 1; gbc.gridy = 4; gbc.weightx = 1;
+        gbc.gridx = 1; gbc.gridy = 5; gbc.weightx = 1;
         gbc.weighty = 1;
         gbc.fill = GridBagConstraints.BOTH;
         formulario.add(panelMateriales, gbc);
@@ -218,6 +232,26 @@ public class PantallaIngresoOrtopedia extends JPanel {
     
     public PanelMateriales getPanelMateriales() {
         return panelMateriales;
+    }
+
+    public void setOnRequiereLavadoChanged(ActionListener listener) {
+        chkRequiereLavado.addActionListener(listener);
+    }
+
+    public void setRequiereEmpaqueSelected(boolean selected) {
+        chkRequiereEmpaque.setSelected(selected);
+    }
+
+    public void setRequiereEmpaqueEnabled(boolean enabled) {
+        chkRequiereEmpaque.setEnabled(enabled);
+    }
+
+    public boolean isRequiereLavado() {
+        return chkRequiereLavado.isSelected();
+    }
+
+    public boolean isRequiereEmpaque() {
+        return chkRequiereEmpaque.isSelected();
     }
     
     public JButton getBtnGuardar() {
@@ -316,6 +350,9 @@ public class PantallaIngresoOrtopedia extends JPanel {
         txtPaciente.setText("");
         txtInstitucion.setText("");
         panelMateriales.limpiar();
+        chkRequiereLavado.setSelected(true);
+        chkRequiereEmpaque.setSelected(true);
+        chkRequiereEmpaque.setEnabled(false);
         selectedClienteId = -1;
         selectedProfesionalId = -1;
         selectedInstitucionId = -1;

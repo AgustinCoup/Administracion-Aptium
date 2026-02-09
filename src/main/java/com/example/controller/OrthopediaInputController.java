@@ -97,6 +97,16 @@ public class OrthopediaInputController {
     
     private void inicializarEventos() {
         panel.getBtnGuardar().addActionListener(e -> guardarOrtopedia());
+
+        panel.setOnRequiereLavadoChanged(e -> {
+            boolean lavado = panel.isRequiereLavado();
+            if (lavado) {
+                panel.setRequiereEmpaqueSelected(true);
+                panel.setRequiereEmpaqueEnabled(false);
+            } else {
+                panel.setRequiereEmpaqueEnabled(true);
+            }
+        });
         
         /**
          * Registro del listener para búsqueda de material en tiempo real.
@@ -105,7 +115,7 @@ public class OrthopediaInputController {
          */
         panel.getPanelMateriales().setOnNumeroChangedListener((codigo, campoDescripcion) -> {
             String descripcion = model.getCatalogoService().obtenerDescripcion(codigo);
-            campoDescripcion.setText(descripcion != null ? descripcion : "Desconocido");
+            campoDescripcion.setText(descripcion != null ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO);
         });
         
         /**
@@ -169,7 +179,7 @@ public class OrthopediaInputController {
         // Gestor de nuevos clientes
         this.gestorNuevosClientes = new GestorNuevasEntidades<>(
             obtenerVentanaParente(),
-            "Cliente",
+            Constantes.Textos.ENTIDAD_CLIENTE,
             nombre -> panel.getTxtCliente().setText(nombre),
             id -> panel.setSelectedClienteId(id),
             autocompleteClientListener,
@@ -180,7 +190,7 @@ public class OrthopediaInputController {
         // Gestor de nuevos profesionales
         this.gestorNuevosProfesionales = new GestorNuevasEntidades<>(
             obtenerVentanaParente(),
-            "Profesional",
+            Constantes.Textos.ENTIDAD_PROFESIONAL,
             nombre -> panel.getTxtProfesional().setText(nombre),
             id -> panel.setSelectedProfesionalId(id),
             autocompleteProfesionalListener,
@@ -191,7 +201,7 @@ public class OrthopediaInputController {
         // Gestor de nuevas instituciones
         this.gestorNuevasInstituciones = new GestorNuevasEntidades<>(
             obtenerVentanaParente(),
-            "Institución",
+            Constantes.Textos.ENTIDAD_INSTITUCION,
             nombre -> panel.getTxtInstitucion().setText(nombre),
             id -> panel.setSelectedInstitucionId(id),
             autocompleteInstitucionListener,
@@ -233,8 +243,8 @@ public class OrthopediaInputController {
         } else {
             // Error: mostrar mensaje de error
             JOptionPane.showMessageDialog(panel, 
-                "Error al guardar el equipo. Por favor, intente de nuevo.", 
-                "Error al Guardar", 
+                Constantes.Mensajes.ERROR_GUARDAR_EQUIPO,
+                Constantes.Mensajes.TITULO_ERROR_GUARDAR,
                 JOptionPane.ERROR_MESSAGE);
             log.error("Fallo al guardar equipo desde formulario");
         }

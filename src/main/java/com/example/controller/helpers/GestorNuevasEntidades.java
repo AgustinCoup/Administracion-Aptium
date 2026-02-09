@@ -1,6 +1,7 @@
 package com.example.controller.helpers;
 
 import com.example.model.Autocompletable;
+import com.example.constants.Constantes;
 import com.example.view.dialogs.AgregarAutocompletableDialog;
 import com.example.view.helpers.AutocompleteListener;
 import org.slf4j.Logger;
@@ -102,14 +103,14 @@ public class GestorNuevasEntidades<T extends Autocompletable> {
                 log.info("{} agregado/a: {}", nombreEntidad, nuevaEntidad.getNombre());
             } else {
                 JOptionPane.showMessageDialog(ventanaParente,
-                    "Error al guardar " + nombreEntidad.toLowerCase() + ". Por favor, intente de nuevo.",
-                    "Error",
+                    String.format(Constantes.Mensajes.ERROR_GUARDAR_ENTIDAD, nombreEntidad.toLowerCase()),
+                    Constantes.Mensajes.TITULO_ERROR,
                     JOptionPane.ERROR_MESSAGE);
             }
         } catch (Exception e) {
             JOptionPane.showMessageDialog(ventanaParente,
-                "Error al guardar " + nombreEntidad.toLowerCase() + ": " + e.getMessage(),
-                "Error",
+                String.format(Constantes.Mensajes.ERROR_GUARDAR_ENTIDAD_DETALLE, nombreEntidad.toLowerCase(), e.getMessage()),
+                Constantes.Mensajes.TITULO_ERROR,
                 JOptionPane.ERROR_MESSAGE);
             log.error("Error al guardar {}: {}", nombreEntidad, nombreNoExistente, e);
         }

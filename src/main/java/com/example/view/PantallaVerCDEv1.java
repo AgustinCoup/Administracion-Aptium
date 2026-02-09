@@ -5,6 +5,7 @@ import java.awt.*;
 
 import com.example.constants.Constantes;
 import com.example.view.helpers.PanelHeader;
+import com.example.model.EstadoEquipo;
 
 public class PantallaVerCDEv1 extends JPanel {
 
@@ -25,12 +26,12 @@ public class PantallaVerCDEv1 extends JPanel {
         panelColumnas.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         // Añadimos cada columna
-        panelColumnas.add(crearColumna("Nuevo", Color.LIGHT_GRAY));
-        panelColumnas.add(crearColumna("Lavando", Color.CYAN));
-        panelColumnas.add(crearColumna("Lavado", new Color(135, 206, 250)));
-        panelColumnas.add(crearColumna("Empaquetado", Color.ORANGE));
-        panelColumnas.add(crearColumna("Esterilizando", Color.PINK));
-        panelColumnas.add(crearColumna("Esterilizado", Color.GREEN));
+        panelColumnas.add(crearColumna(EstadoEquipo.NUEVO.getNombre(), Color.LIGHT_GRAY));
+        panelColumnas.add(crearColumna(EstadoEquipo.LAVANDO.getNombre(), Color.CYAN));
+        panelColumnas.add(crearColumna(EstadoEquipo.LAVADO.getNombre(), new Color(135, 206, 250)));
+        panelColumnas.add(crearColumna(EstadoEquipo.EMPAQUETADO.getNombre(), Color.ORANGE));
+        panelColumnas.add(crearColumna(EstadoEquipo.ESTERILIZANDO.getNombre(), Color.PINK));
+        panelColumnas.add(crearColumna(EstadoEquipo.ESTERILIZADO.getNombre(), Color.GREEN));
 
         // Usamos un JScrollPane por si hay muchos elementos y hay que hacer scroll horizontal
         JScrollPane scroll = new JScrollPane(panelColumnas);
@@ -45,14 +46,18 @@ public class PantallaVerCDEv1 extends JPanel {
         JLabel lblNombre = new JLabel(nombreEstado.toUpperCase(), SwingConstants.CENTER);
         lblNombre.setOpaque(true);
         lblNombre.setBackground(colorFondo);
-        lblNombre.setFont(new Font("Arial", Font.BOLD, 12));
+        lblNombre.setFont(new Font(Constantes.Defaults.FUENTE_PRINCIPAL, Font.BOLD, 12));
         col.add(lblNombre, BorderLayout.NORTH);
 
         // Aquí es donde iría la lista de elementos (por ahora un área de texto vacía)
         DefaultListModel<String> modeloLista = new DefaultListModel<>();
         // Ejemplo de cómo se vería con datos:
-        if(nombreEstado.equals("Nuevo")) modeloLista.addElement("Caja de Instrumental #102");
-        if(nombreEstado.equals("Lavando")) modeloLista.addElement("Set de Cirugía Menor #05");
+        if (nombreEstado.equals(EstadoEquipo.NUEVO.getNombre())) {
+            modeloLista.addElement(Constantes.Textos.EJEMPLO_CAJA_INSTRUMENTAL);
+        }
+        if (nombreEstado.equals(EstadoEquipo.LAVANDO.getNombre())) {
+            modeloLista.addElement(Constantes.Textos.EJEMPLO_SET_CIRUGIA);
+        }
 
         JList<String> lista = new JList<>(modeloLista);
         col.add(new JScrollPane(lista), BorderLayout.CENTER);
