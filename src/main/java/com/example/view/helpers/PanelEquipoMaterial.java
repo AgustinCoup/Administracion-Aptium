@@ -4,6 +4,7 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import com.example.model.Equipo;
 import com.example.model.EstadoEquipo;
+import com.example.constants.Constantes;
 import java.awt.*;
 import java.util.HashMap;
 import java.util.List;
@@ -51,13 +52,17 @@ public class PanelEquipoMaterial extends JPanel {
 
         // ===== TABLA DE EQUIPOS =====
         JLabel lblEquipos = new JLabel(tituloEquipos);
-        lblEquipos.setFont(new Font("Arial", Font.BOLD, 16));
+        lblEquipos.setFont(new Font(Constantes.Defaults.FUENTE_PRINCIPAL, Font.BOLD, 16));
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.weighty = 0;
         add(lblEquipos, gbc);
 
-        String[] columnasEquipos = {"Cliente", "Institución", "Estado"};
+        String[] columnasEquipos = {
+            Constantes.Textos.COLUMNA_CLIENTE,
+            Constantes.Textos.COLUMNA_INSTITUCION,
+            Constantes.Textos.COLUMNA_ESTADO
+        };
         this.modeloEquipos = new EquipoTableModel(columnasEquipos);
         tablaEquipos = new JTable(modeloEquipos);
         tablaEquipos.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
@@ -91,7 +96,7 @@ public class PanelEquipoMaterial extends JPanel {
 
         // ===== TABLA DE MATERIALES =====
         JLabel lblMateriales = new JLabel(tituloMateriales);
-        lblMateriales.setFont(new Font("Arial", Font.BOLD, 16));
+        lblMateriales.setFont(new Font(Constantes.Defaults.FUENTE_PRINCIPAL, Font.BOLD, 16));
         gbc.gridx = 0;
         gbc.gridy = 2;
         gbc.weighty = 0;
@@ -182,6 +187,13 @@ public class PanelEquipoMaterial extends JPanel {
         if (equipoActual != null) {
             modeloMateriales.cargarMateriales(equipoActual);
         }
+    }
+
+    /**
+     * Refresca el estado mostrado de los equipos sin recargar desde BD.
+     */
+    public void refrescarEstadosEquipos() {
+        modeloEquipos.refrescarEstados();
     }
 
     /**

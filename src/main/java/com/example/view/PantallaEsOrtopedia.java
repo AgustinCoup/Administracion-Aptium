@@ -25,11 +25,11 @@ public class PantallaEsOrtopedia extends JPanel {
         botones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
 
 
-        JButton btnEsOrtopedia = new JButton("Ortopedia");
+        JButton btnEsOrtopedia = new JButton(Constantes.Botones.ORTOPEDIA);
         btnEsOrtopedia.setFont(Estilos.Fuentes.BOTON);
         btnEsOrtopedia.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.INGRESO_ORTOPEDIA));
 
-        JButton btnNoEsOrtopedia = new JButton("Otros");
+        JButton btnNoEsOrtopedia = new JButton(Constantes.Botones.OTROS);
         btnNoEsOrtopedia.setFont(Estilos.Fuentes.BOTON);
 
         botones.add(btnEsOrtopedia);

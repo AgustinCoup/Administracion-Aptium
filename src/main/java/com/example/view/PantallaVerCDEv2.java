@@ -31,8 +31,8 @@ public class PantallaVerCDEv2 extends JPanel {
 
         // Panel central reutilizable (solo visualización, no editable)
         panelTablas = new PanelEquipoMaterial(
-            "Equipos / Clientes",
-            "Materiales del Equipo Seleccionado",
+            Constantes.Textos.TABLA_EQUIPOS_TITULO,
+            Constantes.Textos.TABLA_MATERIALES_SELECCIONADO_TITULO,
             false  // No editable
         );
         

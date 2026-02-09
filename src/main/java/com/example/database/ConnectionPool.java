@@ -81,7 +81,7 @@ public class ConnectionPool {
         String dbPass = PROPS.getProperty("db.pass", "tu_password_aqui");
         
         // Conectar a MySQL SIN especificar base de datos
-        String urlSinBD = "jdbc:mysql://" + dbIp + ":3306/?serverTimezone=UTC";
+        String urlSinBD = "jdbc:mysql://" + dbIp + ":3306/?serverTimezone=UTC&connectionTimeZone=LOCAL";
         
         try (Connection conn = java.sql.DriverManager.getConnection(urlSinBD, dbUser, dbPass);
              java.sql.Statement stmt = conn.createStatement()) {
@@ -118,7 +118,7 @@ public class ConnectionPool {
             // URL de conexión incluyendo la base de datos
             String dbIp = PROPS.getProperty("db.ip", "localhost");
             String dbName = PROPS.getProperty("db.name", "sistema_empresa");
-            config.setJdbcUrl("jdbc:mysql://" + dbIp + ":3306/" + dbName + "?serverTimezone=UTC");
+            config.setJdbcUrl("jdbc:mysql://" + dbIp + ":3306/" + dbName + "?serverTimezone=UTC&connectionTimeZone=LOCAL");
             
             // Credenciales
             config.setUsername(PROPS.getProperty("db.user", "root"));

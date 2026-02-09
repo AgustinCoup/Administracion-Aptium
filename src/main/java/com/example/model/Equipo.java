@@ -23,11 +23,15 @@ public class Equipo {
     // Estado y Fecha
     private EstadoEquipo estado;
     private List<Material> materiales;
+    private boolean requiereLavado;
+    private boolean requiereEmpaque;
 
     // Constructor
     public Equipo() {
         this.materiales = new ArrayList<>();
         this.estado = EstadoEquipo.NUEVO; // Estado inicial por defecto
+        this.requiereLavado = true;
+        this.requiereEmpaque = true;
     }
 
     // Método para facilitar la carga de materiales desde el Controlador
@@ -63,6 +67,62 @@ public class Equipo {
         return estadoMasAtrasado;
     }
 
+    /**
+     * Obtiene el siguiente estado segun el flujo configurado del equipo.
+     * Salta pasos deshabilitados (lavado o empaque).
+     */
+    public EstadoEquipo getSiguienteEstado(EstadoEquipo estadoActual) {
+        return calcularSiguienteEstado(estadoActual, requiereLavado, requiereEmpaque);
+    }
+
+    public static EstadoEquipo calcularSiguienteEstado(EstadoEquipo estadoActual,
+                                                       boolean requiereLavado,
+                                                       boolean requiereEmpaque) {
+        boolean empaqueEfectivo = requiereEmpaque || requiereLavado;
+
+        switch (estadoActual) {
+            case NUEVO:
+                if (requiereLavado) {
+                    return EstadoEquipo.LAVANDO;
+                }
+                return empaqueEfectivo ? EstadoEquipo.EMPAQUETADO : EstadoEquipo.ESTERILIZANDO;
+            case LAVANDO:
+                return EstadoEquipo.LAVADO;
+            case LAVADO:
+                return empaqueEfectivo ? EstadoEquipo.EMPAQUETADO : EstadoEquipo.ESTERILIZANDO;
+            case EMPAQUETADO:
+                return EstadoEquipo.ESTERILIZANDO;
+            case ESTERILIZANDO:
+                return EstadoEquipo.ESTERILIZADO;
+            case ESTERILIZADO:
+                return EstadoEquipo.ENTREGADO;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Aplica un movimiento de subcantidad en memoria para previsualizacion.
+     * No persiste en BD; solo ajusta el listado actual de materiales.
+     */
+    public void aplicarMovimientoPreview(Material material, int cantidad, EstadoEquipo estadoDestino) {
+        int cantidadActual = material.getCantidad();
+        if (cantidad >= cantidadActual) {
+            material.setEstado(estadoDestino);
+            return;
+        }
+
+        material.setCantidad(cantidadActual - cantidad);
+        Material nuevoLote = new Material(
+            null,
+            material.getCodigo(),
+            material.getDescripcion(),
+            cantidad,
+            estadoDestino
+        );
+        agregarMaterial(nuevoLote);
+    }
+
     // --- Getters y Setters ---
 
     public Integer getId() { return id; }
@@ -94,4 +154,8 @@ public class Equipo {
 
     public List<Material> getMateriales() { return materiales; }
     public void setMateriales(List<Material> materiales) { this.materiales = materiales; }
+    public boolean isRequiereLavado() { return requiereLavado; }
+    public void setRequiereLavado(boolean requiereLavado) { this.requiereLavado = requiereLavado; }
+    public boolean isRequiereEmpaque() { return requiereEmpaque; }
+    public void setRequiereEmpaque(boolean requiereEmpaque) { this.requiereEmpaque = requiereEmpaque; }
 }

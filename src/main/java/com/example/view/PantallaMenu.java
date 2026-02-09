@@ -21,16 +21,16 @@ public class PantallaMenu extends JPanel {
         JPanel panelBotones = new JPanel(new GridLayout(2, 2, 15, 15));
         panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
 
-        JButton btnEsterilizacion = new JButton("Centro de Esterilización");
+        JButton btnEsterilizacion = new JButton(Constantes.Botones.CENTRO_ESTERILIZACION);
         btnEsterilizacion.setFont(Estilos.Fuentes.BOTON);
 
-        JButton btnLavadero = new JButton("Lavadero");
+        JButton btnLavadero = new JButton(Constantes.Botones.LAVADERO);
         btnLavadero.setFont(Estilos.Fuentes.BOTON);
 
-        JButton btnDesinfectadora = new JButton("Desinfectadora");
+        JButton btnDesinfectadora = new JButton(Constantes.Botones.DESINFECTADORA);
         btnDesinfectadora.setFont(Estilos.Fuentes.BOTON);
 
-        JButton btnDistribuidora = new JButton("Distribuidora");
+        JButton btnDistribuidora = new JButton(Constantes.Botones.DISTRIBUIDORA);
         btnDistribuidora.setFont(Estilos.Fuentes.BOTON);
 
         // Acción para cambiar a la pantalla de Esterilización

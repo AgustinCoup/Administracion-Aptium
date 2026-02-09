@@ -1,6 +1,7 @@
 package com.example.view.dialogs;
 
 import com.example.model.Autocompletable;
+import com.example.constants.Constantes;
 import javax.swing.*;
 import java.awt.*;
 
@@ -30,7 +31,7 @@ public class AgregarAutocompletableDialog<T extends Autocompletable> extends JDi
      */
     public AgregarAutocompletableDialog(Frame parent, String nombrePropuesto, String nombreEntidad, 
                                  java.util.function.Supplier<T> creador) {
-        super(parent, "Agregar nuevo/a " + nombreEntidad, true);
+        super(parent, String.format(Constantes.Textos.DIALOG_TITULO_AGREGAR, nombreEntidad), true);
         this.nombreEntidad = nombreEntidad;
         this.creador = creador;
         this.entidadResultado = null;
@@ -46,8 +47,8 @@ public class AgregarAutocompletableDialog<T extends Autocompletable> extends JDi
     
     private void inicializarComponentes(String nombrePropuesto) {
         txtNombre = new JTextField(nombrePropuesto, 30);
-        btnAgregar = new JButton("Agregar");
-        btnCancelar = new JButton("Cancelar");
+        btnAgregar = new JButton(Constantes.Botones.AGREGAR_TEXTO);
+        btnCancelar = new JButton(Constantes.Botones.CANCELAR);
     }
     
     private void configurarLayout() {
@@ -59,17 +60,14 @@ public class AgregarAutocompletableDialog<T extends Autocompletable> extends JDi
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.gridwidth = 2;
-        String mensaje = String.format(
-            "<html>El/la %s no existe.<br>¿Desea agregarlo/la a la base de datos?</html>",
-            nombreEntidad.toLowerCase()
-        );
+        String mensaje = String.format(Constantes.Textos.DIALOG_MENSAJE_AGREGAR, nombreEntidad.toLowerCase());
         JLabel lblMensaje = new JLabel(mensaje);
         panelPrincipal.add(lblMensaje, gbc);
         
         // Campo de nombre
         gbc.gridy = 1;
         gbc.gridwidth = 1;
-        JLabel lblNombre = new JLabel("Nombre:");
+        JLabel lblNombre = new JLabel(Constantes.Textos.LABEL_NOMBRE);
         panelPrincipal.add(lblNombre, gbc);
         
         gbc.gridx = 1;
@@ -100,8 +98,8 @@ public class AgregarAutocompletableDialog<T extends Autocompletable> extends JDi
     private void confirmarAgregar() {
         String nombre = txtNombre.getText().trim();
         if (nombre.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "El nombre no puede estar vacío", 
-                "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, Constantes.Mensajes.NOMBRE_VACIO,
+                Constantes.Mensajes.TITULO_ERROR, JOptionPane.ERROR_MESSAGE);
             return;
         }
         

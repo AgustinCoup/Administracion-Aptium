@@ -20,6 +20,12 @@ CREATE TABLE IF NOT EXISTS instituciones (
     nombre VARCHAR(150) NOT NULL UNIQUE
 );
 
+-- Tabla de autoclaves
+CREATE TABLE IF NOT EXISTS autoclaves (
+    nombre VARCHAR(150) PRIMARY KEY,
+    capacidad INT NOT NULL
+);
+
 -- Tabla del catálogo de materiales
 CREATE TABLE IF NOT EXISTS catalogo_descripciones (
     codigo INT PRIMARY KEY,
@@ -37,13 +43,15 @@ CREATE TABLE IF NOT EXISTS equipos (
     nro_operador INT,
     operador_nombre VARCHAR(150),
     estado VARCHAR(50) DEFAULT 'Nuevo',
+    requiere_lavado TINYINT(1) NOT NULL DEFAULT 1,
+    requiere_empaque TINYINT(1) NOT NULL DEFAULT 1,
     fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (nro_cliente) REFERENCES clientes(id) ON DELETE RESTRICT,
     FOREIGN KEY (nro_profesional) REFERENCES profesionales(id) ON DELETE RESTRICT,
     FOREIGN KEY (nro_institucion) REFERENCES instituciones(id) ON DELETE RESTRICT
 );
 
--- Tabla de materiales de equipos (referencia a equipos)
+-- Tabla de materiales de equipos (lotes por estado)
 CREATE TABLE IF NOT EXISTS equipo_materiales (
     id INT AUTO_INCREMENT PRIMARY KEY,
     equipo_id INT NOT NULL,
@@ -51,5 +59,22 @@ CREATE TABLE IF NOT EXISTS equipo_materiales (
     descripcion_copia VARCHAR(255),
     cantidad INT,
     estado VARCHAR(50) DEFAULT 'Nuevo',
+    INDEX idx_equipo_material_equipo (equipo_id),
+    INDEX idx_equipo_material_estado (equipo_id, codigo_catalogo, estado),
+    FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE
+);
+
+-- Tabla de movimientos de materiales (trazabilidad)
+CREATE TABLE IF NOT EXISTS material_movimientos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    material_id INT NOT NULL,
+    equipo_id INT NOT NULL,
+    cantidad INT NOT NULL,
+    estado_origen VARCHAR(50),
+    estado_destino VARCHAR(50) NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_mov_material (material_id),
+    INDEX idx_mov_equipo (equipo_id),
+    FOREIGN KEY (material_id) REFERENCES equipo_materiales(id) ON DELETE CASCADE,
     FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE
 );
