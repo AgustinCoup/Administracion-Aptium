@@ -28,7 +28,6 @@ public class PantallaRegistrarEstado extends JPanel {
     private JButton btnAvanzar;
     private JButton btnConfirmar;
     private JButton btnCancelar;
-    private JButton btnEntregarEquipo;
     private JLabel lblCambiosPendientes;
     
     public PantallaRegistrarEstado(CardLayout navegador, JPanel contenedor) {
@@ -86,14 +85,8 @@ public class PantallaRegistrarEstado extends JPanel {
         btnConfirmar = new JButton(Constantes.Botones.CONFIRMAR_GUARDAR);
         btnConfirmar.setFont(Estilos.Fuentes.BOTON);
         btnConfirmar.setEnabled(false);
-
-        btnEntregarEquipo = new JButton(Constantes.Botones.ENTREGAR_EQUIPO);
-        btnEntregarEquipo.setFont(Estilos.Fuentes.BOTON);
-        btnEntregarEquipo.setEnabled(false);
-        btnEntregarEquipo.setVisible(false);
         
         panelBotones.add(btnAvanzar);
-        panelBotones.add(btnEntregarEquipo);
         panelBotones.add(btnCancelar);
         panelBotones.add(btnConfirmar);
         
@@ -140,10 +133,6 @@ public class PantallaRegistrarEstado extends JPanel {
         btnConfirmar.addActionListener(listener);
     }
 
-    public void setOnEntregarEquipo(java.awt.event.ActionListener listener) {
-        btnEntregarEquipo.addActionListener(listener);
-    }
-
     public void setOnCancelar(java.awt.event.ActionListener listener) {
         btnCancelar.addActionListener(listener);
     }
@@ -170,14 +159,6 @@ public class PantallaRegistrarEstado extends JPanel {
 
     public void setCancelarEnabled(boolean enabled) {
         btnCancelar.setEnabled(enabled);
-    }
-
-    public void setEntregarEquipoEnabled(boolean enabled) {
-        btnEntregarEquipo.setEnabled(enabled);
-    }
-
-    public void setEntregarEquipoVisible(boolean visible) {
-        btnEntregarEquipo.setVisible(visible);
     }
 
     public void mostrarAdvertencia(String mensaje) {

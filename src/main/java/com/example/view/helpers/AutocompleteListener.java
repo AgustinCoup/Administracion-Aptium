@@ -63,6 +63,7 @@ public class AutocompleteListener<T> implements DocumentListener {
      * Nula si no hay selección activa.
      */
     private T selectedItem;
+    private boolean mouseSelecting;
 
     /**
      * Construye un componente de autocompletado.
@@ -123,10 +124,21 @@ public class AutocompleteListener<T> implements DocumentListener {
         // Click del mouse en la lista
         suggestionList.addMouseListener(new MouseAdapter() {
             @Override
+            public void mousePressed(MouseEvent e) {
+                mouseSelecting = true;
+            }
+
+            @Override
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 1) {
                     seleccionarItemActual();
                 }
+                mouseSelecting = false;
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                mouseSelecting = false;
             }
         });
         
@@ -135,6 +147,10 @@ public class AutocompleteListener<T> implements DocumentListener {
             @Override
             public void focusLost(FocusEvent e) {
                 String texto = textField.getText().trim();
+
+                if (mouseSelecting) {
+                    return;
+                }
                 
                 // Si no hay texto, no hacer nada
                 if (texto.isEmpty()) {

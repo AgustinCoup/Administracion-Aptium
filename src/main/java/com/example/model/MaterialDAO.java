@@ -369,65 +369,122 @@ public class MaterialDAO {
     }
 
     /**
-     * Marca todos los materiales del equipo como entregados y registra movimientos.
-     * Solo afecta materiales que no estén ya en ENTREGADO.
+     * Marca todos los materiales entregables de una institución como entregados.
+     * Solo afecta materiales que estén >= ESTERILIZADO y < ENTREGADO.
+     * Actualiza el estado de todos los equipos afectados.
+     * 
+     * @param nroInstitucion Número de institución
+     * @return true si la operación fue exitosa
      */
-    public boolean entregarEquipoCompleto(int equipoId) {
+    public boolean entregarInstitucionCompleta(int nroInstitucion) {
         Connection conn = null;
         try {
             conn = ConnectionPool.getConnection();
             conn.setAutoCommit(false);
 
-            String sqlSelect = "SELECT id, estado, cantidad FROM equipo_materiales WHERE equipo_id = ? FOR UPDATE";
-            String sqlUpdate = "UPDATE equipo_materiales SET estado = ? WHERE id = ?";
-            String sqlMovimiento = "INSERT INTO material_movimientos " +
-                                   "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
-                                   "VALUES (?, ?, ?, ?, ?)";
-
-            try (PreparedStatement pstmt = conn.prepareStatement(sqlSelect)) {
-                pstmt.setInt(1, equipoId);
+            // 1. Obtener todos los equipos de la institución
+            String sqlEquipos = "SELECT id FROM equipos WHERE nro_institucion = ?";
+            java.util.List<Integer> equiposIds = new java.util.ArrayList<>();
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(sqlEquipos)) {
+                pstmt.setInt(1, nroInstitucion);
                 try (ResultSet rs = pstmt.executeQuery()) {
                     while (rs.next()) {
-                        int materialId = rs.getInt("id");
-                        String estadoActual = rs.getString("estado");
-                        int cantidad = rs.getInt("cantidad");
-
-                        if (EstadoEquipo.ENTREGADO.getNombre().equalsIgnoreCase(estadoActual)) {
-                            continue;
-                        }
-
-                        try (PreparedStatement update = conn.prepareStatement(sqlUpdate)) {
-                            update.setString(1, EstadoEquipo.ENTREGADO.getNombre());
-                            update.setInt(2, materialId);
-                            update.executeUpdate();
-                        }
-
-                        try (PreparedStatement mov = conn.prepareStatement(sqlMovimiento)) {
-                            mov.setInt(1, materialId);
-                            mov.setInt(2, equipoId);
-                            mov.setInt(3, cantidad);
-                            mov.setString(4, estadoActual);
-                            mov.setString(5, EstadoEquipo.ENTREGADO.getNombre());
-                            mov.executeUpdate();
-                        }
+                        equiposIds.add(rs.getInt("id"));
                     }
                 }
             }
 
-            String sqlEquipo = "UPDATE equipos SET estado = ? WHERE id = ?";
-            try (PreparedStatement pstmt = conn.prepareStatement(sqlEquipo)) {
-                pstmt.setString(1, EstadoEquipo.ENTREGADO.getNombre());
-                pstmt.setInt(2, equipoId);
-                pstmt.executeUpdate();
+            if (equiposIds.isEmpty()) {
+                conn.commit();
+                return true;
+            }
+
+            // 2. Para cada equipo, marcar materiales entregables como ENTREGADO
+            String sqlSelectMateriales = 
+                "SELECT id, estado, cantidad FROM equipo_materiales " +
+                "WHERE equipo_id = ? AND LOWER(estado) = 'esterilizado' " +
+                "FOR UPDATE";
+            String sqlUpdateMaterial = "UPDATE equipo_materiales SET estado = ? WHERE id = ?";
+            String sqlMovimiento = 
+                "INSERT INTO material_movimientos " +
+                "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
+                "VALUES (?, ?, ?, ?, ?)";
+
+            for (Integer equipoId : equiposIds) {
+                try (PreparedStatement pstmt = conn.prepareStatement(sqlSelectMateriales)) {
+                    pstmt.setInt(1, equipoId);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        while (rs.next()) {
+                            int materialId = rs.getInt("id");
+                            String estadoActual = rs.getString("estado");
+                            int cantidad = rs.getInt("cantidad");
+
+                            // Actualizar material a ENTREGADO
+                            try (PreparedStatement update = conn.prepareStatement(sqlUpdateMaterial)) {
+                                update.setString(1, EstadoEquipo.ENTREGADO.getNombre());
+                                update.setInt(2, materialId);
+                                update.executeUpdate();
+                            }
+
+                            // Registrar movimiento
+                            try (PreparedStatement mov = conn.prepareStatement(sqlMovimiento)) {
+                                mov.setInt(1, materialId);
+                                mov.setInt(2, equipoId);
+                                mov.setInt(3, cantidad);
+                                mov.setString(4, estadoActual);
+                                mov.setString(5, EstadoEquipo.ENTREGADO.getNombre());
+                                mov.executeUpdate();
+                            }
+                        }
+                    }
+                }
+
+                // 3. Recalcular estado del equipo
+                String sqlCalcularEstado = 
+                    "SELECT MIN(CASE " +
+                    "  WHEN estado = 'Nuevo' THEN 1 " +
+                    "  WHEN estado = 'Lavando' THEN 2 " +
+                    "  WHEN estado = 'Lavado' THEN 3 " +
+                    "  WHEN estado = 'Empaquetado' THEN 4 " +
+                    "  WHEN estado = 'Esterilizando' THEN 5 " +
+                    "  WHEN estado = 'Esterilizado' THEN 6 " +
+                    "  WHEN estado = 'Entregado' THEN 7 " +
+                    "  ELSE 1 END) as orden_minimo " +
+                    "FROM equipo_materiales WHERE equipo_id = ?";
+
+                EstadoEquipo estadoEquipo = EstadoEquipo.NUEVO;
+                try (PreparedStatement pstmt = conn.prepareStatement(sqlCalcularEstado)) {
+                    pstmt.setInt(1, equipoId);
+                    ResultSet rs = pstmt.executeQuery();
+                    if (rs.next()) {
+                        int ordenMinimo = rs.getInt("orden_minimo");
+                        for (EstadoEquipo estado : EstadoEquipo.values()) {
+                            if (estado.getOrden() == ordenMinimo) {
+                                estadoEquipo = estado;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 4. Actualizar estado del equipo
+                String sqlUpdateEquipo = "UPDATE equipos SET estado = ? WHERE id = ?";
+                try (PreparedStatement pstmt = conn.prepareStatement(sqlUpdateEquipo)) {
+                    pstmt.setString(1, estadoEquipo.getNombre());
+                    pstmt.setInt(2, equipoId);
+                    pstmt.executeUpdate();
+                }
             }
 
             conn.commit();
+            log.info("Institución {} entregada correctamente. {} equipos afectados", nroInstitucion, equiposIds.size());
             return true;
         } catch (SQLException e) {
             if (conn != null) {
                 try { conn.rollback(); } catch (SQLException ex) { log.error("Error al hacer rollback", ex); }
             }
-            log.error("Error al entregar equipo completo", e);
+            log.error("Error al entregar institución completa: {}", nroInstitucion, e);
             return false;
         } finally {
             if (conn != null) {

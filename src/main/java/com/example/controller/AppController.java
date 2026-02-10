@@ -42,11 +42,19 @@ public class AppController {
                 model,
                 null
             );
+
+            // Controller para PantallaEquiposParaEntregar - sin callback inicialmente
+            EquiposParaEntregarController equiposParaEntregarController = new EquiposParaEntregarController(
+                vista.getPantallaEquiposParaEntregar(),
+                model,
+                null
+            );
             
             // Callback maestro que mantiene ambas pantallas actualizadas
             Runnable refrescarPantallas = () -> {
                 cdeViewController.cargarDatos();
                 registrarEstadoController.cargarEquipos();
+                equiposParaEntregarController.cargarDatos();
             };
             
             OnEstadosActualizadosListener refrescarPantallasEstados = refrescarPantallas::run;
@@ -54,6 +62,9 @@ public class AppController {
             
             // Asignar el callback al RegistrarEstadoController (después de su construcción)
             registrarEstadoController.setOnEstadosActualizados(refrescarPantallasEstados);
+            
+            // Asignar el callback al EquiposParaEntregarController (después de su construcción)
+            equiposParaEntregarController.setOnEstadosActualizados(refrescarPantallasEstados);
             
             // Crear controladores específicos para cada panel
             new OrthopediaInputController(

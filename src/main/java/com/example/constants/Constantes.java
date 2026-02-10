@@ -25,6 +25,7 @@ public final class Constantes {
         public static final String VER_CDE = "VER_CDE";
         public static final String VER_CDE_V2 = "VER_CDE_V2";
         public static final String REGISTRAR_ESTADO = "REGISTRAR_ESTADO";
+        public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS_PARA_ENTREGAR";
         
         private Pantallas() {}
     }
@@ -117,6 +118,8 @@ public final class Constantes {
         public static final String INGRESO_ORTOPEDIA = "INGRESO ORTOPEDIA";
         public static final String ESTADO_PROCESOS = "ESTADO DE PROCESOS EN TIEMPO REAL";
         public static final String REGISTRAR_ESTADO = "REGISTRAR ESTADO";
+        public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS PARA ENTREGAR";
+
         
         private Titulos() {}
     }
@@ -131,11 +134,13 @@ public final class Constantes {
         public static final String VER = "Ver";
         public static final String REGISTRAR = "Registrar";
         public static final String INGRESAR = "Ingresar";
+        public static final String PARA_ENTREGAR = "Para entregar";
         public static final String AGREGAR = "+";
         public static final String ELIMINAR = "-";
         public static final String AVANZAR_MATERIAL = "Avanzar Material Seleccionado";
         public static final String CONFIRMAR_GUARDAR = "Confirmar y Guardar";
         public static final String ENTREGAR_EQUIPO = "Marcar equipo como entregado";
+        public static final String ENTREGAR_INSTITUCION = "Entregar Institución";
         public static final String AGREGAR_TEXTO = "Agregar";
         public static final String ELIMINAR_FILA = "X";
         public static final String CENTRO_ESTERILIZACION = "Centro de Esterilización";
@@ -203,15 +208,23 @@ public final class Constantes {
         public static final String TABLA_EQUIPOS_TITULO = "Equipos / Clientes";
         public static final String TABLA_MATERIALES_TITULO = "Materiales del Equipo (Seleccione para avanzar)";
         public static final String TABLA_MATERIALES_SELECCIONADO_TITULO = "Materiales del Equipo Seleccionado";
+        public static final String TABLA_INSTITUCIONES_TITULO = "Instituciones con equipos esterilizados";
+        public static final String TABLA_MATERIALES_PARA_ENTREGAR_TITULO = "Materiales para entregar";
         public static final String COLUMNA_CLIENTE = "Cliente";
         public static final String COLUMNA_INSTITUCION = "Institución";
         public static final String COLUMNA_ESTADO = "Estado";
+        public static final String COLUMNA_EQUIPOS = "Equipos";
+        public static final String COLUMNA_EQUIPO = "Equipo";
         public static final String COLUMNA_MATERIAL = "Material";
         public static final String COLUMNA_CANTIDAD = "Cantidad";
+        public static final String COLUMNA_ENTREGADO = "Entregado";
         public static final String COLUMNA_ULTIMO_MOVIMIENTO = "Último movimiento";
         public static final String TOTAL_ELEMENTOS = "Total Elementos: %d";
         public static final String CODIGO_INVALIDO = "Código inválido";
         public static final String SIN_MOVIMIENTO = "-";
+        public static final String SIN_INSTITUCION = "Sin institucion";
+        public static final String ENTREGADO_SI = "SI";
+        public static final String ENTREGADO_NO = "NO";
         public static final String TOOLTIP_ELIMINAR_FILA = "Eliminar esta fila";
         public static final String LABEL_CLIENTE = "Cliente / Empresa:";
         public static final String LABEL_PROFESIONAL = "Profesional a cargo:";

@@ -95,7 +95,9 @@ public class Equipo {
             case ESTERILIZANDO:
                 return EstadoEquipo.ESTERILIZADO;
             case ESTERILIZADO:
-                return EstadoEquipo.ENTREGADO;
+                // ESTERILIZADO es el estado final para avance manual.
+                // La entrega se realiza de forma masiva por institución.
+                return null;
             default:
                 return null;
         }

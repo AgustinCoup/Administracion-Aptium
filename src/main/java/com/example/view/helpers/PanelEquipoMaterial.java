@@ -1,15 +1,13 @@
 package com.example.view.helpers;
 
 import javax.swing.*;
-import javax.swing.table.DefaultTableCellRenderer;
 import com.example.model.Equipo;
-import com.example.model.EstadoEquipo;
 import com.example.constants.Constantes;
 import java.awt.*;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
+import com.example.view.helpers.LabelFactory;
+import com.example.view.helpers.TableStyler;
 
 /**
  * Panel reutilizable que muestra dos tablas: equipos y materiales.
@@ -24,7 +22,6 @@ public class PanelEquipoMaterial extends JPanel {
     
     private EquipoTableModel modeloEquipos;
     private MaterialTableModel modeloMateriales;
-    private Map<String, Color> estadoColores;
     private JTable tablaEquipos;
     private JTable tablaMateriales;
     private Consumer<Equipo> onEquipoSeleccionado;
@@ -39,20 +36,13 @@ public class PanelEquipoMaterial extends JPanel {
     public PanelEquipoMaterial(String tituloEquipos, String tituloMateriales, boolean materialesEditable) {
         setLayout(new GridBagLayout());
         
-        // Mapa de colores por estado
-        estadoColores = new HashMap<>();
-        for (EstadoEquipo estado : EstadoEquipo.values()) {
-            estadoColores.put(estado.getNombre(), estado.getColor());
-        }
-
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5, 5, 5, 5);
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weightx = 1.0;
 
         // ===== TABLA DE EQUIPOS =====
-        JLabel lblEquipos = new JLabel(tituloEquipos);
-        lblEquipos.setFont(new Font(Constantes.Defaults.FUENTE_PRINCIPAL, Font.BOLD, 16));
+        JLabel lblEquipos = LabelFactory.createSectionLabel(tituloEquipos);
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.weighty = 0;
@@ -65,10 +55,8 @@ public class PanelEquipoMaterial extends JPanel {
         };
         this.modeloEquipos = new EquipoTableModel(columnasEquipos);
         tablaEquipos = new JTable(modeloEquipos);
-        tablaEquipos.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
-        tablaEquipos.setRowHeight(Estilos.Dimensiones.ALTURA_FILA_TABLA);
-        tablaEquipos.getTableHeader().setFont(Estilos.Fuentes.TABLA_ENCABEZADO);
-        tablaEquipos.getColumnModel().getColumn(2).setCellRenderer(crearRendererEstado());
+        TableStyler.applyStandard(tablaEquipos);
+        tablaEquipos.getColumnModel().getColumn(2).setCellRenderer(TableStyler.createEstadoRenderer());
 
         JScrollPane scrollEquipos = new JScrollPane(tablaEquipos);
         gbc.gridx = 0;
@@ -95,8 +83,7 @@ public class PanelEquipoMaterial extends JPanel {
         });
 
         // ===== TABLA DE MATERIALES =====
-        JLabel lblMateriales = new JLabel(tituloMateriales);
-        lblMateriales.setFont(new Font(Constantes.Defaults.FUENTE_PRINCIPAL, Font.BOLD, 16));
+        JLabel lblMateriales = LabelFactory.createSectionLabel(tituloMateriales);
         gbc.gridx = 0;
         gbc.gridy = 2;
         gbc.weighty = 0;
@@ -104,15 +91,11 @@ public class PanelEquipoMaterial extends JPanel {
 
         this.modeloMateriales = new MaterialTableModel();
         tablaMateriales = new JTable(modeloMateriales);
-        tablaMateriales.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
-        tablaMateriales.setRowHeight(Estilos.Dimensiones.ALTURA_FILA_TABLA);
-        tablaMateriales.getTableHeader().setFont(Estilos.Fuentes.TABLA_ENCABEZADO);
-        tablaMateriales.getColumnModel().getColumn(2).setCellRenderer(crearRendererEstado());
+        TableStyler.applyStandard(tablaMateriales);
+        tablaMateriales.getColumnModel().getColumn(2).setCellRenderer(TableStyler.createEstadoRenderer());
 
         // Centrar la columna de Cantidad
-        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
-        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
-        tablaMateriales.getColumnModel().getColumn(1).setCellRenderer(centerRenderer);
+        TableStyler.centerColumns(tablaMateriales, 1);
 
         // Configurar selección de materiales
         if (materialesEditable) {
@@ -126,30 +109,6 @@ public class PanelEquipoMaterial extends JPanel {
         gbc.gridy = 3;
         gbc.weighty = 0.4;
         add(scrollMateriales, gbc);
-    }
-
-    /**
-     * Crea el renderer para colorear celdas de estado.
-     */
-    private DefaultTableCellRenderer crearRendererEstado() {
-        return new DefaultTableCellRenderer() {
-            @Override
-            public Component getTableCellRendererComponent(JTable table, Object value,
-                    boolean isSelected, boolean hasFocus, int row, int column) {
-                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                
-                if (value != null) {
-                    String estado = value.toString();
-                    Color color = estadoColores.getOrDefault(estado, Color.WHITE);
-                    c.setBackground(color);
-                    c.setForeground(Estilos.Colores.TEXTO_NORMAL);
-                    setHorizontalAlignment(SwingConstants.CENTER);
-                    setFont(Estilos.Fuentes.TABLA_ENFASIS);
-                }
-                
-                return c;
-            }
-        };
     }
 
     /**

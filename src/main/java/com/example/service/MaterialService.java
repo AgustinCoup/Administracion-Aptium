@@ -63,16 +63,17 @@ public class MaterialService {
     }
 
     /**
-     * Marca un equipo completo como entregado y actualiza todos sus materiales.
-     *
-     * @param equipoId ID del equipo
+     * Marca todos los materiales entregables de una institución como entregados.
+     * Solo afecta materiales que estén >= ESTERILIZADO y < ENTREGADO.
+     * 
+     * @param nroInstitucion Número de institución
      * @return true si la operación fue exitosa
      */
-    public boolean entregarEquipoCompleto(int equipoId) {
+    public boolean entregarInstitucionCompleta(int nroInstitucion) {
         try {
-            return materialDAO.entregarEquipoCompleto(equipoId);
+            return materialDAO.entregarInstitucionCompleta(nroInstitucion);
         } catch (Exception e) {
-            log.error("Error al entregar equipo completo", e);
+            log.error("Error al entregar institución completa: {}", nroInstitucion, e);
             return false;
         }
     }

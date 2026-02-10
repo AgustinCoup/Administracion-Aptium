@@ -21,7 +21,7 @@ public class PantallaEsterilizacion extends JPanel {
         );
         add(header, BorderLayout.NORTH);
 
-        JPanel botones = new JPanel(new GridLayout(3, 1, 10, 10));
+        JPanel botones = new JPanel(new GridLayout(2, 2, 10, 10));
         botones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
 
         JButton btnVer = new JButton(Constantes.Botones.VER);
@@ -33,14 +33,19 @@ public class PantallaEsterilizacion extends JPanel {
         JButton btnIngresar = new JButton(Constantes.Botones.INGRESAR);
         btnIngresar.setFont(Estilos.Fuentes.BOTON);
 
+        JButton btnParaEntregar = new JButton(Constantes.Botones.PARA_ENTREGAR);
+        btnParaEntregar.setFont(Estilos.Fuentes.BOTON);
+
         btnIngresar.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.ES_ORTOPEDIA));
         //btnVer.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_CDE));
         btnVer.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_CDE_V2));
 
         btnRegistrar.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.REGISTRAR_ESTADO));
+        btnParaEntregar.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.EQUIPOS_PARA_ENTREGAR));
         
         botones.add(btnIngresar);
         botones.add(btnRegistrar);
+        botones.add(btnParaEntregar);
         botones.add(btnVer);
         add(botones, BorderLayout.CENTER);
     }

@@ -25,7 +25,6 @@ public class RegistrarEstadoController {
 
     // Buffer de cambios pendientes: Map<EquipoId, Map<MaterialId, Movimiento>>
     private final Map<Integer, Map<Integer, MovimientoMaterial>> cambiosPendientes;
-    private Integer equipoEntregaPendienteId;
 
     public RegistrarEstadoController(PantallaRegistrarEstado panel, AppModel model,
                                      OnEstadosActualizadosListener onEstadosActualizadosListener) {
@@ -33,7 +32,6 @@ public class RegistrarEstadoController {
         this.model = model;
         this.onEstadosActualizadosListener = onEstadosActualizadosListener;
         this.cambiosPendientes = new HashMap<>();
-        this.equipoEntregaPendienteId = null;
 
         inicializarEventos();
         cargarEquipos();
@@ -56,7 +54,6 @@ public class RegistrarEstadoController {
             actualizarTextoAvanzar();
         });
         panel.setOnAvanzar(e -> avanzarMaterialSeleccionado());
-        panel.setOnEntregarEquipo(e -> entregarEquipoCompleto());
         panel.setOnCancelar(e -> cancelarCambios());
         panel.setOnConfirmar(e -> confirmarCambios());
     }
@@ -72,7 +69,6 @@ public class RegistrarEstadoController {
             .collect(Collectors.toList());
         panel.actualizarEquipos(equiposActivos);
         actualizarTextoAvanzar();
-        actualizarEstadoEntrega(panel.getEquipoSeleccionado());
     }
 
     /**
@@ -80,28 +76,13 @@ public class RegistrarEstadoController {
      */
     private void actualizarEstadoBotones(Equipo equipoSeleccionado) {
         actualizarTextoAvanzar();
-        actualizarEstadoEntrega(equipoSeleccionado);
-    }
-
-    private void actualizarEstadoEntrega(Equipo equipoSeleccionado) {
-        if (equipoSeleccionado == null || !cambiosPendientes.isEmpty() || equipoEntregaPendienteId != null) {
-            panel.setEntregarEquipoEnabled(false);
-            panel.setEntregarEquipoVisible(false);
-            return;
-        }
-
-        boolean todosListos = equipoSeleccionado.getMateriales().stream()
-            .allMatch(mat -> mat.getEstado() == EstadoEquipo.ESTERILIZADO
-                || mat.getEstado() == EstadoEquipo.ENTREGADO);
-        panel.setEntregarEquipoEnabled(todosListos);
-        panel.setEntregarEquipoVisible(todosListos);
     }
 
     private void actualizarTextoAvanzar() {
         Equipo equipoSeleccionado = panel.getEquipoSeleccionado();
         int materialIndex = panel.getMaterialSeleccionadoIndex();
 
-        if (equipoSeleccionado == null || materialIndex < 0 || equipoEntregaPendienteId != null) {
+        if (equipoSeleccionado == null || materialIndex < 0) {
             panel.setAvanzarTexto(Constantes.Textos.BOTON_SELECCIONE_MATERIAL);
             panel.setAvanzarEnabled(false);
             panel.setAvanzarVisible(false);
@@ -186,7 +167,6 @@ public class RegistrarEstadoController {
         panel.recargarMateriales();
         panel.refrescarEstadosEquipos();
         actualizarTextoAvanzar();
-        actualizarEstadoEntrega(equipoSeleccionado);
 
         actualizarContadorCambios();
         panel.setConfirmarEnabled(true);
@@ -200,9 +180,7 @@ public class RegistrarEstadoController {
 
     private void cancelarCambios() {
         if (cambiosPendientes.isEmpty()) {
-            if (equipoEntregaPendienteId == null) {
-                return;
-            }
+            return;
         }
 
         boolean confirmar = panel.confirmar(
@@ -211,18 +189,16 @@ public class RegistrarEstadoController {
 
         if (confirmar) {
             cambiosPendientes.clear();
-            equipoEntregaPendienteId = null;
             cargarEquipos();
             actualizarContadorCambios();
             panel.setConfirmarEnabled(false);
             panel.setCancelarEnabled(false);
             actualizarTextoAvanzar();
-            actualizarEstadoEntrega(panel.getEquipoSeleccionado());
         }
     }
 
     private void confirmarCambios() {
-        if (cambiosPendientes.isEmpty() && equipoEntregaPendienteId == null) {
+        if (cambiosPendientes.isEmpty()) {
             return;
         }
 
@@ -236,13 +212,6 @@ public class RegistrarEstadoController {
 
         boolean todosExitosos = true;
         StringBuilder errores = new StringBuilder();
-
-        if (equipoEntregaPendienteId != null) {
-            boolean exitosoEntrega = model.getMaterialService().entregarEquipoCompleto(equipoEntregaPendienteId);
-            if (!exitosoEntrega) {
-                todosExitosos = false;
-            }
-        }
 
         for (Map.Entry<Integer, Map<Integer, MovimientoMaterial>> entry : cambiosPendientes.entrySet()) {
             Integer equipoId = entry.getKey();
@@ -261,13 +230,11 @@ public class RegistrarEstadoController {
         if (todosExitosos) {
             panel.mostrarInfo(Constantes.Mensajes.CAMBIOS_GUARDADOS_OK);
             cambiosPendientes.clear();
-            equipoEntregaPendienteId = null;
             cargarEquipos();
             actualizarContadorCambios();
             panel.setConfirmarEnabled(false);
             panel.setCancelarEnabled(false);
             actualizarTextoAvanzar();
-            actualizarEstadoEntrega(panel.getEquipoSeleccionado());
 
             if (onEstadosActualizadosListener != null) {
                 onEstadosActualizadosListener.onEstadosActualizados();
@@ -275,36 +242,10 @@ public class RegistrarEstadoController {
         } else {
             panel.mostrarError(String.format(Constantes.Mensajes.CAMBIOS_GUARDADOS_ERROR, errores));
             cambiosPendientes.clear();
-            equipoEntregaPendienteId = null;
             cargarEquipos();
             actualizarContadorCambios();
             actualizarTextoAvanzar();
-            actualizarEstadoEntrega(panel.getEquipoSeleccionado());
         }
-    }
-
-    private void entregarEquipoCompleto() {
-        Equipo equipoSeleccionado = panel.getEquipoSeleccionado();
-        if (equipoSeleccionado == null) {
-            return;
-        }
-        if (!cambiosPendientes.isEmpty()) {
-            return;
-        }
-
-        equipoEntregaPendienteId = equipoSeleccionado.getId();
-
-        for (Material material : equipoSeleccionado.getMateriales()) {
-            material.setEstado(EstadoEquipo.ENTREGADO);
-        }
-        equipoSeleccionado.setEstado(EstadoEquipo.ENTREGADO);
-        panel.recargarMateriales();
-        panel.refrescarEstadosEquipos();
-
-        panel.setConfirmarEnabled(true);
-        panel.setCancelarEnabled(true);
-        actualizarTextoAvanzar();
-        actualizarEstadoEntrega(equipoSeleccionado);
     }
 
 }
