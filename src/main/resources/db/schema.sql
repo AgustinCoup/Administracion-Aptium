@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS autoclaves (
 -- Tabla del catálogo de materiales
 CREATE TABLE IF NOT EXISTS catalogo_descripciones (
     codigo INT PRIMARY KEY,
-    descripcion VARCHAR(255) NOT NULL
+    descripcion VARCHAR(255) NOT NULL,
+    volumen INT NOT NULL
 );
 
 -- Tabla de equipos (referencia a clientes, profesionales e instituciones)
