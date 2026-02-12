@@ -11,6 +11,7 @@ public class PantallaPrincipal extends JFrame {
     private PantallaVerCDEv2 verCDEv2;
     private PantallaRegistrarEstado registrarEstado;
     private PantallaEquiposParaEntregar equiposParaEntregar;
+    private PantallaLotes pantallaLotes;
 
     public PantallaPrincipal() {
         setTitle(Constantes.Titulos.APP);
@@ -28,6 +29,7 @@ public class PantallaPrincipal extends JFrame {
         ingresoOrtopedia = new PantallaIngresoOrtopedia(navegador, contenedor);
         registrarEstado = new PantallaRegistrarEstado(navegador, contenedor);
         equiposParaEntregar = new PantallaEquiposParaEntregar(navegador, contenedor);
+        pantallaLotes = new PantallaLotes(navegador, contenedor);
 
         // Los registramos en el mazo de cartas con un nombre único
         contenedor.add(menu, Constantes.Pantallas.MENU_PRINCIPAL);
@@ -38,6 +40,7 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(ingresoOrtopedia, Constantes.Pantallas.INGRESO_ORTOPEDIA);
         contenedor.add(registrarEstado, Constantes.Pantallas.REGISTRAR_ESTADO);
         contenedor.add(equiposParaEntregar, Constantes.Pantallas.EQUIPOS_PARA_ENTREGAR);
+        contenedor.add(pantallaLotes, Constantes.Pantallas.LOTES);
 
         add(contenedor);
     }
@@ -56,6 +59,10 @@ public class PantallaPrincipal extends JFrame {
 
     public PantallaEquiposParaEntregar getPantallaEquiposParaEntregar() {
         return equiposParaEntregar;
+    }
+
+    public PantallaLotes getPantallaLotes() {
+        return pantallaLotes;
     }
     
     public CardLayout getNavegador() {

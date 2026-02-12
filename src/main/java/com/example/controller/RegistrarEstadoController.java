@@ -8,6 +8,7 @@ import com.example.model.Material;
 import com.example.model.MovimientoMaterial;
 import com.example.view.PantallaRegistrarEstado;
 import com.example.controller.listeners.OnEstadosActualizadosListener;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +57,7 @@ public class RegistrarEstadoController {
         panel.setOnAvanzar(e -> avanzarMaterialSeleccionado());
         panel.setOnCancelar(e -> cancelarCambios());
         panel.setOnConfirmar(e -> confirmarCambios());
+        panel.setOnGestionarLotes(e -> panel.navegarALotes());
     }
 
     /**
@@ -98,6 +100,13 @@ public class RegistrarEstadoController {
             return;
         }
 
+        // Si el siguiente estado es ESTERILIZANDO, ocultar botón (debe usarse Gestionar Lotes)
+        if (siguienteEstado == EstadoEquipo.ESTERILIZANDO) {
+            panel.setAvanzarVisible(false);
+            return;
+        }
+
+        // Para todos los demás estados, mostrar botón normalmente
         panel.setAvanzarTexto(String.format(Constantes.Textos.BOTON_PASAR_A, siguienteEstado.getNombre()));
         panel.setAvanzarEnabled(true);
         panel.setAvanzarVisible(true);
@@ -190,10 +199,10 @@ public class RegistrarEstadoController {
         if (confirmar) {
             cambiosPendientes.clear();
             cargarEquipos();
+            actualizarTextoAvanzar();
             actualizarContadorCambios();
             panel.setConfirmarEnabled(false);
             panel.setCancelarEnabled(false);
-            actualizarTextoAvanzar();
         }
     }
 
@@ -231,10 +240,10 @@ public class RegistrarEstadoController {
             panel.mostrarInfo(Constantes.Mensajes.CAMBIOS_GUARDADOS_OK);
             cambiosPendientes.clear();
             cargarEquipos();
+            actualizarTextoAvanzar();
             actualizarContadorCambios();
             panel.setConfirmarEnabled(false);
             panel.setCancelarEnabled(false);
-            actualizarTextoAvanzar();
 
             if (onEstadosActualizadosListener != null) {
                 onEstadosActualizadosListener.onEstadosActualizados();
@@ -244,7 +253,6 @@ public class RegistrarEstadoController {
             cambiosPendientes.clear();
             cargarEquipos();
             actualizarContadorCambios();
-            actualizarTextoAvanzar();
         }
     }
 

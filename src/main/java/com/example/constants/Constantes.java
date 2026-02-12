@@ -26,6 +26,7 @@ public final class Constantes {
         public static final String VER_CDE_V2 = "VER_CDE_V2";
         public static final String REGISTRAR_ESTADO = "REGISTRAR_ESTADO";
         public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS_PARA_ENTREGAR";
+        public static final String LOTES = "LOTES";
         
         private Pantallas() {}
     }
@@ -73,6 +74,7 @@ public final class Constantes {
         public static final String MATERIAL_CAMBIOS_PENDIENTES = "Este material tiene cambios pendientes. Confirme antes de continuar.";
         public static final String MATERIAL_CAMBIO_PENDIENTE_DUP = "Este material ya tiene un cambio pendiente. Confirme antes de avanzar nuevamente.";
         public static final String MATERIAL_ESTADO_FINAL = "El material ya está en el estado final: %s";
+        public static final String ESTERILIZAR_DESDE_LOTES = "✓ Para procesar materiales a través de esterilización, use la pantalla de LOTES desde el menú Centro de Esterilización.";
         public static final String CONFIRMAR_CANCELACION = "¿Está seguro de que desea cancelar todos los cambios pendientes?";
         public static final String CONFIRMAR_CAMBIOS = "¿Confirmar cambios?\nEsta operación actualizará la base de datos.";
         public static final String CAMBIOS_GUARDADOS_OK = "Todos los cambios se guardaron correctamente.";
@@ -103,6 +105,25 @@ public final class Constantes {
         public static final String TITULO_CONFIRMAR_CAMBIOS = "Confirmar Cambios";
         public static final String TITULO_AVANZAR_SUBCANTIDAD = "Avanzar subcantidad";
         public static final String TITULO_CONFIRMAR_ENTREGA = "Confirmar Entrega";
+        public static final String TITULO_LANZAR_LOTE = "Lanzar Lote";
+        public static final String TITULO_FINALIZAR_LOTE = "Finalizar Lote";
+        
+        // Mensajes para gestión de lotes
+        public static final String INSTRUCCION_CREAR_LOTE = "Cree un lote para: %s\nArrastre los materiales a un autoclave libre.";
+        public static final String FINALIZAR_LOTE_ANTES_CONFIRMAR = "Complete la gestión de lotes antes de confirmar cambios.";
+        public static final String SELECCIONE_AUTOCLAVE_LIBRE = "Seleccione un autoclave libre para lanzar el lote.";
+        public static final String SELECCIONE_AUTOCLAVE_CON_LOTE = "Seleccione un autoclave con lote activo.";
+        public static final String LOTE_VACIO = "El lote no tiene materiales. Agregue materiales antes de lanzar.";
+        public static final String CAPACIDAD_INSUFICIENTE = "Capacidad insuficiente en autoclave %s. Se necesitan %d litros.";
+        public static final String MATERIAL_YA_CARGADO_EN_LOTE = "El material %s ya está cargado en este lote.";
+        public static final String LOTE_CREADO_OK = "Lote creado correctamente y lanzado al autoclave.";
+        public static final String ERROR_CREAR_LOTE = "Error al crear el lote. Intente nuevamente.";
+        public static final String LOTE_FINALIZADO_OK = "Lote finalizado correctamente.";
+        public static final String ERROR_FINALIZAR_LOTE = "Error al finalizar el lote. Intente nuevamente.";
+        public static final String LOTE_NO_ENCONTRADO = "No se encontró el lote en el autoclave.";
+        public static final String LOTE_NO_ESTERILIZADO = "El lote aún no ha sido esterilizado. Estado actual: %s";
+        public static final String CONFIRMAR_LANZAR_LOTE = "¿Lanzar este lote al autoclave?";
+        public static final String CONFIRMAR_FINALIZAR_LOTE = "¿Finalizar este lote?";
         
         private Mensajes() {}
     }
@@ -119,6 +140,7 @@ public final class Constantes {
         public static final String ESTADO_PROCESOS = "ESTADO DE PROCESOS EN TIEMPO REAL";
         public static final String REGISTRAR_ESTADO = "REGISTRAR ESTADO";
         public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS PARA ENTREGAR";
+        public static final String LOTES = "LOTES DE ESTERILIZACIÓN";
 
         
         private Titulos() {}
@@ -135,12 +157,16 @@ public final class Constantes {
         public static final String REGISTRAR = "Registrar";
         public static final String INGRESAR = "Ingresar";
         public static final String PARA_ENTREGAR = "Para entregar";
+        public static final String LOTES = "Lotes";
         public static final String AGREGAR = "+";
         public static final String ELIMINAR = "-";
         public static final String AVANZAR_MATERIAL = "Avanzar Material Seleccionado";
         public static final String CONFIRMAR_GUARDAR = "Confirmar y Guardar";
         public static final String ENTREGAR_EQUIPO = "Marcar equipo como entregado";
         public static final String ENTREGAR_INSTITUCION = "Entregar Institución";
+        public static final String LANZAR_LOTE = "Lanzar Lote";
+        public static final String FINALIZAR_LOTE = "Finalizar Lote";
+        public static final String QUITAR = "Quitar";
         public static final String AGREGAR_TEXTO = "Agregar";
         public static final String ELIMINAR_FILA = "X";
         public static final String CENTRO_ESTERILIZACION = "Centro de Esterilización";
@@ -210,6 +236,11 @@ public final class Constantes {
         public static final String TABLA_MATERIALES_SELECCIONADO_TITULO = "Materiales del Equipo Seleccionado";
         public static final String TABLA_INSTITUCIONES_TITULO = "Instituciones con equipos esterilizados";
         public static final String TABLA_MATERIALES_PARA_ENTREGAR_TITULO = "Materiales para entregar";
+        public static final String TABLA_MATERIALES_DISPONIBLES = "Materiales disponibles para esterilizar";
+        public static final String TABLA_MATERIALES_AUTOCLAVE = "Materiales cargados en autoclave";
+        public static final String TITULO_GESTIONAR_LOTES = "Gestión de lotes de esterilización";
+        public static final String LISTA_AUTOCLAVES_TITULO = "Autoclaves";
+        public static final String CAPACIDAD_AUTOCLAVE = "Capacidad: 0/0";
         public static final String COLUMNA_CLIENTE = "Cliente";
         public static final String COLUMNA_INSTITUCION = "Institución";
         public static final String COLUMNA_ESTADO = "Estado";
@@ -245,6 +276,7 @@ public final class Constantes {
         public static final String BOTON_PASAR_A = "Pasar a %s";
         public static final String BOTON_SELECCIONE_MATERIAL = "Seleccione un material";
         public static final String BOTON_ESTADO_FINAL = "Material en estado final";
+        public static final String BOTON_ESTERILIZAR_DESDE_LOTES = "Esterilizar desde Lotes";
 
         private Textos() {}
     }

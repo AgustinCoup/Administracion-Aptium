@@ -45,6 +45,10 @@ public class DatabaseInitializer {
             ejecutarScript(conn, "/db/schema.sql");
 
             // 2. Cargar datos seed solo si las tablas están vacías
+            if (tablaVacia(conn, "autoclaves")) {
+                ejecutarScript(conn, "/db/seed_autoclaves.sql");
+            }
+            
             if (tablaVacia(conn, "clientes")) {
                 ejecutarScript(conn, "/db/seed_clientes.sql");
             }

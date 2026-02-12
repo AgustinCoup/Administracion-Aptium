@@ -61,6 +61,29 @@ public class CatalogoDAO implements DAO<String, Integer> {
         }
         return null;
     }
+
+    /**
+     * Obtiene el volumen de un material por su código.
+     *
+     * @param codigo Código del material
+     * @return Volumen del material, o null si no existe
+     */
+    public Integer obtenerVolumen(int codigo) {
+        String sql = "SELECT volumen FROM catalogo_descripciones WHERE codigo = ?";
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, codigo);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                return rs.getInt("volumen");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
     
     /**
      * Obtiene todas las descripciones del catálogo como un mapa.
@@ -82,6 +105,28 @@ public class CatalogoDAO implements DAO<String, Integer> {
             e.printStackTrace();
         }
         return catalogo;
+    }
+
+    /**
+     * Obtiene todos los volúmenes del catálogo como un mapa.
+     *
+     * @return Mapa con código -> volumen
+     */
+    public Map<Integer, Integer> obtenerTodosLosVolumenes() {
+        Map<Integer, Integer> volumenes = new HashMap<>();
+        String sql = "SELECT codigo, volumen FROM catalogo_descripciones ORDER BY codigo";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                volumenes.put(rs.getInt("codigo"), rs.getInt("volumen"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return volumenes;
     }
     
     // ===== Implementación de la interfaz DAO<String, Integer> =====

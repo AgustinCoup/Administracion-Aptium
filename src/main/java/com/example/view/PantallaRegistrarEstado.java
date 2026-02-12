@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 
 import com.example.constants.Constantes;
 import com.example.model.Equipo;
+import com.example.view.dialogs.CantidadDialogHelper;
 import com.example.view.helpers.Estilos;
 import com.example.view.helpers.PanelEquipoMaterial;
 import com.example.view.helpers.PanelHeader;
@@ -21,16 +22,22 @@ import com.example.view.helpers.PanelHeader;
  * - Los cambios se almacenan en un buffer hasta que el usuario confirme
  * - El estado del equipo se recalcula automáticamente según el material más atrasado
  * - Usa PanelEquipoMaterial para reutilizar la lógica de visualización
+ * - Botón de navegación a PantallaLotes para gestión de lotes de esterilización
  */
 public class PantallaRegistrarEstado extends JPanel {
     
+    private final CardLayout navegador;
+    private final JPanel contenedor;
     private PanelEquipoMaterial panelTablas;
     private JButton btnAvanzar;
+    private JButton btnGestionarLotes;
     private JButton btnConfirmar;
     private JButton btnCancelar;
     private JLabel lblCambiosPendientes;
     
     public PantallaRegistrarEstado(CardLayout navegador, JPanel contenedor) {
+        this.navegador = navegador;
+        this.contenedor = contenedor;
         setLayout(new BorderLayout());
 
         // Header reutilizable
@@ -42,13 +49,12 @@ public class PantallaRegistrarEstado extends JPanel {
         );
         add(header, BorderLayout.NORTH);
 
-        // Panel central con tablas reutilizables
+        // Panel central: Selección de equipo y materiales
         panelTablas = new PanelEquipoMaterial(
             Constantes.Textos.TABLA_EQUIPOS_TITULO,
             Constantes.Textos.TABLA_MATERIALES_TITULO,
             true  // Materiales editables
         );
-        
         add(panelTablas, BorderLayout.CENTER);
 
         // Panel inferior con botones de acción
@@ -73,6 +79,9 @@ public class PantallaRegistrarEstado extends JPanel {
         // Panel derecho: botones de acción
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         
+        btnGestionarLotes = new JButton("Gestionar Lotes");
+        btnGestionarLotes.setFont(Estilos.Fuentes.BOTON);
+        
         btnAvanzar = new JButton(Constantes.Textos.BOTON_SELECCIONE_MATERIAL);
         btnAvanzar.setFont(Estilos.Fuentes.BOTON);
         btnAvanzar.setEnabled(false);
@@ -86,6 +95,7 @@ public class PantallaRegistrarEstado extends JPanel {
         btnConfirmar.setFont(Estilos.Fuentes.BOTON);
         btnConfirmar.setEnabled(false);
         
+        panelBotones.add(btnGestionarLotes);
         panelBotones.add(btnAvanzar);
         panelBotones.add(btnCancelar);
         panelBotones.add(btnConfirmar);
@@ -137,6 +147,10 @@ public class PantallaRegistrarEstado extends JPanel {
         btnCancelar.addActionListener(listener);
     }
 
+    public void setOnGestionarLotes(java.awt.event.ActionListener listener) {
+        btnGestionarLotes.addActionListener(listener);
+    }
+
     public void setCambiosPendientesCount(int total) {
         lblCambiosPendientes.setText(String.format(Constantes.Textos.CAMBIOS_PENDIENTES, total));
     }
@@ -166,60 +180,11 @@ public class PantallaRegistrarEstado extends JPanel {
             Constantes.Mensajes.TITULO_ADVERTENCIA, JOptionPane.WARNING_MESSAGE);
     }
 
+    // ==================== Métodos para Panel de Lotes ====================
+    
     public Integer pedirCantidadParaAvanzar(String descripcion, int cantidadDisponible,
                                             BiConsumer<JCheckBox, JSpinner> configurarTodos) {
-        if (cantidadDisponible <= 1) {
-            return cantidadDisponible;
-        }
-
-        JPanel panel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.anchor = GridBagConstraints.WEST;
-
-        JLabel lbl = new JLabel(String.format(Constantes.Mensajes.CANTIDAD_AVANZAR_PROMPT, descripcion, cantidadDisponible));
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.gridwidth = 2;
-        panel.add(lbl, gbc);
-
-        SpinnerNumberModel model = new SpinnerNumberModel(1, 1, cantidadDisponible, 1);
-        JSpinner spinner = new JSpinner(model);
-        JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner, "0");
-        spinner.setEditor(editor);
-        editor.getTextField().setColumns(4);
-
-        gbc.gridy = 1;
-        gbc.gridwidth = 1;
-        panel.add(spinner, gbc);
-
-        JCheckBox chkTodos = new JCheckBox(Constantes.Mensajes.CANTIDAD_AVANZAR_TODOS);
-        if (configurarTodos != null) {
-            configurarTodos.accept(chkTodos, spinner);
-        }
-
-        gbc.gridx = 1;
-        panel.add(chkTodos, gbc);
-
-        int opcion = JOptionPane.showConfirmDialog(
-            this,
-            panel,
-            Constantes.Mensajes.TITULO_AVANZAR_SUBCANTIDAD,
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.QUESTION_MESSAGE
-        );
-
-        if (opcion != JOptionPane.OK_OPTION) {
-            return null;
-        }
-
-        int cantidad = (Integer) spinner.getValue();
-        if (cantidad <= 0 || cantidad > cantidadDisponible) {
-            mostrarAdvertencia(String.format(Constantes.Mensajes.CANTIDAD_AVANZAR_RANGO, cantidadDisponible));
-            return null;
-        }
-
-        return cantidad;
+        return CantidadDialogHelper.pedirCantidad(this, descripcion, cantidadDisponible, configurarTodos);
     }
 
     public void mostrarInfo(String mensaje) {
@@ -236,5 +201,12 @@ public class PantallaRegistrarEstado extends JPanel {
         int respuesta = JOptionPane.showConfirmDialog(this, mensaje, titulo,
             JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
         return respuesta == JOptionPane.YES_OPTION;
+    }
+
+    /**
+     * Navega a la pantalla de gestión de lotes.
+     */
+    public void navegarALotes() {
+        navegador.show(contenedor, Constantes.Pantallas.LOTES);
     }
 }

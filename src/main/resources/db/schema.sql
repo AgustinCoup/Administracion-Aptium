@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS autoclaves (
 CREATE TABLE IF NOT EXISTS catalogo_descripciones (
     codigo INT PRIMARY KEY,
     descripcion VARCHAR(255) NOT NULL,
-    volumen INT NOT NULL
+    volumen INT NOT NULL DEFAULT 100
 );
 
 -- Tabla de equipos (referencia a clientes, profesionales e instituciones)
@@ -52,6 +52,22 @@ CREATE TABLE IF NOT EXISTS equipos (
     FOREIGN KEY (nro_institucion) REFERENCES instituciones(id) ON DELETE RESTRICT
 );
 
+-- Tabla de lotes de esterilizacion
+CREATE TABLE IF NOT EXISTS lotes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    id_negocio VARCHAR(20) NOT NULL UNIQUE,
+    anio INT NOT NULL,
+    secuencia INT NOT NULL,
+    autoclave_nombre VARCHAR(150) NOT NULL,
+    capacidad_total INT NOT NULL,
+    capacidad_usada INT NOT NULL,
+    fecha_inicio TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_fin TIMESTAMP NULL,
+    INDEX idx_lotes_autoclave (autoclave_nombre),
+    INDEX idx_lotes_anio_secuencia (anio, secuencia),
+    FOREIGN KEY (autoclave_nombre) REFERENCES autoclaves(nombre) ON DELETE RESTRICT
+);
+
 -- Tabla de materiales de equipos (lotes por estado)
 CREATE TABLE IF NOT EXISTS equipo_materiales (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -60,9 +76,12 @@ CREATE TABLE IF NOT EXISTS equipo_materiales (
     descripcion_copia VARCHAR(255),
     cantidad INT,
     estado VARCHAR(50) DEFAULT 'Nuevo',
+    lote_id INT,
     INDEX idx_equipo_material_equipo (equipo_id),
     INDEX idx_equipo_material_estado (equipo_id, codigo_catalogo, estado),
-    FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE
+    INDEX idx_equipo_material_lote (lote_id),
+    FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE,
+    FOREIGN KEY (lote_id) REFERENCES lotes(id) ON DELETE SET NULL
 );
 
 -- Tabla de movimientos de materiales (trazabilidad)

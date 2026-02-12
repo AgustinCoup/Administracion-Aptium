@@ -64,6 +64,36 @@ public class CatalogoService {
     }
 
     /**
+     * Obtiene el volumen de un material específico.
+     *
+     * @param codigo Código del material
+     * @return Volumen del material, null si no existe
+     */
+    public Integer obtenerVolumen(int codigo) {
+        try {
+            return catalogoDAO.obtenerVolumen(codigo);
+        } catch (Exception e) {
+            log.error("Error al obtener volumen del material: {}", codigo, e);
+            return null;
+        }
+    }
+
+    /**
+     * Obtiene todos los volúmenes del catálogo de materiales.
+     * Mapea código de material → volumen.
+     *
+     * @return Mapa completo de volúmenes
+     */
+    public Map<Integer, Integer> obtenerVolumenes() {
+        try {
+            return catalogoDAO.obtenerTodosLosVolumenes();
+        } catch (Exception e) {
+            log.error("Error al obtener volúmenes del catálogo", e);
+            return Map.of();
+        }
+    }
+
+    /**
      * Guarda una nueva descripción en el catálogo.
      * 
      * @param codigo Código del material

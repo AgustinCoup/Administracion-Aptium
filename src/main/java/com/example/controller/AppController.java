@@ -9,6 +9,7 @@ import com.example.controller.listeners.OnEquipoGuardadoListener;
 import com.example.controller.listeners.OnEstadosActualizadosListener;
 import com.example.model.AppModel;
 import com.example.view.PantallaPrincipal;
+import com.example.controller.LotesController;
 
 public class AppController {
 
@@ -49,12 +50,20 @@ public class AppController {
                 model,
                 null
             );
+
+            // Controller para PantallaLotes - sin callback inicialmente
+            LotesController lotesController = new LotesController(
+                vista.getPantallaLotes(),
+                model,
+                null
+            );
             
             // Callback maestro que mantiene ambas pantallas actualizadas
             Runnable refrescarPantallas = () -> {
                 cdeViewController.cargarDatos();
                 registrarEstadoController.cargarEquipos();
                 equiposParaEntregarController.cargarDatos();
+                lotesController.cargarDatos();
             };
             
             OnEstadosActualizadosListener refrescarPantallasEstados = refrescarPantallas::run;
@@ -65,6 +74,9 @@ public class AppController {
             
             // Asignar el callback al EquiposParaEntregarController (después de su construcción)
             equiposParaEntregarController.setOnEstadosActualizados(refrescarPantallasEstados);
+
+            // Asignar el callback al LotesController (después de su construcción)
+            lotesController.setOnEstadosActualizados(refrescarPantallasEstados);
             
             // Crear controladores específicos para cada panel
             new OrthopediaInputController(

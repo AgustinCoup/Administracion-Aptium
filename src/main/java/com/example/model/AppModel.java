@@ -7,12 +7,26 @@ import com.example.service.ClienteService;
 import com.example.service.ProfesionalService;
 import com.example.service.InstitucionService;
 import com.example.service.MaterialService;
+import com.example.service.AutoclaveService;
+import com.example.service.LoteService;
+import com.example.service.IEstadoValidator;
+import com.example.service.EstadoValidatorImpl;
+import com.example.service.IMaterialFilter;
+import com.example.service.MaterialFilterImpl;
+import com.example.service.ICapacidadCalculator;
+import com.example.service.CapacidadCalculatorImpl;
+import com.example.model.AutoclaveDAO;
+import com.example.model.LoteDAO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import com.example.model.Autoclave;
+import com.example.model.Lote;
+import com.example.model.LoteMaterialInfo;
+import com.example.model.LoteMovimiento;
 
 /**
  * Modelo principal de la aplicación - Coordinador de Servicios.
@@ -63,6 +77,34 @@ public class AppModel {
     private MaterialService materialService;
 
     /**
+     * Servicio de gestión de autoclaves.
+     */
+    private AutoclaveService autoclaveService;
+
+    /**
+     * Servicio de gestión de lotes.
+     */
+    private LoteService loteService;
+
+    /**
+     * Servicio para validar reglas de estados.
+     * Interface: permite testing e inyección de dependencias.
+     */
+    private IEstadoValidator estadoValidator;
+
+    /**
+     * Servicio para filtrar colecciones de materiales.
+     * Interface: permite testing y múltiples implementaciones.
+     */
+    private IMaterialFilter materialFilter;
+
+    /**
+     * Servicio para cálculos de capacidad y volumen.
+     * Interface: permite testing de lógica matemática.
+     */
+    private ICapacidadCalculator capacidadCalculator;
+
+    /**
      * Constructor con inyección de dependencias.
      * Todos los servicios deben ser inyectados por App.java
      */
@@ -79,6 +121,13 @@ public class AppModel {
         this.profesionalService = profesionalService;
         this.institucionService = institucionService;
         this.materialService = new MaterialService();
+        this.autoclaveService = new AutoclaveService(new AutoclaveDAO());
+        this.loteService = new LoteService(new LoteDAO());
+        
+        // Inicializar servicios de negocio (sin dependencias externas)
+        this.estadoValidator = new EstadoValidatorImpl();
+        this.capacidadCalculator = new CapacidadCalculatorImpl();
+        this.materialFilter = new MaterialFilterImpl(estadoValidator);
     }
 
     /**
@@ -153,6 +202,38 @@ public class AppModel {
      */
     public String obtenerDescripcionMaterial(int codigo) {
         return catalogoService.obtenerDescripcion(codigo);
+    }
+
+    /**
+     * Obtiene todos los volúmenes del catálogo de materiales.
+     */
+    public Map<Integer, Integer> obtenerVolumenesCatalogo() {
+        return catalogoService.obtenerVolumenes();
+    }
+
+    // ==================== DELEGACIÓN A AUTOCLAVE SERVICE ====================
+
+    public List<Autoclave> obtenerAutoclaves() {
+        return autoclaveService.obtenerTodos();
+    }
+
+    // ==================== DELEGACIÓN A LOTE SERVICE ====================
+
+    public Map<String, Lote> obtenerLotesActivosPorAutoclave() {
+        return loteService.obtenerLotesActivosPorAutoclave();
+    }
+
+    public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
+        return loteService.obtenerMaterialesPorLote(loteId);
+    }
+
+    public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
+                           List<LoteMovimiento> movimientos) {
+        return loteService.lanzarLote(autoclaveNombre, capacidadTotal, capacidadUsada, movimientos);
+    }
+
+    public boolean finalizarLote(int loteId) {
+        return loteService.finalizarLote(loteId);
     }
 
     // ==================== DELEGACIÓN A CLIENTE SERVICE ====================
@@ -315,5 +396,37 @@ public class AppModel {
      */
     public InstitucionService getInstitucionService() {
         return institucionService;
+    }
+
+    // ==================== SERVICIOS DE LÓGICA DE NEGOCIO ====================
+
+    /**
+     * Proporciona acceso al validador de estados.
+     * Valida transiciones de estado según reglas de flujo.
+     * 
+     * @return Validador de estados
+     */
+    public IEstadoValidator getEstadoValidator() {
+        return estadoValidator;
+    }
+
+    /**
+     * Proporciona acceso al filtrador de materiales.
+     * Filtra materiales según criterios de negocio.
+     * 
+     * @return Filtrador de materiales
+     */
+    public IMaterialFilter getMaterialFilter() {
+        return materialFilter;
+    }
+
+    /**
+     * Proporciona acceso al calculador de capacidad.
+     * Realiza cálculos de volumen y capacidad.
+     * 
+     * @return Calculador de capacidad
+     */
+    public ICapacidadCalculator getCapacidadCalculator() {
+        return capacidadCalculator;
     }
 }
