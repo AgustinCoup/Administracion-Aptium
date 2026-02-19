@@ -3,103 +3,204 @@ package com.example.service;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
+import com.example.exception.DatabaseException;
 import com.example.exception.ValidationException;
 import com.example.model.Equipo;
 import com.example.model.EquipoDAO;
-import org.junit.Before;
-import org.junit.Test;
+import com.example.model.Material;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Tests unitarios para EquipoService usando Mockito.
- * 
- * DEMUESTRA LAS VENTAJAS DE DEPENDENCY INJECTION:
- * - No necesitamos base de datos real
- * - Tests rápidos (sin I/O)
- * - Control total sobre el comportamiento del DAO
- * - Tests aislados y predecibles
+ * Tests para EquipoService.
+ * Usa Mockito para simular el DAO.
  */
 public class EquipoServiceTest {
     
-    private EquipoService service;
-    private EquipoDAO mockDAO;
+    @Mock
+    private EquipoDAO equipoDAO;
     
-    /**
-     * Setup ejecutado antes de cada test.
-     * Crea un mock del DAO y lo inyecta en el Service.
-     * 
-     * ESTO ES POSIBLE GRACIAS A DEPENDENCY INJECTION.
-     */
+    private EquipoService equipoService;
+    
     @Before
     public void setUp() {
-        // Crear mock del DAO (sin tocar la base de datos)
-        mockDAO = mock(EquipoDAO.class);
-        
-        // Inyectar el mock en el service
-        service = new EquipoService(mockDAO);
+        MockitoAnnotations.openMocks(this);
+        equipoService = new EquipoService(equipoDAO);
     }
     
     /**
-     * Test: guardar equipo válido debe retornar true.
+     * Test: Constructor con DAO null debe lanzar excepción.
      */
-    @Test
-    public void guardarEquipo_EquipoValido_RetornaTrue() {
-        // Arrange: Preparar datos
-        Equipo equipo = new Equipo();
-        equipo.setClienteNombre("Cliente Test");
-        equipo.agregarMaterial(new com.example.model.Material(400, "Tornillera", 1));
-        
-        // Configurar comportamiento del mock
-        when(mockDAO.guardarEquipo(equipo)).thenReturn(true);
-        
-        // Act: Ejecutar
-        boolean resultado = service.guardarEquipo(equipo);
-        
-        // Assert: Verificar
-        assertTrue("Debería retornar true para equipo válido", resultado);
-        verify(mockDAO, times(1)).guardarEquipo(equipo);
+    @Test(expected = IllegalArgumentException.class)
+    public void constructor_DAONull_LanzaExcepcion() {
+        new EquipoService(null);
     }
     
     /**
-     * Test: guardar equipo nulo debe lanzar ValidationException.
+     * Test: guardarEquipo con equipo null debe lanzar ValidationException.
      */
     @Test(expected = ValidationException.class)
-    public void guardarEquipo_EquipoNulo_LanzaValidationException() {
-        // Act & Assert
-        service.guardarEquipo(null);
+    public void guardarEquipo_EquipoNull_LanzaValidationException() {
+        equipoService.guardarEquipo(null);
     }
     
     /**
-     * Test: guardar equipo sin materiales debe lanzar ValidationException.
+     * Test: guardarEquipo sin materiales debe lanzar ValidationException.
      */
     @Test(expected = ValidationException.class)
     public void guardarEquipo_SinMateriales_LanzaValidationException() {
-        // Arrange
         Equipo equipo = new Equipo();
         equipo.setClienteNombre("Cliente Test");
-        // NO agregamos materiales
         
-        // Act & Assert
-        service.guardarEquipo(equipo);
+        equipoService.guardarEquipo(equipo);
     }
     
     /**
-     * Test: obtener equipo existente retorna el equipo.
+     * Test: guardarEquipo sin nombre de cliente debe lanzar ValidationException.
+     */
+    @Test(expected = ValidationException.class)
+    public void guardarEquipo_SinNombreCliente_LanzaValidationException() {
+        Equipo equipo = new Equipo();
+        equipo.agregarMaterial(new Material(400, "Material Test", 2));
+        
+        equipoService.guardarEquipo(equipo);
+    }
+    
+    /**
+     * Test: guardarEquipo válido debe delegar al DAO.
      */
     @Test
-    public void obtenerPorId_EquipoExiste_RetornaEquipo() {
-        // Arrange
-        Equipo equipoEsperado = new Equipo();
-        equipoEsperado.setId(1);
-        equipoEsperado.setClienteNombre("Cliente Test");
+    public void guardarEquipo_EquipoValido_DelgaAlDAO() {
+        Equipo equipo = new Equipo();
+        equipo.setClienteNombre("Cliente Test");
+        equipo.agregarMaterial(new Material(400, "Material Test", 2));
         
-        when(mockDAO.obtenerPorId("1")).thenReturn(equipoEsperado);
+        when(equipoDAO.guardarEquipo(any(Equipo.class))).thenReturn(true);
         
-        // Act
-        Equipo resultado = service.obtenerPorId("1");
+        boolean resultado = equipoService.guardarEquipo(equipo);
         
-        // Assert
-        assertNotNull("No debería ser nulo", resultado);
-        assertEquals("IDs deben coincidir", Integer.valueOf(1), resultado.getId());
-        assertEquals("Nombres deben coincidir", "Cliente Test", resultado.getClienteNombre());
+        assertTrue("Debe retornar true", resultado);
+        verify(equipoDAO, times(1)).guardarEquipo(equipo);
+    }
+    
+    /**
+     * Test: guardarEquipo que falla en el DAO debe lanzar DatabaseException.
+     */
+    @Test(expected = DatabaseException.class)
+    public void guardarEquipo_ErrorEnDAO_LanzaDatabaseException() {
+        Equipo equipo = new Equipo();
+        equipo.setClienteNombre("Cliente Test");
+        equipo.agregarMaterial(new Material(400, "Material Test", 2));
+        
+        when(equipoDAO.guardarEquipo(any(Equipo.class)))
+            .thenThrow(new DatabaseException("Error en BD"));
+        
+        equipoService.guardarEquipo(equipo);
+    }
+    
+    /**
+     * Test: obtenerTodos debe delegar al DAO.
+     */
+    @Test
+    public void obtenerTodos_DelgaAlDAO() {
+        List<Equipo> equipos = new ArrayList<>();
+        equipos.add(new Equipo());
+        equipos.add(new Equipo());
+        
+        when(equipoDAO.obtenerTodos()).thenReturn(equipos);
+        
+        List<Equipo> resultado = equipoService.obtenerTodos();
+        
+        assertEquals("Debe retornar 2 equipos", 2, resultado.size());
+        verify(equipoDAO, times(1)).obtenerTodos();
+    }
+    
+    /**
+     * Test: obtenerTodos con error debe retornar lista vacía.
+     */
+    @Test
+    public void obtenerTodos_ErrorEnDAO_RetornaListaVacia() {
+        when(equipoDAO.obtenerTodos()).thenThrow(new RuntimeException("Error"));
+        
+        List<Equipo> resultado = equipoService.obtenerTodos();
+        
+        assertNotNull("No debe retornar null", resultado);
+        assertTrue("Debe retornar lista vacía", resultado.isEmpty());
+    }
+    
+    /**
+     * Test: obtenerPorId debe delegar al DAO.
+     */
+    @Test
+    public void obtenerPorId_IdValido_DelgaAlDAO() {
+        Equipo equipo = new Equipo();
+        equipo.setId(1);
+        
+        when(equipoDAO.obtenerPorId("1")).thenReturn(equipo);
+        
+        Equipo resultado = equipoService.obtenerPorId("1");
+        
+        assertNotNull("Debe retornar el equipo", resultado);
+        assertEquals("El ID debe coincidir", Integer.valueOf(1), resultado.getId());
+        verify(equipoDAO, times(1)).obtenerPorId("1");
+    }
+    
+    /**
+     * Test: actualizar con equipo válido debe delegar al DAO.
+     */
+    @Test
+    public void actualizar_EquipoValido_DelgaAlDAO() {
+        Equipo equipo = new Equipo();
+        equipo.setId(1);
+        
+        when(equipoDAO.actualizar(any(Equipo.class))).thenReturn(true);
+        
+        boolean resultado = equipoService.actualizar(equipo);
+        
+        assertTrue("Debe retornar true", resultado);
+        verify(equipoDAO, times(1)).actualizar(equipo);
+    }
+    
+    /**
+     * Test: actualizar con equipo null debe retornar false.
+     */
+    @Test
+    public void actualizar_EquipoNull_RetornaFalse() {
+        boolean resultado = equipoService.actualizar(null);
+        
+        assertFalse("Debe retornar false", resultado);
+        verify(equipoDAO, never()).actualizar(any(Equipo.class));
+    }
+    
+    /**
+     * Test: actualizar con equipo sin ID debe retornar false.
+     */
+    @Test
+    public void actualizar_EquipoSinId_RetornaFalse() {
+        Equipo equipo = new Equipo();
+        
+        boolean result = equipoService.actualizar(equipo);
+        
+        assertFalse("Debe retornar false", result);
+        verify(equipoDAO, never()).actualizar(any(Equipo.class));
+    }
+    
+    /**
+     * Test: contar debe delegar al DAO.
+     */
+    @Test
+    public void contar_DelgaAlDAO() {
+        when(equipoDAO.contar()).thenReturn(10L);
+        
+        long resultado = equipoService.contar();
+        
+        assertEquals("Debe retornar 10", 10L, resultado);
+        verify(equipoDAO, times(1)).contar();
     }
 }

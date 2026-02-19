@@ -100,7 +100,7 @@ public class PanelLotesContenido extends JPanel {
         tablaAutoclaves = new JTable(modeloAutoclaves);
         tablaAutoclaves.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         TableStyler.applyStandard(tablaAutoclaves);
-        TableStyler.centerColumns(tablaAutoclaves, 1);
+        TableStyler.centerColumns(tablaAutoclaves, 1, 2);
 
         JScrollPane scrollAutoclaves = new JScrollPane(tablaAutoclaves);
         lateral.add(scrollAutoclaves, BorderLayout.CENTER);

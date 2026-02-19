@@ -9,7 +9,7 @@ import java.util.List;
  */
 public class AutoclaveTableModel extends AbstractTableModel {
     
-    private final String[] columnas = {"Nombre", "Capacidad"};
+    private final String[] columnas = {"Nombre", "Estado", "Capacidad"};
     private List<AutoclaveItem> autoclaves = new ArrayList<>();
 
     @Override
@@ -32,14 +32,15 @@ public class AutoclaveTableModel extends AbstractTableModel {
         AutoclaveItem item = autoclaves.get(rowIndex);
         switch (columnIndex) {
             case 0: return item.getNombre();
-            case 1: return item.getCapacidad();
+            case 1: return item.isOcupado() ? "Ocupado" : "Libre";
+            case 2: return item.getCapacidad();
             default: return null;
         }
     }
 
     @Override
     public Class<?> getColumnClass(int columnIndex) {
-        if (columnIndex == 1) {
+        if (columnIndex == 2) {
             return Integer.class;
         }
         return String.class;

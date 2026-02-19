@@ -20,8 +20,6 @@ import com.example.view.helpers.PanelLotesContenido;
 import javax.swing.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
-import java.awt.datatransfer.UnsupportedFlavorException;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -40,11 +38,20 @@ public class LotesController {
     private List<MaterialLoteItem> materialesDisponibles = new ArrayList<>();
     private Map<Integer, Integer> volumenesCatalogo = new HashMap<>();
     private AutoclaveItem autoclaveSeleccionado;
-
-    private static final DataFlavor MATERIAL_FLAVOR = new DataFlavor(
-        DataFlavor.javaJVMLocalObjectMimeType + ";class=" + MaterialLoteItem.class.getName(),
-        "MaterialLoteItem"
-    );
+    
+    // DataFlavor personalizado para transferir MaterialLoteItem en la misma JVM
+    public static final DataFlavor MATERIAL_LOTE_FLAVOR;
+    
+    static {
+        DataFlavor flavor = null;
+        try {
+            flavor = new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType + 
+                ";class=\"" + MaterialLoteItem.class.getName() + "\"");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        MATERIAL_LOTE_FLAVOR = flavor;
+    }
 
     /**
      * Constructor para PantallaLotes (pantalla completa, sin contexto de equipo).
@@ -80,7 +87,30 @@ public class LotesController {
         panel.setOnFinalizar(e -> finalizarLote());
         panel.setOnQuitar(e -> quitarMaterial());
 
-        configurarDnD();
+        // Configurar DnD después de que el componente esté visible y con tamaño
+        panel.addComponentListener(new java.awt.event.ComponentAdapter() {
+            private boolean dndConfigurado = false;
+            
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                if (!dndConfigurado) {
+                    SwingUtilities.invokeLater(() -> {
+                        configurarDnD();
+                        dndConfigurado = true;
+                    });
+                }
+            }
+            
+            @Override
+            public void componentShown(java.awt.event.ComponentEvent e) {
+                if (!dndConfigurado) {
+                    SwingUtilities.invokeLater(() -> {
+                        configurarDnD();
+                        dndConfigurado = true;
+                    });
+                }
+            }
+        });
     }
 
     public void cargarDatos() {
@@ -244,89 +274,134 @@ public class LotesController {
         JTable tablaDisponibles = panel.getTablaDisponibles();
         JTable tablaAutoclave = panel.getTablaAutoclave();
 
-        // Tabla Disponibles: Origen para arrastrar a autoclave, Destino para returnar desde autoclave
-        tablaDisponibles.setDragEnabled(true);
-        tablaDisponibles.setDropMode(DropMode.ON);
-        tablaDisponibles.setTransferHandler(new TransferHandler() {
+        if (tablaDisponibles == null || tablaAutoclave == null || MATERIAL_LOTE_FLAVOR == null) {
+            return;
+        }
+
+        // Tabla Disponibles: ORIGEN para drag (copiar a autoclave)
+        TransferHandler handlerDisponibles = new TransferHandler() {
+            @Override
+            public int getSourceActions(JComponent c) {
+                return COPY;
+            }
+
             @Override
             protected Transferable createTransferable(JComponent c) {
                 MaterialLoteItem item = panel.getMaterialDisponibleSeleccionado();
                 if (item == null) {
                     return null;
                 }
-                return new MaterialLoteTransferable(item, MATERIAL_FLAVOR);
-            }
-
-            @Override
-            public int getSourceActions(JComponent c) {
-                return COPY;
+                return new MaterialLoteTransferable(item, MATERIAL_LOTE_FLAVOR);
             }
 
             @Override
             public boolean canImport(TransferSupport support) {
-                return support.isDataFlavorSupported(MATERIAL_FLAVOR);
+                if (!support.isDrop()) {
+                    return false;
+                }
+                boolean hasCorrectFlavor = support.isDataFlavorSupported(MATERIAL_LOTE_FLAVOR);
+                support.setShowDropLocation(hasCorrectFlavor);
+                return hasCorrectFlavor;
             }
 
             @Override
             public boolean importData(TransferSupport support) {
-                // Esta tabla recibe materials que se están sacando de autoclass
                 if (!canImport(support)) {
                     return false;
                 }
                 try {
-                    Transferable t = support.getTransferable();
-                    MaterialLoteItem item = (MaterialLoteItem) t.getTransferData(MATERIAL_FLAVOR);
+                    MaterialLoteItem item = (MaterialLoteItem) support.getTransferable().getTransferData(MATERIAL_LOTE_FLAVOR);
                     quitarMaterialDePendientes(item);
+                    cargarDatos();
                     return true;
-                } catch (UnsupportedFlavorException | IOException e) {
+                } catch (Exception e) {
+                    e.printStackTrace();
                     return false;
                 }
             }
-        });
+        };
+        
+        tablaDisponibles.setDragEnabled(true);
+        tablaDisponibles.setDropMode(DropMode.ON);
+        tablaDisponibles.setFillsViewportHeight(true);
+        tablaDisponibles.setTransferHandler(handlerDisponibles);
 
-        // Tabla Autoclave: Destino para agregar materiales, Origen para removerlos
-        tablaAutoclave.setDragEnabled(true);
-        tablaAutoclave.setDropMode(DropMode.ON);
-        tablaAutoclave.setTransferHandler(new TransferHandler() {
+        // Tabla Autoclave: DESTINO para drop (recibir de disponibles o devolver a disponibles)
+        TransferHandler handlerAutoclave = new TransferHandler() {
+            @Override
+            public int getSourceActions(JComponent c) {
+                return MOVE;
+            }
+
             @Override
             protected Transferable createTransferable(JComponent c) {
                 MaterialLoteItem item = panel.getMaterialAutoclaveSeleccionado();
                 if (item == null) {
                     return null;
                 }
-                return new MaterialLoteTransferable(item, MATERIAL_FLAVOR);
+                return new MaterialLoteTransferable(item, MATERIAL_LOTE_FLAVOR);
             }
-
+            
             @Override
-            public int getSourceActions(JComponent c) {
-                return COPY;
+            protected void exportDone(JComponent source, Transferable data, int action) {
+                if (action == MOVE) {
+                    SwingUtilities.invokeLater(() -> cargarDatos());
+                }
             }
 
             @Override
             public boolean canImport(TransferSupport support) {
-                return support.isDataFlavorSupported(MATERIAL_FLAVOR);
+                if (!support.isDrop()) {
+                    return false;
+                }
+                
+                if (!support.isDataFlavorSupported(MATERIAL_LOTE_FLAVOR)) {
+                    return false;
+                }
+                
+                if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()) {
+                    return false;
+                }
+                
+                support.setShowDropLocation(true);
+                return true;
             }
 
             @Override
             public boolean importData(TransferSupport support) {
-                // Esta tabla recibe materials nuevos de la tabla disponibles
                 if (!canImport(support)) {
                     return false;
                 }
-                if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()) {
-                    panel.mostrarAdvertencia("Debe seleccionar un autoclave libre.");
+
+                if (autoclaveSeleccionado == null) {
+                    SwingUtilities.invokeLater(() -> 
+                        panel.mostrarAdvertencia("Debe seleccionar un autoclave primero."));
                     return false;
                 }
+
+                if (autoclaveSeleccionado.isOcupado()) {
+                    SwingUtilities.invokeLater(() -> 
+                        panel.mostrarAdvertencia("Este autoclave ya tiene un lote en progreso."));
+                    return false;
+                }
+
                 try {
-                    Transferable t = support.getTransferable();
-                    MaterialLoteItem item = (MaterialLoteItem) t.getTransferData(MATERIAL_FLAVOR);
-                    agregarMaterial(item);
+                    MaterialLoteItem item = (MaterialLoteItem) support.getTransferable().getTransferData(MATERIAL_LOTE_FLAVOR);
+                    SwingUtilities.invokeLater(() -> agregarMaterial(item));
                     return true;
-                } catch (UnsupportedFlavorException | IOException e) {
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    SwingUtilities.invokeLater(() ->
+                        panel.mostrarAdvertencia("Error: " + e.getMessage()));
                     return false;
                 }
             }
-        });
+        };
+        
+        tablaAutoclave.setDragEnabled(true);
+        tablaAutoclave.setDropMode(DropMode.ON);
+        tablaAutoclave.setFillsViewportHeight(true);
+        tablaAutoclave.setTransferHandler(handlerAutoclave);
     }
 
     private void agregarMaterial(MaterialLoteItem item) {
@@ -334,7 +409,20 @@ public class LotesController {
             return;
         }
 
-        Integer cantidadElegida = CantidadDialogHelper.pedirCantidad(panel, item.getDescripcion(), item.getCantidad());
+        Integer cantidadElegida = CantidadDialogHelper.pedirCantidad(
+            panel, 
+            item.getDescripcion(), 
+            item.getCantidad(),
+            (chkTodos, spinner) -> chkTodos.addActionListener(e -> {
+                if (chkTodos.isSelected()) {
+                    spinner.setValue(item.getCantidad());
+                    spinner.setEnabled(false);
+                } else {
+                    spinner.setEnabled(true);
+                }
+            })
+        );
+        
         if (cantidadElegida == null) {
             return;
         }
@@ -445,14 +533,29 @@ public class LotesController {
 
         int capacidadUsada = calcularCapacidad(pendientes);
         double porcentaje = autoclaveSeleccionado.getCapacidad() == 0 ? 0 : (double) capacidadUsada / autoclaveSeleccionado.getCapacidad();
+        
+        // Construir mensaje de confirmación con lista de materiales
+        StringBuilder mensaje = new StringBuilder();
+        mensaje.append("Se lanzará el lote con los siguientes materiales:\n\n");
+        for (MaterialLoteItem item : pendientes) {
+            mensaje.append(String.format("• %s (x%d)\n", item.getDescripcion(), item.getCantidad()));
+        }
+        mensaje.append(String.format("\nCapacidad utilizada: %d/%d (%.0f%%)\n", 
+            capacidadUsada, autoclaveSeleccionado.getCapacidad(), porcentaje * 100));
+        
         if (porcentaje < 0.8) {
-            boolean confirmar = panel.confirmar(
-                "El autoclave tiene menos del 80% de capacidad cargada. ¿Desea continuar?",
-                Constantes.Mensajes.TITULO_CONFIRMAR_CAMBIOS
-            );
-            if (!confirmar) {
-                return;
-            }
+            mensaje.append("\n⚠ El autoclave tiene menos del 80% de capacidad.");
+        }
+        
+        mensaje.append("\n¿Desea continuar?");
+        
+        boolean confirmar = panel.confirmar(
+            mensaje.toString(),
+            "Confirmar Lanzamiento de Lote"
+        );
+        
+        if (!confirmar) {
+            return;
         }
 
         List<LoteMovimiento> movimientos = new ArrayList<>();
