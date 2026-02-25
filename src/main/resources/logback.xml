@@ -1,52 +1,120 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+    <!-- 
+        CONFIGURACIÓN DE LOGGING PARA PRODUCCIÓN
+        
+        ORIENTACIÓN:
+        - DEV: Más detallado (DEBUG), salida en consola
+        - PROD: Solo crítico (INFO), salida en archivos con rotación
+        
+        UBICACIÓN DE LOGS:
+        - Linux:   /var/log/aptium/
+        - Windows: C:\Logs\Aptium\
+        - Dev:     ./logs/ (directorio local)
+        
+        Variable de entorno para cambiar nivel (opcional):
+        - JAVA_OPTS="-Dlogback.level=DEBUG"
+    -->
+    
+    <!-- Leer nivel de log desde variable de entorno o usar INFO como default -->
+    <property name="LOG_LEVEL" value="${logback.level:-INFO}"/>
+    
+    <!-- Detectar sistema operativo y definir directorio de logs -->
+    <!-- Definir directorio de logs para Windows y Linux manualmente -->
+    <property name="LOG_DIR" value="logs"/>
+    <!-- Si necesitas cambiarlo para Linux, reemplaza por /var/log/aptium -->
+    
+    <!-- Formato de logs con información crítica -->
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%-15thread] %-5level %-40logger{36} - %msg%n"/>
+    <property name="LOG_PATTERN_ERROR" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%-15thread] %-5level %-40logger{36} - %msg%n%ex"/>
+    
+    <!-- ===== APPENDER CONSOLA (Solo INFO para no saturar) ===== -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
         </encoder>
+        <!-- Mostrar solo WARN y ERROR en consola en PROD -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>WARN</level>
+        </filter>
     </appender>
-
+    
+    <!-- ===== APPENDER ARCHIVO - LOGS GENERALES ===== -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>app_logs.txt</file>
+        <!-- Crear directorio si no existe -->
+        <file>${LOG_DIR}/app.log</file>
         <append>true</append>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/app_logs.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+        
+        <!-- Rotación: por día y por tamaño -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/app.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!-- Guardar máximo 30 días de logs -->
             <maxHistory>30</maxHistory>
+            <!-- Máximo 1GB de logs totales -->
             <totalSizeCap>1GB</totalSizeCap>
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>10MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
+            <!-- Rotar cuando alcance 20MB -->
+            <maxFileSize>20MB</maxFileSize>
         </rollingPolicy>
+        
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
         </encoder>
+        
+        <!-- Nivel de log en archivos -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
     </appender>
-
+    
+    <!-- ===== APPENDER ARCHIVO - SOLO ERRORES ===== -->
     <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>error_logs.txt</file>
+        <!-- Crear directorio si no existe -->
+        <file>${LOG_DIR}/error.log</file>
         <append>true</append>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/error_logs.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
-            <maxHistory>60</maxHistory>
-            <totalSizeCap>1GB</totalSizeCap>
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>10MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
+        
+        <!-- Rotación: por día y por tamaño -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!-- Guardar máximo 90 días de errores (más tiempo que logs generales) -->
+            <maxHistory>90</maxHistory>
+            <!-- Máximo 2GB de errores -->
+            <totalSizeCap>2GB</totalSizeCap>
+            <!-- Rotar cuando alcance 30MB -->
+            <maxFileSize>30MB</maxFileSize>
         </rollingPolicy>
+        
+        <!-- Con stack trace para debugging -->
+        <encoder>
+            <pattern>${LOG_PATTERN_ERROR}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        
+        <!-- SOLO ERROR y FATAL -->
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>ERROR</level>
         </filter>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
     </appender>
-
-    <!-- Evitar exceso de ruido de Hikari en consola -->
-    <logger name="com.zaxxer.hikari" level="INFO" />
-
+    
+    <!-- ===== LOGGERS ESPECÍFICOS ===== -->
+    
+    <!-- HikariCP: muy verbose en DEBUG, mantener en INFO -->
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+    
+    <!-- MySQL Driver: muy verbose, mantener en WARN -->
+    <logger name="com.mysql.cj.jdbc" level="WARN"/>
+    
+    <!-- Nuestra aplicación: mostrar TODO (INFO en PROD, DEBUG en DEV) -->
+    <logger name="com.example" level="${LOG_LEVEL}"/>
+    
+    <!-- ===== ROOT LOGGER ===== -->
     <root level="INFO">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="FILE" />
-        <appender-ref ref="ERROR_FILE" />
+        <!-- En PROD: consola sólo WARN+, archivos INFO+ -->
+        <!-- En DEV: consola TODO -->
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
     </root>
+    
 </configuration>

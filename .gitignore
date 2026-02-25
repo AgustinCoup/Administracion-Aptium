@@ -1,7 +1,43 @@
 target/
 .vscode/
+.idea/
+*.iml
+
+# CONFIGURACIÓN - NUNCA COMMITELAR CON DATOS REALES
 config.properties
+*.properties~
+*.properties.bak
+.env
+.env.local
+.env.*.local
+
+# LOGS
 logs/
 *.log
 app_logs.txt
 error_logs.txt
+
+# CREDENCIALES
+credentials.txt
+secrets/
+*.pem
+*.key
+
+# SISTEMA OPERATIVO
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# COMPILACIÓN
+*.class
+*.jar
+*.war
+*.ear
+
+# IDE
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
