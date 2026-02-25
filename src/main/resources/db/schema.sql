@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS catalogo_descripciones (
 CREATE TABLE IF NOT EXISTS equipos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nro_cliente INT NOT NULL,
-    cliente_nombre VARCHAR(100),
+    cliente_nombre VARCHAR(200),
     nro_profesional INT,
     paciente VARCHAR(150),
     nro_institucion INT NOT NULL,
