@@ -142,12 +142,15 @@ public class EquiposParaEntregarController {
             agrupado.agregar(material.getCantidad(), entregado);
         }
         
-        // Convertir a items para la tabla
+        // Convertir a items para la tabla, omitiendo los que ya fueron entregados en su totalidad
         for (MaterialAgrupado agrupado : agrupados.values()) {
+            if (agrupado.todosEntregados()) {
+                continue;
+            }
             MaterialEntregaItem item = new MaterialEntregaItem(
                 agrupado.getDescripcion(),
-                agrupado.getCantidadTotal(),
-                agrupado.todosEntregados()
+                agrupado.getCantidadTotal() - agrupado.getCantidadEntregada(),
+                false
             );
             materiales.add(item);
         }
@@ -231,5 +234,3 @@ public class EquiposParaEntregarController {
     }
 
 }
-
-

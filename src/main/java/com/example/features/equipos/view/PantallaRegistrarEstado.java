@@ -6,6 +6,7 @@ import java.awt.*;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import com.example.common.constants.Constantes;
 import com.example.features.equipos.model.Equipo;
@@ -28,6 +29,7 @@ public class PantallaRegistrarEstado extends JPanel {
     
     private final CardLayout navegador;
     private final JPanel contenedor;
+    private PanelHeader header;
     private PanelEquipoMaterial panelTablas;
     private JButton btnAvanzar;
     private JButton btnGestionarLotes;
@@ -41,7 +43,7 @@ public class PantallaRegistrarEstado extends JPanel {
         setLayout(new BorderLayout());
 
         // Header reutilizable
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
             Constantes.Titulos.REGISTRAR_ESTADO, 
             navegador, 
             contenedor, 
@@ -204,11 +206,23 @@ public class PantallaRegistrarEstado extends JPanel {
     }
 
     /**
+     * Configura un guard en el botón Volver.
+     * Mientras haya cambios pendientes, el usuario verá un diálogo de confirmación
+     * antes de que la navegación se ejecute.
+     *
+     * Debe llamarse desde el controller una vez que éste está inicializado.
+     *
+     * @param hayPendientes  Supplier que retorna true cuando hay cambios sin confirmar
+     * @param mensajeBloqueo Texto del diálogo que verá el usuario
+     */
+    public void setGuardVolver(Supplier<Boolean> hayPendientes, String mensajeBloqueo) {
+        header.setGuardNavegacion(hayPendientes, mensajeBloqueo);
+    }
+
+    /**
      * Navega a la pantalla de gestión de lotes.
      */
     public void navegarALotes() {
         navegador.show(contenedor, Constantes.Pantallas.LOTES);
     }
 }
-
-

@@ -7,6 +7,7 @@ import com.example.infrastructure.db.ConnectionPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.sql.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -321,6 +322,9 @@ public class MaterialDAO {
                 }
             }
 
+            // Unificar materiales con mismo código y estado dentro de la misma transacción
+            unificarMaterialesDuplicados(conn, equipoId);
+
             // Recalcular estado del equipo basado en el material mas atrasado
             String sqlCalcularEstado =
                 "SELECT MIN(CASE " +
@@ -369,6 +373,143 @@ public class MaterialDAO {
                 try { conn.close(); } catch (SQLException e) { log.error("Error al cerrar conexión", e); }
             }
         }
+    }
+
+    /**
+     * Unifica filas de equipo_materiales que tienen el mismo equipo_id, codigo_catalogo y estado.
+     * Esto ocurre cuando una cantidad se divide en sublotes que luego convergen al mismo estado.
+     *
+     * La fila superviviente es la que tiene el movimiento más reciente.
+     * Los movimientos de las filas eliminadas se reasignan al superviviente para preservar historial.
+     *
+     * Debe llamarse dentro de una transacción activa.
+     *
+     * @param conn conexión activa con autoCommit=false
+     * @param equipoId ID del equipo a procesar
+     */
+    private void unificarMaterialesDuplicados(Connection conn, int equipoId) throws SQLException {
+        // Buscar grupos (codigo_catalogo, estado) con más de una fila
+        String sqlGrupos =
+            "SELECT codigo_catalogo, estado, SUM(cantidad) AS cantidad_total " +
+            "FROM equipo_materiales " +
+            "WHERE equipo_id = ? " +
+            "GROUP BY codigo_catalogo, estado " +
+            "HAVING COUNT(*) > 1";
+
+        List<int[]> grupos = new ArrayList<>();   // [codigo, cantidadTotal], estado por separado
+        List<String> estadosGrupos = new ArrayList<>();
+
+        try (PreparedStatement pstmt = conn.prepareStatement(sqlGrupos)) {
+            pstmt.setInt(1, equipoId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    grupos.add(new int[]{ rs.getInt("codigo_catalogo"), rs.getInt("cantidad_total") });
+                    estadosGrupos.add(rs.getString("estado"));
+                }
+            }
+        }
+
+        for (int i = 0; i < grupos.size(); i++) {
+            int codigo        = grupos.get(i)[0];
+            int cantidadTotal = grupos.get(i)[1];
+            String estado     = estadosGrupos.get(i);
+            unificarGrupo(conn, equipoId, codigo, estado, cantidadTotal);
+        }
+    }
+
+    /**
+     * Unifica todas las filas de un grupo (mismo equipo, código y estado) en una sola.
+     *
+     * Criterio de superviviente: la fila con el movimiento más reciente en material_movimientos.
+     * En caso de empate o sin movimientos, se usa el mayor id de equipo_materiales.
+     *
+     * Los material_movimientos de las filas eliminadas se reasignan al superviviente,
+     * preservando el historial completo de trazabilidad.
+     *
+     * @param conn           conexión activa
+     * @param equipoId       ID del equipo
+     * @param codigo         codigo_catalogo del grupo
+     * @param estado         estado del grupo
+     * @param cantidadTotal  suma de cantidades de todas las filas del grupo
+     */
+    private void unificarGrupo(Connection conn, int equipoId, int codigo,
+                                String estado, int cantidadTotal) throws SQLException {
+        // Elegir superviviente: la fila con el movimiento más reciente; si hay empate, el mayor id
+        String sqlSuperviviente =
+            "SELECT em.id " +
+            "FROM equipo_materiales em " +
+            "LEFT JOIN (" +
+            "  SELECT material_id, MAX(fecha) AS ultima_fecha " +
+            "  FROM material_movimientos GROUP BY material_id" +
+            ") mm ON em.id = mm.material_id " +
+            "WHERE em.equipo_id = ? AND em.codigo_catalogo = ? AND em.estado = ? " +
+            "ORDER BY mm.ultima_fecha DESC, em.id DESC " +
+            "LIMIT 1";
+
+        int supervivienteId;
+        try (PreparedStatement pstmt = conn.prepareStatement(sqlSuperviviente)) {
+            pstmt.setInt(1, equipoId);
+            pstmt.setInt(2, codigo);
+            pstmt.setString(3, estado);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (!rs.next()) {
+                    return;  // No debería ocurrir, pero por seguridad
+                }
+                supervivienteId = rs.getInt("id");
+            }
+        }
+
+        // Actualizar la cantidad del superviviente con la suma total del grupo
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "UPDATE equipo_materiales SET cantidad = ? WHERE id = ?")) {
+            pstmt.setInt(1, cantidadTotal);
+            pstmt.setInt(2, supervivienteId);
+            pstmt.executeUpdate();
+        }
+
+        // Obtener IDs de las filas a eliminar (todo el grupo excepto el superviviente)
+        List<Integer> idsAEliminar = new ArrayList<>();
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "SELECT id FROM equipo_materiales " +
+                "WHERE equipo_id = ? AND codigo_catalogo = ? AND estado = ? AND id <> ?")) {
+            pstmt.setInt(1, equipoId);
+            pstmt.setInt(2, codigo);
+            pstmt.setString(3, estado);
+            pstmt.setInt(4, supervivienteId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    idsAEliminar.add(rs.getInt("id"));
+                }
+            }
+        }
+
+        if (idsAEliminar.isEmpty()) {
+            return;
+        }
+
+        // Reasignar los movimientos de las filas eliminadas al superviviente (preserva historial)
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "UPDATE material_movimientos SET material_id = ? WHERE material_id = ?")) {
+            for (int idEliminar : idsAEliminar) {
+                pstmt.setInt(1, supervivienteId);
+                pstmt.setInt(2, idEliminar);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+        }
+
+        // Eliminar las filas duplicadas
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "DELETE FROM equipo_materiales WHERE id = ?")) {
+            for (int idEliminar : idsAEliminar) {
+                pstmt.setInt(1, idEliminar);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+        }
+
+        log.debug("Unificados {} lotes del material código={} estado={} en equipo={} → id superviviente={}",
+            idsAEliminar.size() + 1, codigo, estado, equipoId, supervivienteId);
     }
 
     /**
@@ -496,5 +637,3 @@ public class MaterialDAO {
         }
     }
 }
-
-

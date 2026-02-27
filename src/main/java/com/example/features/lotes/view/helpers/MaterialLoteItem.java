@@ -10,42 +10,29 @@ public class MaterialLoteItem implements Serializable {
     private final String descripcion;
     private int cantidad;
     private final int volumen;
+    private final String clienteNombre;
 
+    /** Constructor legacy — clienteNombre queda vacío. */
     public MaterialLoteItem(int materialId, int equipoId, String descripcion, int cantidad, int volumen) {
+        this(materialId, equipoId, descripcion, cantidad, volumen, "");
+    }
+
+    public MaterialLoteItem(int materialId, int equipoId, String descripcion,
+                            int cantidad, int volumen, String clienteNombre) {
         this.materialId = materialId;
         this.equipoId = equipoId;
         this.descripcion = descripcion;
         this.cantidad = cantidad;
         this.volumen = volumen;
+        this.clienteNombre = clienteNombre != null ? clienteNombre : "";
     }
 
-    public int getMaterialId() {
-        return materialId;
-    }
-
-    public int getEquipoId() {
-        return equipoId;
-    }
-
-    public String getDescripcion() {
-        return descripcion;
-    }
-
-    public int getCantidad() {
-        return cantidad;
-    }
-
-    public void setCantidad(int cantidad) {
-        this.cantidad = cantidad;
-    }
-
-    public int getVolumen() {
-        return volumen;
-    }
-
-    public int getVolumenTotal() {
-        return cantidad * volumen;
-    }
+    public int getMaterialId()      { return materialId; }
+    public int getEquipoId()        { return equipoId; }
+    public String getDescripcion()  { return descripcion; }
+    public int getCantidad()        { return cantidad; }
+    public void setCantidad(int cantidad) { this.cantidad = cantidad; }
+    public int getVolumen()         { return volumen; }
+    public int getVolumenTotal()    { return cantidad * volumen; }
+    public String getClienteNombre(){ return clienteNombre; }
 }
-
-

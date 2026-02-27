@@ -2,6 +2,7 @@ package com.example.features.equipos.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import com.example.common.constants.Constantes;
 
@@ -106,23 +107,89 @@ public class Equipo {
     /**
      * Aplica un movimiento de subcantidad en memoria para previsualizacion.
      * No persiste en BD; solo ajusta el listado actual de materiales.
+     *
+     * Después de aplicar el movimiento, unifica en memoria los materiales que
+     * hayan quedado con el mismo código de catálogo y el mismo estado, de modo
+     * que la vista previa sea consistente con lo que quedará en BD al confirmar.
      */
     public void aplicarMovimientoPreview(Material material, int cantidad, EstadoEquipo estadoDestino) {
         int cantidadActual = material.getCantidad();
+
         if (cantidad >= cantidadActual) {
+            // El lote completo avanza: solo cambia el estado de la fila existente
             material.setEstado(estadoDestino);
+        } else {
+            // Subcantidad: reducir la fila original y crear (o fusionar) en destino
+            material.setCantidad(cantidadActual - cantidad);
+
+            // Buscar si ya existe un lote en destino con el mismo código para fusionar
+            Material existenteEnDestino = buscarMaterialConCodigoYEstado(
+                    material.getCodigo(), estadoDestino, material);
+
+            if (existenteEnDestino != null) {
+                existenteEnDestino.setCantidad(existenteEnDestino.getCantidad() + cantidad);
+            } else {
+                Material nuevoLote = new Material(
+                    null,
+                    material.getCodigo(),
+                    material.getDescripcion(),
+                    cantidad,
+                    estadoDestino
+                );
+                agregarMaterial(nuevoLote);
+            }
+        }
+
+        // Unificar en memoria cualquier duplicado que haya quedado para el estado destino
+        unificarEnMemoria(material.getCodigo(), estadoDestino);
+    }
+
+    /**
+     * Busca el primer Material del equipo con el código y estado indicados,
+     * excluyendo la instancia {@code excluir}.
+     * Usado por aplicarMovimientoPreview para detectar lotes fusionables.
+     */
+    private Material buscarMaterialConCodigoYEstado(int codigo, EstadoEquipo estado, Material excluir) {
+        for (Material m : materiales) {
+            if (m != excluir && m.getCodigo() == codigo && m.getEstado() == estado) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Unifica en la lista en memoria todos los materiales con el código y estado indicados.
+     * Conserva el primero de la lista (superviviente) y suma las cantidades del resto.
+     * Elimina las filas fusionadas.
+     *
+     * Criterio de superviviente: fila con {@code ultimoMovimiento} más reciente;
+     * en caso de empate, la que aparece primero en la lista.
+     */
+    private void unificarEnMemoria(int codigo, EstadoEquipo estado) {
+        List<Material> grupo = materiales.stream()
+            .filter(m -> m.getCodigo() == codigo && m.getEstado() == estado)
+            .collect(Collectors.toList());
+
+        if (grupo.size() <= 1) {
             return;
         }
 
-        material.setCantidad(cantidadActual - cantidad);
-        Material nuevoLote = new Material(
-            null,
-            material.getCodigo(),
-            material.getDescripcion(),
-            cantidad,
-            estadoDestino
-        );
-        agregarMaterial(nuevoLote);
+        // Elegir superviviente: el de ultimoMovimiento más reciente; si null, el primero de la lista
+        Material superviviente = grupo.stream()
+            .filter(m -> m.getUltimoMovimiento() != null)
+            .max((a, b) -> a.getUltimoMovimiento().compareTo(b.getUltimoMovimiento()))
+            .orElse(grupo.get(0));
+
+        int cantidadTotal = grupo.stream().mapToInt(Material::getCantidad).sum();
+        superviviente.setCantidad(cantidadTotal);
+
+        // Eliminar el resto del grupo de la lista del equipo
+        for (Material m : grupo) {
+            if (m != superviviente) {
+                materiales.remove(m);
+            }
+        }
     }
 
     // --- Getters y Setters ---
@@ -161,5 +228,3 @@ public class Equipo {
     public boolean isRequiereEmpaque() { return requiereEmpaque; }
     public void setRequiereEmpaque(boolean requiereEmpaque) { this.requiereEmpaque = requiereEmpaque; }
 }
-
-

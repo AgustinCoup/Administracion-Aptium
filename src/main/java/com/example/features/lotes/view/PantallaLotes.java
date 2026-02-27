@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import com.example.common.constants.Constantes;
 import com.example.features.lotes.view.helpers.AutoclaveItem;
@@ -23,13 +24,14 @@ import com.example.features.lotes.view.helpers.PanelLotesContenido;
  */
 public class PantallaLotes extends JPanel {
     
+    private PanelHeader header;
     private PanelLotesContenido panelContenido;
 
     public PantallaLotes(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
 
         // Header con navegación
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
             Constantes.Titulos.LOTES,
             navegador,
             contenedor,
@@ -132,10 +134,22 @@ public class PantallaLotes extends JPanel {
         return panelContenido.getTablaAutoclave();
     }
 
+    /**
+     * Configura un guard en el botón Volver.
+     * Mientras {@code hayPendientes} retorne true, el usuario verá un diálogo
+     * de confirmación antes de que la navegación se ejecute.
+     *
+     * Debe llamarse desde el controller una vez que éste está inicializado.
+     *
+     * @param hayPendientes  Supplier que retorna true cuando hay materiales cargados sin lanzar
+     * @param mensajeBloqueo Texto del diálogo que verá el usuario
+     */
+    public void setGuardVolver(Supplier<Boolean> hayPendientes, String mensajeBloqueo) {
+        header.setGuardNavegacion(hayPendientes, mensajeBloqueo);
+    }
+
     // Acceso directo al panel para operaciones avanzadas si es necesario
     public PanelLotesContenido getPanelContenido() {
         return panelContenido;
     }
 }
-
-

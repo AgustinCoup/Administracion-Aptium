@@ -58,6 +58,12 @@ public class RegistrarEstadoController {
         panel.setOnCancelar(e -> cancelarCambios());
         panel.setOnConfirmar(e -> confirmarCambios());
         panel.setOnGestionarLotes(e -> panel.navegarALotes());
+
+        // Bloquear navegación si hay cambios sin confirmar
+        panel.setGuardVolver(
+            () -> !cambiosPendientes.isEmpty(),
+            "Tenés cambios sin confirmar. Si volvés ahora, se perderán.\n¿Querés salir de todas formas?"
+        );
     }
 
     /**
@@ -257,5 +263,3 @@ public class RegistrarEstadoController {
     }
 
 }
-
-
