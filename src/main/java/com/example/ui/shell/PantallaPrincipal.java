@@ -9,6 +9,7 @@ import com.example.features.equipos.view.PantallaRegistrarEstado;
 import com.example.features.equipos.view.PantallaVerCDEv1;
 import com.example.features.equipos.view.PantallaVerCDEv2;
 import com.example.features.lotes.view.PantallaLotes;
+import com.example.features.lotes.view.PantallaVerLotes;
 
 public class PantallaPrincipal extends JFrame {
     private CardLayout navegador = new CardLayout();
@@ -18,6 +19,7 @@ public class PantallaPrincipal extends JFrame {
     private PantallaRegistrarEstado registrarEstado;
     private PantallaEquiposParaEntregar equiposParaEntregar;
     private PantallaLotes pantallaLotes;
+    private PantallaVerLotes pantallaVerLotes;
 
     public PantallaPrincipal() {
         setTitle(Constantes.Titulos.APP);
@@ -36,6 +38,7 @@ public class PantallaPrincipal extends JFrame {
         registrarEstado = new PantallaRegistrarEstado(navegador, contenedor);
         equiposParaEntregar = new PantallaEquiposParaEntregar(navegador, contenedor);
         pantallaLotes = new PantallaLotes(navegador, contenedor);
+        pantallaVerLotes = new PantallaVerLotes(navegador, contenedor);
 
         // Los registramos en el mazo de cartas con un nombre único
         contenedor.add(menu, Constantes.Pantallas.MENU_PRINCIPAL);
@@ -47,6 +50,7 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(registrarEstado, Constantes.Pantallas.REGISTRAR_ESTADO);
         contenedor.add(equiposParaEntregar, Constantes.Pantallas.EQUIPOS_PARA_ENTREGAR);
         contenedor.add(pantallaLotes, Constantes.Pantallas.LOTES);
+        contenedor.add(pantallaVerLotes, Constantes.Pantallas.VER_LOTES);
 
         add(contenedor);
     }
@@ -69,6 +73,10 @@ public class PantallaPrincipal extends JFrame {
 
     public PantallaLotes getPantallaLotes() {
         return pantallaLotes;
+    }
+
+    public PantallaVerLotes getPantallaVerLotes() {
+        return pantallaVerLotes;
     }
     
     public CardLayout getNavegador() {

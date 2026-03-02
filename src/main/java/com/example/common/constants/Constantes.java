@@ -27,6 +27,7 @@ public final class Constantes {
         public static final String REGISTRAR_ESTADO = "REGISTRAR_ESTADO";
         public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS_PARA_ENTREGAR";
         public static final String LOTES = "LOTES";
+        public static final String VER_LOTES = "VER_LOTES";
         
         private Pantallas() {}
     }
@@ -45,6 +46,7 @@ public final class Constantes {
         public static final String FORMATO_PROFESIONAL_INVALIDO = "El Profesional debe seguir el formato: Apellido Nombre";
         public static final String FORMATO_PACIENTE_INVALIDO = "El Paciente debe seguir el formato: Apellido Nombre";
         public static final String DEBE_AGREGAR_MATERIAL = "Debe agregar al menos un material al equipo.";
+        public static final String CODIGO_MATERIAL_DESCONOCIDO = "Los siguientes códigos de material no existen en el catálogo: %s";
         
         // Mensajes de error
         public static final String ERROR_CONEXION_BD = "No se pudo conectar con el servidor de base de datos.\n" +
@@ -80,6 +82,8 @@ public final class Constantes {
         public static final String CAMBIOS_GUARDADOS_OK = "Todos los cambios se guardaron correctamente.";
         public static final String CAMBIOS_GUARDADOS_ERROR = "Algunos cambios no se pudieron guardar:\n%s";
         public static final String ERROR_ACTUALIZAR_EQUIPO_ID = "- Error al actualizar equipo ID: %d\n";
+        public static final String GUARD_REGISTRAR_ESTADO_CAMBIOS = "Tenés cambios sin confirmar. Si volvés ahora, se perderán.\n¿Querés salir de todas formas?";
+        public static final String GUARD_LOTES_CAMBIOS = "Tenés materiales cargados en un equipo de esterilización sin lanzar.\nSi volvés ahora, esos cambios se perderán.\n¿Querés salir de todas formas?";
 
         // Mensajes de cantidad para avanzar
         public static final String CANTIDAD_AVANZAR_PROMPT = "Cantidad a avanzar para: %s (disponible: %d)";
@@ -103,6 +107,7 @@ public final class Constantes {
         public static final String TITULO_PROFESIONAL_NO_SELECCIONADO = "Profesional no seleccionado";
         public static final String TITULO_CONFIRMAR_CANCELACION = "Confirmar Cancelación";
         public static final String TITULO_CONFIRMAR_CAMBIOS = "Confirmar Cambios";
+        public static final String TITULO_CAMBIOS_SIN_CONFIRMAR = "Cambios sin confirmar";
         public static final String TITULO_AVANZAR_SUBCANTIDAD = "Avanzar subcantidad";
         public static final String TITULO_CONFIRMAR_ENTREGA = "Confirmar Entrega";
         public static final String TITULO_LANZAR_LOTE = "Lanzar Lote";
@@ -141,6 +146,7 @@ public final class Constantes {
         public static final String REGISTRAR_ESTADO = "REGISTRAR ESTADO";
         public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS PARA ENTREGAR";
         public static final String LOTES = "LOTES DE ESTERILIZACIÓN";
+        public static final String VER_LOTES = "LOTES FINALIZADOS";
 
         
         private Titulos() {}
@@ -152,6 +158,9 @@ public final class Constantes {
     public static final class Botones {
         public static final String VOLVER = "<- Volver";
         public static final String GUARDAR = "Guardar";
+        public static final String ACEPTAR = "Aceptar";
+        public static final String SI = "Sí";
+        public static final String NO = "No";
         public static final String CANCELAR = "Cancelar";
         public static final String VER = "Ver";
         public static final String REGISTRAR = "Registrar";
@@ -175,6 +184,8 @@ public final class Constantes {
         public static final String DISTRIBUIDORA = "Distribuidora";
         public static final String ORTOPEDIA = "Ortopedia";
         public static final String OTROS = "Otros";
+        public static final String VER_LOTES = "Ver Lotes";
+        public static final String LIMPIAR_FILTROS = "Limpiar filtros";
         
         private Botones() {}
     }
@@ -277,6 +288,18 @@ public final class Constantes {
         public static final String BOTON_SELECCIONE_MATERIAL = "Seleccione un material";
         public static final String BOTON_ESTADO_FINAL = "Material en estado final";
         public static final String BOTON_ESTERILIZAR_DESDE_LOTES = "Esterilizar desde Lotes";
+        public static final String COLUMNA_LOTE_ID = "ID";
+        public static final String COLUMNA_LOTE_EQUIPO = "Equipo";
+        public static final String COLUMNA_LOTE_CAPACIDAD_USADA = "Capacidad Usada";
+        public static final String COLUMNA_LOTE_INICIO = "Inició";
+        public static final String COLUMNA_LOTE_FIN = "Finalizó";
+        public static final String FILTRO_TODOS = "Todos";
+        public static final String FILTRO_CLIENTE = "Cliente:";
+        public static final String FILTRO_INSTITUCION = "Institución:";
+        public static final String FILTRO_ESTADO = "Estado:";
+        public static final String FILTRO_ID = "ID:";
+        public static final String FILTRO_EQUIPO = "Equipo:";
+        public static final String FILTRO_FECHA_INICIO = "Fecha inicio:";
 
         private Textos() {}
     }

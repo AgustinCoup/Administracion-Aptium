@@ -219,6 +219,11 @@ public class PantallaRegistrarEstado extends JPanel {
         header.setGuardNavegacion(hayPendientes, mensajeBloqueo);
     }
 
+    public void setGuardVolver(Supplier<Boolean> hayPendientes, String mensajeBloqueo,
+                               Runnable onDescartarConfirmado) {
+        header.setGuardNavegacion(hayPendientes, mensajeBloqueo, onDescartarConfirmado);
+    }
+
     /**
      * Navega a la pantalla de gestión de lotes.
      */

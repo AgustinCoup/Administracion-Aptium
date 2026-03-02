@@ -52,23 +52,22 @@ public class EquipoDAO implements DAO<Equipo, String> {
             conn.setAutoCommit(false); // Iniciamos transacción
 
             // 1. Insertar el encabezado del Equipo (sin codigo_equipo)
-            String sqlEquipo = "INSERT INTO equipos (nro_cliente, cliente_nombre, nro_profesional, paciente, nro_institucion, estado, requiere_lavado, requiere_empaque) " +
-                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            String sqlEquipo = "INSERT INTO equipos (nro_cliente, nro_profesional, paciente, nro_institucion, estado, requiere_lavado, requiere_empaque) " +
+                               "VALUES (?, ?, ?, ?, ?, ?, ?)";
             
             int equipoId;
             try (PreparedStatement psE = conn.prepareStatement(sqlEquipo, Statement.RETURN_GENERATED_KEYS)) {
                 psE.setInt(1, equipo.getNroCliente());
-                psE.setString(2, equipo.getClienteNombre());
                 if (equipo.getNroProfesional() != null) {
-                    psE.setInt(3, equipo.getNroProfesional());
+                    psE.setInt(2, equipo.getNroProfesional());
                 } else {
-                    psE.setNull(3, Types.INTEGER);
+                    psE.setNull(2, Types.INTEGER);
                 }
-                psE.setString(4, equipo.getPacienteNombre());
-                psE.setInt(5, equipo.getNroInstitucion());
-                psE.setString(6, equipo.getEstado().getNombre());
-                psE.setBoolean(7, equipo.isRequiereLavado());
-                psE.setBoolean(8, equipo.isRequiereEmpaque());
+                psE.setString(3, equipo.getPacienteNombre());
+                psE.setInt(4, equipo.getNroInstitucion());
+                psE.setString(5, equipo.getEstado().getNombre());
+                psE.setBoolean(6, equipo.isRequiereLavado());
+                psE.setBoolean(7, equipo.isRequiereEmpaque());
                 psE.executeUpdate();
                 
                 // Obtener el ID generado automáticamente
@@ -83,8 +82,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
             }
 
             // 2. Insertar la lista de Materiales (con estado) y registrar movimiento inicial
-            String sqlMaterial = "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, descripcion_copia, cantidad, estado) " +
-                                 "VALUES (?, ?, ?, ?, ?)";
+            String sqlMaterial = "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado) " +
+                                 "VALUES (?, ?, ?, ?)";
             String sqlMovimiento = "INSERT INTO material_movimientos " +
                                    "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
                                    "VALUES (?, ?, ?, ?, ?)";
@@ -94,9 +93,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 for (Material mat : equipo.getMateriales()) {
                     psM.setInt(1, equipoId);
                     psM.setInt(2, mat.getCodigo());
-                    psM.setString(3, mat.getDescripcion());
-                    psM.setInt(4, mat.getCantidad());
-                    psM.setString(5, mat.getEstado().getNombre());
+                    psM.setInt(3, mat.getCantidad());
+                    psM.setString(4, mat.getEstado().getNombre());
                     psM.executeUpdate();
 
                     int materialId;
@@ -150,7 +148,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     @Override
     public Equipo obtenerPorId(String id) {
-        String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id WHERE e.id = ?";
+        String sql = "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque FROM equipos e LEFT JOIN clientes c ON e.nro_cliente = c.id LEFT JOIN instituciones i ON e.nro_institucion = i.id WHERE e.id = ?";
         
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -193,8 +191,9 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * Incluye el estado de cada material.
      */
     private void cargarMateriales(Connection conn, Equipo equipo) throws SQLException {
-        String sql = "SELECT em.id, em.codigo_catalogo, em.descripcion_copia, em.cantidad, em.estado, mm.ultimo_movimiento " +
+        String sql = "SELECT em.id, em.codigo_catalogo, cd.descripcion, em.cantidad, em.estado, mm.ultimo_movimiento " +
                  "FROM equipo_materiales em " +
+             "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
                  "LEFT JOIN (" +
                  "  SELECT material_id, MAX(fecha) AS ultimo_movimiento " +
                  "  FROM material_movimientos GROUP BY material_id" +
@@ -210,7 +209,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 Material mat = new Material(
                     rs.getInt("id"),
                     rs.getInt("codigo_catalogo"),
-                    rs.getString("descripcion_copia"),
+                    rs.getString("descripcion"),
                     rs.getInt("cantidad"),
                     EstadoEquipo.desdeBD(rs.getString("estado")),
                     ts != null ? java.time.LocalDateTime.ofInstant(ts.toInstant(), ZoneId.systemDefault()) : null
@@ -235,7 +234,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     public List<Equipo> obtenerTodosLosEquipos() {
         List<Equipo> equipos = new ArrayList<>();
-        String sql = "SELECT e.id, e.nro_cliente, e.cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque FROM equipos e LEFT JOIN instituciones i ON e.nro_institucion = i.id ORDER BY e.estado, e.id DESC";
+        String sql = "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque FROM equipos e LEFT JOIN clientes c ON e.nro_cliente = c.id LEFT JOIN instituciones i ON e.nro_institucion = i.id ORDER BY e.estado, e.id DESC";
         
         try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();

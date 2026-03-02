@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS catalogo_descripciones (
 CREATE TABLE IF NOT EXISTS equipos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nro_cliente INT NOT NULL,
-    cliente_nombre VARCHAR(200),
     nro_profesional INT,
     paciente VARCHAR(150),
     nro_institucion INT NOT NULL,
@@ -72,8 +71,7 @@ CREATE TABLE IF NOT EXISTS lotes (
 CREATE TABLE IF NOT EXISTS equipo_materiales (
     id INT AUTO_INCREMENT PRIMARY KEY,
     equipo_id INT NOT NULL,
-    codigo_catalogo INT,
-    descripcion_copia VARCHAR(255),
+    codigo_catalogo INT NOT NULL,
     cantidad INT,
     estado VARCHAR(50) DEFAULT 'Nuevo',
     lote_id INT,
@@ -81,6 +79,7 @@ CREATE TABLE IF NOT EXISTS equipo_materiales (
     INDEX idx_equipo_material_estado (equipo_id, codigo_catalogo, estado),
     INDEX idx_equipo_material_lote (lote_id),
     FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE,
+    FOREIGN KEY (codigo_catalogo) REFERENCES catalogo_descripciones(codigo) ON DELETE RESTRICT,
     FOREIGN KEY (lote_id) REFERENCES lotes(id) ON DELETE SET NULL
 );
 

@@ -9,6 +9,7 @@ import com.example.features.profesionales.model.Profesional;
 import com.example.features.instituciones.model.Institucion;
 import com.example.features.equipos.model.Equipo;
 import com.example.features.equipos.model.Material;
+import com.example.common.exception.ValidationException;
 import com.example.common.util.Validador;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,7 @@ import com.example.features.equipos.view.PantallaIngresoOrtopedia;
 import com.example.ui.dialogs.AgregarAutocompletableDialog;
 import com.example.ui.common.AutocompleteListener;
 import com.example.features.equipos.controller.helpers.GestorValidacionFormulario;
+import com.example.features.equipos.controller.helpers.CatalogoLookup;
 import com.example.features.equipos.controller.helpers.ConstructorEquipo;
 import com.example.features.equipos.controller.helpers.GestorNuevasEntidades;
 import com.example.ui.events.OnEquipoGuardadoListener;
@@ -87,7 +89,8 @@ public class OrthopediaInputController {
         this.onEquipoGuardadoListener = onEquipoGuardadoListener;
         
         // Inicializar clases auxiliares
-        this.gestorValidacion = new GestorValidacionFormulario(panel);
+        CatalogoLookup catalogoLookup = codigo -> model.obtenerDescripcionMaterial(codigo) != null;
+        this.gestorValidacion = new GestorValidacionFormulario(panel, catalogoLookup);
         this.constructorEquipo = new ConstructorEquipo(panel, model);
         
         // Los gestores se completarán en inicializarEventos() después de crear los autocompletados
@@ -221,8 +224,21 @@ public class OrthopediaInputController {
         // Mapear datos del formulario a objeto Equipo
         Equipo equipo = constructorEquipo.construir();
         
-        // Guardar en base de datos a través del modelo
-        boolean guardoExitoso = model.guardarEquipo(equipo);
+        boolean guardoExitoso;
+        try {
+            // Guardar en base de datos a través del modelo
+            guardoExitoso = model.guardarEquipo(equipo);
+        } catch (ValidationException e) {
+            String mensaje = e.getValidationErrors().isEmpty()
+                ? Constantes.Mensajes.ERROR_GUARDAR_EQUIPO
+                : String.join("\n", e.getValidationErrors());
+            JOptionPane.showMessageDialog(panel,
+                mensaje,
+                Constantes.Mensajes.TITULO_ADVERTENCIA,
+                JOptionPane.WARNING_MESSAGE);
+            log.warn("Validación de negocio al guardar equipo: {}", mensaje);
+            return;
+        }
         
         if (guardoExitoso) {
             // Éxito: mostrar mensaje y limpiar

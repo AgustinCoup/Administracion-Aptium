@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.util.function.BiConsumer;
 
 import com.example.common.constants.Constantes;
+import com.example.ui.common.Estilos;
 
 /**
  * Helper para mostrar diálogo de cantidad con opciones avanzadas.
@@ -52,6 +53,7 @@ public class CantidadDialogHelper {
         // Label con instrucción
         JLabel lbl = new JLabel(String.format(
             Constantes.Mensajes.CANTIDAD_AVANZAR_PROMPT, descripcion, cantidadDisponible));
+        lbl.setFont(Estilos.Fuentes.INPUT);
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.gridwidth = 2;
@@ -60,8 +62,10 @@ public class CantidadDialogHelper {
         // Spinner para ingresar cantidad
         SpinnerNumberModel model = new SpinnerNumberModel(1, 1, cantidadDisponible, 1);
         JSpinner spinner = new JSpinner(model);
+        spinner.setFont(Estilos.Fuentes.INPUT);
         JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner, "0");
         spinner.setEditor(editor);
+        editor.getTextField().setFont(Estilos.Fuentes.INPUT);
         editor.getTextField().setColumns(4);
 
         gbc.gridy = 1;
@@ -70,6 +74,7 @@ public class CantidadDialogHelper {
 
         // Checkbox "Todos" (opcional)
         JCheckBox chkTodos = new JCheckBox(Constantes.Mensajes.CANTIDAD_AVANZAR_TODOS);
+        chkTodos.setFont(Estilos.Fuentes.INPUT);
         if (configurarTodos != null) {
             configurarTodos.accept(chkTodos, spinner);
         }

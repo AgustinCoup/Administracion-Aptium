@@ -68,7 +68,8 @@ public class LotesController {
         // Bloquear navegación si hay materiales cargados en algún autoclave sin lanzar
         pantallaLotes.setGuardVolver(
             this::tieneCambiosPendientes,
-            "Tenés materiales cargados en un equipo de esterilización sin lanzar.\nSi volvés ahora, esos cambios se perderán.\n¿Querés salir de todas formas?"
+            Constantes.Mensajes.GUARD_LOTES_CAMBIOS,
+            this::descartarCambiosPendientes
         );
     }
 
@@ -609,5 +610,14 @@ public class LotesController {
      */
     public boolean tieneCambiosPendientes() {
         return pendientesPorAutoclave.values().stream().anyMatch(lista -> !lista.isEmpty());
+    }
+
+    public void descartarCambiosPendientes() {
+        if (!tieneCambiosPendientes()) {
+            return;
+        }
+
+        pendientesPorAutoclave.clear();
+        cargarDatos();
     }
 }

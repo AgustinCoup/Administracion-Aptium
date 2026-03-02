@@ -32,6 +32,15 @@ public class LoteService {
         }
     }
 
+    public List<Lote> obtenerLotesFinalizados() {
+        try {
+            return loteDAO.obtenerLotesFinalizados();
+        } catch (Exception e) {
+            log.error("Error al obtener lotes finalizados", e);
+            return List.of();
+        }
+    }
+
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
         try {
             return loteDAO.obtenerMaterialesPorLote(loteId);

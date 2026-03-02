@@ -62,7 +62,8 @@ public class RegistrarEstadoController {
         // Bloquear navegación si hay cambios sin confirmar
         panel.setGuardVolver(
             () -> !cambiosPendientes.isEmpty(),
-            "Tenés cambios sin confirmar. Si volvés ahora, se perderán.\n¿Querés salir de todas formas?"
+            Constantes.Mensajes.GUARD_REGISTRAR_ESTADO_CAMBIOS,
+            this::descartarCambiosPendientes
         );
     }
 
@@ -99,15 +100,23 @@ public class RegistrarEstadoController {
 
         Material material = equipoSeleccionado.getMateriales().get(materialIndex);
         EstadoEquipo siguienteEstado = equipoSeleccionado.getSiguienteEstado(material.getEstado());
-        if (siguienteEstado == null) {
-            panel.setAvanzarTexto(Constantes.Textos.BOTON_ESTADO_FINAL);
+
+        // La transición de esterilización completa se gestiona en Pantalla Gestionar Lotes.
+        // Por eso, en Registrar Estado no se debe permitir avanzar manualmente:
+        // - hacia ESTERILIZANDO
+        // - desde ESTERILIZANDO hacia ESTERILIZADO
+        if (material.getEstado() == EstadoEquipo.ESTERILIZANDO ||
+            siguienteEstado == EstadoEquipo.ESTERILIZANDO ||
+            siguienteEstado == EstadoEquipo.ESTERILIZADO ||
+            material.getEstado() == EstadoEquipo.ESTERILIZADO) {
             panel.setAvanzarEnabled(false);
             panel.setAvanzarVisible(false);
             return;
         }
 
-        // Si el siguiente estado es ESTERILIZANDO, ocultar botón (debe usarse Gestionar Lotes)
-        if (siguienteEstado == EstadoEquipo.ESTERILIZANDO) {
+        if (siguienteEstado == null) {
+            panel.setAvanzarTexto(Constantes.Textos.BOTON_ESTADO_FINAL);
+            panel.setAvanzarEnabled(false);
             panel.setAvanzarVisible(false);
             return;
         }
@@ -210,6 +219,19 @@ public class RegistrarEstadoController {
             panel.setConfirmarEnabled(false);
             panel.setCancelarEnabled(false);
         }
+    }
+
+    public void descartarCambiosPendientes() {
+        if (cambiosPendientes.isEmpty()) {
+            return;
+        }
+
+        cambiosPendientes.clear();
+        cargarEquipos();
+        actualizarTextoAvanzar();
+        actualizarContadorCambios();
+        panel.setConfirmarEnabled(false);
+        panel.setCancelarEnabled(false);
     }
 
     private void confirmarCambios() {

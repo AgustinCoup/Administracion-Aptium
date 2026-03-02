@@ -148,6 +148,11 @@ public class PantallaLotes extends JPanel {
         header.setGuardNavegacion(hayPendientes, mensajeBloqueo);
     }
 
+    public void setGuardVolver(Supplier<Boolean> hayPendientes, String mensajeBloqueo,
+                               Runnable onDescartarConfirmado) {
+        header.setGuardNavegacion(hayPendientes, mensajeBloqueo, onDescartarConfirmado);
+    }
+
     // Acceso directo al panel para operaciones avanzadas si es necesario
     public PanelLotesContenido getPanelContenido() {
         return panelContenido;

@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 
 import com.example.common.constants.Constantes;
+import com.example.ui.common.Estilos;
 
 public final class CantidadDialogHelper {
 
@@ -22,6 +23,7 @@ public final class CantidadDialogHelper {
         gbc.anchor = GridBagConstraints.WEST;
 
         JLabel lbl = new JLabel(String.format(Constantes.Mensajes.CANTIDAD_AVANZAR_PROMPT, descripcion, cantidadDisponible));
+        lbl.setFont(Estilos.Fuentes.INPUT);
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.gridwidth = 2;
@@ -29,8 +31,10 @@ public final class CantidadDialogHelper {
 
         SpinnerNumberModel model = new SpinnerNumberModel(1, 1, cantidadDisponible, 1);
         JSpinner spinner = new JSpinner(model);
+        spinner.setFont(Estilos.Fuentes.INPUT);
         JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner, "0");
         spinner.setEditor(editor);
+        editor.getTextField().setFont(Estilos.Fuentes.INPUT);
         editor.getTextField().setColumns(4);
 
         gbc.gridy = 1;
@@ -38,6 +42,7 @@ public final class CantidadDialogHelper {
         panel.add(spinner, gbc);
 
         JCheckBox chkTodos = new JCheckBox(Constantes.Mensajes.CANTIDAD_AVANZAR_TODOS);
+        chkTodos.setFont(Estilos.Fuentes.INPUT);
         chkTodos.addActionListener(e -> {
             if (chkTodos.isSelected()) {
                 spinner.setValue(cantidadDisponible);

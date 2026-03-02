@@ -3,8 +3,11 @@ package com.example.features.equipos.view;
 import javax.swing.*;
 import com.example.common.constants.Constantes;
 import com.example.features.equipos.model.Equipo;
+import com.example.features.equipos.model.EstadoEquipo;
 import com.example.features.equipos.view.helpers.PanelEquipoMaterial;
 import com.example.ui.common.PanelHeader;
+import com.example.ui.common.Estilos;
+import com.example.ui.common.FilterUiHelper;
 import java.awt.*;
 import java.util.List;
 
@@ -15,6 +18,12 @@ import java.util.List;
 public class PantallaVerCDEv2 extends JPanel {
     
     private PanelEquipoMaterial panelTablas;
+    private JButton btnVerLotes;
+    private JTextField txtFiltroCliente;
+    private JTextField txtFiltroInstitucion;
+    private JComboBox<String> cmbFiltroEstado;
+    private JButton btnLimpiarFiltros;
+    private Runnable onFiltrosChanged;
 
     public PantallaVerCDEv2(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
@@ -27,7 +36,11 @@ public class PantallaVerCDEv2 extends JPanel {
             contenedor, 
             Constantes.Pantallas.ESTERILIZACION
         );
-        add(header, BorderLayout.NORTH);
+
+        JPanel panelNorte = new JPanel(new BorderLayout());
+        panelNorte.add(header, BorderLayout.NORTH);
+        panelNorte.add(crearPanelFiltros(), BorderLayout.SOUTH);
+        add(panelNorte, BorderLayout.NORTH);
 
         // Panel central reutilizable (solo visualización, no editable)
         panelTablas = new PanelEquipoMaterial(
@@ -37,6 +50,72 @@ public class PantallaVerCDEv2 extends JPanel {
         );
         
         add(panelTablas, BorderLayout.CENTER);
+
+        add(crearPanelSur(navegador, contenedor), BorderLayout.SOUTH);
+    }
+
+    private JPanel crearPanelSur(CardLayout navegador, JPanel contenedor) {
+        JPanel panelSur = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+
+        btnVerLotes = new JButton(Constantes.Botones.VER_LOTES);
+        btnVerLotes.setFont(Estilos.Fuentes.BOTON);
+        btnVerLotes.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_LOTES));
+        panelSur.add(btnVerLotes);
+
+        return panelSur;
+    }
+
+    private JPanel crearPanelFiltros() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+
+        JLabel lblCliente = new JLabel(Constantes.Textos.FILTRO_CLIENTE);
+        lblCliente.setFont(Estilos.Fuentes.LABEL);
+        txtFiltroCliente = new JTextField(12);
+        txtFiltroCliente.setFont(Estilos.Fuentes.INPUT);
+
+        JLabel lblInstitucion = new JLabel(Constantes.Textos.FILTRO_INSTITUCION);
+        lblInstitucion.setFont(Estilos.Fuentes.LABEL);
+        txtFiltroInstitucion = new JTextField(12);
+        txtFiltroInstitucion.setFont(Estilos.Fuentes.INPUT);
+
+        JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
+        lblEstado.setFont(Estilos.Fuentes.LABEL);
+        cmbFiltroEstado = new JComboBox<>();
+        cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
+        cmbFiltroEstado.addItem(Constantes.Textos.FILTRO_TODOS);
+        for (EstadoEquipo estado : EstadoEquipo.values()) {
+            cmbFiltroEstado.addItem(estado.getNombre());
+        }
+
+        FilterUiHelper.bindOnTextChange(this::notificarCambioFiltros, txtFiltroCliente, txtFiltroInstitucion);
+        cmbFiltroEstado.addActionListener(e -> notificarCambioFiltros());
+
+        btnLimpiarFiltros = new JButton(Constantes.Botones.LIMPIAR_FILTROS);
+        btnLimpiarFiltros.setFont(Estilos.Fuentes.INPUT);
+        btnLimpiarFiltros.addActionListener(e -> limpiarFiltros());
+
+        panel.add(lblCliente);
+        panel.add(txtFiltroCliente);
+        panel.add(lblInstitucion);
+        panel.add(txtFiltroInstitucion);
+        panel.add(lblEstado);
+        panel.add(cmbFiltroEstado);
+        panel.add(btnLimpiarFiltros);
+
+        return panel;
+    }
+
+    public void limpiarFiltros() {
+        txtFiltroCliente.setText("");
+        txtFiltroInstitucion.setText("");
+        cmbFiltroEstado.setSelectedItem(Constantes.Textos.FILTRO_TODOS);
+        notificarCambioFiltros();
+    }
+
+    private void notificarCambioFiltros() {
+        if (onFiltrosChanged != null) {
+            onFiltrosChanged.run();
+        }
     }
 
     /**
@@ -44,6 +123,30 @@ public class PantallaVerCDEv2 extends JPanel {
      */
     public void actualizarTabla(List<Equipo> equipos) {
         panelTablas.actualizarEquipos(equipos);
+    }
+
+    public void setOnFiltrosChanged(Runnable listener) {
+        this.onFiltrosChanged = listener;
+    }
+
+    public String getFiltroCliente() {
+        return txtFiltroCliente.getText().trim();
+    }
+
+    public String getFiltroInstitucion() {
+        return txtFiltroInstitucion.getText().trim();
+    }
+
+    public String getFiltroEstado() {
+        Object selected = cmbFiltroEstado.getSelectedItem();
+        if (selected == null) {
+            return "";
+        }
+        String estado = selected.toString();
+        if (Constantes.Textos.FILTRO_TODOS.equalsIgnoreCase(estado)) {
+            return "";
+        }
+        return estado;
     }
 }
 

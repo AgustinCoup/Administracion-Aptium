@@ -6,6 +6,7 @@ import com.example.features.equipos.controller.EquiposParaEntregarController;
 import com.example.features.equipos.controller.OrthopediaInputController;
 import com.example.features.equipos.controller.RegistrarEstadoController;
 import com.example.features.lotes.controller.LotesController;
+import com.example.features.lotes.controller.VerLotesController;
 import com.example.ui.events.OnEquipoGuardadoListener;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.ui.shell.PantallaPrincipal;
@@ -47,11 +48,17 @@ public class UiCoordinator {
             null
         );
 
+        VerLotesController verLotesController = new VerLotesController(
+            vista.getPantallaVerLotes(),
+            model
+        );
+
         Runnable refrescarPantallas = crearRefrescador(
             cdeViewController,
             registrarEstadoController,
             equiposParaEntregarController,
-            lotesController
+            lotesController,
+            verLotesController
         );
 
         OnEstadosActualizadosListener refrescarPantallasEstados = refrescarPantallas::run;
@@ -74,13 +81,15 @@ public class UiCoordinator {
         CDEViewController cdeViewController,
         RegistrarEstadoController registrarEstadoController,
         EquiposParaEntregarController equiposParaEntregarController,
-        LotesController lotesController
+        LotesController lotesController,
+        VerLotesController verLotesController
     ) {
         return () -> {
             cdeViewController.cargarDatos();
             registrarEstadoController.cargarEquipos();
             equiposParaEntregarController.cargarDatos();
             lotesController.cargarDatos();
+            verLotesController.cargarDatos();
         };
     }
 }

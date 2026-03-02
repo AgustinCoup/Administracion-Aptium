@@ -41,10 +41,30 @@ public class LoteDAO {
         return activos;
     }
 
+    public List<Lote> obtenerLotesFinalizados() {
+        List<Lote> finalizados = new ArrayList<>();
+        String sql = "SELECT id, id_negocio, anio, secuencia, autoclave_nombre, " +
+                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin " +
+                     "FROM lotes WHERE fecha_fin IS NOT NULL ORDER BY fecha_fin DESC, id DESC";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                finalizados.add(mapLote(rs));
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener lotes finalizados", e);
+        }
+
+        return finalizados;
+    }
+
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
         List<LoteMaterialInfo> materiales = new ArrayList<>();
-        String sql = "SELECT em.id, em.equipo_id, em.codigo_catalogo, em.descripcion_copia, " +
-                     "em.cantidad, cd.volumen " +
+        String sql = "SELECT em.id, em.equipo_id, em.codigo_catalogo, cd.descripcion, " +
+                 "em.cantidad, cd.volumen " +
                      "FROM equipo_materiales em " +
                      "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
                      "WHERE em.lote_id = ? ORDER BY em.id";
@@ -60,7 +80,7 @@ public class LoteDAO {
                         rs.getInt("id"),
                         rs.getInt("equipo_id"),
                         rs.getInt("codigo_catalogo"),
-                        rs.getString("descripcion_copia"),
+                        rs.getString("descripcion"),
                         rs.getInt("cantidad"),
                         volumen
                     ));
@@ -230,13 +250,13 @@ public class LoteDAO {
 
     private void aplicarMovimientoLote(Connection conn, int loteId, LoteMovimiento movimiento) throws SQLException {
         String sqlSelectLote =
-            "SELECT codigo_catalogo, descripcion_copia, cantidad, estado " +
+            "SELECT codigo_catalogo, cantidad, estado " +
             "FROM equipo_materiales WHERE id = ? AND equipo_id = ? FOR UPDATE";
         String sqlUpdateCantidad = "UPDATE equipo_materiales SET cantidad = ? WHERE id = ? AND equipo_id = ?";
         String sqlUpdateEstado = "UPDATE equipo_materiales SET estado = ?, lote_id = ? WHERE id = ? AND equipo_id = ?";
         String sqlInsertLote =
-            "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, descripcion_copia, cantidad, estado, lote_id) " +
-            "VALUES (?, ?, ?, ?, ?, ?)";
+            "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado, lote_id) " +
+            "VALUES (?, ?, ?, ?, ?)";
         String sqlMovimiento = "INSERT INTO material_movimientos " +
                                "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
                                "VALUES (?, ?, ?, ?, ?)";
@@ -246,7 +266,6 @@ public class LoteDAO {
         int cantidadMover = movimiento.getCantidad();
 
         int codigo;
-        String descripcion;
         int cantidadActual;
         String estadoActual;
 
@@ -258,7 +277,6 @@ public class LoteDAO {
                     throw new SQLException("No se encontro el lote a mover: " + materialId);
                 }
                 codigo = rs.getInt("codigo_catalogo");
-                descripcion = rs.getString("descripcion_copia");
                 cantidadActual = rs.getInt("cantidad");
                 estadoActual = rs.getString("estado");
             }
@@ -298,10 +316,9 @@ public class LoteDAO {
             try (PreparedStatement pstmt = conn.prepareStatement(sqlInsertLote, Statement.RETURN_GENERATED_KEYS)) {
                 pstmt.setInt(1, equipoId);
                 pstmt.setInt(2, codigo);
-                pstmt.setString(3, descripcion);
-                pstmt.setInt(4, cantidadMover);
-                pstmt.setString(5, EstadoEquipo.ESTERILIZANDO.getNombre());
-                pstmt.setInt(6, loteId);
+                pstmt.setInt(3, cantidadMover);
+                pstmt.setString(4, EstadoEquipo.ESTERILIZANDO.getNombre());
+                pstmt.setInt(5, loteId);
                 pstmt.executeUpdate();
 
                 try (ResultSet rsNuevo = pstmt.getGeneratedKeys()) {

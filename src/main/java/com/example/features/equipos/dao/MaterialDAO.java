@@ -203,13 +203,13 @@ public class MaterialDAO {
             conn.setAutoCommit(false);
 
             String sqlSelectLote =
-                "SELECT codigo_catalogo, descripcion_copia, cantidad, estado " +
-                "FROM equipo_materiales WHERE id = ? AND equipo_id = ? FOR UPDATE";
+                "SELECT em.codigo_catalogo, em.cantidad, em.estado " +
+                "FROM equipo_materiales em WHERE em.id = ? AND em.equipo_id = ? FOR UPDATE";
             String sqlUpdateCantidad = "UPDATE equipo_materiales SET cantidad = ? WHERE id = ? AND equipo_id = ?";
             String sqlUpdateEstado = "UPDATE equipo_materiales SET estado = ? WHERE id = ? AND equipo_id = ?";
             String sqlInsertLote =
-                "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, descripcion_copia, cantidad, estado) " +
-                "VALUES (?, ?, ?, ?, ?)";
+                "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado) " +
+                "VALUES (?, ?, ?, ?)";
             String sqlMovimiento = "INSERT INTO material_movimientos " +
                                    "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
                                    "VALUES (?, ?, ?, ?, ?)";
@@ -233,7 +233,6 @@ public class MaterialDAO {
                 EstadoEquipo estadoDestino = movimiento.getEstadoDestino();
 
                 int codigo;
-                String descripcion;
                 int cantidadActual;
                 String estadoActual;
 
@@ -245,7 +244,6 @@ public class MaterialDAO {
                             throw new SQLException("No se encontro el lote a mover: " + materialId);
                         }
                         codigo = rs.getInt("codigo_catalogo");
-                        descripcion = rs.getString("descripcion_copia");
                         cantidadActual = rs.getInt("cantidad");
                         estadoActual = rs.getString("estado");
                     }
@@ -297,9 +295,8 @@ public class MaterialDAO {
                     try (PreparedStatement pstmt = conn.prepareStatement(sqlInsertLote, Statement.RETURN_GENERATED_KEYS)) {
                         pstmt.setInt(1, equipoId);
                         pstmt.setInt(2, codigo);
-                        pstmt.setString(3, descripcion);
-                        pstmt.setInt(4, cantidadMover);
-                        pstmt.setString(5, estadoDestino.getNombre());
+                        pstmt.setInt(3, cantidadMover);
+                        pstmt.setString(4, estadoDestino.getNombre());
                         pstmt.executeUpdate();
 
                         try (ResultSet rsNuevo = pstmt.getGeneratedKeys()) {

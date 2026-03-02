@@ -219,6 +219,10 @@ public class AppModel {
         return loteService.obtenerLotesActivosPorAutoclave();
     }
 
+    public List<Lote> obtenerLotesFinalizados() {
+        return loteService.obtenerLotesFinalizados();
+    }
+
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
         return loteService.obtenerMaterialesPorLote(loteId);
     }

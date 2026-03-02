@@ -102,6 +102,19 @@ public class PanelHeader extends JPanel {
      * @param mensajeBloqueo Mensaje que verá el usuario en el diálogo de confirmación
      */
     public void setGuardNavegacion(Supplier<Boolean> hayPendientes, String mensajeBloqueo) {
+        setGuardNavegacion(hayPendientes, mensajeBloqueo, null);
+    }
+
+    /**
+     * Igual que {@link #setGuardNavegacion(Supplier, String)} pero permite ejecutar
+     * una acción adicional cuando el usuario confirma salir con cambios pendientes.
+     *
+     * @param hayPendientes  Supplier que retorna true cuando hay cambios sin confirmar
+     * @param mensajeBloqueo Mensaje que verá el usuario en el diálogo de confirmación
+     * @param onDescartarConfirmado Acción opcional a ejecutar al confirmar descarte
+     */
+    public void setGuardNavegacion(Supplier<Boolean> hayPendientes, String mensajeBloqueo,
+                                   Runnable onDescartarConfirmado) {
         if (navegador == null || contenedor == null || pantallaDestino == null) {
             return;
         }
@@ -113,16 +126,21 @@ public class PanelHeader extends JPanel {
 
         // Agregar listener con guard
         btnVolver.addActionListener(e -> {
-            if (hayPendientes.get()) {
+            boolean habiaPendientes = hayPendientes.get();
+            if (habiaPendientes) {
                 int respuesta = JOptionPane.showConfirmDialog(
                     this,
                     mensajeBloqueo,
-                    "Cambios sin confirmar",
+                    Constantes.Mensajes.TITULO_CAMBIOS_SIN_CONFIRMAR,
                     JOptionPane.YES_NO_OPTION,
                     JOptionPane.WARNING_MESSAGE
                 );
                 if (respuesta != JOptionPane.YES_OPTION) {
                     return;  // El usuario eligió quedarse
+                }
+
+                if (onDescartarConfirmado != null) {
+                    onDescartarConfirmado.run();
                 }
             }
             navegador.show(contenedor, pantallaDestino);

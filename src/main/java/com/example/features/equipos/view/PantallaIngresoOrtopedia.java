@@ -70,6 +70,7 @@ public class PantallaIngresoOrtopedia extends JPanel {
             contenedor, 
             Constantes.Pantallas.ESTERILIZACION
         );
+        configurarVolverConLimpieza(header);
         add(header, BorderLayout.NORTH);
 
         // Formulario principal
@@ -120,7 +121,9 @@ public class PantallaIngresoOrtopedia extends JPanel {
         // Fila 4: Opciones de proceso
         JPanel panelOpciones = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         chkRequiereLavado = new JCheckBox(Constantes.Textos.CHECK_REQUIERE_LAVADO, true);
+        chkRequiereLavado.setFont(Estilos.Fuentes.INPUT);
         chkRequiereEmpaque = new JCheckBox(Constantes.Textos.CHECK_REQUIERE_EMPAQUE, true);
+        chkRequiereEmpaque.setFont(Estilos.Fuentes.INPUT);
         chkRequiereEmpaque.setEnabled(false);
         panelOpciones.add(chkRequiereLavado);
         panelOpciones.add(chkRequiereEmpaque);
@@ -206,6 +209,17 @@ public class PantallaIngresoOrtopedia extends JPanel {
         });
 
         return botones;
+    }
+
+    private void configurarVolverConLimpieza(PanelHeader header) {
+        for (ActionListener listener : header.getBtnVolver().getActionListeners()) {
+            header.getBtnVolver().removeActionListener(listener);
+        }
+
+        header.getBtnVolver().addActionListener(e -> {
+            limpiarFormulario();
+            navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION);
+        });
     }
 
     // ==================== GETTERS ====================

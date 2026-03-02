@@ -6,6 +6,7 @@ import javax.swing.UIManager;
 
 import com.example.common.constants.Constantes;
 import com.example.app.AppModel;
+import com.example.ui.common.Estilos;
 import com.example.ui.shell.PantallaPrincipal;
 
 public class AppController {
@@ -42,9 +43,19 @@ public class AppController {
     private void configurarLookAndFeel() {
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            configurarFuentesDialogos();
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private void configurarFuentesDialogos() {
+        UIManager.put("OptionPane.messageFont", Estilos.Fuentes.INPUT);
+        UIManager.put("OptionPane.buttonFont", Estilos.Fuentes.INPUT);
+        UIManager.put("OptionPane.yesButtonText", Constantes.Botones.SI);
+        UIManager.put("OptionPane.noButtonText", Constantes.Botones.NO);
+        UIManager.put("OptionPane.cancelButtonText", Constantes.Botones.CANCELAR);
+        UIManager.put("OptionPane.okButtonText", Constantes.Botones.ACEPTAR);
     }
 
     private void mostrarErrorConexion() {

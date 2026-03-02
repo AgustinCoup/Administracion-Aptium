@@ -1,7 +1,6 @@
 package com.example.features.equipos.controller.helpers;
 
 import com.example.common.constants.Constantes;
-import com.example.app.AppModel;
 import com.example.common.util.Validador;
 import com.example.features.equipos.view.PantallaIngresoOrtopedia;
 import javax.swing.JOptionPane;
@@ -18,9 +17,11 @@ import javax.swing.JOptionPane;
 public class GestorValidacionFormulario {
     
     private final PantallaIngresoOrtopedia panel;
+    private final CatalogoLookup catalogoLookup;
     
-    public GestorValidacionFormulario(PantallaIngresoOrtopedia panel) {
+    public GestorValidacionFormulario(PantallaIngresoOrtopedia panel, CatalogoLookup catalogoLookup) {
         this.panel = panel;
+        this.catalogoLookup = catalogoLookup;
     }
     
     /**
@@ -88,9 +89,34 @@ public class GestorValidacionFormulario {
             }
         }
 
-        // Al menos un material es OBLIGATORIO
-        if (panel.getMaterialRows().isEmpty()) {
+        // Al menos un material válido es OBLIGATORIO
+        // (la UI siempre mantiene una fila vacía por defecto, por eso no alcanza con isEmpty)
+        boolean tieneMaterialValido = panel.getMaterialRows().stream().anyMatch(row -> {
+            String numero = row.numero.getText().trim();
+            return !numero.isEmpty() && Validador.soloNumeros(numero);
+        });
+
+        if (!tieneMaterialValido) {
             JOptionPane.showMessageDialog(panel, Constantes.Mensajes.DEBE_AGREGAR_MATERIAL);
+            return false;
+        }
+
+        String codigosDesconocidos = panel.getMaterialRows().stream()
+            .map(row -> row.numero.getText().trim())
+            .filter(numero -> !numero.isEmpty() && Validador.soloNumeros(numero))
+            .map(Integer::parseInt)
+            .distinct()
+            .filter(codigo -> !catalogoLookup.existeCodigo(codigo))
+            .map(String::valueOf)
+            .collect(java.util.stream.Collectors.joining(", "));
+
+        if (!codigosDesconocidos.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                panel,
+                String.format(Constantes.Mensajes.CODIGO_MATERIAL_DESCONOCIDO, codigosDesconocidos),
+                Constantes.Mensajes.TITULO_ADVERTENCIA,
+                JOptionPane.WARNING_MESSAGE
+            );
             return false;
         }
 
