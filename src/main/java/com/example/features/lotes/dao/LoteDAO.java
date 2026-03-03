@@ -23,7 +23,7 @@ public class LoteDAO {
     public Map<String, Lote> obtenerLotesActivosPorAutoclave() {
         Map<String, Lote> activos = new HashMap<>();
         String sql = "SELECT id, id_negocio, anio, secuencia, autoclave_nombre, " +
-                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin " +
+                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin, estado " +
                      "FROM lotes WHERE fecha_fin IS NULL";
 
         try (Connection conn = ConnectionPool.getConnection();
@@ -44,7 +44,7 @@ public class LoteDAO {
     public List<Lote> obtenerLotesFinalizados() {
         List<Lote> finalizados = new ArrayList<>();
         String sql = "SELECT id, id_negocio, anio, secuencia, autoclave_nombre, " +
-                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin " +
+                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin, estado " +
                      "FROM lotes WHERE fecha_fin IS NOT NULL ORDER BY fecha_fin DESC, id DESC";
 
         try (Connection conn = ConnectionPool.getConnection();
@@ -59,6 +59,26 @@ public class LoteDAO {
         }
 
         return finalizados;
+    }
+
+    public List<Lote> obtenerTodosLosLotes() {
+        List<Lote> todos = new ArrayList<>();
+        String sql = "SELECT id, id_negocio, anio, secuencia, autoclave_nombre, " +
+                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin, estado " +
+                     "FROM lotes ORDER BY fecha_inicio DESC, id DESC";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                todos.add(mapLote(rs));
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener todos los lotes", e);
+        }
+
+        return todos;
     }
 
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
@@ -143,7 +163,7 @@ public class LoteDAO {
             conn = ConnectionPool.getConnection();
             conn.setAutoCommit(false);
 
-            String sqlActualizarLote = "UPDATE lotes SET fecha_fin = CURRENT_TIMESTAMP " +
+            String sqlActualizarLote = "UPDATE lotes SET fecha_fin = CURRENT_TIMESTAMP, estado = 'EXITOSO' " +
                                        "WHERE id = ? AND fecha_fin IS NULL";
             try (PreparedStatement pstmt = conn.prepareStatement(sqlActualizarLote)) {
                 pstmt.setInt(1, loteId);
@@ -203,6 +223,101 @@ public class LoteDAO {
                 try { conn.rollback(); } catch (SQLException ex) { log.error("Error al hacer rollback", ex); }
             }
             log.error("Error al finalizar lote: {}", loteId, e);
+            return false;
+        } finally {
+            if (conn != null) {
+                try { conn.close(); } catch (SQLException e) { log.error("Error al cerrar conexión", e); }
+            }
+        }
+    }
+
+    public boolean marcarLoteFallo(int loteId) {
+        Connection conn = null;
+        try {
+            conn = ConnectionPool.getConnection();
+            conn.setAutoCommit(false);
+
+            // Marcar el lote como fallido y liberar el autoclave
+            String sqlActualizarLote = "UPDATE lotes SET fecha_fin = CURRENT_TIMESTAMP, estado = 'FALLIDO' " +
+                                       "WHERE id = ? AND fecha_fin IS NULL";
+            try (PreparedStatement pstmt = conn.prepareStatement(sqlActualizarLote)) {
+                pstmt.setInt(1, loteId);
+                int filas = pstmt.executeUpdate();
+                if (filas == 0) {
+                    conn.rollback();
+                    return false;
+                }
+            }
+
+            // Obtener todos los materiales del lote que estén en ESTERILIZANDO
+            // Obtener todos los materiales del lote que estén en ESTERILIZANDO
+            String sqlSelect = "SELECT id, equipo_id, cantidad FROM equipo_materiales " +
+                               "WHERE lote_id = ? AND estado = ? FOR UPDATE";
+            String sqlGetPreviousState = "SELECT estado_origen FROM material_movimientos " +
+                                        "WHERE material_id = ? AND estado_destino = ? " +
+                                        "ORDER BY fecha DESC LIMIT 1";
+            String sqlUpdate = "UPDATE equipo_materiales SET estado = ?, lote_id = NULL WHERE id = ?";
+            String sqlMovimiento = "INSERT INTO material_movimientos " +
+                                   "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
+                                   "VALUES (?, ?, ?, ?, ?)";
+
+            Map<Integer, Boolean> equiposAfectados = new HashMap<>();
+
+            try (PreparedStatement pstmt = conn.prepareStatement(sqlSelect)) {
+                pstmt.setInt(1, loteId);
+                pstmt.setString(2, EstadoEquipo.ESTERILIZANDO.getNombre());
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        int materialId = rs.getInt("id");
+                        int equipoId = rs.getInt("equipo_id");
+                        int cantidad = rs.getInt("cantidad");
+
+                        equiposAfectados.put(equipoId, true);
+
+                        // Buscar el estado anterior en material_movimientos
+                        String estadoAnterior = EstadoEquipo.EMPAQUETADO.getNombre();
+                        try (PreparedStatement pstmtPrev = conn.prepareStatement(sqlGetPreviousState)) {
+                            pstmtPrev.setInt(1, materialId);
+                            pstmtPrev.setString(2, EstadoEquipo.ESTERILIZANDO.getNombre());
+                            try (ResultSet rsPrev = pstmtPrev.executeQuery()) {
+                                if (rsPrev.next()) {
+                                    estadoAnterior = rsPrev.getString("estado_origen");
+                                }
+                            }
+                        }
+
+                        // Revertir el material a su estado anterior y quitar asociación con el lote
+                        try (PreparedStatement update = conn.prepareStatement(sqlUpdate)) {
+                            update.setString(1, estadoAnterior);
+                            update.setInt(2, materialId);
+                            update.executeUpdate();
+                        }
+
+                        // Registrar el movimiento de reversión
+                        try (PreparedStatement mov = conn.prepareStatement(sqlMovimiento)) {
+                            mov.setInt(1, materialId);
+                            mov.setInt(2, equipoId);
+                            mov.setInt(3, cantidad);
+                            mov.setString(4, EstadoEquipo.ESTERILIZANDO.getNombre());
+                            mov.setString(5, estadoAnterior);
+                            mov.executeUpdate();
+                        }
+                    }
+                }
+            }
+
+            // Recalcular estado de equipos afectados
+            for (Integer equipoId : equiposAfectados.keySet()) {
+                recalcularEstadoEquipo(conn, equipoId);
+            }
+
+            conn.commit();
+            return true;
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException ex) { log.error("Error al hacer rollback", ex); }
+            }
+            log.error("Error al marcar lote como fallido: {}", loteId, e);
             return false;
         } finally {
             if (conn != null) {
@@ -382,6 +497,8 @@ public class LoteDAO {
         Timestamp fin = rs.getTimestamp("fecha_fin");
         LocalDateTime fechaInicio = inicio != null ? LocalDateTime.ofInstant(inicio.toInstant(), ZoneId.systemDefault()) : null;
         LocalDateTime fechaFin = fin != null ? LocalDateTime.ofInstant(fin.toInstant(), ZoneId.systemDefault()) : null;
+        String estado = rs.getString("estado");
+        if (estado == null) estado = "ACTIVO";
 
         return new Lote(
             rs.getInt("id"),
@@ -392,7 +509,9 @@ public class LoteDAO {
             rs.getInt("capacidad_total"),
             rs.getInt("capacidad_usada"),
             fechaInicio,
-            fechaFin
+            fechaFin,
+            estado,
+            new ArrayList<>()
         );
     }
 
@@ -409,13 +528,14 @@ public class LoteDAO {
             lote.getCapacidadUsada(),
             lote.getFechaInicio(),
             lote.getFechaFin(),
+            lote.getEstado(),
             materiales
         );
     }
 
     private Lote obtenerLotePorId(Connection conn, int loteId) throws SQLException {
         String sql = "SELECT id, id_negocio, anio, secuencia, autoclave_nombre, " +
-                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin " +
+                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin, estado " +
                      "FROM lotes WHERE id = ?";
 
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {

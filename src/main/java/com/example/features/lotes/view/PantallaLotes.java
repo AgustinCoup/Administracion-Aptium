@@ -86,6 +86,10 @@ public class PantallaLotes extends JPanel {
         panelContenido.setOnFinalizar(listener);
     }
 
+    public void setOnMarcarFallo(java.awt.event.ActionListener listener) {
+        panelContenido.setOnMarcarFallo(listener);
+    }
+
     public void setOnQuitar(java.awt.event.ActionListener listener) {
         panelContenido.setOnQuitar(listener);
     }
@@ -96,6 +100,10 @@ public class PantallaLotes extends JPanel {
 
     public void setFinalizarEnabled(boolean enabled) {
         panelContenido.setFinalizarEnabled(enabled);
+    }
+
+    public void setMarcarFalloEnabled(boolean enabled) {
+        panelContenido.setMarcarFalloEnabled(enabled);
     }
 
     public void setQuitarEnabled(boolean enabled) {

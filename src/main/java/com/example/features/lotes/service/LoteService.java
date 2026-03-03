@@ -41,6 +41,15 @@ public class LoteService {
         }
     }
 
+    public List<Lote> obtenerTodosLosLotes() {
+        try {
+            return loteDAO.obtenerTodosLosLotes();
+        } catch (Exception e) {
+            log.error("Error al obtener todos los lotes", e);
+            return List.of();
+        }
+    }
+
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
         try {
             return loteDAO.obtenerMaterialesPorLote(loteId);
@@ -65,6 +74,15 @@ public class LoteService {
             return loteDAO.finalizarLote(loteId);
         } catch (Exception e) {
             log.error("Error al finalizar lote: {}", loteId, e);
+            return false;
+        }
+    }
+
+    public boolean marcarLoteFallo(int loteId) {
+        try {
+            return loteDAO.marcarLoteFallo(loteId);
+        } catch (Exception e) {
+            log.error("Error al marcar lote como fallido: {}", loteId, e);
             return false;
         }
     }

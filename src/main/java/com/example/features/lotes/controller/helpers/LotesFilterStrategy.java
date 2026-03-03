@@ -19,11 +19,13 @@ public class LotesFilterStrategy implements FilterStrategy<Lote, LotesFilterCrit
 
         String filtroId = normalize(criteria.getId());
         String filtroEquipo = normalize(criteria.getEquipo());
+        String filtroEstado = normalize(criteria.getEstado());
         String filtroFechaInicio = normalize(criteria.getFechaInicio());
 
         return source.stream()
             .filter(lote -> TextFilterUtils.containsIgnoreCase(lote.getIdNegocio(), filtroId))
             .filter(lote -> TextFilterUtils.containsIgnoreCase(lote.getAutoclaveNombre(), filtroEquipo))
+            .filter(lote -> TextFilterUtils.containsIgnoreCase(lote.getEstado(), filtroEstado))
             .filter(lote -> TextFilterUtils.containsIgnoreCase(DateTimeDisplayUtils.formatForFilter(lote.getFechaInicio()), filtroFechaInicio))
             .collect(Collectors.toList());
     }

@@ -34,7 +34,7 @@ public class VerLotesController extends AbstractFilterController<Lote> {
             .collect(Collectors.toList());
         panel.setEquiposFiltro(autoclaves);
 
-        recargarCache(model.obtenerLotesFinalizados());
+        recargarCache(model.obtenerTodosLosLotes());
     }
 
     @Override
@@ -42,6 +42,7 @@ public class VerLotesController extends AbstractFilterController<Lote> {
         LotesFilterCriteria criteria = new LotesFilterCriteria(
             panel.getFiltroId(),
             panel.getFiltroEquipo(),
+            panel.getFiltroEstado(),
             panel.getFiltroFechaInicio()
         );
 

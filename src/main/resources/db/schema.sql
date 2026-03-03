@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS lotes (
     capacidad_usada INT NOT NULL,
     fecha_inicio TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_fin TIMESTAMP NULL,
+    estado VARCHAR(20) DEFAULT 'ACTIVO' COMMENT 'ACTIVO, EXITOSO, FALLIDO',
     INDEX idx_lotes_autoclave (autoclave_nombre),
     INDEX idx_lotes_anio_secuencia (anio, secuencia),
     FOREIGN KEY (autoclave_nombre) REFERENCES autoclaves(nombre) ON DELETE RESTRICT

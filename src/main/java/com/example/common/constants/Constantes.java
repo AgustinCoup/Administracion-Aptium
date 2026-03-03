@@ -125,10 +125,13 @@ public final class Constantes {
         public static final String ERROR_CREAR_LOTE = "Error al crear el lote. Intente nuevamente.";
         public static final String LOTE_FINALIZADO_OK = "Lote finalizado correctamente.";
         public static final String ERROR_FINALIZAR_LOTE = "Error al finalizar el lote. Intente nuevamente.";
+        public static final String LOTE_FALLO_OK = "Lote marcado como fallido. Los equipos han vuelto a su estado anterior.";
+        public static final String ERROR_MARCAR_LOTE_FALLO = "Error al marcar el lote como fallido. Intente nuevamente.";
         public static final String LOTE_NO_ENCONTRADO = "No se encontró el lote en el autoclave.";
         public static final String LOTE_NO_ESTERILIZADO = "El lote aún no ha sido esterilizado. Estado actual: %s";
         public static final String CONFIRMAR_LANZAR_LOTE = "¿Lanzar este lote al autoclave?";
-        public static final String CONFIRMAR_FINALIZAR_LOTE = "¿Finalizar este lote?";
+        public static final String CONFIRMAR_FINALIZAR_LOTE = "¿Marcar este lote como finalizado?";
+        public static final String CONFIRMAR_MARCAR_LOTE_FALLO = "¿Marcar este lote como fallido? Los equipos volverán a su estado anterior.";
         
         private Mensajes() {}
     }
@@ -174,7 +177,8 @@ public final class Constantes {
         public static final String ENTREGAR_EQUIPO = "Marcar equipo como entregado";
         public static final String ENTREGAR_INSTITUCION = "Entregar Institución";
         public static final String LANZAR_LOTE = "Lanzar Lote";
-        public static final String FINALIZAR_LOTE = "Finalizar Lote";
+        public static final String MARCAR_LOTE_FINALIZADO = "Marcar Lote Finalizado";
+        public static final String MARCAR_LOTE_FALLO = "Lote Falló";
         public static final String QUITAR = "Quitar";
         public static final String AGREGAR_TEXTO = "Agregar";
         public static final String ELIMINAR_FILA = "X";
@@ -293,12 +297,13 @@ public final class Constantes {
         public static final String COLUMNA_LOTE_CAPACIDAD_USADA = "Capacidad Usada";
         public static final String COLUMNA_LOTE_INICIO = "Inició";
         public static final String COLUMNA_LOTE_FIN = "Finalizó";
+        public static final String COLUMNA_LOTE_ESTADO = "Estado";
         public static final String FILTRO_TODOS = "Todos";
         public static final String FILTRO_CLIENTE = "Cliente:";
         public static final String FILTRO_INSTITUCION = "Institución:";
-        public static final String FILTRO_ESTADO = "Estado:";
         public static final String FILTRO_ID = "ID:";
         public static final String FILTRO_EQUIPO = "Equipo:";
+        public static final String FILTRO_ESTADO = "Estado:";
         public static final String FILTRO_FECHA_INICIO = "Fecha inicio:";
 
         private Textos() {}

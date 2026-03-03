@@ -100,6 +100,7 @@ public class LotesController {
         panel.setOnAutoclaveSeleccionado(this::onAutoclaveSeleccionado);
         panel.setOnLanzar(e -> lanzarLote());
         panel.setOnFinalizar(e -> finalizarLote());
+        panel.setOnMarcarFallo(e -> marcarLoteFallo());
         panel.setOnQuitar(e -> quitarMaterial());
 
         // Actualizar el estado del botón Lanzar en tiempo real cuando el usuario
@@ -250,6 +251,7 @@ public class LotesController {
             panel.setVolumenManualEnabled(false);
             panel.setLanzarEnabled(false);
             panel.setFinalizarEnabled(false);
+            panel.setMarcarFalloEnabled(false);
             panel.setQuitarEnabled(false);
             return;
         }
@@ -274,6 +276,7 @@ public class LotesController {
             panel.setVolumenManualEnabled(false);
             panel.setLanzarEnabled(false);
             panel.setFinalizarEnabled(true);
+            panel.setMarcarFalloEnabled(true);
             panel.setQuitarEnabled(false);
         } else {
             List<MaterialLoteItem> pendientes = pendientesPorAutoclave.getOrDefault(autoclave.getNombre(), List.of());
@@ -287,6 +290,7 @@ public class LotesController {
             boolean hayPendientes = !pendientes.isEmpty();
             panel.setLanzarEnabled(hayPendientes && volumenManualDentroDeCapacidad(autoclave));
             panel.setFinalizarEnabled(false);
+            panel.setMarcarFalloEnabled(false);
             panel.setQuitarEnabled(hayPendientes);
         }
     }
@@ -581,15 +585,32 @@ public class LotesController {
     private void finalizarLote() {
         if (autoclaveSeleccionado == null || !autoclaveSeleccionado.isOcupado()) return;
 
-        if (!panel.confirmar("¿Confirmar finalización del lote?",
+        if (!panel.confirmar(Constantes.Mensajes.CONFIRMAR_FINALIZAR_LOTE,
                 Constantes.Mensajes.TITULO_CONFIRMAR_CAMBIOS)) return;
 
         boolean exitoso = model.finalizarLote(autoclaveSeleccionado.getLoteId());
         if (!exitoso) {
-            panel.mostrarError("Error al finalizar el lote.");
+            panel.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_LOTE);
             return;
         }
 
+        cargarDatos();
+        if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
+    }
+
+    private void marcarLoteFallo() {
+        if (autoclaveSeleccionado == null || !autoclaveSeleccionado.isOcupado()) return;
+
+        if (!panel.confirmar(Constantes.Mensajes.CONFIRMAR_MARCAR_LOTE_FALLO,
+                Constantes.Mensajes.TITULO_CONFIRMAR_CAMBIOS)) return;
+
+        boolean exitoso = model.marcarLoteFallo(autoclaveSeleccionado.getLoteId());
+        if (!exitoso) {
+            panel.mostrarError(Constantes.Mensajes.ERROR_MARCAR_LOTE_FALLO);
+            return;
+        }
+
+        panel.mostrarInfo(Constantes.Mensajes.LOTE_FALLO_OK);
         cargarDatos();
         if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
     }

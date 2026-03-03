@@ -223,6 +223,10 @@ public class AppModel {
         return loteService.obtenerLotesFinalizados();
     }
 
+    public List<Lote> obtenerTodosLosLotes() {
+        return loteService.obtenerTodosLosLotes();
+    }
+
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
         return loteService.obtenerMaterialesPorLote(loteId);
     }
@@ -234,6 +238,10 @@ public class AppModel {
 
     public boolean finalizarLote(int loteId) {
         return loteService.finalizarLote(loteId);
+    }
+
+    public boolean marcarLoteFallo(int loteId) {
+        return loteService.marcarLoteFallo(loteId);
     }
 
     // ==================== DELEGACIÓN A CLIENTE SERVICE ====================

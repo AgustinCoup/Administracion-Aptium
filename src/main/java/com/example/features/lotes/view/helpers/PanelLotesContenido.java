@@ -33,6 +33,7 @@ public class PanelLotesContenido extends JPanel {
     private JLabel lblVolumenManualPorcentaje;
     private JButton btnLanzar;
     private JButton btnFinalizar;
+    private JButton btnMarcarFallo;
     private JButton btnQuitar;
     private Consumer<AutoclaveItem> onAutoclaveSeleccionado;
 
@@ -137,15 +138,18 @@ public class PanelLotesContenido extends JPanel {
         panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
 
         btnQuitar    = new JButton(Constantes.Botones.QUITAR);
-        btnFinalizar = new JButton(Constantes.Botones.FINALIZAR_LOTE);
+        btnFinalizar = new JButton(Constantes.Botones.MARCAR_LOTE_FINALIZADO);
+        btnMarcarFallo = new JButton(Constantes.Botones.MARCAR_LOTE_FALLO);
         btnLanzar    = new JButton(Constantes.Botones.LANZAR_LOTE);
 
         btnQuitar.setFont(Estilos.Fuentes.BOTON);
         btnFinalizar.setFont(Estilos.Fuentes.BOTON);
+        btnMarcarFallo.setFont(Estilos.Fuentes.BOTON);
         btnLanzar.setFont(Estilos.Fuentes.BOTON);
 
         panelBotones.add(btnQuitar);
         panelBotones.add(btnFinalizar);
+        panelBotones.add(btnMarcarFallo);
         panelBotones.add(btnLanzar);
 
         add(panelBotones, BorderLayout.SOUTH);
@@ -407,10 +411,12 @@ public class PanelLotesContenido extends JPanel {
 
     public void setOnLanzar(java.awt.event.ActionListener listener)    { btnLanzar.addActionListener(listener); }
     public void setOnFinalizar(java.awt.event.ActionListener listener) { btnFinalizar.addActionListener(listener); }
+    public void setOnMarcarFallo(java.awt.event.ActionListener listener) { btnMarcarFallo.addActionListener(listener); }
     public void setOnQuitar(java.awt.event.ActionListener listener)    { btnQuitar.addActionListener(listener); }
 
     public void setLanzarEnabled(boolean enabled)    { btnLanzar.setEnabled(enabled); }
     public void setFinalizarEnabled(boolean enabled) { btnFinalizar.setEnabled(enabled); }
+    public void setMarcarFalloEnabled(boolean enabled) { btnMarcarFallo.setEnabled(enabled); }
     public void setQuitarEnabled(boolean enabled)    { btnQuitar.setEnabled(enabled); }
 
     public JTable getTablaDisponibles() { return tablaDisponibles; }

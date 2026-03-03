@@ -14,16 +14,23 @@ public class Lote {
     private final int capacidadUsada;
     private final LocalDateTime fechaInicio;
     private final LocalDateTime fechaFin;
+    private final String estado; // "ACTIVO", "EXITOSO", "FALLIDO"
     private final List<LoteMaterialInfo> materiales;
 
     public Lote(int id, String idNegocio, int anio, int secuencia, String autoclaveNombre,
                 int capacidadTotal, int capacidadUsada, LocalDateTime fechaInicio, LocalDateTime fechaFin) {
-        this(id, idNegocio, anio, secuencia, autoclaveNombre, capacidadTotal, capacidadUsada, fechaInicio, fechaFin, new ArrayList<>());
+        this(id, idNegocio, anio, secuencia, autoclaveNombre, capacidadTotal, capacidadUsada, fechaInicio, fechaFin, "ACTIVO", new ArrayList<>());
     }
 
     public Lote(int id, String idNegocio, int anio, int secuencia, String autoclaveNombre,
                 int capacidadTotal, int capacidadUsada, LocalDateTime fechaInicio, LocalDateTime fechaFin,
                 List<LoteMaterialInfo> materiales) {
+        this(id, idNegocio, anio, secuencia, autoclaveNombre, capacidadTotal, capacidadUsada, fechaInicio, fechaFin, "ACTIVO", materiales);
+    }
+
+    public Lote(int id, String idNegocio, int anio, int secuencia, String autoclaveNombre,
+                int capacidadTotal, int capacidadUsada, LocalDateTime fechaInicio, LocalDateTime fechaFin,
+                String estado, List<LoteMaterialInfo> materiales) {
         this.id = id;
         this.idNegocio = idNegocio;
         this.anio = anio;
@@ -33,8 +40,10 @@ public class Lote {
         this.capacidadUsada = capacidadUsada;
         this.fechaInicio = fechaInicio;
         this.fechaFin = fechaFin;
+        this.estado = estado;
         this.materiales = new ArrayList<>(materiales);
     }
+
 
     public int getId() {
         return id;
@@ -70,6 +79,10 @@ public class Lote {
 
     public LocalDateTime getFechaFin() {
         return fechaFin;
+    }
+
+    public String getEstado() {
+        return estado;
     }
 
     public boolean estaActivo() {

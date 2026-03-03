@@ -103,7 +103,7 @@ public class PantallaIngresoOrtopedia extends JPanel {
         txtInstitucion = crearTextField(inputFont, inputHeight);
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(10, 10, 10, 10);
+        gbc.insets = new Insets(8, 5, 8, 10); // Reducir padding horizontal
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         // Fila 0: Cliente
@@ -129,19 +129,23 @@ public class PantallaIngresoOrtopedia extends JPanel {
         panelOpciones.add(chkRequiereEmpaque);
 
         gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0;
+        gbc.gridwidth = 2; // Ocupar ambas columnas
         gbc.anchor = GridBagConstraints.WEST;
         formulario.add(panelOpciones, gbc);
+        gbc.gridwidth = 1; // Resetear para las siguientes filas
 
         // Fila 5: Panel de Materiales
         JLabel lblDescripcion = new JLabel(Constantes.Textos.LABEL_MATERIAL);
         lblDescripcion.setFont(labelFont);
         gbc.gridx = 0; gbc.gridy = 5; gbc.weightx = 0;
-        gbc.anchor = GridBagConstraints.WEST;
+        gbc.insets = new Insets(2, 5, 2, 10); // Reducir espacio vertical y horizontal
+        gbc.anchor = GridBagConstraints.WEST; // Alineado por línea base del texto
         formulario.add(lblDescripcion, gbc);
 
         panelMateriales = new PanelMateriales(inputFont, inputHeight);
         gbc.gridx = 1; gbc.gridy = 5; gbc.weightx = 1;
         gbc.weighty = 1;
+        gbc.insets = new Insets(2, 5, 5, 5); // Reducir padding en todos lados
         gbc.fill = GridBagConstraints.BOTH;
         formulario.add(panelMateriales, gbc);
 
@@ -157,7 +161,7 @@ public class PantallaIngresoOrtopedia extends JPanel {
         label.setFont(labelFont);
         gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0;
         gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.fill = GridBagConstraints.NONE; // Labels solo ocupan lo necesario
         panel.add(label, gbc);
 
         JPanel panelCampo = new JPanel();
@@ -173,6 +177,7 @@ public class PantallaIngresoOrtopedia extends JPanel {
         }
 
         gbc.gridx = 1; gbc.gridy = row; gbc.weightx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL; // Campos se expanden
         panel.add(panelCampo, gbc);
     }
 

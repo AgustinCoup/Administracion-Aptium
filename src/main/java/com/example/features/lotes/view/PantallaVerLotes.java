@@ -3,6 +3,7 @@ package com.example.features.lotes.view;
 import com.example.common.constants.Constantes;
 import com.example.common.util.DateTimeDisplayUtils;
 import com.example.features.lotes.model.Lote;
+import com.example.features.lotes.view.helpers.EstadoCellRenderer;
 import com.example.ui.common.PanelHeader;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
@@ -19,6 +20,7 @@ public class PantallaVerLotes extends JPanel {
     private final JTable tablaLotes;
     private JTextField txtFiltroId;
     private JComboBox<String> cmbFiltroEquipo;
+    private JComboBox<String> cmbFiltroEstado;
     private JTextField txtFiltroFechaInicio;
     private JButton btnLimpiarFiltros;
     private Runnable onFiltrosChanged;
@@ -45,7 +47,8 @@ public class PantallaVerLotes extends JPanel {
                 Constantes.Textos.COLUMNA_LOTE_EQUIPO,
                 Constantes.Textos.COLUMNA_LOTE_CAPACIDAD_USADA,
                 Constantes.Textos.COLUMNA_LOTE_INICIO,
-                Constantes.Textos.COLUMNA_LOTE_FIN
+                Constantes.Textos.COLUMNA_LOTE_FIN,
+                Constantes.Textos.COLUMNA_LOTE_ESTADO
             },
             0
         ) {
@@ -60,6 +63,9 @@ public class PantallaVerLotes extends JPanel {
         TableStyler.centerColumns(tablaLotes, 2);
         tablaLotes.setRowSelectionAllowed(false);
         tablaLotes.setFillsViewportHeight(true);
+        
+        // Aplicar renderer de colores para la columna Estado
+        tablaLotes.getColumnModel().getColumn(5).setCellRenderer(new EstadoCellRenderer());
 
         JScrollPane scrollPane = new JScrollPane(tablaLotes);
         add(scrollPane, BorderLayout.CENTER);
@@ -80,6 +86,16 @@ public class PantallaVerLotes extends JPanel {
         cmbFiltroEquipo.addItem(Constantes.Textos.FILTRO_TODOS);
         cmbFiltroEquipo.addActionListener(e -> notificarCambioFiltros());
 
+        JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
+        lblEstado.setFont(Estilos.Fuentes.LABEL);
+        cmbFiltroEstado = new JComboBox<>();
+        cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
+        cmbFiltroEstado.addItem(Constantes.Textos.FILTRO_TODOS);
+        cmbFiltroEstado.addItem("ACTIVO");
+        cmbFiltroEstado.addItem("EXITOSO");
+        cmbFiltroEstado.addItem("FALLIDO");
+        cmbFiltroEstado.addActionListener(e -> notificarCambioFiltros());
+
         JLabel lblFechaInicio = new JLabel(Constantes.Textos.FILTRO_FECHA_INICIO);
         lblFechaInicio.setFont(Estilos.Fuentes.LABEL);
         txtFiltroFechaInicio = new JTextField(14);
@@ -97,6 +113,8 @@ public class PantallaVerLotes extends JPanel {
         panel.add(txtFiltroId);
         panel.add(lblEquipo);
         panel.add(cmbFiltroEquipo);
+        panel.add(lblEstado);
+        panel.add(cmbFiltroEstado);
         panel.add(lblFechaInicio);
         panel.add(txtFiltroFechaInicio);
         panel.add(btnLimpiarFiltros);
@@ -107,6 +125,7 @@ public class PantallaVerLotes extends JPanel {
     public void limpiarFiltros() {
         txtFiltroId.setText("");
         cmbFiltroEquipo.setSelectedItem(Constantes.Textos.FILTRO_TODOS);
+        cmbFiltroEstado.setSelectedItem(Constantes.Textos.FILTRO_TODOS);
         txtFiltroFechaInicio.setText("");
         notificarCambioFiltros();
     }
@@ -123,13 +142,15 @@ public class PantallaVerLotes extends JPanel {
         for (Lote lote : lotes) {
             String fechaInicio = DateTimeDisplayUtils.formatForUi(lote.getFechaInicio());
             String fechaFin = DateTimeDisplayUtils.formatForUi(lote.getFechaFin());
+            String estado = lote.getEstado() != null ? lote.getEstado() : "ACTIVO";
 
             modeloTabla.addRow(new Object[]{
                 lote.getIdNegocio(),
                 lote.getAutoclaveNombre(),
                 lote.getCapacidadUsada(),
                 fechaInicio,
-                fechaFin
+                fechaFin,
+                estado
             });
         }
     }
@@ -158,6 +179,20 @@ public class PantallaVerLotes extends JPanel {
 
     public String getFiltroFechaInicio() {
         return txtFiltroFechaInicio.getText().trim();
+    }
+
+    public String getFiltroEstado() {
+        Object selected = cmbFiltroEstado.getSelectedItem();
+        if (selected == null) {
+            return "";
+        }
+
+        String valor = selected.toString().trim();
+        if (Constantes.Textos.FILTRO_TODOS.equalsIgnoreCase(valor)) {
+            return "";
+        }
+
+        return valor;
     }
 
     public void setEquiposFiltro(List<String> equipos) {
