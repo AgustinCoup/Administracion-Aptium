@@ -98,3 +98,56 @@ CREATE TABLE IF NOT EXISTS material_movimientos (
     FOREIGN KEY (material_id) REFERENCES equipo_materiales(id) ON DELETE CASCADE,
     FOREIGN KEY (equipo_id) REFERENCES equipos(id) ON DELETE CASCADE
 );
+
+-- ============================================================
+-- TABLAS DE AUDITORÍA - Para correcciones y cambios
+-- ============================================================
+
+-- Tabla de auditoría para materiales (modificaciones y correcciones)
+CREATE TABLE IF NOT EXISTS equipos_auditoria (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    equipo_id INT NOT NULL,
+    material_id INT,
+    tipo_cambio VARCHAR(50) NOT NULL COMMENT 'MODIFICACION_CANTIDAD, MODIFICACION_CODIGO, ELIMINACION_EQUIPO',
+    campo_modificado VARCHAR(100),
+    valor_anterior VARCHAR(255),
+    valor_nuevo VARCHAR(255),
+    motivo VARCHAR(500),
+    fecha_cambio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_auditoria_equipo (equipo_id),
+    INDEX idx_auditoria_tipo (tipo_cambio),
+    INDEX idx_auditoria_fecha (fecha_cambio)
+);
+
+-- Historial persistente de equipos eliminados (no depende de FK para conservar trazabilidad)
+CREATE TABLE IF NOT EXISTS equipos_eliminados (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    equipo_id_original INT NOT NULL,
+    nro_cliente INT,
+    cliente_nombre VARCHAR(150),
+    nro_profesional INT,
+    paciente VARCHAR(150),
+    nro_institucion INT,
+    institucion_nombre VARCHAR(150),
+    estado VARCHAR(50),
+    motivo VARCHAR(500),
+    fecha_eliminacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_eq_elim_equipo_id (equipo_id_original),
+    INDEX idx_eq_elim_fecha (fecha_eliminacion)
+);
+
+-- Historial persistente de materiales eliminados (por código y equipo)
+CREATE TABLE IF NOT EXISTS materiales_eliminados (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    equipo_id_original INT NOT NULL,
+    material_id_original INT,
+    codigo_catalogo INT NOT NULL,
+    descripcion VARCHAR(255),
+    cantidad INT,
+    estado VARCHAR(50),
+    motivo VARCHAR(500),
+    fecha_eliminacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_mat_elim_equipo_id (equipo_id_original),
+    INDEX idx_mat_elim_codigo (codigo_catalogo),
+    INDEX idx_mat_elim_fecha (fecha_eliminacion)
+);

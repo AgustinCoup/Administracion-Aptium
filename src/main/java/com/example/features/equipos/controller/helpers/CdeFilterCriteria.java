@@ -1,15 +1,17 @@
 package com.example.features.equipos.controller.helpers;
 
+import java.util.List;
+
 public class CdeFilterCriteria {
 
     private final String cliente;
     private final String institucion;
-    private final String estado;
+    private final List<String> estados;
 
-    public CdeFilterCriteria(String cliente, String institucion, String estado) {
+    public CdeFilterCriteria(String cliente, String institucion, List<String> estados) {
         this.cliente = cliente;
         this.institucion = institucion;
-        this.estado = estado;
+        this.estados = estados;
     }
 
     public String getCliente() {
@@ -20,7 +22,7 @@ public class CdeFilterCriteria {
         return institucion;
     }
 
-    public String getEstado() {
-        return estado;
+    public List<String> getEstados() {
+        return estados;
     }
 }

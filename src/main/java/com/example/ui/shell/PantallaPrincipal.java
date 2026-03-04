@@ -8,6 +8,7 @@ import com.example.features.equipos.view.PantallaIngresoOrtopedia;
 import com.example.features.equipos.view.PantallaRegistrarEstado;
 import com.example.features.equipos.view.PantallaVerCDEv1;
 import com.example.features.equipos.view.PantallaVerCDEv2;
+import com.example.features.equipos.view.PantallaCorrecciones;
 import com.example.features.lotes.view.PantallaLotes;
 import com.example.features.lotes.view.PantallaVerLotes;
 
@@ -18,6 +19,7 @@ public class PantallaPrincipal extends JFrame {
     private PantallaVerCDEv2 verCDEv2;
     private PantallaRegistrarEstado registrarEstado;
     private PantallaEquiposParaEntregar equiposParaEntregar;
+    private PantallaCorrecciones correcciones;
     private PantallaLotes pantallaLotes;
     private PantallaVerLotes pantallaVerLotes;
 
@@ -37,6 +39,7 @@ public class PantallaPrincipal extends JFrame {
         ingresoOrtopedia = new PantallaIngresoOrtopedia(navegador, contenedor);
         registrarEstado = new PantallaRegistrarEstado(navegador, contenedor);
         equiposParaEntregar = new PantallaEquiposParaEntregar(navegador, contenedor);
+        correcciones = new PantallaCorrecciones(navegador, contenedor);
         pantallaLotes = new PantallaLotes(navegador, contenedor);
         pantallaVerLotes = new PantallaVerLotes(navegador, contenedor);
 
@@ -49,6 +52,7 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(ingresoOrtopedia, Constantes.Pantallas.INGRESO_ORTOPEDIA);
         contenedor.add(registrarEstado, Constantes.Pantallas.REGISTRAR_ESTADO);
         contenedor.add(equiposParaEntregar, Constantes.Pantallas.EQUIPOS_PARA_ENTREGAR);
+        contenedor.add(correcciones, Constantes.Pantallas.CORRECCIONES);
         contenedor.add(pantallaLotes, Constantes.Pantallas.LOTES);
         contenedor.add(pantallaVerLotes, Constantes.Pantallas.VER_LOTES);
 
@@ -69,6 +73,10 @@ public class PantallaPrincipal extends JFrame {
 
     public PantallaEquiposParaEntregar getPantallaEquiposParaEntregar() {
         return equiposParaEntregar;
+    }
+
+    public PantallaCorrecciones getPantallaCorrecciones() {
+        return correcciones;
     }
 
     public PantallaLotes getPantallaLotes() {

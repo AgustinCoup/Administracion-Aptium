@@ -55,6 +55,13 @@
       <version>1.4.14</version>
     </dependency>
 
+    <!-- JCalendar: Date picker component para Swing -->
+    <dependency>
+      <groupId>com.toedter</groupId>
+      <artifactId>jcalendar</artifactId>
+      <version>1.4</version>
+    </dependency>
+
     <!-- Mockito: Para tests unitarios con mocks -->
     <dependency>
       <groupId>org.mockito</groupId>

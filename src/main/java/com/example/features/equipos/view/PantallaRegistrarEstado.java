@@ -35,6 +35,7 @@ public class PantallaRegistrarEstado extends JPanel {
     private JButton btnGestionarLotes;
     private JButton btnConfirmar;
     private JButton btnCancelar;
+    private JButton btnCorrecciones;
     private JLabel lblCambiosPendientes;
     
     public PantallaRegistrarEstado(CardLayout navegador, JPanel contenedor) {
@@ -68,18 +69,18 @@ public class PantallaRegistrarEstado extends JPanel {
      * Crea el panel con los botones de acción.
      */
     private JPanel crearPanelBotones() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
+        JPanel panelPrincipal = new JPanel(new BorderLayout());
+        panelPrincipal.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
         
         // Panel izquierdo: información de cambios pendientes
         JPanel panelInfo = new JPanel(new FlowLayout(FlowLayout.LEFT));
         lblCambiosPendientes = new JLabel(String.format(Constantes.Textos.CAMBIOS_PENDIENTES, 0));
         lblCambiosPendientes.setFont(Estilos.Fuentes.LABEL);
         panelInfo.add(lblCambiosPendientes);
-        panel.add(panelInfo, BorderLayout.WEST);
+        panelPrincipal.add(panelInfo, BorderLayout.WEST);
         
-        // Panel derecho: botones de acción
-        JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        // Panel central: botones de acción principales
+        JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
         
         btnGestionarLotes = new JButton("Gestionar Lotes");
         btnGestionarLotes.setFont(Estilos.Fuentes.BOTON);
@@ -102,9 +103,16 @@ public class PantallaRegistrarEstado extends JPanel {
         panelBotones.add(btnCancelar);
         panelBotones.add(btnConfirmar);
         
-        panel.add(panelBotones, BorderLayout.EAST);
+        panelPrincipal.add(panelBotones, BorderLayout.CENTER);
         
-        return panel;
+        // Panel derecho: botón de Correcciones (separado en NORTHEAST)
+        JPanel panelCorrecciones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        btnCorrecciones = new JButton("Correcciones");
+        btnCorrecciones.setFont(Estilos.Fuentes.BOTON);
+        panelCorrecciones.add(btnCorrecciones);
+        panelPrincipal.add(panelCorrecciones, BorderLayout.EAST);
+        
+        return panelPrincipal;
     }
 
     // ==================== Métodos para el Controller ====================
@@ -151,6 +159,10 @@ public class PantallaRegistrarEstado extends JPanel {
 
     public void setOnGestionarLotes(java.awt.event.ActionListener listener) {
         btnGestionarLotes.addActionListener(listener);
+    }
+
+    public void setOnCorrecciones(java.awt.event.ActionListener listener) {
+        btnCorrecciones.addActionListener(listener);
     }
 
     public void setCambiosPendientesCount(int total) {
@@ -229,5 +241,12 @@ public class PantallaRegistrarEstado extends JPanel {
      */
     public void navegarALotes() {
         navegador.show(contenedor, Constantes.Pantallas.LOTES);
+    }
+
+    /**
+     * Navega a la pantalla de correcciones de equipos.
+     */
+    public void navegarACorrecciones() {
+        navegador.show(contenedor, Constantes.Pantallas.CORRECCIONES);
     }
 }

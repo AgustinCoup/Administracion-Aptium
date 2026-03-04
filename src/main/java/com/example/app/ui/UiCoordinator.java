@@ -2,6 +2,7 @@ package com.example.app.ui;
 
 import com.example.app.AppModel;
 import com.example.features.equipos.controller.CDEViewController;
+import com.example.features.equipos.controller.CorreccionsController;
 import com.example.features.equipos.controller.EquiposParaEntregarController;
 import com.example.features.equipos.controller.OrthopediaInputController;
 import com.example.features.equipos.controller.RegistrarEstadoController;
@@ -42,6 +43,11 @@ public class UiCoordinator {
             null
         );
 
+        CorreccionsController correccionesController = new CorreccionsController(
+            vista.getPantallaCorrecciones(),
+            model
+        );
+
         LotesController lotesController = new LotesController(
             vista.getPantallaLotes(),
             model,
@@ -67,6 +73,7 @@ public class UiCoordinator {
         registrarEstadoController.setOnEstadosActualizados(refrescarPantallasEstados);
         equiposParaEntregarController.setOnEstadosActualizados(refrescarPantallasEstados);
         lotesController.setOnEstadosActualizados(refrescarPantallasEstados);
+        correccionesController.setOnCambiosAplicados(refrescarPantallas);
 
         new OrthopediaInputController(
             vista.getPanelIngresoOrtopedia(),

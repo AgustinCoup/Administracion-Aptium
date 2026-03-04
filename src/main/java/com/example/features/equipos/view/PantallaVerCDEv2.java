@@ -8,8 +8,10 @@ import com.example.features.equipos.view.helpers.PanelEquipoMaterial;
 import com.example.ui.common.PanelHeader;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
+import com.example.ui.common.CheckableComboBox;
 import java.awt.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Pantalla para visualizar el estado de equipos y materiales en tiempo real.
@@ -21,7 +23,7 @@ public class PantallaVerCDEv2 extends JPanel {
     private JButton btnVerLotes;
     private JTextField txtFiltroCliente;
     private JTextField txtFiltroInstitucion;
-    private JComboBox<String> cmbFiltroEstado;
+    private CheckableComboBox<String> cmbFiltroEstado;
     private JButton btnLimpiarFiltros;
     private Runnable onFiltrosChanged;
 
@@ -80,15 +82,17 @@ public class PantallaVerCDEv2 extends JPanel {
 
         JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
         lblEstado.setFont(Estilos.Fuentes.LABEL);
-        cmbFiltroEstado = new JComboBox<>();
-        cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
-        cmbFiltroEstado.addItem(Constantes.Textos.FILTRO_TODOS);
-        for (EstadoEquipo estado : EstadoEquipo.values()) {
-            cmbFiltroEstado.addItem(estado.getNombre());
+        
+        String[] estados = new String[EstadoEquipo.values().length];
+        for (int i = 0; i < EstadoEquipo.values().length; i++) {
+            estados[i] = EstadoEquipo.values()[i].getNombre();
         }
+        cmbFiltroEstado = new CheckableComboBox<>(estados);
+        cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
+        cmbFiltroEstado.selectAll();
+        cmbFiltroEstado.setOnSelectionChange(this::notificarCambioFiltros);
 
         FilterUiHelper.bindOnTextChange(this::notificarCambioFiltros, txtFiltroCliente, txtFiltroInstitucion);
-        cmbFiltroEstado.addActionListener(e -> notificarCambioFiltros());
 
         btnLimpiarFiltros = new JButton(Constantes.Botones.LIMPIAR_FILTROS);
         btnLimpiarFiltros.setFont(Estilos.Fuentes.INPUT);
@@ -108,7 +112,7 @@ public class PantallaVerCDEv2 extends JPanel {
     public void limpiarFiltros() {
         txtFiltroCliente.setText("");
         txtFiltroInstitucion.setText("");
-        cmbFiltroEstado.setSelectedItem(Constantes.Textos.FILTRO_TODOS);
+        cmbFiltroEstado.selectAll();
         notificarCambioFiltros();
     }
 
@@ -137,16 +141,8 @@ public class PantallaVerCDEv2 extends JPanel {
         return txtFiltroInstitucion.getText().trim();
     }
 
-    public String getFiltroEstado() {
-        Object selected = cmbFiltroEstado.getSelectedItem();
-        if (selected == null) {
-            return "";
-        }
-        String estado = selected.toString();
-        if (Constantes.Textos.FILTRO_TODOS.equalsIgnoreCase(estado)) {
-            return "";
-        }
-        return estado;
+    public List<String> getFiltroEstados() {
+        return cmbFiltroEstado.getSelectedItems();
     }
 }
 

@@ -58,6 +58,7 @@ public class RegistrarEstadoController {
         panel.setOnCancelar(e -> cancelarCambios());
         panel.setOnConfirmar(e -> confirmarCambios());
         panel.setOnGestionarLotes(e -> panel.navegarALotes());
+        panel.setOnCorrecciones(e -> panel.navegarACorrecciones());
 
         // Bloquear navegación si hay cambios sin confirmar
         panel.setGuardVolver(

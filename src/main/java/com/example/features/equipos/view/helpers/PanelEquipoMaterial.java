@@ -25,6 +25,7 @@ public class PanelEquipoMaterial extends JPanel {
     private JTable tablaEquipos;
     private JTable tablaMateriales;
     private Consumer<Equipo> onEquipoSeleccionado;
+    private Runnable onMaterialSelectionChanged;
 
     /**
      * Constructor del panel reutilizable.
@@ -98,6 +99,11 @@ public class PanelEquipoMaterial extends JPanel {
         TableStyler.centerColumns(tablaMateriales, 1);
 
         // Configurar selección de materiales
+        tablaMateriales.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                onMaterialSelectionChanged();
+            }
+        });
         if (materialesEditable) {
             tablaMateriales.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         } else {
@@ -107,8 +113,17 @@ public class PanelEquipoMaterial extends JPanel {
         JScrollPane scrollMateriales = new JScrollPane(tablaMateriales);
         gbc.gridx = 0;
         gbc.gridy = 3;
-        gbc.weighty = 0.4;
+        gbc.weighty = 1.0;
         add(scrollMateriales, gbc);
+    }
+
+    /**
+     * Callback interno cuando cambia la selección de material.
+     */
+    private void onMaterialSelectionChanged() {
+        if (onMaterialSelectionChanged != null) {
+            onMaterialSelectionChanged.run();
+        }
     }
 
     /**
@@ -160,6 +175,13 @@ public class PanelEquipoMaterial extends JPanel {
      */
     public void setOnEquipoSeleccionado(Consumer<Equipo> listener) {
         this.onEquipoSeleccionado = listener;
+    }
+
+    /**
+     * Establece un listener que se ejecuta cuando cambia la selección de material.
+     */
+    public void setOnMaterialSelectionChanged(Runnable listener) {
+        this.onMaterialSelectionChanged = listener;
     }
 
     /**

@@ -41,7 +41,7 @@ public class CDEViewController extends AbstractFilterController<Equipo> {
         CdeFilterCriteria criteria = new CdeFilterCriteria(
             panel.getFiltroCliente(),
             panel.getFiltroInstitucion(),
-            panel.getFiltroEstado()
+            panel.getFiltroEstados()
         );
 
         List<Equipo> filtrados = filterStrategy.filter(getCache(), criteria);

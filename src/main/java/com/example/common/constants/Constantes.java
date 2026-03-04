@@ -28,6 +28,7 @@ public final class Constantes {
         public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS_PARA_ENTREGAR";
         public static final String LOTES = "LOTES";
         public static final String VER_LOTES = "VER_LOTES";
+        public static final String CORRECCIONES = "CORRECCIONES";
         
         private Pantallas() {}
     }

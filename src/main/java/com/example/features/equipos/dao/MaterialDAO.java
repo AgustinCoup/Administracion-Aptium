@@ -1,5 +1,6 @@
 package com.example.features.equipos.dao;
 
+import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.model.Equipo;
 import com.example.features.equipos.model.EstadoEquipo;
 import com.example.features.equipos.model.MovimientoMaterial;
@@ -631,6 +632,178 @@ public class MaterialDAO {
             if (conn != null) {
                 try { conn.close(); } catch (SQLException e) { log.error("Error al cerrar conexión", e); }
             }
+        }
+    }
+
+    /**
+     * Actualiza la cantidad de un material específico.
+     * @param materialId ID del material a actualizar
+     * @param cantidadNueva Nueva cantidad
+     * @return true si se actualizó exitosamente
+     */
+    public boolean actualizarCantidad(Integer materialId, Integer cantidadNueva) {
+        String sql = "UPDATE equipo_materiales SET cantidad = ? WHERE id = ?";
+        
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, cantidadNueva);
+            ps.setInt(2, materialId);
+            int filasActualizadas = ps.executeUpdate();
+            
+            if (filasActualizadas > 0) {
+                log.debug("Cantidad del material {} actualizada a {}", materialId, cantidadNueva);
+                return true;
+            }
+            return false;
+        } catch (SQLException e) {
+            log.error("Error al actualizar cantidad del material {}", materialId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Obtiene la cantidad actual de un material.
+     * @param materialId ID del material
+     * @return Cantidad actual, o null si no existe
+     */
+    public Integer obtenerCantidad(Integer materialId) {
+        String sql = "SELECT cantidad FROM equipo_materiales WHERE id = ?";
+        
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, materialId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("cantidad");
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener cantidad del material {}", materialId, e);
+        }
+        return null;
+    }
+
+    /**
+     * Actualiza el código de catálogo de un material específico.
+     * @param materialId ID del material a actualizar
+     * @param codigoNuevo Nuevo código de catálogo
+     * @return true si se actualizó exitosamente
+     */
+    public boolean actualizarCodigo(Integer materialId, Integer codigoNuevo) {
+        String sql = "UPDATE equipo_materiales SET codigo_catalogo = ? WHERE id = ?";
+        
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, codigoNuevo);
+            ps.setInt(2, materialId);
+            int filasActualizadas = ps.executeUpdate();
+            
+            if (filasActualizadas > 0) {
+                log.debug("Código del material {} actualizado a {}", materialId, codigoNuevo);
+                return true;
+            }
+            return false;
+        } catch (SQLException e) {
+            log.error("Error al actualizar código del material {}", materialId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Obtiene información de un material específico.
+     * @param materialId ID del material
+     * @return Array con [codigo, equipoId, descripcion, cantidad, estado] o null si no existe
+     */
+    public Object[] obtenerMaterial(Integer materialId) {
+        String sql = "SELECT em.codigo_catalogo, em.equipo_id, cd.descripcion, em.cantidad, em.estado " +
+                    "FROM equipo_materiales em " +
+                    "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
+                    "WHERE em.id = ?";
+        
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, materialId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new Object[]{
+                        rs.getInt("codigo_catalogo"),
+                        rs.getInt("equipo_id"),
+                        rs.getString("descripcion"),
+                        rs.getInt("cantidad"),
+                        rs.getString("estado")
+                    };
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener material {}", materialId, e);
+        }
+        return null;
+    }
+
+    /**
+     * Obtiene todos los materiales de un equipo para un código de catálogo.
+     */
+    public List<Object[]> obtenerMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo) {
+        List<Object[]> materiales = new ArrayList<>();
+        String sql = "SELECT em.id, em.codigo_catalogo, cd.descripcion, em.cantidad, em.estado " +
+                "FROM equipo_materiales em " +
+                "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
+                "WHERE em.equipo_id = ? AND em.codigo_catalogo = ?";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setInt(1, equipoId);
+            ps.setInt(2, codigoCatalogo);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    materiales.add(new Object[] {
+                        rs.getInt("id"),
+                        rs.getInt("codigo_catalogo"),
+                        rs.getString("descripcion"),
+                        rs.getInt("cantidad"),
+                        rs.getString("estado")
+                    });
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener materiales por código {} para equipo {}", codigoCatalogo, equipoId, e);
+            throw new DatabaseException("Error al obtener materiales por código", e);
+        }
+
+        return materiales;
+    }
+
+    /**
+     * Elimina todos los materiales de un código específico dentro de un equipo.
+     * 
+     * @param equipoId ID del equipo
+     * @param codigoCatalogo Código del material a eliminar
+     * @return Número de filas eliminadas
+     */
+    public int eliminarMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo) {
+        String sql = "DELETE FROM equipo_materiales WHERE equipo_id = ? AND codigo_catalogo = ?";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setInt(1, equipoId);
+            ps.setInt(2, codigoCatalogo);
+            int filasEliminadas = ps.executeUpdate();
+
+            if (filasEliminadas > 0) {
+                log.info("Se eliminaron {} filas del material {} del equipo {}",
+                        filasEliminadas, codigoCatalogo, equipoId);
+            }
+            return filasEliminadas;
+        } catch (SQLException e) {
+            log.error("Error al eliminar materiales del código {} del equipo {}", codigoCatalogo, equipoId, e);
+            throw new DatabaseException("Error al eliminar materiales: " + e.getMessage(), e);
         }
     }
 }

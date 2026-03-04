@@ -18,12 +18,12 @@ public class CdeFilterStrategy implements FilterStrategy<Equipo, CdeFilterCriter
 
         String filtroCliente = normalize(criteria.getCliente());
         String filtroInstitucion = normalize(criteria.getInstitucion());
-        String filtroEstado = normalize(criteria.getEstado());
+        List<String> filtroEstados = criteria.getEstados();
 
         return source.stream()
             .filter(eq -> TextFilterUtils.containsIgnoreCase(eq.getClienteNombre(), filtroCliente))
             .filter(eq -> TextFilterUtils.containsIgnoreCase(eq.getInstitucionNombre(), filtroInstitucion))
-            .filter(eq -> filtroEstado.isEmpty() || normalize(eq.calcularEstado().getNombre()).equals(filtroEstado))
+            .filter(eq -> filtroEstados.isEmpty() || filtroEstados.contains(eq.calcularEstado().getNombre()))
             .collect(Collectors.toList());
     }
 

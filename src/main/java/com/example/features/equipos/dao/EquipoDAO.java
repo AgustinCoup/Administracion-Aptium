@@ -7,6 +7,7 @@ import com.example.features.equipos.model.Equipo;
 import com.example.features.equipos.model.EstadoEquipo;
 import com.example.features.equipos.model.Material;
 import com.example.infrastructure.db.ConnectionPool;
+import com.example.features.equipos.model.EquipoAuditoria;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.sql.*;
@@ -338,6 +339,53 @@ public class EquipoDAO implements DAO<Equipo, String> {
     public boolean existe(String id) {
         return obtenerPorId(id) != null;
     }
+
+    // ============================================================
+    // MÉTODOS PARA CORRECCIONES Y AUDITORÍA
+    // ============================================================
+
+    /**
+     * Obtiene todos los equipos en estado NUEVO (solo los editables).
+     * @return Lista de equipos en estado NUEVO
+     */
+    public List<Equipo> obtenerEquiposNuevos() {
+        List<Equipo> equipos = new ArrayList<>();
+        String sql = "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque " +
+                    "FROM equipos e " +
+                    "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
+                    "LEFT JOIN instituciones i ON e.nro_institucion = i.id " +
+                    "WHERE e.estado = 'Nuevo' " +
+                    "ORDER BY e.fecha_ingreso DESC";
+        
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while (rs.next()) {
+                Equipo eq = new Equipo();
+                eq.setId(rs.getInt("id"));
+                eq.setNroCliente(rs.getInt("nro_cliente"));
+                eq.setClienteNombre(rs.getString("cliente_nombre"));
+                Integer nroProfesional = rs.getObject("nro_profesional", Integer.class);
+                eq.setNroProfesional(nroProfesional);
+                eq.setPacienteNombre(rs.getString("paciente"));
+                Integer nroInstitucion = rs.getObject("nro_institucion", Integer.class);
+                eq.setNroInstitucion(nroInstitucion);
+                eq.setInstitucionNombre(rs.getString("nombre"));
+                eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
+                eq.setRequiereLavado(rs.getBoolean("requiere_lavado"));
+                eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
+                
+                cargarMateriales(conn, eq);
+                equipos.add(eq);
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener equipos nuevos", e);
+        }
+        return equipos;
+    }
+
+
 }
 
 

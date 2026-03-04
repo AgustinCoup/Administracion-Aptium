@@ -84,7 +84,6 @@ public class PantallaVerLotes extends JPanel {
         cmbFiltroEquipo = new JComboBox<>();
         cmbFiltroEquipo.setFont(Estilos.Fuentes.INPUT);
         cmbFiltroEquipo.addItem(Constantes.Textos.FILTRO_TODOS);
-        cmbFiltroEquipo.addActionListener(e -> notificarCambioFiltros());
 
         JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
         lblEstado.setFont(Estilos.Fuentes.LABEL);
@@ -94,16 +93,19 @@ public class PantallaVerLotes extends JPanel {
         cmbFiltroEstado.addItem("ACTIVO");
         cmbFiltroEstado.addItem("EXITOSO");
         cmbFiltroEstado.addItem("FALLIDO");
-        cmbFiltroEstado.addActionListener(e -> notificarCambioFiltros());
 
         JLabel lblFechaInicio = new JLabel(Constantes.Textos.FILTRO_FECHA_INICIO);
         lblFechaInicio.setFont(Estilos.Fuentes.LABEL);
         txtFiltroFechaInicio = new JTextField(14);
         txtFiltroFechaInicio.setFont(Estilos.Fuentes.INPUT);
 
+        // Vincular cambios de filtros usando FilterUiHelper
         FilterUiHelper.bindOnTextChange(this::notificarCambioFiltros,
             txtFiltroId,
             txtFiltroFechaInicio);
+        FilterUiHelper.bindOnComboChange(this::notificarCambioFiltros,
+            cmbFiltroEquipo,
+            cmbFiltroEstado);
 
         btnLimpiarFiltros = new JButton(Constantes.Botones.LIMPIAR_FILTROS);
         btnLimpiarFiltros.setFont(Estilos.Fuentes.INPUT);
