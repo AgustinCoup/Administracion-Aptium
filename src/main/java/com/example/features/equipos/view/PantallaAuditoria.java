@@ -1,10 +1,12 @@
 package com.example.features.equipos.view;
 
+import com.example.common.constants.Constantes;
 import com.example.features.equipos.model.EquipoAuditoria;
 import com.example.features.equipos.service.EquipoCorreccionService;
 import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
+import com.example.ui.common.PanelHeader;
 import com.toedter.calendar.JDateChooser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,99 +14,143 @@ import org.slf4j.LoggerFactory;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Pantalla para visualizar el historial de auditoría de TODOS los cambios realizados.
- * Muestra todos los cambios en el sistema: modificaciones de cantidad/código y eliminaciones de equipos.
+ * Pantalla que muestra el historial completo de auditoría de todos los cambios del sistema.
+ *
+ * Integrada en el CardLayout principal; se accede desde PantallaCorrecciones mediante
+ * el botón "Ver Auditoría". El header estándar incluye el botón Volver que regresa
+ * siempre a {@link Constantes.Pantallas#CORRECCIONES}.
+ *
+ * El servicio se inyecta de forma diferida mediante {@link #inicializar(EquipoCorreccionService)}
+ * para que UiCoordinator pueda construir la pantalla antes de tener el servicio disponible.
+ *
+ * Layout (BorderLayout raíz):
+ *   NORTH  → wrapper con PanelHeader encima y panel de filtros debajo (BoxLayout Y)
+ *   CENTER → tabla de auditoría con scroll
+ *   SOUTH  → footer con conteo de registros
+ *
+ * Convención de celdas:
+ *   - valorAnterior / valorNuevo null → cadena vacía (las eliminaciones no tienen valor previo)
+ *   - clienteNombre / materialInfo null → "-"
  */
 public class PantallaAuditoria extends JPanel {
+
     private static final Logger log = LoggerFactory.getLogger(PantallaAuditoria.class);
-    private static final SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+    private static final SimpleDateFormat SDF = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 
+    // ── Índices de columna ───────────────────────────────────────────────────
+    private static final int COL_FECHA    = 0;
+    private static final int COL_CLIENTE  = 1;
+    private static final int COL_MATERIAL = 2;
+    private static final int COL_TIPO     = 3;
+    private static final int COL_ANTERIOR = 4;
+    private static final int COL_NUEVO    = 5;
+    private static final int COL_MOTIVO   = 6;
+
+    private static final String[] COLUMNAS = {
+        "Fecha", "Cliente", "Material", "Tipo de Cambio",
+        "Valor Anterior", "Valor Nuevo", "Motivo"
+    };
+
+    // ── Estado ───────────────────────────────────────────────────────────────
     private EquipoCorreccionService correccionService;
-    private JTable tablaAuditoria;
-    private JLabel lblTotalRegistros;
-    private JDateChooser dateChooserDesde;
-    private JDateChooser dateChooserHasta;
+    private List<EquipoAuditoria>   auditoriasCargadas = new ArrayList<>();
+
+    // ── Componentes UI ───────────────────────────────────────────────────────
+    private JTable                    tablaAuditoria;
+    private JLabel                    lblTotalRegistros;
+    private JDateChooser              dateChooserDesde;
+    private JDateChooser              dateChooserHasta;
     private CheckableComboBox<String> cmbTiposCambio;
-    private List<EquipoAuditoria> auditoriasCargadas;
 
-    public PantallaAuditoria(EquipoCorreccionService correccionService) {
-        this.correccionService = correccionService;
-        this.auditoriasCargadas = new ArrayList<>();
+    // ── Constructor ──────────────────────────────────────────────────────────
 
+    /**
+     * Construye la pantalla y la integra en el CardLayout indicado.
+     *
+     * @param navegador  CardLayout del contenedor principal
+     * @param contenedor Panel principal al que pertenece el CardLayout
+     */
+    public PantallaAuditoria(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout(5, 5));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Panel superior (encabezado + filtros)
-        add(crearPanelNorte(), BorderLayout.NORTH);
+        // ── NORTH: header + filtros en un wrapper BoxLayout ──────────────────
+        // BorderLayout.NORTH y BorderLayout.PAGE_START son la misma constante;
+        // agregarlos por separado causaría que el segundo reemplace al primero.
+        // La solución es un único panel contenedor para la zona norte.
+        JPanel panelNorte = new JPanel();
+        panelNorte.setLayout(new BoxLayout(panelNorte, BoxLayout.Y_AXIS));
 
-        // Tabla de auditoría
-        add(crearPanelTabla(), BorderLayout.CENTER);
+        PanelHeader header = new PanelHeader(
+            "Auditoría de Cambios",
+            navegador,
+            contenedor,
+            Constantes.Pantallas.CORRECCIONES   // Volver → Correcciones
+        );
+        panelNorte.add(header);
+        panelNorte.add(crearPanelFiltros());
 
-        // Footer
-        add(crearPanelInferior(), BorderLayout.SOUTH);
+        add(panelNorte,         BorderLayout.NORTH);
+        add(crearPanelTabla(),  BorderLayout.CENTER);
+        add(crearPanelFooter(), BorderLayout.SOUTH);
 
-        // Cargar datos
+        // Recargar cada vez que la pantalla se hace visible por CardLayout
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentShown(ComponentEvent e) {
+                if (correccionService != null) {
+                    cargarAuditoria();
+                }
+            }
+        });
+    }
+
+    // ── API pública ──────────────────────────────────────────────────────────
+
+    /**
+     * Inyecta el servicio y dispara la primera carga de datos.
+     * Debe llamarse desde {@code UiCoordinator} después de construir la pantalla.
+     */
+    public void inicializar(EquipoCorreccionService servicio) {
+        this.correccionService = servicio;
         cargarAuditoria();
     }
 
-    /**
-     * Panel norte con encabezado y filtros combinados.
-     */
-    private JPanel crearPanelNorte() {
-        JPanel panelNorte = new JPanel(new BorderLayout(5, 5));
-        panelNorte.add(crearPanelEncabezado(), BorderLayout.NORTH);
-        panelNorte.add(crearPanelFiltros(), BorderLayout.SOUTH);
-        return panelNorte;
-    }
+    // ── Construcción de la UI ────────────────────────────────────────────────
 
     /**
-     * Panel de encabezado con título e información.
-     */
-    private JPanel crearPanelEncabezado() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        panel.setBorder(BorderFactory.createTitledBorder("Historial Completo de Cambios"));
-
-        JLabel lblTitulo = new JLabel("Todos los Registros de Auditoría");
-        lblTitulo.setFont(Estilos.Fuentes.TITULO);
-
-        lblTotalRegistros = new JLabel("Cargando...");
-        lblTotalRegistros.setFont(Estilos.Fuentes.LABEL);
-
-        panel.add(lblTitulo);
-        panel.add(new JSeparator(JSeparator.VERTICAL));
-        panel.add(lblTotalRegistros);
-
-        return panel;
-    }
-
-    /**
-     * Panel de filtros con fecha rango y tipos de cambio.
+     * Panel de filtros con layout robusto:
+     * <ul>
+     *   <li>CENTER → controles de filtro en FlowLayout (pueden crecer)</li>
+     *   <li>EAST   → botón "Limpiar Filtros" anclado a la derecha, nunca se corta</li>
+     * </ul>
      */
     private JPanel crearPanelFiltros() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        panel.setBorder(BorderFactory.createTitledBorder("Filtros"));
+        JPanel panelFiltros = new JPanel(new BorderLayout(10, 0));
+        panelFiltros.setBorder(BorderFactory.createTitledBorder("Filtros"));
 
-        // Filtro Fecha Desde
+        JPanel panelControles = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+
         JLabel lblDesde = new JLabel("Desde:");
         lblDesde.setFont(Estilos.Fuentes.LABEL);
         dateChooserDesde = new JDateChooser();
         dateChooserDesde.setPreferredSize(new Dimension(120, 25));
         dateChooserDesde.setDateFormatString("dd/MM/yyyy");
 
-        // Filtro Fecha Hasta
         JLabel lblHasta = new JLabel("Hasta:");
         lblHasta.setFont(Estilos.Fuentes.LABEL);
         dateChooserHasta = new JDateChooser();
         dateChooserHasta.setPreferredSize(new Dimension(120, 25));
         dateChooserHasta.setDateFormatString("dd/MM/yyyy");
 
-        // Filtro Tipos de Cambio
         JLabel lblTipo = new JLabel("Tipo de Cambio:");
         lblTipo.setFont(Estilos.Fuentes.LABEL);
         cmbTiposCambio = new CheckableComboBox<>(new String[]{
@@ -116,90 +162,82 @@ public class PantallaAuditoria extends JPanel {
         cmbTiposCambio.setFont(Estilos.Fuentes.INPUT);
         cmbTiposCambio.setPreferredSize(new Dimension(200, 25));
 
-        // Botón Limpiar Filtros
-        JButton btnLimpiarFiltros = new JButton("Limpiar Filtros");
-        btnLimpiarFiltros.setFont(Estilos.Fuentes.BOTON);
-        btnLimpiarFiltros.addActionListener(e -> limpiarFiltros());
+        panelControles.add(lblDesde);
+        panelControles.add(dateChooserDesde);
+        panelControles.add(lblHasta);
+        panelControles.add(dateChooserHasta);
+        panelControles.add(lblTipo);
+        panelControles.add(cmbTiposCambio);
 
-        // Vincular cambios de filtros
+        // Botón Limpiar anclado al EAST (siempre visible aunque la ventana sea chica)
+        JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        JButton btnLimpiar = new JButton("Limpiar Filtros");
+        btnLimpiar.setFont(Estilos.Fuentes.BOTON);
+        btnLimpiar.addActionListener(e -> limpiarFiltros());
+        panelBoton.add(btnLimpiar);
+
+        panelFiltros.add(panelControles, BorderLayout.CENTER);
+        panelFiltros.add(panelBoton,     BorderLayout.EAST);
+
         FilterUiHelper.bindOnDateChange(this::aplicarFiltros, dateChooserDesde, dateChooserHasta);
         cmbTiposCambio.setOnSelectionChange(this::aplicarFiltros);
 
-        panel.add(lblDesde);
-        panel.add(dateChooserDesde);
-        panel.add(lblHasta);
-        panel.add(dateChooserHasta);
-        panel.add(lblTipo);
-        panel.add(cmbTiposCambio);
-        panel.add(btnLimpiarFiltros);
-
-        return panel;
+        return panelFiltros;
     }
 
-    /**
-     * Panel central con la tabla de auditoría.
-     */
     private JPanel crearPanelTabla() {
         JPanel panel = new JPanel(new BorderLayout());
 
-        String[] columnasAuditoria = {"Fecha", "Tipo de Cambio", "Valor Anterior", "Valor Nuevo", "Motivo"};
-        DefaultTableModel modelAuditoria = new DefaultTableModel(columnasAuditoria, 0) {
+        DefaultTableModel modelo = new DefaultTableModel(COLUMNAS, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
             }
         };
 
-        tablaAuditoria = new JTable(modelAuditoria);
+        tablaAuditoria = new JTable(modelo);
         tablaAuditoria.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
         tablaAuditoria.setRowHeight(30);
-        tablaAuditoria.getColumnModel().getColumn(0).setPreferredWidth(150);
-        tablaAuditoria.getColumnModel().getColumn(1).setPreferredWidth(150);
-        tablaAuditoria.getColumnModel().getColumn(2).setPreferredWidth(150);
-        tablaAuditoria.getColumnModel().getColumn(3).setPreferredWidth(150);
-        tablaAuditoria.getColumnModel().getColumn(4).setPreferredWidth(250);
-
-        // Permitir seleccionar filas
         tablaAuditoria.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-        JScrollPane scrollPane = new JScrollPane(tablaAuditoria);
-        panel.add(scrollPane, BorderLayout.CENTER);
+        tablaAuditoria.getColumnModel().getColumn(COL_FECHA).setPreferredWidth(140);
+        tablaAuditoria.getColumnModel().getColumn(COL_CLIENTE).setPreferredWidth(180);
+        tablaAuditoria.getColumnModel().getColumn(COL_MATERIAL).setPreferredWidth(250);
+        tablaAuditoria.getColumnModel().getColumn(COL_TIPO).setPreferredWidth(160);
+        tablaAuditoria.getColumnModel().getColumn(COL_ANTERIOR).setPreferredWidth(130);
+        tablaAuditoria.getColumnModel().getColumn(COL_NUEVO).setPreferredWidth(130);
+        tablaAuditoria.getColumnModel().getColumn(COL_MOTIVO).setPreferredWidth(220);
 
+        panel.add(new JScrollPane(tablaAuditoria), BorderLayout.CENTER);
         return panel;
     }
 
-    /**
-     * Panel inferior con botones.
-     */
-    private JPanel crearPanelInferior() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
-
-        JButton btnCerrar = new JButton("Cerrar");
-        btnCerrar.setFont(Estilos.Fuentes.BOTON);
-        btnCerrar.addActionListener(e -> cerrarVentana());
-
-        panel.add(btnCerrar);
-
+    private JPanel crearPanelFooter() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 3));
+        lblTotalRegistros = new JLabel("Cargando...");
+        lblTotalRegistros.setFont(Estilos.Fuentes.LABEL);
+        panel.add(lblTotalRegistros);
         return panel;
     }
 
-    /**
-     * Carga los datos de auditoría desde el servicio (TODOS los registros).
-     */
+    // ── Carga y filtrado de datos ────────────────────────────────────────────
+
     private void cargarAuditoria() {
+        lblTotalRegistros.setText("Cargando...");
+        lblTotalRegistros.setForeground(Color.BLACK);
+
         new Thread(() -> {
             try {
                 List<EquipoAuditoria> auditorias = correccionService.obtenerTodasAuditorias();
-                auditoriasCargadas = auditorias;
-
                 SwingUtilities.invokeLater(() -> {
-                    cmbTiposCambio.selectAll(); // Por defecto mostrar todos
+                    auditoriasCargadas = auditorias;
+                    cmbTiposCambio.selectAll();
                     aplicarFiltros();
                     log.info("Cargados {} registros de auditoría", auditorias.size());
                 });
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> {
-                    lblTotalRegistros.setText("✗ Error al cargar auditoría: " + e.getMessage());
+                    lblTotalRegistros.setText("✗ Error al cargar: " + e.getMessage());
                     lblTotalRegistros.setForeground(Color.RED);
                     log.error("Error al cargar auditoría", e);
                 });
@@ -207,124 +245,82 @@ public class PantallaAuditoria extends JPanel {
         }).start();
     }
 
-    /**
-     * Aplica los filtros actuales a la tabla.
-     */
     private void aplicarFiltros() {
-        // Filtrar por fecha y tipo
         List<EquipoAuditoria> filtradas = auditoriasCargadas.stream()
             .filter(this::cumpleFechas)
             .filter(this::cumpleTipo)
             .collect(Collectors.toList());
 
         actualizarTabla(filtradas);
-        lblTotalRegistros.setText("Mostrando: " + filtradas.size() + " de " + auditoriasCargadas.size() + " registros");
+        lblTotalRegistros.setForeground(Color.BLACK);
+        lblTotalRegistros.setText(
+            "Mostrando " + filtradas.size() + " de " + auditoriasCargadas.size() + " registros");
     }
 
-    /**
-     * Verifica si una auditoría cumple con el rango de fechas.
-     */
-    private boolean cumpleFechas(EquipoAuditoria auditoria) {
-        if (auditoria.getFechaCambio() == null) return true;
-
-        java.time.LocalDateTime fechaAuditoria = auditoria.getFechaCambio();
+    private boolean cumpleFechas(EquipoAuditoria a) {
+        if (a.getFechaCambio() == null) return true;
+        java.time.LocalDate fecha = a.getFechaCambio().toLocalDate();
 
         if (dateChooserDesde.getDate() != null) {
-            java.time.LocalDate fechaDesde = dateChooserDesde.getDate().toInstant()
+            java.time.LocalDate desde = dateChooserDesde.getDate().toInstant()
                 .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
-            if (fechaAuditoria.toLocalDate().isBefore(fechaDesde)) {
-                return false;
-            }
+            if (fecha.isBefore(desde)) return false;
         }
-
         if (dateChooserHasta.getDate() != null) {
-            java.time.LocalDate fechaHasta = dateChooserHasta.getDate().toInstant()
+            java.time.LocalDate hasta = dateChooserHasta.getDate().toInstant()
                 .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
-            if (fechaAuditoria.toLocalDate().isAfter(fechaHasta)) {
-                return false;
-            }
+            if (fecha.isAfter(hasta)) return false;
         }
-
         return true;
     }
 
-    /**
-     * Verifica si una auditoría cumple con los tipos de cambio seleccionados.
-     */
-    private boolean cumpleTipo(EquipoAuditoria auditoria) {
-        List<String> tiposSeleccionados = cmbTiposCambio.getSelectedItems();
-        if (tiposSeleccionados.isEmpty()) {
-            return true; // Si no hay tipos seleccionados, mostrar todos
-        }
-
-        String tipoDeAuditoria = traduciaTipoCambio(auditoria.getTipoCambio());
-        return tiposSeleccionados.contains(tipoDeAuditoria);
+    private boolean cumpleTipo(EquipoAuditoria a) {
+        List<String> seleccionados = cmbTiposCambio.getSelectedItems();
+        if (seleccionados.isEmpty()) return true;
+        return seleccionados.contains(traducirTipoCambio(a.getTipoCambio()));
     }
 
-    /**
-     * Actualiza la tabla con los registros de auditoría filtrados.
-     */
     private void actualizarTabla(List<EquipoAuditoria> auditorias) {
-        DefaultTableModel model = (DefaultTableModel) tablaAuditoria.getModel();
-        model.setRowCount(0);
+        DefaultTableModel modelo = (DefaultTableModel) tablaAuditoria.getModel();
+        modelo.setRowCount(0);
 
-        for (EquipoAuditoria auditoria : auditorias) {
-            String fechaFormato = auditoria.getFechaCambio() != null ?
-                sdf.format(java.sql.Timestamp.valueOf(auditoria.getFechaCambio())) : "N/A";
+        for (EquipoAuditoria a : auditorias) {
+            String fecha = a.getFechaCambio() != null
+                ? SDF.format(java.sql.Timestamp.valueOf(a.getFechaCambio())) : "N/A";
 
-            String tipoCambio = traduciaTipoCambio(auditoria.getTipoCambio());
+            // valorAnterior y valorNuevo son null en eliminaciones (la información
+            // relevante ya está en clienteNombre y materialInfo). Se renderiza como
+            // cadena vacía para que la celda quede en blanco visualmente.
+            String valorAnterior = a.getValorAnterior() != null ? a.getValorAnterior() : "";
+            String valorNuevo    = a.getValorNuevo()    != null ? a.getValorNuevo()    : "";
 
-            model.addRow(new Object[]{
-                fechaFormato,
-                tipoCambio,
-                auditoria.getValorAnterior() != null ? auditoria.getValorAnterior() : "-",
-                auditoria.getValorNuevo() != null ? auditoria.getValorNuevo() : "-",
-                auditoria.getMotivo() != null ? auditoria.getMotivo() : "-"
+            modelo.addRow(new Object[]{
+                fecha,
+                a.getClienteNombre() != null ? a.getClienteNombre() : "-",
+                a.getMaterialInfo()  != null ? a.getMaterialInfo()  : "-",
+                traducirTipoCambio(a.getTipoCambio()),
+                valorAnterior,
+                valorNuevo,
+                a.getMotivo()        != null ? a.getMotivo()        : "-"
             });
         }
-
-        // Colorear filas según tipo de cambio
-        for (int i = 0; i < model.getRowCount(); i++) {
-            String tipo = (String) model.getValueAt(i, 1);
-            if ("Eliminación de Equipo".equals(tipo)) {
-                tablaAuditoria.setSelectionBackground(new Color(255, 200, 200));
-            }
-        }
     }
 
-    /**
-     * Traduce el tipo de cambio a texto legible.
-     */
-    private String traduciaTipoCambio(String tipoCambio) {
+    private String traducirTipoCambio(String tipoCambio) {
         if (tipoCambio == null) return "Desconocido";
         switch (tipoCambio) {
-            case "MODIFICACION_CANTIDAD":
-                return "Modificación de Cantidad";
-            case "MODIFICACION_CODIGO":
-                return "Modificación de Código";
-            case "ELIMINACION_EQUIPO":
-                return "Eliminación de Equipo";
-            case "ELIMINACION_MATERIAL":
-                return "Eliminación de Material";
-            default:
-                return tipoCambio;
+            case "MODIFICACION_CANTIDAD": return "Modificación de Cantidad";
+            case "MODIFICACION_CODIGO":   return "Modificación de Código";
+            case "ELIMINACION_EQUIPO":    return "Eliminación de Equipo";
+            case "ELIMINACION_MATERIAL":  return "Eliminación de Material";
+            default:                      return tipoCambio;
         }
     }
 
-    /**
-     * Limpia todos los filtros.
-     */
     private void limpiarFiltros() {
         dateChooserDesde.setDate(null);
         dateChooserHasta.setDate(null);
         cmbTiposCambio.selectAll();
         aplicarFiltros();
-    }
-
-    /**
-     * Cierra la ventana.
-     */
-    private void cerrarVentana() {
-        SwingUtilities.getWindowAncestor(this).dispose();
     }
 }

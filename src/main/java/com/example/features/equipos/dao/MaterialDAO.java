@@ -745,6 +745,83 @@ public class MaterialDAO {
     }
 
     /**
+     * Agrega un material nuevo a un equipo existente en estado "Nuevo".
+     *
+     * La operación se realiza en una única transacción:
+     * <ol>
+     *   <li>Inserta la fila en {@code equipo_materiales} con estado NUEVO.</li>
+     *   <li>Registra el movimiento inicial en {@code material_movimientos}.</li>
+     * </ol>
+     *
+     * @param equipoId       ID del equipo al que se agrega el material
+     * @param codigoCatalogo Código del material en el catálogo
+     * @param cantidad       Cantidad a agregar (debe ser > 0)
+     * @return ID del nuevo material creado
+     * @throws DatabaseException si ocurre algún error durante la transacción
+     */
+    public Integer agregarMaterial(Integer equipoId, Integer codigoCatalogo, Integer cantidad) {
+        String sqlInsertMaterial =
+            "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado) " +
+            "VALUES (?, ?, ?, ?)";
+        String sqlInsertMovimiento =
+            "INSERT INTO material_movimientos " +
+            "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
+            "VALUES (?, ?, ?, NULL, ?)";
+
+        Connection conn = null;
+        try {
+            conn = ConnectionPool.getConnection();
+            conn.setAutoCommit(false);
+
+            int nuevoMaterialId;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    sqlInsertMaterial, Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, equipoId);
+                ps.setInt(2, codigoCatalogo);
+                ps.setInt(3, cantidad);
+                ps.setString(4, EstadoEquipo.NUEVO.getNombre());
+                ps.executeUpdate();
+
+                try (ResultSet rs = ps.getGeneratedKeys()) {
+                    if (rs.next()) {
+                        nuevoMaterialId = rs.getInt(1);
+                    } else {
+                        throw new SQLException("No se generó ID para el nuevo material");
+                    }
+                }
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(sqlInsertMovimiento)) {
+                ps.setInt(1, nuevoMaterialId);
+                ps.setInt(2, equipoId);
+                ps.setInt(3, cantidad);
+                ps.setString(4, EstadoEquipo.NUEVO.getNombre());
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            log.info("Material código={} (cantidad={}) agregado al equipo {} → id={}",
+                codigoCatalogo, cantidad, equipoId, nuevoMaterialId);
+            return nuevoMaterialId;
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException ex) {
+                    log.error("Error al hacer rollback en agregarMaterial", ex);
+                }
+            }
+            log.error("Error al agregar material código={} al equipo {}", codigoCatalogo, equipoId, e);
+            throw new DatabaseException("Error al agregar material al equipo", e);
+        } finally {
+            if (conn != null) {
+                try { conn.close(); } catch (SQLException e) {
+                    log.error("Error al cerrar conexión", e);
+                }
+            }
+        }
+    }
+
+    /**
      * Obtiene todos los materiales de un equipo para un código de catálogo.
      */
     public List<Object[]> obtenerMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo) {

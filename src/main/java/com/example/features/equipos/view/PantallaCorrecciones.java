@@ -5,8 +5,8 @@ import com.example.common.util.Validador;
 import com.example.features.equipos.model.Equipo;
 import com.example.features.equipos.model.Material;
 import com.example.features.equipos.view.helpers.PanelEquipoMaterial;
-import com.example.ui.common.PanelHeader;
 import com.example.ui.common.Estilos;
+import com.example.ui.common.PanelHeader;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -18,100 +18,119 @@ import java.util.List;
 
 /**
  * Pantalla para correcciones de equipos en estado "Nuevo".
- * 
- * Estructura:
- * - Arriba: PanelEquipoMaterial (tabla equipos + tabla materiales)
- * - Abajo: Formulario para modificar cantidad/código o eliminar equipo
- * 
- * Solo permite editar equipos en estado "Nuevo".
+ *
+ * Operaciones disponibles sobre un equipo seleccionado:
+ * - Modificar cantidad de un material
+ * - Modificar código de catálogo de un material
+ * - Agregar un material nuevo al equipo
+ * - Eliminar un material del equipo
+ * - Eliminar el equipo completo
+ * - Ver auditoría global
  */
 public class PantallaCorrecciones extends JPanel {
+
     private PanelEquipoMaterial panelTablas;
-    
-    // Componentes del formulario
+
+    // ── Componentes del formulario de modificación ───────────────────────────
     private JComboBox<String> cmbOperacion;
-    private JSpinner spinCantidad;
-    private JTextField txtCodigoNuevo;
-    private JTextField txtDescripcionNueva;
-    private JTextArea txtMotivo;
+    private JSpinner          spinCantidad;
+    private JTextField        txtCodigoNuevo;
+    private JTextField        txtDescripcionNueva;
+    private JTextArea         txtMotivo;
+
+    // ── Botones ───────────────────────────────────────────────────────────────
     private JButton btnGuardarCambios;
-    private JButton btnEliminarEquipo;
+    private JButton btnAgregarMaterial;
     private JButton btnEliminarMaterial;
+    private JButton btnEliminarEquipo;
     private JButton btnVerAuditoria;
-    private JLabel lblEstado;
+
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private JLabel       lblEstado;
     private JProgressBar progreso;
-    
-    // Labels del formulario para controlar visibilidad
+
+    // ── Labels del formulario (para controlar visibilidad según operación) ────
     private JLabel lblCantidad;
     private JLabel lblCodigoNuevo;
     private JLabel lblDescripcionNueva;
 
-    // Callbacks
+    // ── Callbacks ─────────────────────────────────────────────────────────────
     private QuartaConsumer<Integer, Integer, Integer, String> onModificarCantidad;
     private QuartaConsumer<Integer, Integer, Integer, String> onModificarCodigo;
-    private BiConsumer<Integer, String> onEliminarEquipo;
-    private TripleConsumer<Integer, Integer, String> onEliminarMaterial;
-    private Runnable onVerAuditoria;
-    private BiConsumer<Integer, JTextField> onCodigoNuevoChanged;
-    private Runnable onPantallaVisible;
+    private QuartaConsumer<Integer, Integer, Integer, String> onAgregarMaterial;
+    private BiConsumer<Integer, String>                       onEliminarEquipo;
+    private TripleConsumer<Integer, Integer, String>          onEliminarMaterial;
+    private Runnable                                          onVerAuditoria;
+    private BiConsumer<Integer, JTextField>                   onCodigoNuevoChanged;
+    private Runnable                                          onPantallaVisible;
+
+    // ── Constructor ───────────────────────────────────────────────────────────
 
     public PantallaCorrecciones(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout(5, 5));
         setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        // Listener para detectar cuando se hace visible la pantalla
         addComponentListener(new ComponentAdapter() {
             @Override
             public void componentShown(ComponentEvent e) {
-                if (onPantallaVisible != null) {
-                    onPantallaVisible.run();
-                }
+                if (onPantallaVisible != null) onPantallaVisible.run();
             }
         });
 
-        // Header
         PanelHeader header = new PanelHeader(
-            "Correcciones de Equipos",
-            navegador,
-            contenedor,
-            Constantes.Pantallas.ESTERILIZACION
-        );
+            "Correcciones de Equipos", navegador, contenedor,
+            Constantes.Pantallas.ESTERILIZACION);
         add(header, BorderLayout.NORTH);
 
-        // Contenido principal: Panel con tablas (equipos arriba, materiales abajo)
         panelTablas = new PanelEquipoMaterial(
             Constantes.Textos.TABLA_EQUIPOS_TITULO,
             Constantes.Textos.TABLA_MATERIALES_TITULO,
-            true  // Los materiales son seleccionables
+            true
         );
         panelTablas.setOnMaterialSelectionChanged(this::onMaterialSelectionChanged);
         panelTablas.setOnEquipoSeleccionado(this::onEquipoSeleccionado);
         add(panelTablas, BorderLayout.CENTER);
 
-        // Panel inferior: Formulario + botones + estado
         add(crearPanelInferior(), BorderLayout.SOUTH);
     }
 
+    // ── Construcción de la UI ─────────────────────────────────────────────────
 
+    private JPanel crearPanelInferior() {
+        JPanel panelPrincipal = new JPanel(new BorderLayout(5, 5));
+        panelPrincipal.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        panelPrincipal.add(crearPanelFormulario(), BorderLayout.CENTER);
+        panelPrincipal.add(crearPanelBotones(),    BorderLayout.SOUTH);
 
+        JPanel panelEstado = new JPanel(new BorderLayout(10, 5));
+        panelEstado.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        lblEstado = new JLabel("Listo");
+        lblEstado.setFont(Estilos.Fuentes.LABEL);
+        panelEstado.add(lblEstado, BorderLayout.WEST);
+        progreso = new JProgressBar();
+        progreso.setIndeterminate(false);
+        progreso.setVisible(false);
+        panelEstado.add(progreso, BorderLayout.CENTER);
 
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.add(panelPrincipal, BorderLayout.CENTER);
+        wrapper.add(panelEstado,    BorderLayout.SOUTH);
+        return wrapper;
+    }
 
-    /**
-     * Panel del formulario para editar cantidad o código de un material.
-     */
+    /** Formulario para modificar cantidad o código de un material seleccionado. */
     private JPanel crearPanelFormulario() {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Modificar Material Seleccionado"));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.fill   = GridBagConstraints.HORIZONTAL;
 
-        // Operación a realizar
+        // Tipo de cambio
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
         JLabel lblOperacion = new JLabel("Tipo de cambio:");
         lblOperacion.setFont(Estilos.Fuentes.LABEL);
         panel.add(lblOperacion, gbc);
-
         gbc.gridx = 1; gbc.weightx = 0.7;
         cmbOperacion = new JComboBox<>(new String[]{"Modificar Cantidad", "Modificar Código"});
         cmbOperacion.setFont(Estilos.Fuentes.INPUT);
@@ -123,7 +142,6 @@ public class PantallaCorrecciones extends JPanel {
         lblCantidad = new JLabel("Nueva cantidad:");
         lblCantidad.setFont(Estilos.Fuentes.LABEL);
         panel.add(lblCantidad, gbc);
-
         gbc.gridx = 1; gbc.weightx = 0.7;
         spinCantidad = new JSpinner(new SpinnerNumberModel(1, 1, 1000, 1));
         spinCantidad.setFont(Estilos.Fuentes.INPUT);
@@ -135,40 +153,20 @@ public class PantallaCorrecciones extends JPanel {
         lblCodigoNuevo.setFont(Estilos.Fuentes.LABEL);
         lblCodigoNuevo.setVisible(false);
         panel.add(lblCodigoNuevo, gbc);
-
         gbc.gridx = 1; gbc.weightx = 0.7;
         txtCodigoNuevo = new JTextField();
         txtCodigoNuevo.setFont(Estilos.Fuentes.INPUT);
         txtCodigoNuevo.setVisible(false);
         Validador.aplicarSoloNumeros(txtCodigoNuevo);
-        
-        // Listener para buscar descripción en tiempo real
-        txtCodigoNuevo.getDocument().addDocumentListener(new DocumentListener() {
-            @Override
-            public void insertUpdate(DocumentEvent e) {
-                notificarCambioCodigo();
-            }
-
-            @Override
-            public void removeUpdate(DocumentEvent e) {
-                notificarCambioCodigo();
-            }
-
-            @Override
-            public void changedUpdate(DocumentEvent e) {
-                notificarCambioCodigo();
-            }
-        });
-        
+        txtCodigoNuevo.getDocument().addDocumentListener(simpleListener(this::notificarCambioCodigo));
         panel.add(txtCodigoNuevo, gbc);
 
-        // Descripción nueva (AUTOMÁTICA - solo lectura)
+        // Descripción (solo lectura, auto-llenada)
         gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.3;
         lblDescripcionNueva = new JLabel("Descripción:");
         lblDescripcionNueva.setFont(Estilos.Fuentes.LABEL);
         lblDescripcionNueva.setVisible(false);
         panel.add(lblDescripcionNueva, gbc);
-
         gbc.gridx = 1; gbc.weightx = 0.7;
         txtDescripcionNueva = new JTextField();
         txtDescripcionNueva.setFont(Estilos.Fuentes.INPUT);
@@ -182,7 +180,6 @@ public class PantallaCorrecciones extends JPanel {
         JLabel lblMotivo = new JLabel("Motivo del cambio:");
         lblMotivo.setFont(Estilos.Fuentes.LABEL);
         panel.add(lblMotivo, gbc);
-
         gbc.gridx = 1; gbc.weightx = 0.7; gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
         txtMotivo = new JTextArea(3, 30);
@@ -194,120 +191,220 @@ public class PantallaCorrecciones extends JPanel {
         return panel;
     }
 
-    /**
-     * Panel inferior con formulario, botones y barra de estado.
-     */
-    private JPanel crearPanelInferior() {
-        JPanel panelPrincipal = new JPanel(new BorderLayout(5, 5));
-        panelPrincipal.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+    private JPanel crearPanelBotones() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
 
-        // Formulario
-        JPanel panelFormulario = crearPanelFormulario();
-        panelPrincipal.add(panelFormulario, BorderLayout.CENTER);
-
-        // Panel con botones
-        JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
-        
         btnGuardarCambios = new JButton("Guardar Cambios");
         btnGuardarCambios.setFont(Estilos.Fuentes.BOTON);
         btnGuardarCambios.addActionListener(e -> guardarCambios());
         btnGuardarCambios.setEnabled(false);
-        panelBotones.add(btnGuardarCambios);
+        panel.add(btnGuardarCambios);
+
+        btnAgregarMaterial = new JButton("Agregar Material");
+        btnAgregarMaterial.setFont(Estilos.Fuentes.BOTON);
+        btnAgregarMaterial.setForeground(new Color(0, 120, 0));
+        btnAgregarMaterial.addActionListener(e -> abrirDialogoAgregarMaterial());
+        btnAgregarMaterial.setEnabled(false);   // se habilita al seleccionar un equipo
+        panel.add(btnAgregarMaterial);
+
         btnEliminarMaterial = new JButton("Eliminar Material");
         btnEliminarMaterial.setForeground(new Color(200, 100, 0));
         btnEliminarMaterial.setFont(Estilos.Fuentes.BOTON);
         btnEliminarMaterial.addActionListener(e -> solicitarEliminacionMaterial());
         btnEliminarMaterial.setEnabled(false);
-        panelBotones.add(btnEliminarMaterial);
-
+        panel.add(btnEliminarMaterial);
 
         btnEliminarEquipo = new JButton("Eliminar Equipo");
         btnEliminarEquipo.setForeground(Color.RED);
         btnEliminarEquipo.setFont(Estilos.Fuentes.BOTON);
         btnEliminarEquipo.addActionListener(e -> solicitarEliminacion());
         btnEliminarEquipo.setEnabled(false);
-        panelBotones.add(btnEliminarEquipo);
+        panel.add(btnEliminarEquipo);
 
         btnVerAuditoria = new JButton("Ver Auditoría");
         btnVerAuditoria.setFont(Estilos.Fuentes.BOTON);
         btnVerAuditoria.addActionListener(e -> abrirAuditoria());
-        btnVerAuditoria.setEnabled(true);  // Siempre habilitado para ver todas las auditorías
-        panelBotones.add(btnVerAuditoria);
+        panel.add(btnVerAuditoria);
 
-        panelPrincipal.add(panelBotones, BorderLayout.SOUTH);
-
-        // Estado y progreso
-        JPanel panelEstado = new JPanel(new BorderLayout(10, 5));
-        panelEstado.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-
-        lblEstado = new JLabel("Listo");
-        lblEstado.setFont(Estilos.Fuentes.LABEL);
-        panelEstado.add(lblEstado, BorderLayout.WEST);
-
-        progreso = new JProgressBar();
-        progreso.setIndeterminate(false);
-        progreso.setVisible(false);
-        panelEstado.add(progreso, BorderLayout.CENTER);
-
-        JPanel panelSurSur = new JPanel(new BorderLayout());
-        panelSurSur.add(panelPrincipal, BorderLayout.CENTER);
-        panelSurSur.add(panelEstado, BorderLayout.SOUTH);
-
-        return panelSurSur;
+        return panel;
     }
 
+    // ── Diálogo "Agregar Material" ────────────────────────────────────────────
+
     /**
-     * Actualiza visibilidad de campos de edición según operación seleccionada.
+     * Muestra un diálogo modal para capturar código, cantidad y motivo del nuevo material.
+     * El diálogo reutiliza el callback {@code onCodigoNuevoChanged} para autocompletar
+     * la descripción en tiempo real, igual que el formulario de modificación.
      */
+    private void abrirDialogoAgregarMaterial() {
+        Equipo equipo = panelTablas.getEquipoSeleccionado();
+        if (equipo == null) {
+            mostrarError("Debe seleccionar un equipo");
+            return;
+        }
+
+        // ── Construir el panel del diálogo ────────────────────────────────────
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets  = new Insets(6, 6, 6, 6);
+        gbc.fill    = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 0.3;
+
+        // Código
+        gbc.gridx = 0; gbc.gridy = 0;
+        JLabel lblCod = new JLabel("Código:");
+        lblCod.setFont(Estilos.Fuentes.LABEL);
+        panel.add(lblCod, gbc);
+        gbc.gridx = 1; gbc.weightx = 0.7;
+        JTextField txtCodigo = new JTextField(10);
+        txtCodigo.setFont(Estilos.Fuentes.INPUT);
+        Validador.aplicarSoloNumeros(txtCodigo);
+        panel.add(txtCodigo, gbc);
+
+        // Descripción (solo lectura, auto-llenada)
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;
+        JLabel lblDesc = new JLabel("Descripción:");
+        lblDesc.setFont(Estilos.Fuentes.LABEL);
+        panel.add(lblDesc, gbc);
+        gbc.gridx = 1; gbc.weightx = 0.7;
+        JTextField txtDesc = new JTextField();
+        txtDesc.setFont(Estilos.Fuentes.INPUT);
+        txtDesc.setEditable(false);
+        txtDesc.setBackground(new Color(240, 240, 240));
+        panel.add(txtDesc, gbc);
+
+        // Cantidad
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.3;
+        JLabel lblCant = new JLabel("Cantidad:");
+        lblCant.setFont(Estilos.Fuentes.LABEL);
+        panel.add(lblCant, gbc);
+        gbc.gridx = 1; gbc.weightx = 0.7;
+        JSpinner spinCant = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
+        spinCant.setFont(Estilos.Fuentes.INPUT);
+        panel.add(spinCant, gbc);
+
+        // Motivo
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.3;
+        JLabel lblMot = new JLabel("Motivo:");
+        lblMot.setFont(Estilos.Fuentes.LABEL);
+        panel.add(lblMot, gbc);
+        gbc.gridx = 1; gbc.weightx = 0.7; gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        JTextArea txtMot = new JTextArea(3, 25);
+        txtMot.setFont(Estilos.Fuentes.INPUT);
+        txtMot.setLineWrap(true);
+        txtMot.setWrapStyleWord(true);
+        panel.add(new JScrollPane(txtMot), gbc);
+
+        // Autocompletar descripción cuando cambia el código
+        txtCodigo.getDocument().addDocumentListener(simpleListener(() -> {
+            String cod = txtCodigo.getText().trim();
+            if (cod.isEmpty()) {
+                txtDesc.setText("");
+                return;
+            }
+            if (!Validador.soloNumeros(cod)) {
+                txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO);
+                return;
+            }
+            if (onCodigoNuevoChanged != null) {
+                try {
+                    onCodigoNuevoChanged.accept(Integer.parseInt(cod), txtDesc);
+                } catch (NumberFormatException ex) {
+                    txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO);
+                }
+            }
+        }));
+
+        // ── Mostrar el diálogo ────────────────────────────────────────────────
+        int resultado = JOptionPane.showConfirmDialog(
+            this, panel,
+            "Agregar Material al Equipo",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (resultado != JOptionPane.OK_OPTION) return;
+
+        // ── Validar entradas del usuario ──────────────────────────────────────
+        String codigoStr = txtCodigo.getText().trim();
+        String motivo    = txtMot.getText().trim();
+
+        if (codigoStr.isEmpty()) {
+            mostrarError("Debe ingresar un código de catálogo");
+            return;
+        }
+        if (!Validador.soloNumeros(codigoStr)) {
+            mostrarError("El código debe ser un número entero");
+            return;
+        }
+        if (motivo.isEmpty()) {
+            mostrarError("El motivo es obligatorio");
+            return;
+        }
+
+        // Confirmar antes de persistir
+        Integer codigo   = Integer.parseInt(codigoStr);
+        Integer cantidad = (Integer) spinCant.getValue();
+        String  descFinal = txtDesc.getText().trim();
+
+        int confirmar = JOptionPane.showConfirmDialog(
+            this,
+            String.format(
+                "¿Agregar al equipo de %s?\n\nMaterial: %s - %s\nCantidad: %d",
+                equipo.getClienteNombre(),
+                codigo, descFinal.isEmpty() ? "(desconocido)" : descFinal,
+                cantidad
+            ),
+            "Confirmar adición",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.QUESTION_MESSAGE
+        );
+
+        if (confirmar == JOptionPane.YES_OPTION && onAgregarMaterial != null) {
+            onAgregarMaterial.accept(equipo.getId(), codigo, cantidad, motivo);
+        }
+    }
+
+    // ── Lógica de la UI ───────────────────────────────────────────────────────
+
     private void actualizarCamposEdicion() {
-        boolean esModificarCantidad = "Modificar Cantidad".equals(
-            cmbOperacion.getSelectedItem().toString());
+        boolean esModificarCantidad =
+            "Modificar Cantidad".equals(cmbOperacion.getSelectedItem().toString());
 
         lblCantidad.setVisible(esModificarCantidad);
         spinCantidad.setVisible(esModificarCantidad);
-
         lblCodigoNuevo.setVisible(!esModificarCantidad);
         txtCodigoNuevo.setVisible(!esModificarCantidad);
         lblDescripcionNueva.setVisible(!esModificarCantidad);
         txtDescripcionNueva.setVisible(!esModificarCantidad);
     }
 
-    /**
-     * Se ejecuta cuando se selecciona un equipo.
-     */
     private void onEquipoSeleccionado(Equipo equipo) {
-        btnEliminarEquipo.setEnabled(equipo != null);
+        boolean hay = equipo != null;
+        btnEliminarEquipo.setEnabled(hay);
+        btnAgregarMaterial.setEnabled(hay);
     }
 
-    /**
-     * Se ejecuta cuando cambia la selección de material.
-     */
     private void onMaterialSelectionChanged() {
         boolean materialSeleccionado = panelTablas.getMaterialSeleccionadoIndex() >= 0;
         btnGuardarCambios.setEnabled(materialSeleccionado);
         btnEliminarMaterial.setEnabled(materialSeleccionado);
     }
 
-    /**
-     * Notifica al Controller cuando cambia el código nuevo.
-     */
     private void notificarCambioCodigo() {
         String codigoStr = txtCodigoNuevo.getText().trim();
-
         if (codigoStr.isEmpty()) {
             txtDescripcionNueva.setText("");
             return;
         }
-
         if (!Validador.soloNumeros(codigoStr)) {
             txtDescripcionNueva.setText("Código inválido");
             return;
         }
-
         if (onCodigoNuevoChanged != null) {
             try {
-                int codigo = Integer.parseInt(codigoStr);
-                onCodigoNuevoChanged.accept(codigo, txtDescripcionNueva);
+                onCodigoNuevoChanged.accept(Integer.parseInt(codigoStr), txtDescripcionNueva);
             } catch (NumberFormatException e) {
                 txtDescripcionNueva.setText("Código inválido");
             }
@@ -315,77 +412,34 @@ public class PantallaCorrecciones extends JPanel {
     }
 
     private void guardarCambios() {
-        Equipo equipoSeleccionado = panelTablas.getEquipoSeleccionado();
-        if (equipoSeleccionado == null) {
-            mostrarError("Debe seleccionar un equipo");
-            return;
-        }
+        Equipo equipo = panelTablas.getEquipoSeleccionado();
+        if (equipo == null)                             { mostrarError("Debe seleccionar un equipo");  return; }
+        int matIdx = panelTablas.getMaterialSeleccionadoIndex();
+        if (matIdx < 0)                                 { mostrarError("Debe seleccionar un material"); return; }
 
-        int materialIdx = panelTablas.getMaterialSeleccionadoIndex();
-        if (materialIdx < 0) {
-            mostrarError("Debe seleccionar un material");
-            return;
-        }
-
-        Material materialSeleccionado = equipoSeleccionado.getMateriales().get(materialIdx);
+        Material material = equipo.getMateriales().get(matIdx);
         String motivo = txtMotivo.getText().trim();
-        if (motivo.isEmpty()) {
-            mostrarError("El motivo del cambio es obligatorio");
-            return;
-        }
+        if (motivo.isEmpty())                           { mostrarError("El motivo del cambio es obligatorio"); return; }
 
-        boolean esModificarCantidad = "Modificar Cantidad".equals(cmbOperacion.getSelectedItem().toString());
+        boolean esModificarCantidad =
+            "Modificar Cantidad".equals(cmbOperacion.getSelectedItem().toString());
 
         try {
             if (esModificarCantidad) {
                 int cantidadNueva = (Integer) spinCantidad.getValue();
-                String mensaje = construirMensajeConfirmacion(true, materialSeleccionado, cantidadNueva, null);
-
-                int respuesta = JOptionPane.showConfirmDialog(
-                    this,
-                    mensaje,
-                    "¿Está seguro de que quiere hacer estos cambios?",
-                    JOptionPane.YES_NO_OPTION,
-                    JOptionPane.QUESTION_MESSAGE
-                );
-
-                if (respuesta == JOptionPane.YES_OPTION) {
+                if (confirmar(construirMensajeConfirmacion(true, material, cantidadNueva, null))) {
                     if (onModificarCantidad != null) {
-                        onModificarCantidad.accept(
-                            equipoSeleccionado.getId(),
-                            materialSeleccionado.getId(),
-                            cantidadNueva,
-                            motivo
-                        );
+                        onModificarCantidad.accept(equipo.getId(), material.getId(), cantidadNueva, motivo);
                     }
                     limpiarFormulario();
                 }
             } else {
                 String codigoStr = txtCodigoNuevo.getText().trim();
-                if (codigoStr.isEmpty()) {
-                    mostrarError("Ingrese el nuevo código de catálogo");
-                    return;
-                }
-
+                if (codigoStr.isEmpty())                { mostrarError("Ingrese el nuevo código de catálogo"); return; }
                 Integer codigoNuevo = Integer.parseInt(codigoStr);
-                String mensaje = construirMensajeConfirmacion(false, materialSeleccionado, null, codigoNuevo);
-
-                int respuesta = JOptionPane.showConfirmDialog(
-                    this,
-                    mensaje,
-                    "¿Está seguro de que quiere hacer estos cambios?",
-                    JOptionPane.YES_NO_OPTION,
-                    JOptionPane.QUESTION_MESSAGE
-                );
-
-                if (respuesta == JOptionPane.YES_OPTION) {
+                if (confirmar(construirMensajeConfirmacion(false, material, null, codigoNuevo))) {
                     if (onModificarCodigo != null) {
-                        onModificarCodigo.accept(
-                            equipoSeleccionado.getId(),
-                            materialSeleccionado.getId(),
-                            codigoNuevo,
-                            motivo
-                        );
+                        onModificarCodigo.accept(equipo.getId(), material.getId(), codigoNuevo, motivo);
                     }
                     limpiarFormulario();
                 }
@@ -395,25 +449,29 @@ public class PantallaCorrecciones extends JPanel {
         }
     }
 
-    private String construirMensajeConfirmacion(boolean esModificarCantidad,
-                                                Material material,
-                                                Integer cantidadNueva,
-                                                Integer codigoNuevo) {
-        StringBuilder mensaje = new StringBuilder();
-        mensaje.append("Material: ").append(material.getDescripcion()).append("\n");
-        mensaje.append("Código actual: ").append(material.getCodigo()).append("\n\n");
-
+    private String construirMensajeConfirmacion(boolean esModificarCantidad, Material material,
+                                                Integer cantidadNueva, Integer codigoNuevo) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Material: ").append(material.getDescripcion()).append("\n");
+        sb.append("Código actual: ").append(material.getCodigo()).append("\n\n");
         if (esModificarCantidad) {
-            mensaje.append("CAMBIO: Modificar cantidad\n");
-            mensaje.append("Cantidad actual: ").append(material.getCantidad()).append("\n");
-            mensaje.append("Cantidad nueva: ").append(cantidadNueva).append("\n");
+            sb.append("CAMBIO: Modificar cantidad\n");
+            sb.append("Cantidad actual: ").append(material.getCantidad()).append("\n");
+            sb.append("Cantidad nueva: ").append(cantidadNueva).append("\n");
         } else {
-            mensaje.append("CAMBIO: Modificar código de catálogo\n");
-            mensaje.append("Código actual: ").append(material.getCodigo()).append("\n");
-            mensaje.append("Código nuevo: ").append(codigoNuevo).append("\n");
+            sb.append("CAMBIO: Modificar código de catálogo\n");
+            sb.append("Código actual: ").append(material.getCodigo()).append("\n");
+            sb.append("Código nuevo: ").append(codigoNuevo).append("\n");
         }
+        return sb.toString();
+    }
 
-        return mensaje.toString();
+    private boolean confirmar(String mensaje) {
+        return JOptionPane.showConfirmDialog(
+            this, mensaje,
+            "¿Está seguro de que quiere hacer estos cambios?",
+            JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE
+        ) == JOptionPane.YES_OPTION;
     }
 
     private void limpiarFormulario() {
@@ -427,86 +485,65 @@ public class PantallaCorrecciones extends JPanel {
         btnGuardarCambios.setEnabled(false);
         btnEliminarMaterial.setEnabled(false);
         btnEliminarEquipo.setEnabled(false);
+        btnAgregarMaterial.setEnabled(false);
     }
 
     private void solicitarEliminacion() {
-        Equipo equipoSeleccionado = panelTablas.getEquipoSeleccionado();
-        if (equipoSeleccionado == null) {
-            mostrarError("Debe seleccionar un equipo");
-            return;
-        }
+        Equipo equipo = panelTablas.getEquipoSeleccionado();
+        if (equipo == null) { mostrarError("Debe seleccionar un equipo"); return; }
 
         String motivo = JOptionPane.showInputDialog(
-            this,
-            "Ingrese el motivo de la eliminación:",
-            "Eliminar Equipo"
-        );
-
-        if (motivo != null && !motivo.trim().isEmpty()) {
-            if (onEliminarEquipo != null) {
-                onEliminarEquipo.accept(equipoSeleccionado.getId(), motivo.trim());
-            }
+            this, "Ingrese el motivo de la eliminación:", "Eliminar Equipo", JOptionPane.WARNING_MESSAGE);
+        if (motivo != null && !motivo.trim().isEmpty() && onEliminarEquipo != null) {
+            onEliminarEquipo.accept(equipo.getId(), motivo.trim());
         }
     }
 
     private void solicitarEliminacionMaterial() {
-        Equipo equipoSeleccionado = panelTablas.getEquipoSeleccionado();
-        if (equipoSeleccionado == null) {
-            mostrarError("Debe seleccionar un equipo");
-            return;
-        }
+        Equipo equipo = panelTablas.getEquipoSeleccionado();
+        if (equipo == null) { mostrarError("Debe seleccionar un equipo"); return; }
+        int matIdx = panelTablas.getMaterialSeleccionadoIndex();
+        if (matIdx < 0)     { mostrarError("Debe seleccionar un material"); return; }
 
-        int materialIdx = panelTablas.getMaterialSeleccionadoIndex();
-        if (materialIdx < 0) {
-            mostrarError("Debe seleccionar un material");
-            return;
-        }
-
-        Material materialSeleccionado = equipoSeleccionado.getMateriales().get(materialIdx);
+        Material material = equipo.getMateriales().get(matIdx);
         int respuesta = JOptionPane.showConfirmDialog(
             this,
-            String.format(
-                "¿Está seguro de que desea eliminar TODOS los materiales con código %d (%s) del equipo?\n\nEsta acción no se puede deshacer.",
-                materialSeleccionado.getCodigo(),
-                materialSeleccionado.getDescripcion()
-            ),
+            String.format("¿Está seguro de que desea eliminar TODOS los materiales con código %d (%s) del equipo?\n\nEsta acción no se puede deshacer.",
+                material.getCodigo(), material.getDescripcion()),
             "Confirmar Eliminación de Material",
-            JOptionPane.YES_NO_OPTION,
-            JOptionPane.WARNING_MESSAGE
-        );
+            JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
 
         if (respuesta == JOptionPane.YES_OPTION) {
             String motivo = JOptionPane.showInputDialog(
-                this,
-                "Ingrese el motivo de la eliminación:",
-                "Eliminar Material"
-            );
-
-            if (motivo != null && !motivo.trim().isEmpty()) {
-                if (onEliminarMaterial != null) {
-                    onEliminarMaterial.accept(
-                        equipoSeleccionado.getId(),
-                        materialSeleccionado.getCodigo(),
-                        motivo.trim()
-                    );
-                }
+                this, "Ingrese el motivo de la eliminación:", "Eliminar Material", JOptionPane.WARNING_MESSAGE);
+            if (motivo != null && !motivo.trim().isEmpty() && onEliminarMaterial != null) {
+                onEliminarMaterial.accept(equipo.getId(), material.getCodigo(), motivo.trim());
             }
         }
     }
 
     private void abrirAuditoria() {
-        if (onVerAuditoria != null) {
-            onVerAuditoria.run();
-        }
+        if (onVerAuditoria != null) onVerAuditoria.run();
     }
 
-    public void actualizarListaEquipos(List<Equipo> equipos) {
-        panelTablas.actualizarEquipos(equipos);
+    // ── Utilidades ────────────────────────────────────────────────────────────
+
+    /**
+     * Crea un DocumentListener que dispara {@code accion} en cualquier cambio de texto.
+     * Evita repetir la triple implementación insert/remove/changed en cada campo.
+     */
+    private static DocumentListener simpleListener(Runnable accion) {
+        return new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e)  { accion.run(); }
+            @Override public void removeUpdate(DocumentEvent e)  { accion.run(); }
+            @Override public void changedUpdate(DocumentEvent e) { accion.run(); }
+        };
     }
 
-    public void recargarMateriales() {
-        panelTablas.recargarMateriales();
-    }
+    // ── API pública ───────────────────────────────────────────────────────────
+
+    public void actualizarListaEquipos(List<Equipo> equipos) { panelTablas.actualizarEquipos(equipos); }
+    public void recargarMateriales()                          { panelTablas.recargarMateriales(); }
 
     public void limpiarPantalla() {
         limpiarFormulario();
@@ -528,61 +565,30 @@ public class PantallaCorrecciones extends JPanel {
     public void mostrarCargando(boolean cargando) {
         progreso.setVisible(cargando);
         panelTablas.setEnabled(!cargando);
-        btnGuardarCambios.setEnabled(!cargando && panelTablas.getMaterialSeleccionadoIndex() >= 0);
-        btnEliminarMaterial.setEnabled(!cargando && panelTablas.getMaterialSeleccionadoIndex() >= 0);
-        btnEliminarEquipo.setEnabled(!cargando && panelTablas.getEquipoSeleccionado() != null);
+        boolean matSel  = panelTablas.getMaterialSeleccionadoIndex() >= 0;
+        boolean eqSel   = panelTablas.getEquipoSeleccionado() != null;
+        btnGuardarCambios.setEnabled(!cargando && matSel);
+        btnEliminarMaterial.setEnabled(!cargando && matSel);
+        btnEliminarEquipo.setEnabled(!cargando && eqSel);
+        btnAgregarMaterial.setEnabled(!cargando && eqSel);
     }
 
-    public void setOnModificarCantidad(QuartaConsumer<Integer, Integer, Integer, String> callback) {
-        this.onModificarCantidad = callback;
-    }
+    // ── Setters de callbacks ──────────────────────────────────────────────────
 
-    public void setOnModificarCodigo(QuartaConsumer<Integer, Integer, Integer, String> callback) {
-        this.onModificarCodigo = callback;
-    }
+    public void setOnModificarCantidad(QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCantidad = cb; }
+    public void setOnModificarCodigo  (QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCodigo   = cb; }
+    public void setOnAgregarMaterial  (QuartaConsumer<Integer, Integer, Integer, String> cb) { onAgregarMaterial   = cb; }
+    public void setOnEliminarEquipo   (BiConsumer<Integer, String> cb)                       { onEliminarEquipo    = cb; }
+    public void setOnEliminarMaterial (TripleConsumer<Integer, Integer, String> cb)          { onEliminarMaterial  = cb; }
+    public void setOnVerAuditoria     (Runnable cb)                                          { onVerAuditoria      = cb; }
+    public void setOnCodigoNuevoChanged(BiConsumer<Integer, JTextField> cb)                  { onCodigoNuevoChanged = cb; }
+    public void setOnPantallaVisible  (Runnable cb)                                          { onPantallaVisible   = cb; }
 
-    public void setOnEliminarEquipo(BiConsumer<Integer, String> callback) {
-        this.onEliminarEquipo = callback;
-    }
+    // ── Interfaces funcionales ────────────────────────────────────────────────
 
-    public void setOnEliminarMaterial(TripleConsumer<Integer, Integer, String> callback) {
-        this.onEliminarMaterial = callback;
-    }
-
-    public void setOnVerAuditoria(Runnable callback) {
-        this.onVerAuditoria = callback;
-    }
-
-    public void setOnCodigoNuevoChanged(BiConsumer<Integer, JTextField> callback) {
-        this.onCodigoNuevoChanged = callback;
-    }
-
-    public void setOnPantallaVisible(Runnable callback) {
-        this.onPantallaVisible = callback;
-    }
-
-    @FunctionalInterface
-    public interface QuartaConsumer<A, B, C, D> {
-        void accept(A a, B b, C c, D d);
-    }
-
-    @FunctionalInterface
-    public interface TripleConsumer<A, B, C> {
-        void accept(A a, B b, C c);
-    }
-
-    @FunctionalInterface
-    public interface QuintaConsumer<A, B, C, D, E> {
-        void accept(A a, B b, C c, D d, E e);
-    }
-
-    @FunctionalInterface
-    public interface BiConsumer<A, B> {
-        void accept(A a, B b);
-    }
-
-    @FunctionalInterface
-    public interface Consumer<A> {
-        void accept(A a);
-    }
+    @FunctionalInterface public interface QuartaConsumer<A, B, C, D> { void accept(A a, B b, C c, D d); }
+    @FunctionalInterface public interface TripleConsumer<A, B, C>    { void accept(A a, B b, C c); }
+    @FunctionalInterface public interface QuintaConsumer<A,B,C,D,E>  { void accept(A a, B b, C c, D d, E e); }
+    @FunctionalInterface public interface BiConsumer<A, B>           { void accept(A a, B b); }
+    @FunctionalInterface public interface Consumer<A>                 { void accept(A a); }
 }

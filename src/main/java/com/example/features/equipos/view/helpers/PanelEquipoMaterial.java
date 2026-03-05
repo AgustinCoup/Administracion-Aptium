@@ -10,72 +10,72 @@ import com.example.ui.common.LabelFactory;
 import com.example.ui.common.TableStyler;
 
 /**
- * Panel reutilizable que muestra dos tablas: equipos y materiales.
- * Encapsula la lógica común entre PantallaVerCDEv2 y PantallaRegistrarEstado.
- * 
- * Responsabilidad:
- * - Gestionar la visualización de tablas de equipos y materiales
- * - Sincronizar la selección de equipos con la tabla de materiales
- * - Renderizar colores de estados consistentemente
+ * Panel reutilizable que muestra dos tablas (equipos y materiales) separadas por un
+ * {@link JSplitPane} vertical redimensionable.
+ *
+ * El espacio se divide 50/50 por defecto ({@code resizeWeight = 0.5}), de modo que
+ * ambas tablas crecen y se encogen simétricamente al cambiar el tamaño de la ventana.
+ * El usuario puede arrastrar el divisor para ajustar la proporción manualmente.
+ *
+ * API pública idéntica a la versión anterior: los controllers que usan este panel
+ * no necesitan ningún cambio.
  */
 public class PanelEquipoMaterial extends JPanel {
-    
-    private EquipoTableModel modeloEquipos;
-    private MaterialTableModel modeloMateriales;
-    private JTable tablaEquipos;
-    private JTable tablaMateriales;
+
+    private final EquipoTableModel   modeloEquipos;
+    private final MaterialTableModel modeloMateriales;
+    private final JTable             tablaEquipos;
+    private final JTable             tablaMateriales;
+
     private Consumer<Equipo> onEquipoSeleccionado;
-    private Runnable onMaterialSelectionChanged;
+    private Runnable         onMaterialSelectionChanged;
 
     /**
-     * Constructor del panel reutilizable.
-     * 
-     * @param tituloEquipos Título para la sección de equipos (ej: "Equipos / Clientes")
-     * @param tituloMateriales Título para la sección de materiales (ej: "Materiales del Equipo")
-     * @param materialesEditable Si la tabla de materiales debe permitir selección
+     * @param tituloEquipos      Título para la sección de equipos (ej: "Equipos / Clientes")
+     * @param tituloMateriales   Título para la sección de materiales
+     * @param materialesEditable Si true, la tabla de materiales permite selección de filas
      */
-    public PanelEquipoMaterial(String tituloEquipos, String tituloMateriales, boolean materialesEditable) {
-        setLayout(new GridBagLayout());
-        
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.fill = GridBagConstraints.BOTH;
-        gbc.weightx = 1.0;
+    public PanelEquipoMaterial(String tituloEquipos, String tituloMateriales,
+                               boolean materialesEditable) {
+        setLayout(new BorderLayout());
 
-        // ===== TABLA DE EQUIPOS =====
-        JLabel lblEquipos = LabelFactory.createSectionLabel(tituloEquipos);
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.weighty = 0;
-        add(lblEquipos, gbc);
-
-        String[] columnasEquipos = {
+        // ── 1. Crear modelos primero ──────────────────────────────────────────
+        // Es importante que los modelos existan antes de crear las tablas
+        // y antes de registrar cualquier listener que los referencie.
+        modeloEquipos    = new EquipoTableModel(new String[]{
             Constantes.Textos.COLUMNA_CLIENTE,
             Constantes.Textos.COLUMNA_INSTITUCION,
             Constantes.Textos.COLUMNA_ESTADO
-        };
-        this.modeloEquipos = new EquipoTableModel(columnasEquipos);
+        });
+        modeloMateriales = new MaterialTableModel();
+
+        // ── 2. Crear tablas ───────────────────────────────────────────────────
         tablaEquipos = new JTable(modeloEquipos);
         TableStyler.applyStandard(tablaEquipos);
-        tablaEquipos.getColumnModel().getColumn(2).setCellRenderer(TableStyler.createEstadoRenderer());
+        tablaEquipos.getColumnModel().getColumn(2)
+            .setCellRenderer(TableStyler.createEstadoRenderer());
 
-        JScrollPane scrollEquipos = new JScrollPane(tablaEquipos);
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        gbc.weighty = 0.6;
-        add(scrollEquipos, gbc);
+        tablaMateriales = new JTable(modeloMateriales);
+        TableStyler.applyStandard(tablaMateriales);
+        tablaMateriales.getColumnModel().getColumn(2)
+            .setCellRenderer(TableStyler.createEstadoRenderer());
+        TableStyler.centerColumns(tablaMateriales, 1);
 
-        // Listener de selección para cargar materiales
+        if (materialesEditable) {
+            tablaMateriales.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        } else {
+            tablaMateriales.setEnabled(false);
+        }
+
+        // ── 3. Registrar listeners (modelos y tablas ya existen) ──────────────
         tablaEquipos.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                int selectedRow = tablaEquipos.getSelectedRow();
-                if (selectedRow >= 0) {
-                    Equipo equipoSeleccionado = modeloEquipos.getEquipoAt(selectedRow);
-                    modeloMateriales.cargarMateriales(equipoSeleccionado);
-                    
-                    // Notificar al listener externo si existe
-                    if (onEquipoSeleccionado != null && equipoSeleccionado != null) {
-                        onEquipoSeleccionado.accept(equipoSeleccionado);
+                int row = tablaEquipos.getSelectedRow();
+                if (row >= 0) {
+                    Equipo eq = modeloEquipos.getEquipoAt(row);
+                    modeloMateriales.cargarMateriales(eq);
+                    if (onEquipoSeleccionado != null && eq != null) {
+                        onEquipoSeleccionado.accept(eq);
                     }
                 } else {
                     modeloMateriales.limpiar();
@@ -83,128 +83,84 @@ public class PanelEquipoMaterial extends JPanel {
             }
         });
 
-        // ===== TABLA DE MATERIALES =====
-        JLabel lblMateriales = LabelFactory.createSectionLabel(tituloMateriales);
-        gbc.gridx = 0;
-        gbc.gridy = 2;
-        gbc.weighty = 0;
-        add(lblMateriales, gbc);
-
-        this.modeloMateriales = new MaterialTableModel();
-        tablaMateriales = new JTable(modeloMateriales);
-        TableStyler.applyStandard(tablaMateriales);
-        tablaMateriales.getColumnModel().getColumn(2).setCellRenderer(TableStyler.createEstadoRenderer());
-
-        // Centrar la columna de Cantidad
-        TableStyler.centerColumns(tablaMateriales, 1);
-
-        // Configurar selección de materiales
         tablaMateriales.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                onMaterialSelectionChanged();
+                notificarMaterialSelectionChanged();
             }
         });
-        if (materialesEditable) {
-            tablaMateriales.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        } else {
-            tablaMateriales.setEnabled(false);
-        }
 
-        JScrollPane scrollMateriales = new JScrollPane(tablaMateriales);
-        gbc.gridx = 0;
-        gbc.gridy = 3;
-        gbc.weighty = 1.0;
-        add(scrollMateriales, gbc);
+        // ── 4. Armar paneles con etiquetas ────────────────────────────────────
+        JPanel panelEquipos = new JPanel(new BorderLayout(0, 3));
+        panelEquipos.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
+        panelEquipos.add(LabelFactory.createSectionLabel(tituloEquipos), BorderLayout.NORTH);
+        panelEquipos.add(new JScrollPane(tablaEquipos), BorderLayout.CENTER);
+
+        JPanel panelMateriales = new JPanel(new BorderLayout(0, 3));
+        panelMateriales.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
+        panelMateriales.add(LabelFactory.createSectionLabel(tituloMateriales), BorderLayout.NORTH);
+        panelMateriales.add(new JScrollPane(tablaMateriales), BorderLayout.CENTER);
+
+        // ── 5. JSplitPane proporcional 50/50 ──────────────────────────────────
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, panelEquipos, panelMateriales);
+        split.setResizeWeight(0.5);        // ambas mitades crecen simétricamente
+        split.setOneTouchExpandable(true); // flechitas para colapsar rápido
+        split.setBorder(null);
+
+        add(split, BorderLayout.CENTER);
     }
 
-    /**
-     * Callback interno cuando cambia la selección de material.
-     */
-    private void onMaterialSelectionChanged() {
-        if (onMaterialSelectionChanged != null) {
-            onMaterialSelectionChanged.run();
-        }
+    // ── Callbacks internos ───────────────────────────────────────────────────
+
+    private void notificarMaterialSelectionChanged() {
+        if (onMaterialSelectionChanged != null) onMaterialSelectionChanged.run();
     }
 
-    /**
-     * Actualiza la tabla de equipos con nuevos datos.
-     */
+    // ── API pública ──────────────────────────────────────────────────────────
+
+    /** Actualiza la tabla de equipos con nuevos datos y limpia la de materiales. */
     public void actualizarEquipos(List<Equipo> equipos) {
         modeloEquipos.actualizarDatos(equipos);
         modeloMateriales.limpiar();
     }
 
-    /**
-     * Obtiene el equipo actualmente seleccionado.
-     */
+    /** Obtiene el equipo actualmente seleccionado, o null si no hay selección. */
     public Equipo getEquipoSeleccionado() {
-        int selectedRow = tablaEquipos.getSelectedRow();
-        if (selectedRow >= 0) {
-            return modeloEquipos.getEquipoAt(selectedRow);
-        }
-        return null;
+        int row = tablaEquipos.getSelectedRow();
+        return row >= 0 ? modeloEquipos.getEquipoAt(row) : null;
     }
 
-    /**
-     * Obtiene el índice del material seleccionado en la tabla.
-     */
+    /** Obtiene el índice de fila del material seleccionado, o -1 si no hay selección. */
     public int getMaterialSeleccionadoIndex() {
         return tablaMateriales.getSelectedRow();
     }
 
-    /**
-     * Recarga los materiales del equipo actualmente seleccionado.
-     * Útil después de modificar el estado de un material.
-     */
+    /** Recarga los materiales del equipo actualmente seleccionado. */
     public void recargarMateriales() {
-        Equipo equipoActual = getEquipoSeleccionado();
-        if (equipoActual != null) {
-            modeloMateriales.cargarMateriales(equipoActual);
-        }
+        Equipo eq = getEquipoSeleccionado();
+        if (eq != null) modeloMateriales.cargarMateriales(eq);
     }
 
-    /**
-     * Refresca el estado mostrado de los equipos sin recargar desde BD.
-     */
+    /** Refresca visualmente el estado de los equipos sin recargar desde BD. */
     public void refrescarEstadosEquipos() {
         modeloEquipos.refrescarEstados();
     }
 
-    /**
-     * Establece un listener que se ejecuta cuando se selecciona un equipo.
-     */
+    /** Registra un listener que se ejecuta al seleccionar un equipo. */
     public void setOnEquipoSeleccionado(Consumer<Equipo> listener) {
         this.onEquipoSeleccionado = listener;
     }
 
-    /**
-     * Establece un listener que se ejecuta cuando cambia la selección de material.
-     */
+    /** Registra un listener que se ejecuta al cambiar la selección de material. */
     public void setOnMaterialSelectionChanged(Runnable listener) {
         this.onMaterialSelectionChanged = listener;
     }
 
-    /**
-     * Limpia la selección de ambas tablas.
-     */
+    /** Limpia la selección de ambas tablas. */
     public void limpiarSeleccion() {
         tablaEquipos.clearSelection();
         modeloMateriales.limpiar();
     }
 
-    /**
-     * Obtiene la tabla de materiales para agregar listeners adicionales si es necesario.
-     */
-    public JTable getTablaMateriales() {
-        return tablaMateriales;
-    }
-
-    /**
-     * Obtiene la tabla de equipos para agregar listeners adicionales si es necesario.
-     */
-    public JTable getTablaEquipos() {
-        return tablaEquipos;
-    }
+    public JTable getTablaMateriales() { return tablaMateriales; }
+    public JTable getTablaEquipos()    { return tablaEquipos; }
 }
-
-

@@ -1,6 +1,7 @@
 package com.example.app.ui;
 
 import com.example.app.AppModel;
+import com.example.common.constants.Constantes;
 import com.example.features.equipos.controller.CDEViewController;
 import com.example.features.equipos.controller.CorreccionsController;
 import com.example.features.equipos.controller.EquiposParaEntregarController;
@@ -12,9 +13,18 @@ import com.example.ui.events.OnEquipoGuardadoListener;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.ui.shell.PantallaPrincipal;
 
+/**
+ * Coordina la inicialización de todos los controladores y la conexión entre pantallas.
+ *
+ * Responsabilidades:
+ * - Instanciar cada controller con su vista y modelo correspondientes.
+ * - Inyectar servicios en las vistas que los necesiten (p. ej. PantallaAuditoria).
+ * - Cablear los listeners de navegación entre pantallas.
+ * - Construir el Runnable de refresco global que cada controller dispara al modificar datos.
+ */
 public class UiCoordinator {
 
-    private final AppModel model;
+    private final AppModel       model;
     private final PantallaPrincipal vista;
 
     public UiCoordinator(AppModel model, PantallaPrincipal vista) {
@@ -26,39 +36,39 @@ public class UiCoordinator {
     }
 
     public void inicializar() {
+
+        // ── Controllers ──────────────────────────────────────────────────────
         CDEViewController cdeViewController = new CDEViewController(
-            vista.getPantallaVerCDEv2(),
-            model
-        );
+            vista.getPantallaVerCDEv2(), model);
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
-            vista.getPantallaRegistrarEstado(),
-            model,
-            null
-        );
+            vista.getPantallaRegistrarEstado(), model, null);
 
-        EquiposParaEntregarController equiposParaEntregarController = new EquiposParaEntregarController(
-            vista.getPantallaEquiposParaEntregar(),
-            model,
-            null
-        );
+        EquiposParaEntregarController equiposParaEntregarController =
+            new EquiposParaEntregarController(
+                vista.getPantallaEquiposParaEntregar(), model, null);
 
         CorreccionsController correccionesController = new CorreccionsController(
-            vista.getPantallaCorrecciones(),
-            model
-        );
+            vista.getPantallaCorrecciones(), model);
 
         LotesController lotesController = new LotesController(
-            vista.getPantallaLotes(),
-            model,
-            null
-        );
+            vista.getPantallaLotes(), model, null);
 
         VerLotesController verLotesController = new VerLotesController(
-            vista.getPantallaVerLotes(),
-            model
-        );
+            vista.getPantallaVerLotes(), model);
 
+        // ── Inyección en PantallaAuditoria ───────────────────────────────────
+        // Se realiza aquí porque el servicio vive en CorreccionsController y
+        // PantallaAuditoria no debe conocer al controller que la originó.
+        vista.getPantallaAuditoria()
+             .inicializar(correccionesController.getCorreccionService());
+
+        // ── Navegación: botón "Ver Auditoría" en PantallaCorrecciones ────────
+        // El controller no conoce el CardLayout; el coordinator registra el lambda.
+        correccionesController.setOnVerAuditoria(() ->
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.AUDITORIA));
+
+        // ── Refresco global de pantallas ─────────────────────────────────────
         Runnable refrescarPantallas = crearRefrescador(
             cdeViewController,
             registrarEstadoController,
@@ -67,12 +77,12 @@ public class UiCoordinator {
             verLotesController
         );
 
-        OnEstadosActualizadosListener refrescarPantallasEstados = refrescarPantallas::run;
-        OnEquipoGuardadoListener refrescarPantallasEquipos = refrescarPantallas::run;
+        OnEstadosActualizadosListener refrescarEstados  = refrescarPantallas::run;
+        OnEquipoGuardadoListener      refrescarEquipos  = refrescarPantallas::run;
 
-        registrarEstadoController.setOnEstadosActualizados(refrescarPantallasEstados);
-        equiposParaEntregarController.setOnEstadosActualizados(refrescarPantallasEstados);
-        lotesController.setOnEstadosActualizados(refrescarPantallasEstados);
+        registrarEstadoController.setOnEstadosActualizados(refrescarEstados);
+        equiposParaEntregarController.setOnEstadosActualizados(refrescarEstados);
+        lotesController.setOnEstadosActualizados(refrescarEstados);
         correccionesController.setOnCambiosAplicados(refrescarPantallas);
 
         new OrthopediaInputController(
@@ -80,25 +90,23 @@ public class UiCoordinator {
             model,
             vista.getNavegador(),
             vista.getContenedor(),
-            refrescarPantallasEquipos
+            refrescarEquipos
         );
     }
 
     private Runnable crearRefrescador(
-        CDEViewController cdeViewController,
-        RegistrarEstadoController registrarEstadoController,
-        EquiposParaEntregarController equiposParaEntregarController,
-        LotesController lotesController,
-        VerLotesController verLotesController
+        CDEViewController               cde,
+        RegistrarEstadoController       registrar,
+        EquiposParaEntregarController   entregar,
+        LotesController                 lotes,
+        VerLotesController              verLotes
     ) {
         return () -> {
-            cdeViewController.cargarDatos();
-            registrarEstadoController.cargarEquipos();
-            equiposParaEntregarController.cargarDatos();
-            lotesController.cargarDatos();
-            verLotesController.cargarDatos();
+            cde.cargarDatos();
+            registrar.cargarEquipos();
+            entregar.cargarDatos();
+            lotes.cargarDatos();
+            verLotes.cargarDatos();
         };
     }
 }
-
-

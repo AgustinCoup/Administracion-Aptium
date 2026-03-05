@@ -41,8 +41,9 @@ public class DatabaseInitializer {
                 return;
             }
 
-            // 1. Crear estructura de tablas
+            // 1. Crear estructura de tablas y vistas
             ejecutarScript(conn, "/db/schema.sql");
+            ejecutarScript(conn, "/db/vista_auditoria.sql");
 
             // 2. Cargar datos seed solo si las tablas están vacías
             if (tablaVacia(conn, "autoclaves")) {
