@@ -43,57 +43,29 @@ public class OrthopediaInputController {
     private JPanel contenedor;
     private OnEquipoGuardadoListener onEquipoGuardadoListener;
     
-    /**
-     * Gestor de validación del formulario de ingreso de ortopedia.
-     * Encapsula toda la lógica de validación.
-     */
     private GestorValidacionFormulario gestorValidacion;
-    
-    /**
-     * Constructor de equipos a partir de los datos del formulario.
-     * Encapsula la lógica de mapeo Vista → Modelo.
-     */
     private ConstructorEquipo constructorEquipo;
     
-    /**
-     * Gestores de nuevas entidades (uno por cada tipo).
-     * Encapsulan la lógica de crear Cliente, Profesional, Institución.
-     */
-    private GestorNuevasEntidades<Cliente> gestorNuevosClientes;
+    private GestorNuevasEntidades<Cliente>     gestorNuevosClientes;
     private GestorNuevasEntidades<Profesional> gestorNuevosProfesionales;
     private GestorNuevasEntidades<Institucion> gestorNuevasInstituciones;
     
-    /**
-     * Listener del componente de autocompletado.
-     * Gestiona la búsqueda y selección de clientes en el formulario.
-     */
-    private AutocompleteListener<Cliente> autocompleteClientListener;
-    
-    /**
-     * Listener del componente de autocompletado.
-     * Gestiona la búsqueda y selección de profesionales en el formulario.
-     */
+    private AutocompleteListener<Cliente>     autocompleteClientListener;
     private AutocompleteListener<Profesional> autocompleteProfesionalListener;
-    
-    /**
-     * Listener del componente de autocompletado.
-     * Gestiona la búsqueda y selección de instituciones en el formulario.
-     */
     private AutocompleteListener<Institucion> autocompleteInstitucionListener;
     
-    public OrthopediaInputController(PantallaIngresoOrtopedia panel, AppModel model, CardLayout navegador, JPanel contenedor, OnEquipoGuardadoListener onEquipoGuardadoListener) {
-        this.panel = panel;
-        this.model = model;
-        this.navegador = navegador;
-        this.contenedor = contenedor;
+    public OrthopediaInputController(PantallaIngresoOrtopedia panel, AppModel model,
+                                     CardLayout navegador, JPanel contenedor,
+                                     OnEquipoGuardadoListener onEquipoGuardadoListener) {
+        this.panel                   = panel;
+        this.model                   = model;
+        this.navegador               = navegador;
+        this.contenedor              = contenedor;
         this.onEquipoGuardadoListener = onEquipoGuardadoListener;
         
-        // Inicializar clases auxiliares
         CatalogoLookup catalogoLookup = codigo -> model.obtenerDescripcionMaterial(codigo) != null;
-        this.gestorValidacion = new GestorValidacionFormulario(panel, catalogoLookup);
+        this.gestorValidacion  = new GestorValidacionFormulario(panel, catalogoLookup);
         this.constructorEquipo = new ConstructorEquipo(panel, model);
-        
-        // Los gestores se completarán en inicializarEventos() después de crear los autocompletados
         
         inicializarEventos();
     }
@@ -111,75 +83,40 @@ public class OrthopediaInputController {
             }
         });
         
-        /**
-         * Registro del listener para búsqueda de material en tiempo real.
-         * Patrón MVC: La Vista notifica al Controller cuando cambia el código,
-         * el Controller consulta el Modelo y actualiza la Vista.
-         */
         panel.getPanelMateriales().setOnNumeroChangedListener((codigo, campoDescripcion) -> {
             String descripcion = model.getCatalogoService().obtenerDescripcion(codigo);
-            campoDescripcion.setText(descripcion != null ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO);
+            campoDescripcion.setText(
+                descripcion != null ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO);
         });
         
-        /**
-         * Configuración del autocompletado de clientes.
-         * 
-         * Componentes:
-         * - searchFunction: Consulta el Modelo para obtener clientes que coincidan
-         * - onClienteSelected: Callback que notifica al Controller la selección
-         * - onNoMatch: Callback si el usuario ingresa un cliente no existente
-         * 
-         * Patrón Callback: El autocompletado no accede directamente a la Vista,
-         * solo notifica al Controller a través del callback.
-         */
         autocompleteClientListener = new AutocompleteListener<>(
             panel.getTxtCliente(),
             texto -> model.buscarClientes(texto),
             cliente -> panel.setSelectedClienteId(cliente.getId()),
             nombreNoExistente -> gestorNuevosClientes.manejarEntidadNoExistente(nombreNoExistente)
         );
-        
         panel.getTxtCliente().getDocument().addDocumentListener(autocompleteClientListener);
         
-        /**
-         * Configuración del autocompletado de profesionales.
-         * Mismo patrón que clientes pero con búsqueda de profesionales.
-         */
         autocompleteProfesionalListener = new AutocompleteListener<>(
             panel.getTxtProfesional(),
             texto -> model.buscarProfesionales(texto),
             profesional -> panel.setSelectedProfesionalId(profesional.getId()),
             nombreNoExistente -> gestorNuevosProfesionales.manejarEntidadNoExistente(nombreNoExistente)
         );
-        
         panel.getTxtProfesional().getDocument().addDocumentListener(autocompleteProfesionalListener);
         
-        /**
-         * Configuración del autocompletado de instituciones.
-         * Mismo patrón que clientes pero con búsqueda de instituciones.
-         */
         autocompleteInstitucionListener = new AutocompleteListener<>(
             panel.getTxtInstitucion(),
             texto -> model.buscarInstituciones(texto),
             institucion -> panel.setSelectedInstitucionId(institucion.getId()),
             nombreNoExistente -> gestorNuevasInstituciones.manejarEntidadNoExistente(nombreNoExistente)
         );
-        
         panel.getTxtInstitucion().getDocument().addDocumentListener(autocompleteInstitucionListener);
         
-        /**
-         * AHORA inicializamos completamente los gestores de nuevas entidades,
-         * después de crear los autocompletados, con todas las referencias necesarias.
-         */
         initializeEntityManagers();
     }
     
-    /**
-     * Completa la inicialización de los gestores de nuevas entidades.
-     * Debe llamarse DESPUÉS de crear los listeners de autocompletado.
-     */
     private void initializeEntityManagers() {
-        // Gestor de nuevos clientes
         this.gestorNuevosClientes = new GestorNuevasEntidades<>(
             obtenerVentanaParente(),
             Constantes.Textos.ENTIDAD_CLIENTE,
@@ -190,7 +127,6 @@ public class OrthopediaInputController {
             Cliente::new
         );
         
-        // Gestor de nuevos profesionales
         this.gestorNuevosProfesionales = new GestorNuevasEntidades<>(
             obtenerVentanaParente(),
             Constantes.Textos.ENTIDAD_PROFESIONAL,
@@ -201,7 +137,6 @@ public class OrthopediaInputController {
             Profesional::new
         );
         
-        // Gestor de nuevas instituciones
         this.gestorNuevasInstituciones = new GestorNuevasEntidades<>(
             obtenerVentanaParente(),
             Constantes.Textos.ENTIDAD_INSTITUCION,
@@ -215,41 +150,56 @@ public class OrthopediaInputController {
     
     /**
      * Lógica principal de guardar: valida, mapea datos, guarda y navega.
+     *
+     * Orden de validaciones:
+     * 1. Validación de formulario general (campos obligatorios, formato, existencia en catálogo)
+     * 2. Validación de códigos duplicados en la tabla de materiales
+     *    — Los campos con código repetido ya se habrán pintado en rojo por PanelMateriales
+     *      durante la edición, así que el mensaje de error refuerza la acción a tomar.
      */
     private void guardarOrtopedia() {
+        // 1. Validaciones generales del formulario
         if (!gestorValidacion.validar()) {
             return;
         }
+
+        // 2. Verificar que no haya códigos de catálogo duplicados en la tabla de materiales.
+        //    tieneDuplicados() también actualiza el color visual de cada fila en ese mismo momento.
+        if (panel.getPanelMateriales().tieneDuplicados()) {
+            JOptionPane.showMessageDialog(
+                panel,
+                "Hay materiales con el mismo código de catálogo.\n" +
+                "Unifique las filas marcadas en rojo antes de guardar.",
+                Constantes.Mensajes.TITULO_ADVERTENCIA,
+                JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
         
-        // Mapear datos del formulario a objeto Equipo
+        // 3. Mapear y persistir
         Equipo equipo = constructorEquipo.construir();
         
         boolean guardoExitoso;
         try {
-            // Guardar en base de datos a través del modelo
             guardoExitoso = model.guardarEquipo(equipo);
         } catch (ValidationException e) {
             String mensaje = e.getValidationErrors().isEmpty()
                 ? Constantes.Mensajes.ERROR_GUARDAR_EQUIPO
                 : String.join("\n", e.getValidationErrors());
-            JOptionPane.showMessageDialog(panel,
-                mensaje,
-                Constantes.Mensajes.TITULO_ADVERTENCIA,
-                JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(panel, mensaje,
+                Constantes.Mensajes.TITULO_ADVERTENCIA, JOptionPane.WARNING_MESSAGE);
             log.warn("Validación de negocio al guardar equipo: {}", mensaje);
             return;
         }
         
         if (guardoExitoso) {
-            // Éxito: mostrar mensaje y limpiar
-            JOptionPane.showMessageDialog(panel, 
-                Constantes.Mensajes.DATOS_GUARDADOS, 
-                Constantes.Mensajes.TITULO_EXITO, 
+            JOptionPane.showMessageDialog(panel,
+                Constantes.Mensajes.DATOS_GUARDADOS,
+                Constantes.Mensajes.TITULO_EXITO,
                 JOptionPane.INFORMATION_MESSAGE);
             
             panel.limpiarFormulario();
             
-            // Notificar al listener que un equipo fue guardado
             if (onEquipoGuardadoListener != null) {
                 onEquipoGuardadoListener.onEquipoGuardado();
             }
@@ -257,8 +207,7 @@ public class OrthopediaInputController {
             navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION);
             log.info("Equipo guardado exitosamente desde formulario");
         } else {
-            // Error: mostrar mensaje de error
-            JOptionPane.showMessageDialog(panel, 
+            JOptionPane.showMessageDialog(panel,
                 Constantes.Mensajes.ERROR_GUARDAR_EQUIPO,
                 Constantes.Mensajes.TITULO_ERROR_GUARDAR,
                 JOptionPane.ERROR_MESSAGE);
@@ -266,21 +215,7 @@ public class OrthopediaInputController {
         }
     }
     
-    /**
-     * Obtiene la ventana parente del panel para usarla en diálogos modales.
-     * 
-     * @return Frame que contiene este componente
-     */
     private Frame obtenerVentanaParente() {
         return (Frame) SwingUtilities.getWindowAncestor(panel);
     }
-
-    /**
-     * Maneja la situación cuando el usuario ingresa un cliente que no existe en la BD.
-     * Ofrece un diálogo para crearlo.
-     * 
-     * @param nombreCliente Nombre del cliente escrito por el usuario
-     */
 }
-
-

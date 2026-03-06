@@ -4,25 +4,41 @@ import com.example.common.constants.Constantes;
 import com.example.common.util.DateTimeDisplayUtils;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.view.helpers.EstadoCellRenderer;
-import com.example.ui.common.PanelHeader;
+import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
+import com.example.ui.common.PanelHeader;
 import com.example.ui.common.TableStyler;
+import com.toedter.calendar.JDateChooser;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.time.LocalDate;
 import java.util.List;
 
+/**
+ * Pantalla de consulta de lotes de esterilización.
+ *
+ * Filtros disponibles:
+ * - ID de lote: texto libre (coincidencia parcial)
+ * - Autoclave: CheckableComboBox multi-selección (vacío = todos)
+ * - Estado: CheckableComboBox multi-selección (ACTIVO / EXITOSO / FALLIDO)
+ * - Fecha inicio Desde / Hasta: JDateChooser con calendario
+ */
 public class PantallaVerLotes extends JPanel {
 
     private final DefaultTableModel modeloTabla;
-    private final JTable tablaLotes;
-    private JTextField txtFiltroId;
-    private JComboBox<String> cmbFiltroEquipo;
-    private JComboBox<String> cmbFiltroEstado;
-    private JTextField txtFiltroFechaInicio;
-    private JButton btnLimpiarFiltros;
+    private final JTable            tablaLotes;
+
+    // ── Controles de filtro ───────────────────────────────────────────────────
+    private JTextField                  txtFiltroId;
+    private CheckableComboBox<String>   cmbFiltroAutoclave;
+    private CheckableComboBox<String>   cmbFiltroEstado;
+    private JDateChooser                dateChooserDesde;
+    private JDateChooser                dateChooserHasta;
+    private JButton                     btnLimpiarFiltros;
+
     private Runnable onFiltrosChanged;
 
     public PantallaVerLotes(CardLayout navegador, JPanel contenedor) {
@@ -37,7 +53,7 @@ public class PantallaVerLotes extends JPanel {
         );
 
         JPanel panelNorte = new JPanel(new BorderLayout());
-        panelNorte.add(header, BorderLayout.NORTH);
+        panelNorte.add(header,              BorderLayout.NORTH);
         panelNorte.add(crearPanelFiltros(), BorderLayout.SOUTH);
         add(panelNorte, BorderLayout.NORTH);
 
@@ -53,9 +69,7 @@ public class PantallaVerLotes extends JPanel {
             0
         ) {
             @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
+            public boolean isCellEditable(int row, int column) { return false; }
         };
 
         tablaLotes = new JTable(modeloTabla);
@@ -63,88 +77,104 @@ public class PantallaVerLotes extends JPanel {
         TableStyler.centerColumns(tablaLotes, 2);
         tablaLotes.setRowSelectionAllowed(false);
         tablaLotes.setFillsViewportHeight(true);
-        
-        // Aplicar renderer de colores para la columna Estado
         tablaLotes.getColumnModel().getColumn(5).setCellRenderer(new EstadoCellRenderer());
 
-        JScrollPane scrollPane = new JScrollPane(tablaLotes);
-        add(scrollPane, BorderLayout.CENTER);
+        add(new JScrollPane(tablaLotes), BorderLayout.CENTER);
     }
 
-    private JPanel crearPanelFiltros() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+    // ── Construcción del panel de filtros ─────────────────────────────────────
 
+    private JPanel crearPanelFiltros() {
+        JPanel panelFiltros = new JPanel(new BorderLayout(10, 0));
+        panelFiltros.setBorder(BorderFactory.createTitledBorder("Filtros"));
+
+        // ── Panel de controles (izquierda) ───────────────────────────────────
+        JPanel panelControles = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+
+        // ID
         JLabel lblId = new JLabel(Constantes.Textos.FILTRO_ID);
         lblId.setFont(Estilos.Fuentes.LABEL);
-        txtFiltroId = new JTextField(10);
+        txtFiltroId = new JTextField(8);
         txtFiltroId.setFont(Estilos.Fuentes.INPUT);
 
-        JLabel lblEquipo = new JLabel(Constantes.Textos.FILTRO_EQUIPO);
-        lblEquipo.setFont(Estilos.Fuentes.LABEL);
-        cmbFiltroEquipo = new JComboBox<>();
-        cmbFiltroEquipo.setFont(Estilos.Fuentes.INPUT);
-        cmbFiltroEquipo.addItem(Constantes.Textos.FILTRO_TODOS);
+        // Autoclave (antes "Equipo")
+        JLabel lblAutoclave = new JLabel(Constantes.Textos.FILTRO_EQUIPO);
+        lblAutoclave.setFont(Estilos.Fuentes.LABEL);
+        cmbFiltroAutoclave = new CheckableComboBox<>(new String[0]);
+        cmbFiltroAutoclave.setFont(Estilos.Fuentes.INPUT);
+        cmbFiltroAutoclave.setPreferredSize(new Dimension(180, 25));
 
+        // Estado
         JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
         lblEstado.setFont(Estilos.Fuentes.LABEL);
-        cmbFiltroEstado = new JComboBox<>();
+        cmbFiltroEstado = new CheckableComboBox<>(new String[]{"ACTIVO", "EXITOSO", "FALLIDO"});
         cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
-        cmbFiltroEstado.addItem(Constantes.Textos.FILTRO_TODOS);
-        cmbFiltroEstado.addItem("ACTIVO");
-        cmbFiltroEstado.addItem("EXITOSO");
-        cmbFiltroEstado.addItem("FALLIDO");
+        cmbFiltroEstado.setPreferredSize(new Dimension(160, 25));
 
-        JLabel lblFechaInicio = new JLabel(Constantes.Textos.FILTRO_FECHA_INICIO);
-        lblFechaInicio.setFont(Estilos.Fuentes.LABEL);
-        txtFiltroFechaInicio = new JTextField(14);
-        txtFiltroFechaInicio.setFont(Estilos.Fuentes.INPUT);
+        // Fecha Desde / Hasta
+        JLabel lblDesde = new JLabel("Desde:");
+        lblDesde.setFont(Estilos.Fuentes.LABEL);
+        dateChooserDesde = new JDateChooser();
+        dateChooserDesde.setPreferredSize(new Dimension(120, 25));
+        dateChooserDesde.setDateFormatString("dd/MM/yyyy");
 
-        // Vincular cambios de filtros usando FilterUiHelper
-        FilterUiHelper.bindOnTextChange(this::notificarCambioFiltros,
-            txtFiltroId,
-            txtFiltroFechaInicio);
-        FilterUiHelper.bindOnComboChange(this::notificarCambioFiltros,
-            cmbFiltroEquipo,
-            cmbFiltroEstado);
+        JLabel lblHasta = new JLabel("Hasta:");
+        lblHasta.setFont(Estilos.Fuentes.LABEL);
+        dateChooserHasta = new JDateChooser();
+        dateChooserHasta.setPreferredSize(new Dimension(120, 25));
+        dateChooserHasta.setDateFormatString("dd/MM/yyyy");
 
+        panelControles.add(lblId);
+        panelControles.add(txtFiltroId);
+        panelControles.add(lblAutoclave);
+        panelControles.add(cmbFiltroAutoclave);
+        panelControles.add(lblEstado);
+        panelControles.add(cmbFiltroEstado);
+        panelControles.add(lblDesde);
+        panelControles.add(dateChooserDesde);
+        panelControles.add(lblHasta);
+        panelControles.add(dateChooserHasta);
+
+        // ── Botón Limpiar (derecha, siempre visible) ─────────────────────────
+        JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         btnLimpiarFiltros = new JButton(Constantes.Botones.LIMPIAR_FILTROS);
         btnLimpiarFiltros.setFont(Estilos.Fuentes.INPUT);
         btnLimpiarFiltros.addActionListener(e -> limpiarFiltros());
+        panelBoton.add(btnLimpiarFiltros);
 
-        panel.add(lblId);
-        panel.add(txtFiltroId);
-        panel.add(lblEquipo);
-        panel.add(cmbFiltroEquipo);
-        panel.add(lblEstado);
-        panel.add(cmbFiltroEstado);
-        panel.add(lblFechaInicio);
-        panel.add(txtFiltroFechaInicio);
-        panel.add(btnLimpiarFiltros);
+        panelFiltros.add(panelControles, BorderLayout.CENTER);
+        panelFiltros.add(panelBoton,     BorderLayout.EAST);
 
-        return panel;
+        // ── Vínculos de cambio ───────────────────────────────────────────────
+        FilterUiHelper.bindOnTextChange(this::notificarCambioFiltros, txtFiltroId);
+        FilterUiHelper.bindOnDateChange(this::notificarCambioFiltros, dateChooserDesde, dateChooserHasta);
+        cmbFiltroAutoclave.setOnSelectionChange(this::notificarCambioFiltros);
+        cmbFiltroEstado.setOnSelectionChange(this::notificarCambioFiltros);
+
+        return panelFiltros;
     }
+
+    // ── Operaciones públicas ─────────────────────────────────────────────────
 
     public void limpiarFiltros() {
         txtFiltroId.setText("");
-        cmbFiltroEquipo.setSelectedItem(Constantes.Textos.FILTRO_TODOS);
-        cmbFiltroEstado.setSelectedItem(Constantes.Textos.FILTRO_TODOS);
-        txtFiltroFechaInicio.setText("");
+        cmbFiltroAutoclave.clearSelection();
+        cmbFiltroEstado.clearSelection();
+        dateChooserDesde.setDate(null);
+        dateChooserHasta.setDate(null);
         notificarCambioFiltros();
     }
 
     private void notificarCambioFiltros() {
-        if (onFiltrosChanged != null) {
-            onFiltrosChanged.run();
-        }
+        if (onFiltrosChanged != null) onFiltrosChanged.run();
     }
 
     public void actualizarLotes(List<Lote> lotes) {
         modeloTabla.setRowCount(0);
-
         for (Lote lote : lotes) {
             String fechaInicio = DateTimeDisplayUtils.formatForUi(lote.getFechaInicio());
-            String fechaFin = DateTimeDisplayUtils.formatForUi(lote.getFechaFin());
-            String estado = lote.getEstado() != null ? lote.getEstado() : "ACTIVO";
+            String fechaFin    = DateTimeDisplayUtils.formatForUi(lote.getFechaFin());
+            String estado      = lote.getEstado() != null ? lote.getEstado() : "ACTIVO";
 
             modeloTabla.addRow(new Object[]{
                 lote.getIdNegocio(),
@@ -157,62 +187,59 @@ public class PantallaVerLotes extends JPanel {
         }
     }
 
-    public void setOnFiltrosChanged(Runnable listener) {
-        this.onFiltrosChanged = listener;
+    /**
+     * Rellena las opciones del CheckableComboBox de autoclaves.
+     * Preserva la selección actual si los items coinciden.
+     */
+    public void setEquiposFiltro(List<String> autoclaves) {
+        // Guardar selección actual para restaurarla si es posible
+        java.util.List<String> seleccionActual = cmbFiltroAutoclave.getSelectedItems();
+
+        DefaultComboBoxModel<String> modelo = new DefaultComboBoxModel<>();
+        if (autoclaves != null) {
+            for (String a : autoclaves) {
+                if (a != null && !a.trim().isEmpty()) modelo.addElement(a);
+            }
+        }
+        cmbFiltroAutoclave.setModel(modelo);
+
+        // Restaurar selección
+        if (!seleccionActual.isEmpty()) {
+            cmbFiltroAutoclave.setSelectedItems(seleccionActual);
+        }
     }
+
+    // ── Getters de criterios (usados por VerLotesController) ─────────────────
 
     public String getFiltroId() {
         return txtFiltroId.getText().trim();
     }
 
-    public String getFiltroEquipo() {
-        Object selected = cmbFiltroEquipo.getSelectedItem();
-        if (selected == null) {
-            return "";
-        }
-
-        String valor = selected.toString().trim();
-        if (Constantes.Textos.FILTRO_TODOS.equalsIgnoreCase(valor)) {
-            return "";
-        }
-
-        return valor;
+    /** Lista de autoclaves seleccionadas; vacía significa "sin filtro". */
+    public java.util.List<String> getFiltroAutoclaves() {
+        return cmbFiltroAutoclave.getSelectedItems();
     }
 
-    public String getFiltroFechaInicio() {
-        return txtFiltroFechaInicio.getText().trim();
+    /** Lista de estados seleccionados; vacía significa "sin filtro". */
+    public java.util.List<String> getFiltroEstados() {
+        return cmbFiltroEstado.getSelectedItems();
     }
 
-    public String getFiltroEstado() {
-        Object selected = cmbFiltroEstado.getSelectedItem();
-        if (selected == null) {
-            return "";
-        }
-
-        String valor = selected.toString().trim();
-        if (Constantes.Textos.FILTRO_TODOS.equalsIgnoreCase(valor)) {
-            return "";
-        }
-
-        return valor;
+    /** Límite inferior de la fecha de inicio del lote; null = sin límite. */
+    public LocalDate getFiltroFechaDesde() {
+        if (dateChooserDesde.getDate() == null) return null;
+        return dateChooserDesde.getDate().toInstant()
+            .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
     }
 
-    public void setEquiposFiltro(List<String> equipos) {
-        String seleccionActual = (String) cmbFiltroEquipo.getSelectedItem();
+    /** Límite superior de la fecha de inicio del lote; null = sin límite. */
+    public LocalDate getFiltroFechaHasta() {
+        if (dateChooserHasta.getDate() == null) return null;
+        return dateChooserHasta.getDate().toInstant()
+            .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+    }
 
-        cmbFiltroEquipo.removeAllItems();
-        cmbFiltroEquipo.addItem(Constantes.Textos.FILTRO_TODOS);
-
-        if (equipos != null) {
-            for (String equipo : equipos) {
-                if (equipo != null && !equipo.trim().isEmpty()) {
-                    cmbFiltroEquipo.addItem(equipo);
-                }
-            }
-        }
-
-        if (seleccionActual != null) {
-            cmbFiltroEquipo.setSelectedItem(seleccionActual);
-        }
+    public void setOnFiltrosChanged(Runnable listener) {
+        this.onFiltrosChanged = listener;
     }
 }

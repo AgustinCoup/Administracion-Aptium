@@ -41,14 +41,13 @@ public class VerLotesController extends AbstractFilterController<Lote> {
     protected void aplicarFiltros() {
         LotesFilterCriteria criteria = new LotesFilterCriteria(
             panel.getFiltroId(),
-            panel.getFiltroEquipo(),
-            panel.getFiltroEstado(),
-            panel.getFiltroFechaInicio()
+            panel.getFiltroAutoclaves(),   // antes: getFiltroEquipo() → String
+            panel.getFiltroEstados(),      // antes: getFiltroEstado() → String
+            panel.getFiltroFechaDesde(),   // antes: getFiltroFechaInicio() → String
+            panel.getFiltroFechaHasta()    // nuevo
         );
 
         List<Lote> filtrados = filterStrategy.filter(getCache(), criteria);
-
         panel.actualizarLotes(filtrados);
     }
-
 }

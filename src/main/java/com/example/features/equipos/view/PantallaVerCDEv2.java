@@ -89,7 +89,6 @@ public class PantallaVerCDEv2 extends JPanel {
         }
         cmbFiltroEstado = new CheckableComboBox<>(estados);
         cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
-        cmbFiltroEstado.selectAll();
         cmbFiltroEstado.setOnSelectionChange(this::notificarCambioFiltros);
 
         FilterUiHelper.bindOnTextChange(this::notificarCambioFiltros, txtFiltroCliente, txtFiltroInstitucion);
@@ -112,7 +111,7 @@ public class PantallaVerCDEv2 extends JPanel {
     public void limpiarFiltros() {
         txtFiltroCliente.setText("");
         txtFiltroInstitucion.setText("");
-        cmbFiltroEstado.selectAll();
+        cmbFiltroEstado.clearSelection();
         notificarCambioFiltros();
     }
 

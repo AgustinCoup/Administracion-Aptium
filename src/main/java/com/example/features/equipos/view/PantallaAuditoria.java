@@ -31,13 +31,13 @@ import java.util.stream.Collectors;
  * El servicio se inyecta de forma diferida mediante {@link #inicializar(EquipoCorreccionService)}
  * para que UiCoordinator pueda construir la pantalla antes de tener el servicio disponible.
  *
- * Layout (BorderLayout raíz):
- *   NORTH  → wrapper con PanelHeader encima y panel de filtros debajo (BoxLayout Y)
- *   CENTER → tabla de auditoría con scroll
- *   SOUTH  → footer con conteo de registros
+ * Filtro de tipos de cambio:
+ *   - Por defecto ningún tipo está seleccionado → se muestran todos los registros
+ *     (la lógica de {@link #cumpleTipo} ya trata la selección vacía como "sin filtro").
+ *   - "Limpiar Filtros" restaura también la selección vacía.
  *
  * Convención de celdas:
- *   - valorAnterior / valorNuevo null → cadena vacía (las eliminaciones no tienen valor previo)
+ *   - valorAnterior / valorNuevo null → cadena vacía
  *   - clienteNombre / materialInfo null → "-"
  */
 public class PantallaAuditoria extends JPanel {
@@ -72,20 +72,10 @@ public class PantallaAuditoria extends JPanel {
 
     // ── Constructor ──────────────────────────────────────────────────────────
 
-    /**
-     * Construye la pantalla y la integra en el CardLayout indicado.
-     *
-     * @param navegador  CardLayout del contenedor principal
-     * @param contenedor Panel principal al que pertenece el CardLayout
-     */
     public PantallaAuditoria(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout(5, 5));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // ── NORTH: header + filtros en un wrapper BoxLayout ──────────────────
-        // BorderLayout.NORTH y BorderLayout.PAGE_START son la misma constante;
-        // agregarlos por separado causaría que el segundo reemplace al primero.
-        // La solución es un único panel contenedor para la zona norte.
         JPanel panelNorte = new JPanel();
         panelNorte.setLayout(new BoxLayout(panelNorte, BoxLayout.Y_AXIS));
 
@@ -93,7 +83,7 @@ public class PantallaAuditoria extends JPanel {
             "Auditoría de Cambios",
             navegador,
             contenedor,
-            Constantes.Pantallas.CORRECCIONES   // Volver → Correcciones
+            Constantes.Pantallas.CORRECCIONES
         );
         panelNorte.add(header);
         panelNorte.add(crearPanelFiltros());
@@ -102,23 +92,16 @@ public class PantallaAuditoria extends JPanel {
         add(crearPanelTabla(),  BorderLayout.CENTER);
         add(crearPanelFooter(), BorderLayout.SOUTH);
 
-        // Recargar cada vez que la pantalla se hace visible por CardLayout
         addComponentListener(new ComponentAdapter() {
             @Override
             public void componentShown(ComponentEvent e) {
-                if (correccionService != null) {
-                    cargarAuditoria();
-                }
+                if (correccionService != null) cargarAuditoria();
             }
         });
     }
 
     // ── API pública ──────────────────────────────────────────────────────────
 
-    /**
-     * Inyecta el servicio y dispara la primera carga de datos.
-     * Debe llamarse desde {@code UiCoordinator} después de construir la pantalla.
-     */
     public void inicializar(EquipoCorreccionService servicio) {
         this.correccionService = servicio;
         cargarAuditoria();
@@ -126,13 +109,6 @@ public class PantallaAuditoria extends JPanel {
 
     // ── Construcción de la UI ────────────────────────────────────────────────
 
-    /**
-     * Panel de filtros con layout robusto:
-     * <ul>
-     *   <li>CENTER → controles de filtro en FlowLayout (pueden crecer)</li>
-     *   <li>EAST   → botón "Limpiar Filtros" anclado a la derecha, nunca se corta</li>
-     * </ul>
-     */
     private JPanel crearPanelFiltros() {
         JPanel panelFiltros = new JPanel(new BorderLayout(10, 0));
         panelFiltros.setBorder(BorderFactory.createTitledBorder("Filtros"));
@@ -153,14 +129,21 @@ public class PantallaAuditoria extends JPanel {
 
         JLabel lblTipo = new JLabel("Tipo de Cambio:");
         lblTipo.setFont(Estilos.Fuentes.LABEL);
+
+        // ── Tipos de cambio disponibles ───────────────────────────────────────
+        // Incluye ADICION_MATERIAL junto con los cuatro tipos previos.
+        // El orden refleja el ciclo de vida del equipo (modificaciones → adición → eliminaciones).
         cmbTiposCambio = new CheckableComboBox<>(new String[]{
             "Modificación de Cantidad",
             "Modificación de Código",
+            "Adición de Material",
             "Eliminación de Equipo",
             "Eliminación de Material"
         });
         cmbTiposCambio.setFont(Estilos.Fuentes.INPUT);
         cmbTiposCambio.setPreferredSize(new Dimension(200, 25));
+        // Por defecto ningún tipo seleccionado → se muestran todos los registros.
+        // El usuario selecciona los que quiere filtrar de forma positiva.
 
         panelControles.add(lblDesde);
         panelControles.add(dateChooserDesde);
@@ -169,7 +152,6 @@ public class PantallaAuditoria extends JPanel {
         panelControles.add(lblTipo);
         panelControles.add(cmbTiposCambio);
 
-        // Botón Limpiar anclado al EAST (siempre visible aunque la ventana sea chica)
         JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         JButton btnLimpiar = new JButton("Limpiar Filtros");
         btnLimpiar.setFont(Estilos.Fuentes.BOTON);
@@ -190,9 +172,7 @@ public class PantallaAuditoria extends JPanel {
 
         DefaultTableModel modelo = new DefaultTableModel(COLUMNAS, 0) {
             @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
+            public boolean isCellEditable(int row, int column) { return false; }
         };
 
         tablaAuditoria = new JTable(modelo);
@@ -220,7 +200,7 @@ public class PantallaAuditoria extends JPanel {
         return panel;
     }
 
-    // ── Carga y filtrado de datos ────────────────────────────────────────────
+    // ── Carga y filtrado ─────────────────────────────────────────────────────
 
     private void cargarAuditoria() {
         lblTotalRegistros.setText("Cargando...");
@@ -231,7 +211,8 @@ public class PantallaAuditoria extends JPanel {
                 List<EquipoAuditoria> auditorias = correccionService.obtenerTodasAuditorias();
                 SwingUtilities.invokeLater(() -> {
                     auditoriasCargadas = auditorias;
-                    cmbTiposCambio.selectAll();
+                    // No se preselecciona ningún tipo: clearSelection ya es el estado inicial
+                    // del CheckableComboBox, así que no es necesario llamar a nada.
                     aplicarFiltros();
                     log.info("Cargados {} registros de auditoría", auditorias.size());
                 });
@@ -274,6 +255,11 @@ public class PantallaAuditoria extends JPanel {
         return true;
     }
 
+    /**
+     * Filtra por tipo de cambio.
+     * Si ningún tipo está seleccionado (lista vacía) se interpreta como "sin filtro"
+     * y se muestran todos los registros.
+     */
     private boolean cumpleTipo(EquipoAuditoria a) {
         List<String> seleccionados = cmbTiposCambio.getSelectedItems();
         if (seleccionados.isEmpty()) return true;
@@ -288,9 +274,6 @@ public class PantallaAuditoria extends JPanel {
             String fecha = a.getFechaCambio() != null
                 ? SDF.format(java.sql.Timestamp.valueOf(a.getFechaCambio())) : "N/A";
 
-            // valorAnterior y valorNuevo son null en eliminaciones (la información
-            // relevante ya está en clienteNombre y materialInfo). Se renderiza como
-            // cadena vacía para que la celda quede en blanco visualmente.
             String valorAnterior = a.getValorAnterior() != null ? a.getValorAnterior() : "";
             String valorNuevo    = a.getValorNuevo()    != null ? a.getValorNuevo()    : "";
 
@@ -306,21 +289,33 @@ public class PantallaAuditoria extends JPanel {
         }
     }
 
+    /**
+     * Convierte el tipo de cambio interno (constante en mayúsculas) a la etiqueta
+     * legible que se muestra en la tabla y en el filtro CheckableComboBox.
+     *
+     * Agregar aquí cualquier tipo nuevo garantiza que la traducción sea consistente
+     * entre la columna de la tabla y las opciones del filtro.
+     */
     private String traducirTipoCambio(String tipoCambio) {
         if (tipoCambio == null) return "Desconocido";
         switch (tipoCambio) {
             case "MODIFICACION_CANTIDAD": return "Modificación de Cantidad";
             case "MODIFICACION_CODIGO":   return "Modificación de Código";
+            case "ADICION_MATERIAL":      return "Adición de Material";
             case "ELIMINACION_EQUIPO":    return "Eliminación de Equipo";
             case "ELIMINACION_MATERIAL":  return "Eliminación de Material";
             default:                      return tipoCambio;
         }
     }
 
+    /**
+     * Limpia todos los filtros: fechas y selección de tipos.
+     * Dejar el CheckableComboBox vacío muestra todos los registros (sin filtro de tipo).
+     */
     private void limpiarFiltros() {
         dateChooserDesde.setDate(null);
         dateChooserHasta.setDate(null);
-        cmbTiposCambio.selectAll();
+        cmbTiposCambio.clearSelection();
         aplicarFiltros();
     }
 }

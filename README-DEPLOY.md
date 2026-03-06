@@ -62,8 +62,7 @@ APLICACIÓN JAVA (JAR)
 
 ```
 target/
-├── Administracion-Aptium-1.0-SNAPSHOT.jar          (JAR sin dependencias)
-└── Administracion-Aptium-1.0-SNAPSHOT-jar-with-dependencies.jar (JAR EJECUTABLE)
+└── aptium.jar   (JAR EJECUTABLE con dependencias)
 ```
 
 ### 1.3 Gestión de Conexiones y Pooling
@@ -357,11 +356,11 @@ cd C:\Trabajo\Administracion-Aptium
 REM Limpiar y compilar todo
 mvn clean package
 
-REM Resultado: target\Administracion-Aptium-1.0-SNAPSHOT-jar-with-dependencies.jar
+REM Resultado: target\aptium.jar
 REM Este JAR contiene TODO (código + dependencias) - es autosuficiente
 ```
 
-**IMPORTANTE**: El JAR fat (`*jar-with-dependencies.jar`) es completamente independiente y no requiere Maven ni código fuente en producción.
+**IMPORTANTE**: El JAR `aptium.jar` es completamente independiente y no requiere Maven ni código fuente en producción.
 
 ### 4.2 Transferir JAR a Producción (Windows - Código Cerrado)
 
@@ -371,14 +370,14 @@ Solo necesitas copiar el JAR compilado. **No copies código fuente**.
 
 ```batch
 REM Desde tu máquina local:
-xcopy target\Administracion-Aptium-1.0-SNAPSHOT-jar-with-dependencies.jar \\servidor-produccion\compartir\aptium\
+xcopy target\aptium.jar \\servidor-produccion\compartir\aptium\
 ```
 
 #### Opción B: Por email, USB, o herramienta de deploy
 
 ```batch
 REM Simplemente copia el archivo:
-target\Administracion-Aptium-1.0-SNAPSHOT-jar-with-dependencies.jar
+target\aptium.jar
 ```
 
 **QUÉ NO COPIAR a producción:**
@@ -388,7 +387,7 @@ target\Administracion-Aptium-1.0-SNAPSHOT-jar-with-dependencies.jar
 - ❌ `target/` completo (solo necesitas el JAR)
 
 **QUÉ COPIAR a producción:**
-- ✅ `Administracion-Aptium-1.0-SNAPSHOT-jar-with-dependencies.jar` (SOLO ESTO)
+- ✅ `aptium.jar` (SOLO ESTO)
 
 ### 4.3 Crear Estructura de Directorios en Servidor Windows
 
@@ -403,7 +402,7 @@ REM Establecer permisos (ejecutar como Admin)
 icacls C:\Aptium /grant "%USERNAME%":F /T
 
 REM Copiar JAR compilado
-copy target\aptium.jar C:\Aptium\app\aptium.jar
+copy C:\Ruta\donde\transferiste\aptium.jar C:\Aptium\app\aptium.jar
 
 REM Verificar que el JAR está ahí
 dir C:\Aptium\app\
@@ -412,7 +411,7 @@ echo @echo off > C:\Aptium\app\ejecutar.bat
 echo cd /d "C:\Aptium\app" >> C:\Aptium\app\ejecutar.bat
 echo if not exist "aptium.jar" ( >> C:\Aptium\app\ejecutar.bat
 echo     echo Error: No se encuentra C:\Aptium\app\aptium.jar >> C:\Aptium\app\ejecutar.bat
-echo     echo Verifique que el JAR fue copiado correctamente desde target. >> C:\Aptium\app\ejecutar.bat
+echo     echo Verifique que el JAR fue copiado correctamente al servidor. >> C:\Aptium\app\ejecutar.bat
 echo     pause >> C:\Aptium\app\ejecutar.bat
 echo     exit /b 1 >> C:\Aptium\app\ejecutar.bat
 echo ) >> C:\Aptium\app\ejecutar.bat
@@ -867,7 +866,7 @@ FLUSH PRIVILEGES;
 
 - [ ] Código compilado sin errores: `mvn clean package`
 - [ ] Todos los tests pasan: `mvn clean test` (252 tests)
-- [ ] JAR con dependencias generado: `target\*jar-with-dependencies.jar`
+- [ ] JAR generado: `target\aptium.jar`
 - [ ] Se actualizó la fecha en este documento
 - [ ] Se creó backup de BD de producción
 - [ ] Se probó en ambiente staging

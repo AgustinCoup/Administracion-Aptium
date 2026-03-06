@@ -22,7 +22,7 @@ import java.util.List;
  * Operaciones disponibles sobre un equipo seleccionado:
  * - Modificar cantidad de un material
  * - Modificar código de catálogo de un material
- * - Agregar un material nuevo al equipo
+ * - Agregar un material nuevo al equipo (sin duplicar código)
  * - Eliminar un material del equipo
  * - Eliminar el equipo completo
  * - Ver auditoría global
@@ -31,7 +31,7 @@ public class PantallaCorrecciones extends JPanel {
 
     private PanelEquipoMaterial panelTablas;
 
-    // ── Componentes del formulario de modificación ───────────────────────────
+    // ── Formulario de modificación ────────────────────────────────────────────
     private JComboBox<String> cmbOperacion;
     private JSpinner          spinCantidad;
     private JTextField        txtCodigoNuevo;
@@ -49,7 +49,7 @@ public class PantallaCorrecciones extends JPanel {
     private JLabel       lblEstado;
     private JProgressBar progreso;
 
-    // ── Labels del formulario (para controlar visibilidad según operación) ────
+    // ── Labels condicionales ──────────────────────────────────────────────────
     private JLabel lblCantidad;
     private JLabel lblCodigoNuevo;
     private JLabel lblDescripcionNueva;
@@ -118,7 +118,6 @@ public class PantallaCorrecciones extends JPanel {
         return wrapper;
     }
 
-    /** Formulario para modificar cantidad o código de un material seleccionado. */
     private JPanel crearPanelFormulario() {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Modificar Material Seleccionado"));
@@ -126,18 +125,16 @@ public class PantallaCorrecciones extends JPanel {
         gbc.insets = new Insets(5, 5, 5, 5);
         gbc.fill   = GridBagConstraints.HORIZONTAL;
 
-        // Tipo de cambio
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
-        JLabel lblOperacion = new JLabel("Tipo de cambio:");
-        lblOperacion.setFont(Estilos.Fuentes.LABEL);
-        panel.add(lblOperacion, gbc);
+        JLabel lblOp = new JLabel("Tipo de cambio:");
+        lblOp.setFont(Estilos.Fuentes.LABEL);
+        panel.add(lblOp, gbc);
         gbc.gridx = 1; gbc.weightx = 0.7;
         cmbOperacion = new JComboBox<>(new String[]{"Modificar Cantidad", "Modificar Código"});
         cmbOperacion.setFont(Estilos.Fuentes.INPUT);
         cmbOperacion.addActionListener(e -> actualizarCamposEdicion());
         panel.add(cmbOperacion, gbc);
 
-        // Cantidad
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;
         lblCantidad = new JLabel("Nueva cantidad:");
         lblCantidad.setFont(Estilos.Fuentes.LABEL);
@@ -147,7 +144,6 @@ public class PantallaCorrecciones extends JPanel {
         spinCantidad.setFont(Estilos.Fuentes.INPUT);
         panel.add(spinCantidad, gbc);
 
-        // Código nuevo
         gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.3;
         lblCodigoNuevo = new JLabel("Nuevo código:");
         lblCodigoNuevo.setFont(Estilos.Fuentes.LABEL);
@@ -161,7 +157,6 @@ public class PantallaCorrecciones extends JPanel {
         txtCodigoNuevo.getDocument().addDocumentListener(simpleListener(this::notificarCambioCodigo));
         panel.add(txtCodigoNuevo, gbc);
 
-        // Descripción (solo lectura, auto-llenada)
         gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.3;
         lblDescripcionNueva = new JLabel("Descripción:");
         lblDescripcionNueva.setFont(Estilos.Fuentes.LABEL);
@@ -175,7 +170,6 @@ public class PantallaCorrecciones extends JPanel {
         txtDescripcionNueva.setVisible(false);
         panel.add(txtDescripcionNueva, gbc);
 
-        // Motivo
         gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0.3;
         JLabel lblMotivo = new JLabel("Motivo del cambio:");
         lblMotivo.setFont(Estilos.Fuentes.LABEL);
@@ -204,7 +198,7 @@ public class PantallaCorrecciones extends JPanel {
         btnAgregarMaterial.setFont(Estilos.Fuentes.BOTON);
         btnAgregarMaterial.setForeground(new Color(0, 120, 0));
         btnAgregarMaterial.addActionListener(e -> abrirDialogoAgregarMaterial());
-        btnAgregarMaterial.setEnabled(false);   // se habilita al seleccionar un equipo
+        btnAgregarMaterial.setEnabled(false);
         panel.add(btnAgregarMaterial);
 
         btnEliminarMaterial = new JButton("Eliminar Material");
@@ -232,25 +226,23 @@ public class PantallaCorrecciones extends JPanel {
     // ── Diálogo "Agregar Material" ────────────────────────────────────────────
 
     /**
-     * Muestra un diálogo modal para capturar código, cantidad y motivo del nuevo material.
-     * El diálogo reutiliza el callback {@code onCodigoNuevoChanged} para autocompletar
-     * la descripción en tiempo real, igual que el formulario de modificación.
+     * Abre un diálogo modal para capturar código, cantidad y motivo del nuevo material.
+     *
+     * Regla de unicidad: si el equipo ya tiene un material con el código ingresado
+     * se rechaza la operación mostrando un mensaje claro. El usuario debe usar
+     * "Modificar Cantidad" si quiere aumentar la cantidad de un material existente.
      */
     private void abrirDialogoAgregarMaterial() {
         Equipo equipo = panelTablas.getEquipoSeleccionado();
-        if (equipo == null) {
-            mostrarError("Debe seleccionar un equipo");
-            return;
-        }
+        if (equipo == null) { mostrarError("Debe seleccionar un equipo"); return; }
 
-        // ── Construir el panel del diálogo ────────────────────────────────────
+        // ── Panel del diálogo ─────────────────────────────────────────────────
         JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets  = new Insets(6, 6, 6, 6);
         gbc.fill    = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 0.3;
 
-        // Código
         gbc.gridx = 0; gbc.gridy = 0;
         JLabel lblCod = new JLabel("Código:");
         lblCod.setFont(Estilos.Fuentes.LABEL);
@@ -261,7 +253,6 @@ public class PantallaCorrecciones extends JPanel {
         Validador.aplicarSoloNumeros(txtCodigo);
         panel.add(txtCodigo, gbc);
 
-        // Descripción (solo lectura, auto-llenada)
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;
         JLabel lblDesc = new JLabel("Descripción:");
         lblDesc.setFont(Estilos.Fuentes.LABEL);
@@ -273,7 +264,6 @@ public class PantallaCorrecciones extends JPanel {
         txtDesc.setBackground(new Color(240, 240, 240));
         panel.add(txtDesc, gbc);
 
-        // Cantidad
         gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.3;
         JLabel lblCant = new JLabel("Cantidad:");
         lblCant.setFont(Estilos.Fuentes.LABEL);
@@ -283,7 +273,6 @@ public class PantallaCorrecciones extends JPanel {
         spinCant.setFont(Estilos.Fuentes.INPUT);
         panel.add(spinCant, gbc);
 
-        // Motivo
         gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.3;
         JLabel lblMot = new JLabel("Motivo:");
         lblMot.setFont(Estilos.Fuentes.LABEL);
@@ -296,58 +285,50 @@ public class PantallaCorrecciones extends JPanel {
         txtMot.setWrapStyleWord(true);
         panel.add(new JScrollPane(txtMot), gbc);
 
-        // Autocompletar descripción cuando cambia el código
+        // Autocompletar descripción en tiempo real
         txtCodigo.getDocument().addDocumentListener(simpleListener(() -> {
             String cod = txtCodigo.getText().trim();
-            if (cod.isEmpty()) {
-                txtDesc.setText("");
-                return;
-            }
-            if (!Validador.soloNumeros(cod)) {
-                txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO);
-                return;
-            }
+            if (cod.isEmpty()) { txtDesc.setText(""); return; }
+            if (!Validador.soloNumeros(cod)) { txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO); return; }
             if (onCodigoNuevoChanged != null) {
-                try {
-                    onCodigoNuevoChanged.accept(Integer.parseInt(cod), txtDesc);
-                } catch (NumberFormatException ex) {
-                    txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO);
-                }
+                try { onCodigoNuevoChanged.accept(Integer.parseInt(cod), txtDesc); }
+                catch (NumberFormatException ex) { txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO); }
             }
         }));
 
-        // ── Mostrar el diálogo ────────────────────────────────────────────────
+        // ── Mostrar diálogo ───────────────────────────────────────────────────
         int resultado = JOptionPane.showConfirmDialog(
             this, panel,
             "Agregar Material al Equipo",
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.PLAIN_MESSAGE
         );
-
         if (resultado != JOptionPane.OK_OPTION) return;
 
-        // ── Validar entradas del usuario ──────────────────────────────────────
+        // ── Validar entradas ──────────────────────────────────────────────────
         String codigoStr = txtCodigo.getText().trim();
         String motivo    = txtMot.getText().trim();
 
-        if (codigoStr.isEmpty()) {
-            mostrarError("Debe ingresar un código de catálogo");
-            return;
-        }
-        if (!Validador.soloNumeros(codigoStr)) {
-            mostrarError("El código debe ser un número entero");
-            return;
-        }
-        if (motivo.isEmpty()) {
-            mostrarError("El motivo es obligatorio");
-            return;
-        }
+        if (codigoStr.isEmpty())              { mostrarError("Debe ingresar un código de catálogo"); return; }
+        if (!Validador.soloNumeros(codigoStr)){ mostrarError("El código debe ser un número entero"); return; }
+        if (motivo.isEmpty())                 { mostrarError("El motivo es obligatorio"); return; }
 
-        // Confirmar antes de persistir
         Integer codigo   = Integer.parseInt(codigoStr);
         Integer cantidad = (Integer) spinCant.getValue();
-        String  descFinal = txtDesc.getText().trim();
 
+        // ── Verificar que el código no exista ya en el equipo ─────────────────
+        boolean codigoYaExiste = equipo.getMateriales().stream()
+            .anyMatch(m -> m.getCodigo() == codigo);
+        if (codigoYaExiste) {
+            mostrarError(
+                "El equipo ya tiene un material con el código " + codigo + ".\n" +
+                "Use 'Modificar Cantidad' si desea cambiar la cantidad de ese material."
+            );
+            return;
+        }
+
+        // ── Confirmar y persistir ─────────────────────────────────────────────
+        String descFinal = txtDesc.getText().trim();
         int confirmar = JOptionPane.showConfirmDialog(
             this,
             String.format(
@@ -371,7 +352,6 @@ public class PantallaCorrecciones extends JPanel {
     private void actualizarCamposEdicion() {
         boolean esModificarCantidad =
             "Modificar Cantidad".equals(cmbOperacion.getSelectedItem().toString());
-
         lblCantidad.setVisible(esModificarCantidad);
         spinCantidad.setVisible(esModificarCantidad);
         lblCodigoNuevo.setVisible(!esModificarCantidad);
@@ -387,39 +367,30 @@ public class PantallaCorrecciones extends JPanel {
     }
 
     private void onMaterialSelectionChanged() {
-        boolean materialSeleccionado = panelTablas.getMaterialSeleccionadoIndex() >= 0;
-        btnGuardarCambios.setEnabled(materialSeleccionado);
-        btnEliminarMaterial.setEnabled(materialSeleccionado);
+        boolean sel = panelTablas.getMaterialSeleccionadoIndex() >= 0;
+        btnGuardarCambios.setEnabled(sel);
+        btnEliminarMaterial.setEnabled(sel);
     }
 
     private void notificarCambioCodigo() {
         String codigoStr = txtCodigoNuevo.getText().trim();
-        if (codigoStr.isEmpty()) {
-            txtDescripcionNueva.setText("");
-            return;
-        }
-        if (!Validador.soloNumeros(codigoStr)) {
-            txtDescripcionNueva.setText("Código inválido");
-            return;
-        }
+        if (codigoStr.isEmpty()) { txtDescripcionNueva.setText(""); return; }
+        if (!Validador.soloNumeros(codigoStr)) { txtDescripcionNueva.setText("Código inválido"); return; }
         if (onCodigoNuevoChanged != null) {
-            try {
-                onCodigoNuevoChanged.accept(Integer.parseInt(codigoStr), txtDescripcionNueva);
-            } catch (NumberFormatException e) {
-                txtDescripcionNueva.setText("Código inválido");
-            }
+            try { onCodigoNuevoChanged.accept(Integer.parseInt(codigoStr), txtDescripcionNueva); }
+            catch (NumberFormatException e) { txtDescripcionNueva.setText("Código inválido"); }
         }
     }
 
     private void guardarCambios() {
         Equipo equipo = panelTablas.getEquipoSeleccionado();
-        if (equipo == null)                             { mostrarError("Debe seleccionar un equipo");  return; }
+        if (equipo == null) { mostrarError("Debe seleccionar un equipo"); return; }
         int matIdx = panelTablas.getMaterialSeleccionadoIndex();
-        if (matIdx < 0)                                 { mostrarError("Debe seleccionar un material"); return; }
+        if (matIdx < 0)    { mostrarError("Debe seleccionar un material"); return; }
 
         Material material = equipo.getMateriales().get(matIdx);
         String motivo = txtMotivo.getText().trim();
-        if (motivo.isEmpty())                           { mostrarError("El motivo del cambio es obligatorio"); return; }
+        if (motivo.isEmpty()) { mostrarError("El motivo del cambio es obligatorio"); return; }
 
         boolean esModificarCantidad =
             "Modificar Cantidad".equals(cmbOperacion.getSelectedItem().toString());
@@ -428,19 +399,17 @@ public class PantallaCorrecciones extends JPanel {
             if (esModificarCantidad) {
                 int cantidadNueva = (Integer) spinCantidad.getValue();
                 if (confirmar(construirMensajeConfirmacion(true, material, cantidadNueva, null))) {
-                    if (onModificarCantidad != null) {
+                    if (onModificarCantidad != null)
                         onModificarCantidad.accept(equipo.getId(), material.getId(), cantidadNueva, motivo);
-                    }
                     limpiarFormulario();
                 }
             } else {
                 String codigoStr = txtCodigoNuevo.getText().trim();
-                if (codigoStr.isEmpty())                { mostrarError("Ingrese el nuevo código de catálogo"); return; }
+                if (codigoStr.isEmpty()) { mostrarError("Ingrese el nuevo código de catálogo"); return; }
                 Integer codigoNuevo = Integer.parseInt(codigoStr);
                 if (confirmar(construirMensajeConfirmacion(false, material, null, codigoNuevo))) {
-                    if (onModificarCodigo != null) {
+                    if (onModificarCodigo != null)
                         onModificarCodigo.accept(equipo.getId(), material.getId(), codigoNuevo, motivo);
-                    }
                     limpiarFormulario();
                 }
             }
@@ -491,34 +460,31 @@ public class PantallaCorrecciones extends JPanel {
     private void solicitarEliminacion() {
         Equipo equipo = panelTablas.getEquipoSeleccionado();
         if (equipo == null) { mostrarError("Debe seleccionar un equipo"); return; }
-
         String motivo = JOptionPane.showInputDialog(
             this, "Ingrese el motivo de la eliminación:", "Eliminar Equipo", JOptionPane.WARNING_MESSAGE);
-        if (motivo != null && !motivo.trim().isEmpty() && onEliminarEquipo != null) {
+        if (motivo != null && !motivo.trim().isEmpty() && onEliminarEquipo != null)
             onEliminarEquipo.accept(equipo.getId(), motivo.trim());
-        }
     }
 
     private void solicitarEliminacionMaterial() {
         Equipo equipo = panelTablas.getEquipoSeleccionado();
         if (equipo == null) { mostrarError("Debe seleccionar un equipo"); return; }
         int matIdx = panelTablas.getMaterialSeleccionadoIndex();
-        if (matIdx < 0)     { mostrarError("Debe seleccionar un material"); return; }
+        if (matIdx < 0)    { mostrarError("Debe seleccionar un material"); return; }
 
         Material material = equipo.getMateriales().get(matIdx);
-        int respuesta = JOptionPane.showConfirmDialog(
+        int resp = JOptionPane.showConfirmDialog(
             this,
-            String.format("¿Está seguro de que desea eliminar TODOS los materiales con código %d (%s) del equipo?\n\nEsta acción no se puede deshacer.",
+            String.format(
+                "¿Está seguro de que desea eliminar TODOS los materiales con código %d (%s) del equipo?\n\nEsta acción no se puede deshacer.",
                 material.getCodigo(), material.getDescripcion()),
             "Confirmar Eliminación de Material",
             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-
-        if (respuesta == JOptionPane.YES_OPTION) {
+        if (resp == JOptionPane.YES_OPTION) {
             String motivo = JOptionPane.showInputDialog(
                 this, "Ingrese el motivo de la eliminación:", "Eliminar Material", JOptionPane.WARNING_MESSAGE);
-            if (motivo != null && !motivo.trim().isEmpty() && onEliminarMaterial != null) {
+            if (motivo != null && !motivo.trim().isEmpty() && onEliminarMaterial != null)
                 onEliminarMaterial.accept(equipo.getId(), material.getCodigo(), motivo.trim());
-            }
         }
     }
 
@@ -528,10 +494,6 @@ public class PantallaCorrecciones extends JPanel {
 
     // ── Utilidades ────────────────────────────────────────────────────────────
 
-    /**
-     * Crea un DocumentListener que dispara {@code accion} en cualquier cambio de texto.
-     * Evita repetir la triple implementación insert/remove/changed en cada campo.
-     */
     private static DocumentListener simpleListener(Runnable accion) {
         return new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e)  { accion.run(); }
@@ -565,8 +527,8 @@ public class PantallaCorrecciones extends JPanel {
     public void mostrarCargando(boolean cargando) {
         progreso.setVisible(cargando);
         panelTablas.setEnabled(!cargando);
-        boolean matSel  = panelTablas.getMaterialSeleccionadoIndex() >= 0;
-        boolean eqSel   = panelTablas.getEquipoSeleccionado() != null;
+        boolean matSel = panelTablas.getMaterialSeleccionadoIndex() >= 0;
+        boolean eqSel  = panelTablas.getEquipoSeleccionado() != null;
         btnGuardarCambios.setEnabled(!cargando && matSel);
         btnEliminarMaterial.setEnabled(!cargando && matSel);
         btnEliminarEquipo.setEnabled(!cargando && eqSel);
@@ -575,14 +537,14 @@ public class PantallaCorrecciones extends JPanel {
 
     // ── Setters de callbacks ──────────────────────────────────────────────────
 
-    public void setOnModificarCantidad(QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCantidad = cb; }
-    public void setOnModificarCodigo  (QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCodigo   = cb; }
-    public void setOnAgregarMaterial  (QuartaConsumer<Integer, Integer, Integer, String> cb) { onAgregarMaterial   = cb; }
-    public void setOnEliminarEquipo   (BiConsumer<Integer, String> cb)                       { onEliminarEquipo    = cb; }
-    public void setOnEliminarMaterial (TripleConsumer<Integer, Integer, String> cb)          { onEliminarMaterial  = cb; }
-    public void setOnVerAuditoria     (Runnable cb)                                          { onVerAuditoria      = cb; }
+    public void setOnModificarCantidad(QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCantidad  = cb; }
+    public void setOnModificarCodigo  (QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCodigo    = cb; }
+    public void setOnAgregarMaterial  (QuartaConsumer<Integer, Integer, Integer, String> cb) { onAgregarMaterial    = cb; }
+    public void setOnEliminarEquipo   (BiConsumer<Integer, String> cb)                       { onEliminarEquipo     = cb; }
+    public void setOnEliminarMaterial (TripleConsumer<Integer, Integer, String> cb)          { onEliminarMaterial   = cb; }
+    public void setOnVerAuditoria     (Runnable cb)                                          { onVerAuditoria       = cb; }
     public void setOnCodigoNuevoChanged(BiConsumer<Integer, JTextField> cb)                  { onCodigoNuevoChanged = cb; }
-    public void setOnPantallaVisible  (Runnable cb)                                          { onPantallaVisible   = cb; }
+    public void setOnPantallaVisible  (Runnable cb)                                          { onPantallaVisible    = cb; }
 
     // ── Interfaces funcionales ────────────────────────────────────────────────
 

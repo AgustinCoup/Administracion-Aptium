@@ -95,66 +95,21 @@ public class LoteDAO {
             pstmt.setInt(1, loteId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
-                    int volumen = rs.getInt("volumen");
                     materiales.add(new LoteMaterialInfo(
                         rs.getInt("id"),
                         rs.getInt("equipo_id"),
                         rs.getInt("codigo_catalogo"),
                         rs.getString("descripcion"),
                         rs.getInt("cantidad"),
-                        volumen
+                        rs.getInt("volumen")
                     ));
                 }
             }
         } catch (SQLException e) {
-            log.error("Error al obtener materiales del lote: {}", loteId, e);
+            log.error("Error al obtener materiales del lote {}", loteId, e);
         }
 
         return materiales;
-    }
-
-    public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
-                           List<LoteMovimiento> movimientos) {
-        if (movimientos == null || movimientos.isEmpty()) {
-            return null;
-        }
-
-        Connection conn = null;
-        try {
-            conn = ConnectionPool.getConnection();
-            conn.setAutoCommit(false);
-
-            int anio = java.time.LocalDate.now().getYear();
-            int secuencia = obtenerSiguienteSecuencia(conn, anio);
-            String idNegocio = String.valueOf(anio) + secuencia;
-
-            int loteId = insertarLote(conn, idNegocio, anio, secuencia, autoclaveNombre,
-                                      capacidadTotal, capacidadUsada);
-
-            Map<Integer, Boolean> equiposAfectados = new HashMap<>();
-
-            for (LoteMovimiento mov : movimientos) {
-                equiposAfectados.put(mov.getEquipoId(), true);
-                aplicarMovimientoLote(conn, loteId, mov);
-            }
-
-            for (Integer equipoId : equiposAfectados.keySet()) {
-                recalcularEstadoEquipo(conn, equipoId);
-            }
-
-            conn.commit();
-            return obtenerLotePorId(conn, loteId);
-        } catch (SQLException e) {
-            if (conn != null) {
-                try { conn.rollback(); } catch (SQLException ex) { log.error("Error al hacer rollback", ex); }
-            }
-            log.error("Error al lanzar lote para autoclave: {}", autoclaveNombre, e);
-            return null;
-        } finally {
-            if (conn != null) {
-                try { conn.close(); } catch (SQLException e) { log.error("Error al cerrar conexión", e); }
-            }
-        }
     }
 
     public boolean finalizarLote(int loteId) {
@@ -188,8 +143,8 @@ public class LoteDAO {
                 try (ResultSet rs = pstmt.executeQuery()) {
                     while (rs.next()) {
                         int materialId = rs.getInt("id");
-                        int equipoId = rs.getInt("equipo_id");
-                        int cantidad = rs.getInt("cantidad");
+                        int equipoId   = rs.getInt("equipo_id");
+                        int cantidad   = rs.getInt("cantidad");
                         String estadoActual = rs.getString("estado");
 
                         equiposAfectados.put(equipoId, true);
@@ -212,8 +167,10 @@ public class LoteDAO {
                 }
             }
 
+            // Recalcular estado y unificar lotes del mismo código que ahora comparten estado
             for (Integer equipoId : equiposAfectados.keySet()) {
                 recalcularEstadoEquipo(conn, equipoId);
+                unificarMaterialesDuplicados(conn, equipoId);
             }
 
             conn.commit();
@@ -237,7 +194,6 @@ public class LoteDAO {
             conn = ConnectionPool.getConnection();
             conn.setAutoCommit(false);
 
-            // Marcar el lote como fallido y liberar el autoclave
             String sqlActualizarLote = "UPDATE lotes SET fecha_fin = CURRENT_TIMESTAMP, estado = 'FALLIDO' " +
                                        "WHERE id = ? AND fecha_fin IS NULL";
             try (PreparedStatement pstmt = conn.prepareStatement(sqlActualizarLote)) {
@@ -249,8 +205,6 @@ public class LoteDAO {
                 }
             }
 
-            // Obtener todos los materiales del lote que estén en ESTERILIZANDO
-            // Obtener todos los materiales del lote que estén en ESTERILIZANDO
             String sqlSelect = "SELECT id, equipo_id, cantidad FROM equipo_materiales " +
                                "WHERE lote_id = ? AND estado = ? FOR UPDATE";
             String sqlGetPreviousState = "SELECT estado_origen FROM material_movimientos " +
@@ -269,12 +223,11 @@ public class LoteDAO {
                 try (ResultSet rs = pstmt.executeQuery()) {
                     while (rs.next()) {
                         int materialId = rs.getInt("id");
-                        int equipoId = rs.getInt("equipo_id");
-                        int cantidad = rs.getInt("cantidad");
+                        int equipoId   = rs.getInt("equipo_id");
+                        int cantidad   = rs.getInt("cantidad");
 
                         equiposAfectados.put(equipoId, true);
 
-                        // Buscar el estado anterior en material_movimientos
                         String estadoAnterior = EstadoEquipo.EMPAQUETADO.getNombre();
                         try (PreparedStatement pstmtPrev = conn.prepareStatement(sqlGetPreviousState)) {
                             pstmtPrev.setInt(1, materialId);
@@ -286,14 +239,12 @@ public class LoteDAO {
                             }
                         }
 
-                        // Revertir el material a su estado anterior y quitar asociación con el lote
                         try (PreparedStatement update = conn.prepareStatement(sqlUpdate)) {
                             update.setString(1, estadoAnterior);
                             update.setInt(2, materialId);
                             update.executeUpdate();
                         }
 
-                        // Registrar el movimiento de reversión
                         try (PreparedStatement mov = conn.prepareStatement(sqlMovimiento)) {
                             mov.setInt(1, materialId);
                             mov.setInt(2, equipoId);
@@ -306,9 +257,12 @@ public class LoteDAO {
                 }
             }
 
-            // Recalcular estado de equipos afectados
+            // Recalcular estado y unificar: al regresar al estado anterior, podría
+            // haber otra fila con el mismo código ya en ese estado (ej: otro fragmento
+            // que no entró al lote fallido).
             for (Integer equipoId : equiposAfectados.keySet()) {
                 recalcularEstadoEquipo(conn, equipoId);
+                unificarMaterialesDuplicados(conn, equipoId);
             }
 
             conn.commit();
@@ -326,25 +280,65 @@ public class LoteDAO {
         }
     }
 
+    public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
+                           List<LoteMovimiento> movimientos) {
+        if (movimientos == null || movimientos.isEmpty()) return null;
+
+        Connection conn = null;
+        try {
+            conn = ConnectionPool.getConnection();
+            conn.setAutoCommit(false);
+
+            int anio      = java.time.LocalDate.now().getYear();
+            int secuencia = obtenerSiguienteSecuencia(conn, anio);
+            String idNegocio = String.valueOf(anio) + secuencia;
+
+            int loteId = insertarLote(conn, idNegocio, anio, secuencia, autoclaveNombre,
+                                      capacidadTotal, capacidadUsada);
+
+            Map<Integer, Boolean> equiposAfectados = new HashMap<>();
+            for (LoteMovimiento mov : movimientos) {
+                equiposAfectados.put(mov.getEquipoId(), true);
+                aplicarMovimientoLote(conn, loteId, mov);
+            }
+
+            for (Integer equipoId : equiposAfectados.keySet()) {
+                recalcularEstadoEquipo(conn, equipoId);
+            }
+
+            conn.commit();
+            return obtenerLotePorId(conn, loteId);
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException ex) { log.error("Error al hacer rollback", ex); }
+            }
+            log.error("Error al lanzar lote para autoclave: {}", autoclaveNombre, e);
+            return null;
+        } finally {
+            if (conn != null) {
+                try { conn.close(); } catch (SQLException e) { log.error("Error al cerrar conexión", e); }
+            }
+        }
+    }
+
+    // ── Helpers privados ─────────────────────────────────────────────────────
+
     private int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
         String sql = "SELECT COALESCE(MAX(secuencia), 0) AS max_seq FROM lotes WHERE anio = ? FOR UPDATE";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, anio);
             try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("max_seq") + 1;
-                }
+                if (rs.next()) return rs.getInt("max_seq") + 1;
             }
         }
         return 1;
     }
 
     private int insertarLote(Connection conn, String idNegocio, int anio, int secuencia,
-                            String autoclaveNombre, int capacidadTotal, int capacidadUsada) throws SQLException {
+                             String autoclaveNombre, int capacidadTotal, int capacidadUsada) throws SQLException {
         String sql = "INSERT INTO lotes (id_negocio, anio, secuencia, autoclave_nombre, " +
                      "capacidad_total, capacidad_usada, fecha_inicio) " +
                      "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
-
         try (PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             pstmt.setString(1, idNegocio);
             pstmt.setInt(2, anio);
@@ -353,11 +347,8 @@ public class LoteDAO {
             pstmt.setInt(5, capacidadTotal);
             pstmt.setInt(6, capacidadUsada);
             pstmt.executeUpdate();
-
             try (ResultSet rs = pstmt.getGeneratedKeys()) {
-                if (rs.next()) {
-                    return rs.getInt(1);
-                }
+                if (rs.next()) return rs.getInt(1);
             }
         }
         throw new SQLException("No se generó ID para el lote");
@@ -368,7 +359,7 @@ public class LoteDAO {
             "SELECT codigo_catalogo, cantidad, estado " +
             "FROM equipo_materiales WHERE id = ? AND equipo_id = ? FOR UPDATE";
         String sqlUpdateCantidad = "UPDATE equipo_materiales SET cantidad = ? WHERE id = ? AND equipo_id = ?";
-        String sqlUpdateEstado = "UPDATE equipo_materiales SET estado = ?, lote_id = ? WHERE id = ? AND equipo_id = ?";
+        String sqlUpdateEstado   = "UPDATE equipo_materiales SET estado = ?, lote_id = ? WHERE id = ? AND equipo_id = ?";
         String sqlInsertLote =
             "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado, lote_id) " +
             "VALUES (?, ?, ?, ?, ?)";
@@ -376,8 +367,8 @@ public class LoteDAO {
                                "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
                                "VALUES (?, ?, ?, ?, ?)";
 
-        int materialId = movimiento.getMaterialId();
-        int equipoId = movimiento.getEquipoId();
+        int materialId    = movimiento.getMaterialId();
+        int equipoId      = movimiento.getEquipoId();
         int cantidadMover = movimiento.getCantidad();
 
         int codigo;
@@ -388,12 +379,10 @@ public class LoteDAO {
             pstmt.setInt(1, materialId);
             pstmt.setInt(2, equipoId);
             try (ResultSet rs = pstmt.executeQuery()) {
-                if (!rs.next()) {
-                    throw new SQLException("No se encontro el lote a mover: " + materialId);
-                }
-                codigo = rs.getInt("codigo_catalogo");
+                if (!rs.next()) throw new SQLException("No se encontro el lote a mover: " + materialId);
+                codigo         = rs.getInt("codigo_catalogo");
                 cantidadActual = rs.getInt("cantidad");
-                estadoActual = rs.getString("estado");
+                estadoActual   = rs.getString("estado");
             }
         }
 
@@ -409,7 +398,6 @@ public class LoteDAO {
                 pstmt.setInt(4, equipoId);
                 pstmt.executeUpdate();
             }
-
             try (PreparedStatement pstmt = conn.prepareStatement(sqlMovimiento)) {
                 pstmt.setInt(1, materialId);
                 pstmt.setInt(2, equipoId);
@@ -435,7 +423,6 @@ public class LoteDAO {
                 pstmt.setString(4, EstadoEquipo.ESTERILIZANDO.getNombre());
                 pstmt.setInt(5, loteId);
                 pstmt.executeUpdate();
-
                 try (ResultSet rsNuevo = pstmt.getGeneratedKeys()) {
                     if (rsNuevo.next()) {
                         nuevoMaterialId = rsNuevo.getInt(1);
@@ -492,11 +479,136 @@ public class LoteDAO {
         }
     }
 
+    /**
+     * Unifica filas de equipo_materiales que tienen el mismo equipo_id, codigo_catalogo y estado.
+     * Esto ocurre cuando fragmentos de un mismo material se dividen y luego convergen al mismo estado
+     * a través de distintos lotes de esterilización.
+     *
+     * La fila superviviente es la que tiene el movimiento más reciente.
+     * Los movimientos de las filas eliminadas se reasignan al superviviente para preservar historial.
+     *
+     * Debe llamarse dentro de una transacción activa.
+     */
+    private void unificarMaterialesDuplicados(Connection conn, int equipoId) throws SQLException {
+        String sqlGrupos =
+            "SELECT codigo_catalogo, estado, SUM(cantidad) AS cantidad_total " +
+            "FROM equipo_materiales " +
+            "WHERE equipo_id = ? " +
+            "GROUP BY codigo_catalogo, estado " +
+            "HAVING COUNT(*) > 1";
+
+        List<int[]>    grupos       = new ArrayList<>();
+        List<String>   estadosGrupos = new ArrayList<>();
+
+        try (PreparedStatement pstmt = conn.prepareStatement(sqlGrupos)) {
+            pstmt.setInt(1, equipoId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    grupos.add(new int[]{ rs.getInt("codigo_catalogo"), rs.getInt("cantidad_total") });
+                    estadosGrupos.add(rs.getString("estado"));
+                }
+            }
+        }
+
+        for (int i = 0; i < grupos.size(); i++) {
+            int    codigo        = grupos.get(i)[0];
+            int    cantidadTotal = grupos.get(i)[1];
+            String estado        = estadosGrupos.get(i);
+            unificarGrupo(conn, equipoId, codigo, estado, cantidadTotal);
+        }
+    }
+
+    /**
+     * Unifica todas las filas de un grupo (mismo equipo, código y estado) en una sola.
+     *
+     * Criterio de superviviente: la fila con el movimiento más reciente.
+     * En caso de empate o sin movimientos, se usa el mayor id de equipo_materiales.
+     *
+     * Los material_movimientos de las filas eliminadas se reasignan al superviviente,
+     * preservando el historial completo de trazabilidad.
+     */
+    private void unificarGrupo(Connection conn, int equipoId, int codigo,
+                                String estado, int cantidadTotal) throws SQLException {
+        String sqlSuperviviente =
+            "SELECT em.id " +
+            "FROM equipo_materiales em " +
+            "LEFT JOIN (" +
+            "  SELECT material_id, MAX(fecha) AS ultima_fecha " +
+            "  FROM material_movimientos GROUP BY material_id" +
+            ") mm ON em.id = mm.material_id " +
+            "WHERE em.equipo_id = ? AND em.codigo_catalogo = ? AND em.estado = ? " +
+            "ORDER BY mm.ultima_fecha DESC, em.id DESC " +
+            "LIMIT 1";
+
+        int supervivienteId;
+        try (PreparedStatement pstmt = conn.prepareStatement(sqlSuperviviente)) {
+            pstmt.setInt(1, equipoId);
+            pstmt.setInt(2, codigo);
+            pstmt.setString(3, estado);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (!rs.next()) return;
+                supervivienteId = rs.getInt("id");
+            }
+        }
+
+        // Acumular cantidad total en el superviviente
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "UPDATE equipo_materiales SET cantidad = ? WHERE id = ?")) {
+            pstmt.setInt(1, cantidadTotal);
+            pstmt.setInt(2, supervivienteId);
+            pstmt.executeUpdate();
+        }
+
+        // Obtener IDs de las filas a eliminar (todo el grupo excepto el superviviente)
+        List<Integer> idsAEliminar = new ArrayList<>();
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "SELECT id FROM equipo_materiales " +
+                "WHERE equipo_id = ? AND codigo_catalogo = ? AND estado = ? AND id <> ?")) {
+            pstmt.setInt(1, equipoId);
+            pstmt.setInt(2, codigo);
+            pstmt.setString(3, estado);
+            pstmt.setInt(4, supervivienteId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) idsAEliminar.add(rs.getInt("id"));
+            }
+        }
+
+        if (idsAEliminar.isEmpty()) return;
+
+        // Reasignar movimientos al superviviente (preservar historial)
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "UPDATE material_movimientos SET material_id = ? WHERE material_id = ?")) {
+            for (int idEliminar : idsAEliminar) {
+                pstmt.setInt(1, supervivienteId);
+                pstmt.setInt(2, idEliminar);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+        }
+
+        // Eliminar las filas duplicadas
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "DELETE FROM equipo_materiales WHERE id = ?")) {
+            for (int idEliminar : idsAEliminar) {
+                pstmt.setInt(1, idEliminar);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+        }
+
+        log.debug("Unificados {} lotes del material código={} estado={} en equipo={} → id superviviente={}",
+            idsAEliminar.size() + 1, codigo, estado, equipoId, supervivienteId);
+    }
+
+    // ── Mappers ──────────────────────────────────────────────────────────────
+
     private Lote mapLote(ResultSet rs) throws SQLException {
         Timestamp inicio = rs.getTimestamp("fecha_inicio");
-        Timestamp fin = rs.getTimestamp("fecha_fin");
-        LocalDateTime fechaInicio = inicio != null ? LocalDateTime.ofInstant(inicio.toInstant(), ZoneId.systemDefault()) : null;
-        LocalDateTime fechaFin = fin != null ? LocalDateTime.ofInstant(fin.toInstant(), ZoneId.systemDefault()) : null;
+        Timestamp fin    = rs.getTimestamp("fecha_fin");
+        LocalDateTime fechaInicio = inicio != null
+            ? LocalDateTime.ofInstant(inicio.toInstant(), ZoneId.systemDefault()) : null;
+        LocalDateTime fechaFin = fin != null
+            ? LocalDateTime.ofInstant(fin.toInstant(),    ZoneId.systemDefault()) : null;
         String estado = rs.getString("estado");
         if (estado == null) estado = "ACTIVO";
 
@@ -541,13 +653,9 @@ public class LoteDAO {
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, loteId);
             try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapLote(rs);
-                }
+                if (rs.next()) return mapLote(rs);
             }
         }
         return null;
     }
 }
-
-
