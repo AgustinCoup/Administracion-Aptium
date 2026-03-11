@@ -14,6 +14,7 @@ import com.toedter.calendar.JDateChooser;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.awt.event.ActionListener;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -38,6 +39,7 @@ public class PantallaVerLotes extends JPanel {
     private JDateChooser                dateChooserDesde;
     private JDateChooser                dateChooserHasta;
     private JButton                     btnLimpiarFiltros;
+    private JButton                     btnImprimir;
 
     private Runnable onFiltrosChanged;
 
@@ -89,12 +91,12 @@ public class PantallaVerLotes extends JPanel {
         panelFiltros.setBorder(BorderFactory.createTitledBorder("Filtros"));
 
         // ── Panel de controles (izquierda) ───────────────────────────────────
-        JPanel panelControles = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        JPanel panelControles = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 5));
 
         // ID
         JLabel lblId = new JLabel(Constantes.Textos.FILTRO_ID);
         lblId.setFont(Estilos.Fuentes.LABEL);
-        txtFiltroId = new JTextField(8);
+        txtFiltroId = new JTextField(6);
         txtFiltroId.setFont(Estilos.Fuentes.INPUT);
 
         // Autoclave (antes "Equipo")
@@ -102,26 +104,26 @@ public class PantallaVerLotes extends JPanel {
         lblAutoclave.setFont(Estilos.Fuentes.LABEL);
         cmbFiltroAutoclave = new CheckableComboBox<>(new String[0]);
         cmbFiltroAutoclave.setFont(Estilos.Fuentes.INPUT);
-        cmbFiltroAutoclave.setPreferredSize(new Dimension(180, 25));
+        cmbFiltroAutoclave.setPreferredSize(new Dimension(150, 25));
 
         // Estado
         JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
         lblEstado.setFont(Estilos.Fuentes.LABEL);
         cmbFiltroEstado = new CheckableComboBox<>(new String[]{"ACTIVO", "EXITOSO", "FALLIDO"});
         cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
-        cmbFiltroEstado.setPreferredSize(new Dimension(160, 25));
+        cmbFiltroEstado.setPreferredSize(new Dimension(130, 25));
 
         // Fecha Desde / Hasta
         JLabel lblDesde = new JLabel("Desde:");
         lblDesde.setFont(Estilos.Fuentes.LABEL);
         dateChooserDesde = new JDateChooser();
-        dateChooserDesde.setPreferredSize(new Dimension(120, 25));
+        dateChooserDesde.setPreferredSize(new Dimension(110, 25));
         dateChooserDesde.setDateFormatString("dd/MM/yyyy");
 
         JLabel lblHasta = new JLabel("Hasta:");
         lblHasta.setFont(Estilos.Fuentes.LABEL);
         dateChooserHasta = new JDateChooser();
-        dateChooserHasta.setPreferredSize(new Dimension(120, 25));
+        dateChooserHasta.setPreferredSize(new Dimension(110, 25));
         dateChooserHasta.setDateFormatString("dd/MM/yyyy");
 
         panelControles.add(lblId);
@@ -141,6 +143,10 @@ public class PantallaVerLotes extends JPanel {
         btnLimpiarFiltros.setFont(Estilos.Fuentes.INPUT);
         btnLimpiarFiltros.addActionListener(e -> limpiarFiltros());
         panelBoton.add(btnLimpiarFiltros);
+
+        btnImprimir = new JButton(Constantes.Botones.IMPRIMIR);
+        btnImprimir.setFont(Estilos.Fuentes.INPUT);
+        panelBoton.add(btnImprimir);
 
         panelFiltros.add(panelControles, BorderLayout.CENTER);
         panelFiltros.add(panelBoton,     BorderLayout.EAST);
@@ -216,12 +222,12 @@ public class PantallaVerLotes extends JPanel {
     }
 
     /** Lista de autoclaves seleccionadas; vacía significa "sin filtro". */
-    public java.util.List<String> getFiltroAutoclaves() {
+    public List<String> getFiltroAutoclaves() {
         return cmbFiltroAutoclave.getSelectedItems();
     }
 
     /** Lista de estados seleccionados; vacía significa "sin filtro". */
-    public java.util.List<String> getFiltroEstados() {
+    public List<String> getFiltroEstados() {
         return cmbFiltroEstado.getSelectedItems();
     }
 
@@ -241,5 +247,14 @@ public class PantallaVerLotes extends JPanel {
 
     public void setOnFiltrosChanged(Runnable listener) {
         this.onFiltrosChanged = listener;
+    }
+
+    /** Registra la acción que se ejecuta al presionar "Imprimir". */
+    public void setOnImprimir(Runnable listener) {
+        // Limpiar listeners anteriores para evitar acumulación si se llama más de una vez
+        for (ActionListener al : btnImprimir.getActionListeners()) {
+            btnImprimir.removeActionListener(al);
+        }
+        btnImprimir.addActionListener(e -> listener.run());
     }
 }

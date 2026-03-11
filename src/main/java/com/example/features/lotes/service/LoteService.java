@@ -7,6 +7,7 @@ import com.example.features.lotes.model.LoteMovimiento;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -47,6 +48,33 @@ public class LoteService {
         } catch (Exception e) {
             log.error("Error al obtener todos los lotes", e);
             return List.of();
+        }
+    }
+
+    public List<Lote> obtenerLotesEnRango(LocalDate desde, LocalDate hasta) {
+        try {
+            return loteDAO.obtenerLotesEnRango(desde, hasta);
+        } catch (Exception e) {
+            log.error("Error al obtener lotes en rango [{} - {}]", desde, hasta, e);
+            return List.of();
+        }
+    }
+
+    public List<String> obtenerClientesPorLote(int loteId) {
+        try {
+            return loteDAO.obtenerClientesPorLote(loteId);
+        } catch (Exception e) {
+            log.error("Error al obtener clientes del lote: {}", loteId, e);
+            return List.of();
+        }
+    }
+
+    public Map<String, List<String>> obtenerMaterialesPorClientePorLote(int loteId) {
+        try {
+            return loteDAO.obtenerMaterialesPorClientePorLote(loteId);
+        } catch (Exception e) {
+            log.error("Error al obtener materiales por cliente del lote: {}", loteId, e);
+            return Map.of();
         }
     }
 

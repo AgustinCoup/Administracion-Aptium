@@ -204,7 +204,7 @@ public class OrthopediaInputController {
                 onEquipoGuardadoListener.onEquipoGuardado();
             }
             
-            navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION);
+            navegador.show(contenedor, Constantes.Pantallas.INGRESO_ORTOPEDIA);
             log.info("Equipo guardado exitosamente desde formulario");
         } else {
             JOptionPane.showMessageDialog(panel,

@@ -9,10 +9,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -79,6 +81,97 @@ public class LoteDAO {
         }
 
         return todos;
+    }
+
+    /**
+     * Devuelve todos los lotes cuya {@code fecha_inicio} cae dentro del rango
+     * [desde, hasta] inclusive (comparación a nivel de fecha, sin hora).
+     * Los lotes se devuelven ordenados cronológicamente.
+     * No carga materiales; usá {@link #obtenerMaterialesPorLote(int)} para eso.
+     */
+    public List<Lote> obtenerLotesEnRango(LocalDate desde, LocalDate hasta) {
+        List<Lote> lotes = new ArrayList<>();
+        String sql = "SELECT id, id_negocio, anio, secuencia, autoclave_nombre, " +
+                     "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin, estado " +
+                     "FROM lotes " +
+                     "WHERE DATE(fecha_inicio) BETWEEN ? AND ? " +
+                     "ORDER BY fecha_inicio ASC, id ASC";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setDate(1, Date.valueOf(desde));
+            pstmt.setDate(2, Date.valueOf(hasta));
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    lotes.add(mapLote(rs));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener lotes en rango [{} - {}]", desde, hasta, e);
+        }
+        return lotes;
+    }
+
+    /**
+     * Devuelve los nombres de los clientes (sin repetir) cuyos equipos tienen
+     * materiales asignados al lote dado.
+     *
+     * Relación usada: lotes ← equipo_materiales → equipos → clientes
+     */
+    public List<String> obtenerClientesPorLote(int loteId) {
+        List<String> clientes = new ArrayList<>();
+        String sql = "SELECT DISTINCT c.nombre " +
+                     "FROM clientes c " +
+                     "  JOIN equipos e           ON e.nro_cliente = c.id " +
+                     "  JOIN equipo_materiales em ON em.equipo_id  = e.id " +
+                     "WHERE em.lote_id = ? " +
+                     "ORDER BY c.nombre";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, loteId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    clientes.add(rs.getString("nombre"));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener clientes del lote {}", loteId, e);
+        }
+        return clientes;
+    }
+
+
+
+    public Map<String, List<String>> obtenerMaterialesPorClientePorLote(int loteId) {
+        Map<String, List<String>> resultado = new LinkedHashMap<>();
+        String sql =
+            "SELECT c.nombre AS cliente, cd.descripcion, em.cantidad " +
+            "FROM equipo_materiales em " +
+            "  JOIN equipos e                 ON em.equipo_id      = e.id " +
+            "  JOIN clientes c                ON e.nro_cliente     = c.id " +
+            "  JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
+            "WHERE em.lote_id = ? " +
+            "ORDER BY c.nombre, cd.descripcion";
+
+        try (Connection conn = ConnectionPool.getConnection();
+            PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, loteId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String cliente  = rs.getString("cliente");
+                    String material = "• " + rs.getString("descripcion") +
+                                    " x" + rs.getInt("cantidad");
+                    resultado.computeIfAbsent(cliente, k -> new ArrayList<>()).add(material);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener materiales por cliente del lote {}", loteId, e);
+        }
+        return resultado;
     }
 
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {

@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import com.example.features.autoclaves.model.Autoclave;
@@ -242,6 +243,26 @@ public class AppModel {
 
     public boolean marcarLoteFallo(int loteId) {
         return loteService.marcarLoteFallo(loteId);
+    }
+
+    /**
+     * Devuelve los lotes cuya fecha_inicio cae dentro del rango dado.
+     * Usado por LoteReporteService para generar el reporte de impresión.
+     */
+    public List<Lote> obtenerLotesEnRango(LocalDate desde, LocalDate hasta) {
+        return loteService.obtenerLotesEnRango(desde, hasta);
+    }
+
+    /**
+     * Devuelve los nombres de los clientes (sin repetir) asociados al lote.
+     * Usado por LoteReporteService para construir la columna "Cliente" del reporte.
+     */
+    public List<String> obtenerClientesPorLote(int loteId) {
+        return loteService.obtenerClientesPorLote(loteId);
+    }
+
+    public Map<String, List<String>> obtenerMaterialesPorClientePorLote(int loteId) {
+        return loteService.obtenerMaterialesPorClientePorLote(loteId);
     }
 
     // ==================== DELEGACIÓN A CLIENTE SERVICE ====================

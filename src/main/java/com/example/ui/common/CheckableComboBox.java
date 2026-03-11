@@ -19,15 +19,27 @@ import java.util.List;
 public class CheckableComboBox<E> extends JComboBox<E> {
     private static final long serialVersionUID = 1L;
 
-    private final DefaultComboBoxModel<E> model;
+    private DefaultComboBoxModel<E> model;
     private final Set<Integer> selectedIndices;
     private String displayFormat = "%d / %d";
+    private String displayText = "Todos";
 
     private Runnable onSelectionChange;
     private boolean keepOpen = false;
 
     public CheckableComboBox(E[] items) {
         this(new DefaultComboBoxModel<>(items));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void setModel(ComboBoxModel<E> aModel) {
+        super.setModel(aModel);
+        this.model = (DefaultComboBoxModel<E>) aModel;
+        if (selectedIndices != null) {
+            selectedIndices.clear();
+            updateDisplay();
+        }
     }
 
     public CheckableComboBox(DefaultComboBoxModel<E> model) {
@@ -40,13 +52,12 @@ public class CheckableComboBox<E> extends JComboBox<E> {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index,
                     boolean isSelected, boolean cellHasFocus) {
-                Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (index != -1) {
-                    JCheckBox checkBox = new JCheckBox(value != null ? value.toString() : "");
-                    checkBox.setSelected(selectedIndices.contains(index));
-                    return checkBox;
+                if (index == -1) {
+                    return super.getListCellRendererComponent(list, displayText, index, isSelected, cellHasFocus);
                 }
-                return c;
+                JCheckBox checkBox = new JCheckBox(value != null ? value.toString() : "");
+                checkBox.setSelected(selectedIndices.contains(index));
+                return checkBox;
             }
         });
 
@@ -187,16 +198,20 @@ public class CheckableComboBox<E> extends JComboBox<E> {
         int selected = selectedIndices.size();
         int total = model.getSize();
 
-        if (selected == 0) {
-            setToolTipText("Ninguno seleccionado");
-            super.setSelectedIndex(-1);
-        } else if (selected == total) {
-            setToolTipText("Todos seleccionados");
-            super.setSelectedIndex(0);
+        if (selected == 0 || selected == total) {
+            displayText = "Todos";
+            setToolTipText("Todos");
+        } else if (selected == 1) {
+            int idx = selectedIndices.iterator().next();
+            E item = model.getElementAt(idx);
+            displayText = item != null ? item.toString() : "";
+            setToolTipText(displayText);
         } else {
+            displayText = "Varios";
             setToolTipText(selected + " de " + total + " seleccionados");
-            super.setSelectedIndex(0);
         }
+        super.setSelectedIndex(total > 0 ? 0 : -1);
+        repaint();
     }
 
     /**

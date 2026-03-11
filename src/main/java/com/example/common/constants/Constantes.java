@@ -177,6 +177,7 @@ public final class Constantes {
         public static final String OTROS                  = "Otros";
         public static final String VER_LOTES              = "Ver Lotes";
         public static final String LIMPIAR_FILTROS        = "Limpiar filtros";
+        public static final String IMPRIMIR               = "Imprimir";
 
         private Botones() {}
     }
