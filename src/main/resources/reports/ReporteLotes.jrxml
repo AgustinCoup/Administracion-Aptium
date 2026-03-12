@@ -5,30 +5,12 @@
 	<field name="fechaInicio" class="java.lang.String"/>
 	<field name="codigoNegocio" class="java.lang.String"/>
 	<field name="equipo" class="java.lang.String"/>
-	<field name="cliente" class="java.lang.String"/>
-	<field name="material" class="java.lang.String"/>
-	<group name="GrupoCliente">
-		<expression><![CDATA[$F{cliente}]]></expression>
-		<groupHeader>
-			<band height="1">
-				<element kind="line" uuid="7e107ae1-5a99-4262-9d3e-87f430ff4bd6" x="60" y="0" width="120" height="1">
-					<property name="com.jaspersoft.studio.unit.x" value="px"/>
-					<property name="com.jaspersoft.studio.unit.width" value="pixel"/>
-					<property name="com.jaspersoft.studio.unit.height" value="px"/>
-				</element>
-				<property name="com.jaspersoft.studio.unit.height" value="px"/>
-			</band>
-		</groupHeader>
-		<groupFooter>
-			<band height="1">
-				<element kind="line" uuid="d13cd40f-f5fa-4894-b439-9d86fee4407d" x="60" y="0" width="120" height="1">
-					<property name="com.jaspersoft.studio.unit.height" value="px"/>
-				</element>
-				<property name="com.jaspersoft.studio.unit.height" value="px"/>
-			</band>
-		</groupFooter>
-	</group>
-	<background height="30" splitType="Stretch"/>
+	<field name="detalles" class="java.lang.String"/>
+	<background height="701" splitType="Stretch">
+		<element kind="image" uuid="96ba8eb5-5afa-400a-a3ca-80a5b956d1b4" x="0" y="70" width="555" height="590">
+			<expression><![CDATA["aptium_watermark-removebg-preview.png"]]></expression>
+		</element>
+	</background>
 	<pageHeader height="80" splitType="Stretch">
 		<element kind="image" uuid="dd038bf1-0629-4643-ae97-a239e83dcc68" x="131" y="10" width="269" height="50">
 			<expression><![CDATA["Aptium_logo.png"]]></expression>
@@ -53,8 +35,17 @@
 				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
+		<element kind="staticText" uuid="1ac89f90-c871-42a6-9d9b-8b06f6530f0f" x="120" y="0" width="60" height="27" fontName="Arial" fontSize="14.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Equipo]]></text>
+			<box>
+				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
 		<element kind="staticText" uuid="e119504f-0ae3-4b4b-83b5-7fbab3befde3" x="180" y="0" width="270" height="27" fontName="Arial" fontSize="14.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[Detalles]]></text>
+			<text><![CDATA[Detalles (Cliente / Materiales)]]></text>
 			<box>
 				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -71,22 +62,11 @@
 				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="1ac89f90-c871-42a6-9d9b-8b06f6530f0f" x="120" y="0" width="60" height="27" fontName="Arial" fontSize="14.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[Equipo]]></text>
-			<box>
-				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
-				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
-				<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
-				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
-			</box>
-		</element>
 	</columnHeader>
 	<detail>
-		<band height="90" splitType="Stretch">
-			<element kind="textField" uuid="112a1e1d-ca91-4561-b42c-fd9c541e6174" x="0" y="-1" width="60" height="91" hTextAlign="Center" vTextAlign="Middle">
+		<band height="20" splitType="Stretch">
+			<element kind="textField" uuid="112a1e1d-ca91-4561-b42c-fd9c541e6174" stretchType="ContainerHeight" x="0" y="0" width="60" height="20" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{fechaInicio}]]></expression>
-				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="eda16f96-5448-403d-87ba-447a6f5c8658"/>
-				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -94,32 +74,17 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="cecdd2a7-3c0a-4fdb-8845-007a5b834c89" x="60" y="0" width="60" height="90" printRepeatedValues="false" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="cecdd2a7-3c0a-4fdb-8845-007a5b834c89" stretchType="ContainerHeight" x="60" y="0" width="60" height="20" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{codigoNegocio}]]></expression>
-				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="5475fca3-d8fb-43de-8fc1-753539ea709e"/>
-				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				<box>
-					<topPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
-					<bottomPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="b9b74d3e-8bad-41a0-81f8-eebb6b73f6bc" stretchType="NoStretch" x="120" y="0" width="60" height="90" printRepeatedValues="false" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="b9b74d3e-8bad-41a0-81f8-eebb6b73f6bc" stretchType="ContainerHeight" x="120" y="0" width="60" height="20" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{equipo}]]></expression>
-				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="11cdf671-3be8-4991-9108-5b0d1ff78c1f"/>
-				<property name="com.jaspersoft.studio.unit.height" value="px"/>
-				<box>
-					<topPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
-					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
-					<bottomPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
-					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
-				</box>
-			</element>
-			<element kind="rectangle" uuid="584f4b47-dfee-435e-82bf-64924c6e01ce" x="450" y="-1" width="110" height="91"/>
-			<element kind="textField" uuid="19363c92-7961-4d5c-825f-8d07f4787b82" x="180" y="-1" width="270" height="31" printRepeatedValues="false">
-				<expression><![CDATA[$F{cliente}]]></expression>
-				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="f75f4a01-1751-4143-a713-9f56b5e65b3f"/>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -127,17 +92,29 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="220436c5-655a-43c7-ac58-2fd9f2dac4af" x="180" y="30" width="270" height="60">
-				<expression><![CDATA[$F{material}]]></expression>
-				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="41310025-3bf9-437e-824c-e8b88bf7b186"/>
-				<box>
+			<element kind="textField" uuid="d65f91e6-7915-4737-9482-516746a3923e" x="180" y="0" width="270" height="20" fontName="Arial" fontSize="11.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{detalles}]]></expression>
+				<box topPadding="4" leftPadding="4" bottomPadding="4" rightPadding="4">
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<element kind="rectangle" uuid="584f4b47-dfee-435e-82bf-64924c6e01ce" stretchType="ContainerHeight" x="450" y="0" width="110" height="20"/>
 		</band>
 	</detail>
+	<pageFooter height="30" splitType="Stretch">
+		<element kind="textField" uuid="f35bd6a2-5265-401e-b395-05adcc66bd0f" x="355" y="0" width="100" height="30" hTextAlign="Right">
+			<expression><![CDATA["Página " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="f7ce9597-f450-4129-9064-f707b7761c02" x="455" y="0" width="100" height="30" evaluationTime="Report" hTextAlign="Left">
+			<expression><![CDATA[" de " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<summary height="30" splitType="Stretch">
+		<element kind="textField" uuid="6af68dc7-1590-45a0-9584-2f4fb02be659" x="455" y="0" width="100" height="30" pattern="dd/MM/yyyy">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+	</summary>
 </jasperReport>

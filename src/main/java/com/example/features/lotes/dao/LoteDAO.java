@@ -163,7 +163,7 @@ public class LoteDAO {
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
                     String cliente  = rs.getString("cliente");
-                    String material = "• " + rs.getString("descripcion") +
+                    String material = rs.getString("descripcion") +
                                     " x" + rs.getInt("cantidad");
                     resultado.computeIfAbsent(cliente, k -> new ArrayList<>()).add(material);
                 }

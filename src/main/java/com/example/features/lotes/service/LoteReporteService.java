@@ -105,33 +105,33 @@ public class LoteReporteService {
      */
     private List<LoteReporteDTO> construirDatos(LocalDate desde, LocalDate hasta) {
         List<Lote> lotes = model.obtenerLotesEnRango(desde, hasta);
-        List<LoteReporteDTO> dtos = new ArrayList<>();
+        List<LoteReporteDTO> dtos = new ArrayList<>(lotes.size());
 
         for (Lote lote : lotes) {
             String fechaStr = lote.getFechaInicio() != null
                 ? lote.getFechaInicio().toLocalDate().format(FMT) : "";
 
-            // Un DTO por cada cliente del lote
             Map<String, List<String>> materialesPorCliente =
                 model.obtenerMaterialesPorClientePorLote(lote.getId());
 
+            String detalles;
             if (materialesPorCliente.isEmpty()) {
-                // Lote sin materiales asignados a ningún equipo — igual aparece en el reporte
-                dtos.add(new LoteReporteDTO(
-                    fechaStr, lote.getIdNegocio(), lote.getAutoclaveNombre(),
-                    "(sin clientes)", "(sin materiales)"));
+                detalles = "(sin materiales)";
             } else {
+                StringBuilder sb = new StringBuilder();
                 for (Map.Entry<String, List<String>> entry : materialesPorCliente.entrySet()) {
-                    String materialStr = String.join("\n", entry.getValue());
-                    dtos.add(new LoteReporteDTO(
-                        fechaStr, lote.getIdNegocio(), lote.getAutoclaveNombre(),
-                        entry.getKey(), materialStr));
+                    sb.append(entry.getKey()).append(":\n");
+                    for (String mat : entry.getValue()) {
+                        sb.append("  • ").append(mat).append("\n");
+                    }
+                    sb.append("\n"); // línea en blanco entre clientes
                 }
+                detalles = sb.toString().stripTrailing();
             }
-        }
 
-        log.info("Reporte de lotes: {} filas generadas para el rango {} - {}",
-            dtos.size(), desde, hasta);
+            dtos.add(new LoteReporteDTO(
+                fechaStr, lote.getIdNegocio(), lote.getAutoclaveNombre(), detalles));
+        }
         return dtos;
     }
 }
