@@ -95,6 +95,7 @@ public class LoteDAO {
                      "capacidad_total, capacidad_usada, fecha_inicio, fecha_fin, estado " +
                      "FROM lotes " +
                      "WHERE DATE(fecha_inicio) BETWEEN ? AND ? " +
+                     "  AND estado = 'EXITOSO' " +
                      "ORDER BY fecha_inicio ASC, id ASC";
 
         try (Connection conn = ConnectionPool.getConnection();

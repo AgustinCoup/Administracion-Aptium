@@ -278,7 +278,7 @@ public class EquipoCorreccionService {
                 "ADICION_MATERIAL",
                 "material_nuevo",
                 null,
-                cantidad + " uds.",
+                String.valueOf(cantidad),
                 motivo.trim()
             );
 
