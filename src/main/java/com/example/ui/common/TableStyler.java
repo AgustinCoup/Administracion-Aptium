@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.example.common.constants.Constantes;
-import com.example.features.equipos.model.EstadoEquipo;
+import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 
 public final class TableStyler {
     private static final Map<String, Color> ESTADO_COLORES = crearEstadoColores();

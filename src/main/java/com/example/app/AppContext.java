@@ -3,25 +3,29 @@ package com.example.app;
 import com.example.features.autoclaves.dao.AutoclaveDAO;
 import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.clientes.dao.ClienteDAO;
-import com.example.features.equipos.dao.EquipoDAO;
 import com.example.features.instituciones.dao.InstitucionDAO;
 import com.example.features.lotes.dao.LoteDAO;
-import com.example.features.equipos.dao.MaterialDAO;
 import com.example.features.profesionales.dao.ProfesionalDAO;
 import com.example.features.autoclaves.service.AutoclaveService;
 import com.example.features.lotes.service.CapacidadCalculatorImpl;
 import com.example.features.catalogo.service.CatalogoService;
 import com.example.features.clientes.service.ClienteService;
-import com.example.features.equipos.service.EquipoService;
-import com.example.features.equipos.service.EstadoValidatorImpl;
+import com.example.features.equipos.ortopedias.dao.EquipoDAO;
+import com.example.features.equipos.ortopedias.dao.MaterialDAO;
+import com.example.features.equipos.ortopedias.service.EquipoService;
+import com.example.features.equipos.ortopedias.service.EstadoValidatorImpl;
+import com.example.features.equipos.ortopedias.service.IEstadoValidator;
+import com.example.features.equipos.ortopedias.service.IMaterialFilter;
+import com.example.features.equipos.ortopedias.service.MaterialFilterImpl;
+import com.example.features.equipos.ortopedias.service.MaterialService;
 import com.example.features.lotes.service.ICapacidadCalculator;
-import com.example.features.equipos.service.IEstadoValidator;
-import com.example.features.equipos.service.IMaterialFilter;
 import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.lotes.service.LoteService;
-import com.example.features.equipos.service.MaterialFilterImpl;
-import com.example.features.equipos.service.MaterialService;
 import com.example.features.profesionales.service.ProfesionalService;
+import com.example.features.catalogo.dao.CatalogoOtrosDAO;
+import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
+import com.example.features.catalogo.service.CatalogoOtrosService;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
 
 public class AppContext {
 
@@ -36,6 +40,8 @@ public class AppContext {
     private final IEstadoValidator estadoValidator;
     private final IMaterialFilter materialFilter;
     private final ICapacidadCalculator capacidadCalculator;
+    private final CatalogoOtrosService catalogoOtrosService;
+    private final EquipoOtrosService equipoOtrosService;
 
     public AppContext(
         EquipoService equipoService,
@@ -48,12 +54,15 @@ public class AppContext {
         LoteService loteService,
         IEstadoValidator estadoValidator,
         IMaterialFilter materialFilter,
-        ICapacidadCalculator capacidadCalculator
+        ICapacidadCalculator capacidadCalculator,
+        CatalogoOtrosService catalogoOtrosService,
+        EquipoOtrosService equipoOtrosService
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
             || profesionalService == null || institucionService == null || materialService == null
             || autoclaveService == null || loteService == null || estadoValidator == null
-            || materialFilter == null || capacidadCalculator == null) {
+            || materialFilter == null || capacidadCalculator == null || catalogoOtrosService == null
+            || equipoOtrosService == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -68,6 +77,8 @@ public class AppContext {
         this.estadoValidator = estadoValidator;
         this.materialFilter = materialFilter;
         this.capacidadCalculator = capacidadCalculator;
+        this.catalogoOtrosService = catalogoOtrosService;
+        this.equipoOtrosService = equipoOtrosService;
     }
 
     public static AppContext createDefault() {
@@ -79,9 +90,13 @@ public class AppContext {
         MaterialDAO materialDAO = new MaterialDAO();
         AutoclaveDAO autoclaveDAO = new AutoclaveDAO();
         LoteDAO loteDAO = new LoteDAO();
+        CatalogoOtrosDAO catalogoOtrosDAO = new CatalogoOtrosDAO();
+        EquipoOtrosDAO equipoOtrosDAO = new EquipoOtrosDAO(catalogoOtrosDAO);
 
         EquipoService equipoService = new EquipoService(equipoDAO);
+        EquipoOtrosService equipoOtrosService = new EquipoOtrosService(equipoOtrosDAO);
         CatalogoService catalogoService = new CatalogoService(catalogoDAO);
+        CatalogoOtrosService catalogoOtrosService = new CatalogoOtrosService(catalogoOtrosDAO);
         ClienteService clienteService = new ClienteService(clienteDAO);
         ProfesionalService profesionalService = new ProfesionalService(profesionalDAO);
         InstitucionService institucionService = new InstitucionService(institucionDAO);
@@ -104,7 +119,9 @@ public class AppContext {
             loteService,
             estadoValidator,
             materialFilter,
-            capacidadCalculator
+            capacidadCalculator,
+            catalogoOtrosService,
+            equipoOtrosService
         );
     }
 
@@ -150,6 +167,14 @@ public class AppContext {
 
     public ICapacidadCalculator getCapacidadCalculator() {
         return capacidadCalculator;
+    }
+
+    public CatalogoOtrosService getCatalogoOtrosService() {
+        return catalogoOtrosService;
+    }
+
+    public EquipoOtrosService getEquipoOtrosService() {
+        return equipoOtrosService;
     }
 }
 

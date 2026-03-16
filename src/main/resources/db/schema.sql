@@ -151,3 +151,58 @@ CREATE TABLE IF NOT EXISTS materiales_eliminados (
     INDEX idx_mat_elim_codigo (codigo_catalogo),
     INDEX idx_mat_elim_fecha (fecha_eliminacion)
 );
+
+-- ============================================================
+-- ADICIONES AL SCHEMA: Tablas para ingreso de tipo "Otros"
+-- Se agregan al final de schema.sql
+-- ============================================================
+
+-- Catálogo de materiales para "Otros"
+-- Sin seed: crece on-the-fly con el uso
+CREATE TABLE IF NOT EXISTS catalogo_otros (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    descripcion VARCHAR(255) NOT NULL UNIQUE
+);
+
+-- Tabla de equipos "Otros"
+CREATE TABLE IF NOT EXISTS equipo_otros (
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    nro_cliente      INT NOT NULL,
+    estado           VARCHAR(50) DEFAULT 'Nuevo',
+    requiere_lavado  TINYINT(1)  NOT NULL DEFAULT 1,
+    requiere_empaque TINYINT(1)  NOT NULL DEFAULT 1,
+    fecha_ingreso    TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (nro_cliente) REFERENCES clientes(id) ON DELETE RESTRICT
+);
+
+-- Materiales de equipos "Otros"
+CREATE TABLE IF NOT EXISTS equipo_otros_materiales (
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    equipo_otros_id  INT          NOT NULL,
+    catalogo_otros_id INT         NOT NULL,
+    descripcion      VARCHAR(255) NOT NULL,
+    cantidad         INT          NOT NULL DEFAULT 1,
+    estado           VARCHAR(50)  DEFAULT 'Nuevo',
+    lote_id          INT,
+    INDEX idx_otros_mat_equipo  (equipo_otros_id),
+    INDEX idx_otros_mat_estado  (equipo_otros_id, estado),
+    INDEX idx_otros_mat_lote    (lote_id),
+    FOREIGN KEY (equipo_otros_id)   REFERENCES equipo_otros(id)     ON DELETE CASCADE,
+    FOREIGN KEY (catalogo_otros_id) REFERENCES catalogo_otros(id)   ON DELETE RESTRICT,
+    FOREIGN KEY (lote_id)           REFERENCES lotes(id)            ON DELETE SET NULL
+);
+
+-- Trazabilidad de movimientos de materiales "Otros"
+CREATE TABLE IF NOT EXISTS otros_material_movimientos (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    material_id     INT NOT NULL,
+    equipo_otros_id INT NOT NULL,
+    cantidad        INT NOT NULL,
+    estado_origen   VARCHAR(50),
+    estado_destino  VARCHAR(50) NOT NULL,
+    fecha           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_otros_mov_material (material_id),
+    INDEX idx_otros_mov_equipo   (equipo_otros_id),
+    FOREIGN KEY (material_id)     REFERENCES equipo_otros_materiales(id) ON DELETE CASCADE,
+    FOREIGN KEY (equipo_otros_id) REFERENCES equipo_otros(id)            ON DELETE CASCADE
+);

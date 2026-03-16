@@ -3,13 +3,14 @@ package com.example.ui.shell;
 import javax.swing.*;
 import java.awt.*;
 import com.example.common.constants.Constantes;
-import com.example.features.equipos.view.PantallaAuditoria;
-import com.example.features.equipos.view.PantallaCorrecciones;
-import com.example.features.equipos.view.PantallaEquiposParaEntregar;
-import com.example.features.equipos.view.PantallaIngresoOrtopedia;
-import com.example.features.equipos.view.PantallaRegistrarEstado;
-import com.example.features.equipos.view.PantallaVerCDEv1;
-import com.example.features.equipos.view.PantallaVerCDEv2;
+import com.example.features.equipos.ortopedias.view.PantallaAuditoria;
+import com.example.features.equipos.ortopedias.view.PantallaCorrecciones;
+import com.example.features.equipos.ortopedias.view.PantallaEquiposParaEntregar;
+import com.example.features.equipos.ortopedias.view.PantallaIngresoOrtopedia;
+import com.example.features.equipos.ortopedias.view.PantallaRegistrarEstado;
+import com.example.features.equipos.otros.view.PantallaIngresoOtros;
+import com.example.features.equipos.ortopedias.view.PantallaVerCDEv1;
+import com.example.features.equipos.ortopedias.view.PantallaVerCDEv2;
 import com.example.features.lotes.view.PantallaLotes;
 import com.example.features.lotes.view.PantallaVerLotes;
 
@@ -34,6 +35,7 @@ public class PantallaPrincipal extends JFrame {
     private final PantallaLotes                 pantallaLotes;
     private final PantallaVerLotes              pantallaVerLotes;
     private final PantallaAuditoria             pantallaAuditoria;
+    private final PantallaIngresoOtros          ingresoOtros;
 
     public PantallaPrincipal() {
         setTitle(Constantes.Titulos.APP);
@@ -56,7 +58,7 @@ public class PantallaPrincipal extends JFrame {
         pantallaLotes       = new PantallaLotes(navegador, contenedor);
         pantallaVerLotes    = new PantallaVerLotes(navegador, contenedor);
         pantallaAuditoria   = new PantallaAuditoria(navegador, contenedor);
-
+        ingresoOtros        = new PantallaIngresoOtros(navegador, contenedor);
         // ── Registrar en el CardLayout ────────────────────────────────────────
         contenedor.add(menu,                Constantes.Pantallas.MENU_PRINCIPAL);
         contenedor.add(esterilizacion,      Constantes.Pantallas.ESTERILIZACION);
@@ -70,13 +72,14 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(pantallaLotes,       Constantes.Pantallas.LOTES);
         contenedor.add(pantallaVerLotes,    Constantes.Pantallas.VER_LOTES);
         contenedor.add(pantallaAuditoria,   Constantes.Pantallas.AUDITORIA);
-
+        contenedor.add(ingresoOtros,        Constantes.Pantallas.INGRESO_OTROS);
         add(contenedor);
     }
 
     // ── Getters ───────────────────────────────────────────────────────────────
 
     public PantallaIngresoOrtopedia    getPanelIngresoOrtopedia()      { return ingresoOrtopedia; }
+    public PantallaIngresoOtros        getPanelIngresoOtros()          { return ingresoOtros; }
     public PantallaVerCDEv2            getPantallaVerCDEv2()           { return verCDEv2; }
     public PantallaRegistrarEstado     getPantallaRegistrarEstado()    { return registrarEstado; }
     public PantallaEquiposParaEntregar getPantallaEquiposParaEntregar(){ return equiposParaEntregar; }

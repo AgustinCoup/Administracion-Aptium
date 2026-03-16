@@ -31,6 +31,7 @@ public class PantallaEsOrtopedia extends JPanel {
 
         JButton btnNoEsOrtopedia = new JButton(Constantes.Botones.OTROS);
         btnNoEsOrtopedia.setFont(Estilos.Fuentes.BOTON);
+        btnNoEsOrtopedia.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.INGRESO_OTROS));
 
         botones.add(btnEsOrtopedia);
         botones.add(btnNoEsOrtopedia);

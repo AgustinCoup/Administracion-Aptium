@@ -2,11 +2,13 @@ package com.example.app.ui;
 
 import com.example.app.AppModel;
 import com.example.common.constants.Constantes;
-import com.example.features.equipos.controller.CDEViewController;
-import com.example.features.equipos.controller.CorreccionsController;
-import com.example.features.equipos.controller.EquiposParaEntregarController;
-import com.example.features.equipos.controller.OrthopediaInputController;
-import com.example.features.equipos.controller.RegistrarEstadoController;
+import com.example.features.equipos.ortopedias.controller.CDEViewController;
+import com.example.features.equipos.ortopedias.controller.CorreccionsController;
+import com.example.features.equipos.ortopedias.controller.EquiposParaEntregarController;
+import com.example.features.equipos.ortopedias.controller.OrthopediaInputController;
+import com.example.features.equipos.ortopedias.controller.RegistrarEstadoController;
+import com.example.features.equipos.otros.controller.OtrosInputController;
+import com.example.features.equipos.otros.view.PantallaIngresoOtros;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
 import com.example.ui.events.OnEquipoGuardadoListener;
@@ -87,6 +89,14 @@ public class UiCoordinator {
 
         new OrthopediaInputController(
             vista.getPanelIngresoOrtopedia(),
+            model,
+            vista.getNavegador(),
+            vista.getContenedor(),
+            refrescarEquipos
+        );
+
+        new OtrosInputController(
+            vista.getPanelIngresoOtros(),
             model,
             vista.getNavegador(),
             vista.getContenedor(),

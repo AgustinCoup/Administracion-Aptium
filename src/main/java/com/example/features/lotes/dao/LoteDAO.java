@@ -1,6 +1,6 @@
 package com.example.features.lotes.dao;
 
-import com.example.features.equipos.model.EstadoEquipo;
+import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;

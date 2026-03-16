@@ -28,6 +28,7 @@ public final class Constantes {
         public static final String VER_LOTES             = "VER_LOTES";
         public static final String CORRECCIONES          = "CORRECCIONES";
         public static final String AUDITORIA             = "AUDITORIA"; // NUEVO
+        public static final String INGRESO_OTROS         = "INGRESO_OTROS"; // NUEVO
 
         private Pantallas() {}
     }
@@ -138,6 +139,8 @@ public final class Constantes {
         public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS PARA ENTREGAR";
         public static final String LOTES                 = "LOTES DE ESTERILIZACIÓN";
         public static final String VER_LOTES             = "LOTES FINALIZADOS";
+        public static final String INGRESO_OTROS         = "INGRESO OTROS";
+
 
         private Titulos() {}
     }

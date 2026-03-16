@@ -2,8 +2,13 @@ package com.example.app;
 
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.app.AppContext;
-import com.example.features.equipos.model.Equipo;
-import com.example.features.equipos.service.EquipoService;
+import com.example.features.equipos.ortopedias.model.Equipo;
+import com.example.features.equipos.ortopedias.service.EquipoService;
+import com.example.features.equipos.ortopedias.service.IEstadoValidator;
+import com.example.features.equipos.ortopedias.service.IMaterialFilter;
+import com.example.features.equipos.ortopedias.service.MaterialService;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
+import com.example.features.catalogo.service.CatalogoOtrosService;
 import com.example.features.catalogo.service.CatalogoService;
 import com.example.features.clientes.model.Cliente;
 import com.example.features.clientes.service.ClienteService;
@@ -11,11 +16,8 @@ import com.example.features.profesionales.model.Profesional;
 import com.example.features.profesionales.service.ProfesionalService;
 import com.example.features.instituciones.model.Institucion;
 import com.example.features.instituciones.service.InstitucionService;
-import com.example.features.equipos.service.MaterialService;
 import com.example.features.autoclaves.service.AutoclaveService;
 import com.example.features.lotes.service.LoteService;
-import com.example.features.equipos.service.IEstadoValidator;
-import com.example.features.equipos.service.IMaterialFilter;
 import com.example.features.lotes.service.ICapacidadCalculator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,6 +107,9 @@ public class AppModel {
      */
     private ICapacidadCalculator capacidadCalculator;
 
+    private CatalogoOtrosService catalogoOtrosService;
+    private EquipoOtrosService equipoOtrosService;
+
     /**
      * Constructor con inyección de dependencias.
      * Todas las dependencias se resuelven en AppContext.
@@ -125,6 +130,8 @@ public class AppModel {
         this.estadoValidator = context.getEstadoValidator();
         this.materialFilter = context.getMaterialFilter();
         this.capacidadCalculator = context.getCapacidadCalculator();
+        this.catalogoOtrosService = context.getCatalogoOtrosService();
+        this.equipoOtrosService = context.getEquipoOtrosService();
     }
 
     /**
@@ -457,6 +464,14 @@ public class AppModel {
      */
     public ICapacidadCalculator getCapacidadCalculator() {
         return capacidadCalculator;
+    }
+
+    public CatalogoOtrosService getCatalogoOtrosService() {
+        return catalogoOtrosService;
+    }
+
+    public EquipoOtrosService getEquipoOtrosService() {
+        return equipoOtrosService;
     }
 }
 
