@@ -27,8 +27,8 @@ public final class Constantes {
         public static final String LOTES                 = "LOTES";
         public static final String VER_LOTES             = "VER_LOTES";
         public static final String CORRECCIONES          = "CORRECCIONES";
-        public static final String AUDITORIA             = "AUDITORIA"; // NUEVO
-        public static final String INGRESO_OTROS         = "INGRESO_OTROS"; // NUEVO
+        public static final String AUDITORIA             = "AUDITORIA";
+        public static final String INGRESO_OTROS         = "INGRESO_OTROS";
 
         private Pantallas() {}
     }
@@ -107,6 +107,7 @@ public final class Constantes {
         public static final String FINALIZAR_LOTE_ANTES_CONFIRMAR = "Complete la gestión de lotes antes de confirmar cambios.";
         public static final String SELECCIONE_AUTOCLAVE_LIBRE     = "Seleccione un autoclave libre para lanzar el lote.";
         public static final String SELECCIONE_AUTOCLAVE_CON_LOTE  = "Seleccione un autoclave con lote activo.";
+
         public static final String LOTE_VACIO                     = "El lote no tiene materiales. Agregue materiales antes de lanzar.";
         public static final String CAPACIDAD_INSUFICIENTE         = "Capacidad insuficiente en autoclave %s. Se necesitan %d litros.";
         public static final String MATERIAL_YA_CARGADO_EN_LOTE   = "El material %s ya está cargado en este lote.";
@@ -121,6 +122,10 @@ public final class Constantes {
         public static final String CONFIRMAR_LANZAR_LOTE          = "¿Lanzar este lote al autoclave?";
         public static final String CONFIRMAR_FINALIZAR_LOTE       = "¿Marcar este lote como finalizado?";
         public static final String CONFIRMAR_MARCAR_LOTE_FALLO    = "¿Marcar este lote como fallido? Los equipos volverán a su estado anterior.";
+
+        // ── Remito ────────────────────────────────────────────────────────────
+        /** Mensaje de éxito al guardar un remito; incluye el ID generado. */
+        public static final String REMITO_GUARDADO_OK = "Remito guardado correctamente.\nIdentificador: %s";
 
         private Mensajes() {}
     }
@@ -140,7 +145,6 @@ public final class Constantes {
         public static final String LOTES                 = "LOTES DE ESTERILIZACIÓN";
         public static final String VER_LOTES             = "LOTES FINALIZADOS";
         public static final String INGRESO_OTROS         = "INGRESO OTROS";
-
 
         private Titulos() {}
     }
@@ -210,6 +214,9 @@ public final class Constantes {
         public static final String FORMATO_CODIGO_EQUIPO    = "%d%d";
         public static final String FORMATO_SPINNER_CANTIDAD = "#0.##";
         public static final String FORMATO_FECHA_HORA       = "dd/MM/yyyy HH:mm";
+
+        /** Límite de caracteres para el campo Observaciones del remito. */
+        public static final int    REMITO_OBS_MAX_CHARS     = 2000;
 
         private Formatos() {}
     }
@@ -292,6 +299,22 @@ public final class Constantes {
         public static final String FILTRO_EQUIPO                         = "Equipo:";
         public static final String FILTRO_ESTADO                         = "Estado:";
         public static final String FILTRO_FECHA_INICIO                   = "Fecha inicio:";
+
+        // ── Remito ────────────────────────────────────────────────────────────
+        /** Label del selector de modalidad de ingreso. */
+        public static final String LABEL_TIPO_INGRESO  = "Tipo de ingreso:";
+        /** Texto del radio button para el modo Remito. */
+        public static final String RADIO_REMITO        = "Remito";
+        /** Texto del radio button para el modo Detalles. */
+        public static final String RADIO_DETALLES      = "Detalles";
+        /** Label del campo identificador de remito (readonly). */
+        public static final String LABEL_REMITO_ID     = "N° de Remito:";
+        /** Label del spinner de cantidad en el modo Remito. */
+        public static final String LABEL_REMITO_CANTIDAD = "Cantidad:";
+        /** Label del área de observaciones del remito. */
+        public static final String LABEL_OBSERVACIONES = "Observaciones:";
+        /** Tooltip del campo readonly de remito. */
+        public static final String TOOLTIP_REMITO_ID   = "Generado automáticamente al guardar: fecha-id";
 
         private Textos() {}
     }

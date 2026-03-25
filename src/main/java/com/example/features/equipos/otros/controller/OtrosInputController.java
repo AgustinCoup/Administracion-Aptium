@@ -6,6 +6,7 @@ import com.example.features.clientes.model.Cliente;
 import com.example.features.equipos.ortopedias.controller.helpers.GestorNuevasEntidades;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.MaterialOtros;
+import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.equipos.otros.view.PantallaIngresoOtros;
 import com.example.features.equipos.otros.view.helpers.PanelMaterialesOtros;
 import com.example.ui.common.AutocompleteListener;
@@ -15,44 +16,46 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.CardLayout;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Controlador para {@link PantallaIngresoOtros}.
  *
- * Espeja la estructura de {@link com.example.features.equipos.controller.OrthopediaInputController}
+ * Espeja la estructura de
+ * {@link com.example.features.equipos.ortopedias.controller.OrthopediaInputController}
  * pero sin profesional, paciente ni institución.
  *
  * Responsabilidades:
- * - Configurar el autocompletado de clientes.
- * - Configurar el autocomplete de descripciones de materiales (1 carácter mínimo).
- * - Validar el formulario.
- * - Construir y persistir el {@link EquipoOtros}.
+ * <ul>
+ *   <li>Configurar el autocompletado de clientes.</li>
+ *   <li>Configurar el autocomplete de descripciones de materiales (modo Detalles).</li>
+ *   <li>Gestionar la lógica lavado ↔ empaque.</li>
+ *   <li>Validar y construir el {@link EquipoOtros} según el modo activo (Remito/Detalles).</li>
+ *   <li>Persistir el equipo y disparar el listener de refresco.</li>
+ * </ul>
  */
 public class OtrosInputController {
 
     private static final Logger log = LoggerFactory.getLogger(OtrosInputController.class);
 
-    private final PantallaIngresoOtros       panel;
-    private final AppModel                   model;
-    private final CardLayout                 navegador;
-    private final JPanel                     contenedor;
-    private final OnEquipoGuardadoListener   onEquipoGuardadoListener;
+    private final PantallaIngresoOtros      panel;
+    private final AppModel                  model;
+    private final CardLayout                navegador;
+    private final JPanel                    contenedor;
+    private final OnEquipoGuardadoListener  onEquipoGuardadoListener;
 
-    private AutocompleteListener<Cliente>    autocompleteClienteListener;
-    private GestorNuevasEntidades<Cliente>   gestorNuevosClientes;
+    private AutocompleteListener<Cliente>   autocompleteClienteListener;
+    private GestorNuevasEntidades<Cliente>  gestorNuevosClientes;
 
     public OtrosInputController(PantallaIngresoOtros panel,
                                 AppModel model,
                                 CardLayout navegador,
                                 JPanel contenedor,
                                 OnEquipoGuardadoListener onEquipoGuardadoListener) {
-        this.panel                   = panel;
-        this.model                   = model;
-        this.navegador               = navegador;
-        this.contenedor              = contenedor;
+        this.panel                    = panel;
+        this.model                    = model;
+        this.navegador                = navegador;
+        this.contenedor               = contenedor;
         this.onEquipoGuardadoListener = onEquipoGuardadoListener;
         inicializarEventos();
     }
@@ -94,7 +97,7 @@ public class OtrosInputController {
             Cliente::new
         );
 
-        // Autocomplete de materiales "otros" (1 carácter mínimo)
+        // Autocomplete de materiales "otros" (1 carácter mínimo) — solo para Detalles
         panel.getPanelMateriales().setOnDescripcionChangedListener((texto, consumerSugerencias) -> {
             if (texto == null || texto.trim().isEmpty()) {
                 consumerSugerencias.accept(List.of());
@@ -109,7 +112,8 @@ public class OtrosInputController {
     // ── Guardar ───────────────────────────────────────────────────────────────
 
     private void guardar() {
-        // 1. Validar cliente
+
+        // Validación común: cliente
         if (panel.getTxtCliente().getText().trim().isEmpty()) {
             panel.mostrarAdvertencia(Constantes.Mensajes.CAMPO_CLIENTE_OBLIGATORIO);
             return;
@@ -119,31 +123,61 @@ public class OtrosInputController {
             return;
         }
 
-        // 2. Validar que haya al menos un material con descripción no vacía
-        List<PanelMaterialesOtros.OtrosMaterialRow> filas = panel.getMaterialFilas();
-        boolean tieneMaterial = filas.stream()
-            .anyMatch(f -> !f.txtDescripcion.getText().trim().isEmpty());
-        if (!tieneMaterial) {
-            panel.mostrarAdvertencia(Constantes.Mensajes.DEBE_AGREGAR_MATERIAL);
-            return;
-        }
-
-        // 3. Construir EquipoOtros
         EquipoOtros equipo = new EquipoOtros();
         equipo.setNroCliente(panel.getSelectedClienteId());
         equipo.setClienteNombre(panel.getTxtCliente().getText().trim());
         equipo.setRequiereLavado(panel.isRequiereLavado());
         equipo.setRequiereEmpaque(panel.isRequiereEmpaque());
 
+        if (panel.isRemito()) {
+            construirRemito(equipo);
+        } else {
+            if (!construirDetalles(equipo)) return;
+        }
+
+        persistir(equipo);
+    }
+
+    /**
+     * Completa los campos de {@code equipo} para el modo Remito.
+     * La validación de negocio (cantidad > 0) ocurre en el Service.
+     */
+    private void construirRemito(EquipoOtros equipo) {
+        equipo.setTipoIngreso(TipoIngresoOtros.REMITO);
+        equipo.setRemitoCantidad(panel.getPanelRemito().getCantidad());
+        equipo.setRemitoObservaciones(panel.getPanelRemito().getObservaciones());
+    }
+
+    /**
+     * Completa los campos de {@code equipo} para el modo Detalles.
+     *
+     * @return {@code false} si no hay ninguna fila con descripción válida
+     *         (muestra advertencia internamente y aborta el guardado).
+     */
+    private boolean construirDetalles(EquipoOtros equipo) {
+        equipo.setTipoIngreso(TipoIngresoOtros.DETALLES);
+
+        List<PanelMaterialesOtros.OtrosMaterialRow> filas = panel.getMaterialFilas();
+        boolean tieneMaterial = filas.stream()
+            .anyMatch(f -> !f.txtDescripcion.getText().trim().isEmpty());
+
+        if (!tieneMaterial) {
+            panel.mostrarAdvertencia(Constantes.Mensajes.DEBE_AGREGAR_MATERIAL);
+            return false;
+        }
+
         for (PanelMaterialesOtros.OtrosMaterialRow fila : filas) {
             String desc = fila.txtDescripcion.getText().trim();
             if (desc.isEmpty()) continue;
-            Object val = fila.spCantidad.getValue();
+            Object val  = fila.spCantidad.getValue();
             int cantidad = (val instanceof Number) ? ((Number) val).intValue() : 1;
             equipo.agregarMaterial(new MaterialOtros(desc, cantidad));
         }
+        return true;
+    }
 
-        // 4. Persistir
+    /** Delega en el service, maneja errores y dispara el refresco global. */
+    private void persistir(EquipoOtros equipo) {
         boolean exito;
         try {
             exito = model.getEquipoOtrosService().guardarEquipo(equipo);
@@ -156,16 +190,20 @@ public class OtrosInputController {
         }
 
         if (exito) {
-            panel.mostrarInfo(Constantes.Mensajes.DATOS_GUARDADOS);
+            String infoMsg = equipo.getTipoIngreso() == TipoIngresoOtros.REMITO
+                ? String.format(Constantes.Mensajes.REMITO_GUARDADO_OK, equipo.getRemitoId())
+                : Constantes.Mensajes.DATOS_GUARDADOS;
+
+            panel.mostrarInfo(infoMsg);
             panel.limpiarFormulario();
             if (onEquipoGuardadoListener != null) {
                 onEquipoGuardadoListener.onEquipoGuardado();
             }
             navegador.show(contenedor, Constantes.Pantallas.INGRESO_OTROS);
-            log.info("EquipoOtros guardado exitosamente");
+            log.info("EquipoOtros guardado exitosamente (tipo={})", equipo.getTipoIngreso());
         } else {
             panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_EQUIPO);
-            log.error("Falló guardar EquipoOtros");
+            log.error("Falló guardar EquipoOtros (tipo={})", equipo.getTipoIngreso());
         }
     }
 

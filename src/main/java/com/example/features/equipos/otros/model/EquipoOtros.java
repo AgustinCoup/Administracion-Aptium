@@ -13,8 +13,14 @@ import java.util.stream.Collectors;
 /**
  * Representa un ingreso de tipo "Otros" (no ortopedia).
  *
- * No tiene profesional, paciente ni institución. Los materiales son de
- * texto libre, gestionados a través de {@link MaterialOtros}.
+ * No tiene profesional, paciente ni institución. Admite dos modalidades:
+ * <ul>
+ *   <li>{@link TipoIngresoOtros#DETALLES}: materiales de texto libre gestionados
+ *       a través de {@link MaterialOtros}.</li>
+ *   <li>{@link TipoIngresoOtros#REMITO}: se registra un identificador único
+ *       ({@code remito_id}), una cantidad global y observaciones opcionales.
+ *       La lista de materiales permanece vacía.</li>
+ * </ul>
  *
  * Implementa {@link EquipoRegistrableInterface} para participar de forma transparente
  * en {@link com.example.features.equipos.ortopedias.controller.RegistrarEstadoController}
@@ -22,17 +28,23 @@ import java.util.stream.Collectors;
  */
 public class EquipoOtros implements EquipoRegistrableInterface {
 
-    private Integer id;
-    private int     nroCliente;
-    private String  clienteNombre;
-    private EstadoEquipo estado;
-    private boolean requiereLavado;
-    private boolean requiereEmpaque;
+    private Integer          id;
+    private int              nroCliente;
+    private String           clienteNombre;
+    private EstadoEquipo     estado;
+    private boolean          requiereLavado;
+    private boolean          requiereEmpaque;
+
+    // ── Modalidad de ingreso ──────────────────────────────────────────────────
+    private TipoIngresoOtros tipoIngreso        = TipoIngresoOtros.DETALLES;
+    private String           remitoId;           // ddmmaaaa-{id}, generado por el DAO
+    private Integer          remitoCantidad;     // cantidad global del remito
+    private String           remitoObservaciones;
 
     private final List<MaterialOtros> materiales = new ArrayList<>();
 
     public EquipoOtros() {
-        this.estado        = EstadoEquipo.NUEVO;
+        this.estado          = EstadoEquipo.NUEVO;
         this.requiereLavado  = true;
         this.requiereEmpaque = true;
     }
@@ -43,21 +55,21 @@ public class EquipoOtros implements EquipoRegistrableInterface {
 
     // ── IEquipoRegistrable ────────────────────────────────────────────────────
 
-    @Override public TipoEquipo getTipo()                    { return TipoEquipo.OTROS; }
-    @Override public Integer    getId()                      { return id; }
-    @Override public String     getClienteNombre()           { return clienteNombre; }
-    @Override public int        getNroCliente()              { return nroCliente; }
+    @Override public TipoEquipo  getTipo()                    { return TipoEquipo.OTROS; }
+    @Override public Integer     getId()                      { return id; }
+    @Override public String      getClienteNombre()           { return clienteNombre; }
+    @Override public int         getNroCliente()              { return nroCliente; }
 
     /**
      * Los equipos "Otros" no tienen institución; devuelve cadena vacía
      * para que la columna de la tabla quede en blanco.
      */
-    @Override public String     getDescripcionSecundaria()   { return ""; }
+    @Override public String      getDescripcionSecundaria()   { return ""; }
 
-    @Override public EstadoEquipo getEstado()                { return estado; }
-    @Override public void         setEstado(EstadoEquipo e)  { this.estado = e; }
-    @Override public boolean      isRequiereLavado()         { return requiereLavado; }
-    @Override public boolean      isRequiereEmpaque()        { return requiereEmpaque; }
+    @Override public EstadoEquipo getEstado()                 { return estado; }
+    @Override public void         setEstado(EstadoEquipo e)   { this.estado = e; }
+    @Override public boolean      isRequiereLavado()          { return requiereLavado; }
+    @Override public boolean      isRequiereEmpaque()         { return requiereEmpaque; }
 
     @Override
     public EstadoEquipo calcularEstado() {
@@ -94,7 +106,7 @@ public class EquipoOtros implements EquipoRegistrableInterface {
     public void aplicarMovimientoPreview(MaterialRegistrableInterface material,
                                          int cantidad,
                                          EstadoEquipo estadoDestino) {
-        MaterialOtros m = (MaterialOtros) material;  // seguro: EquipoOtros solo contiene MaterialOtros
+        MaterialOtros m = (MaterialOtros) material;
         int cantidadActual = m.getCantidad();
 
         if (cantidad >= cantidadActual) {
@@ -162,11 +174,25 @@ public class EquipoOtros implements EquipoRegistrableInterface {
     // ── Getters / Setters propios ─────────────────────────────────────────────
 
     /** Acceso tipado para el DAO (evita el cast desde IMaterialRegistrable). */
-    public List<MaterialOtros> getMateriales() { return materiales; }
+    public List<MaterialOtros> getMateriales()              { return materiales; }
 
-    public void    setId(Integer id)                  { this.id = id; }
-    public void    setNroCliente(int nroCliente)      { this.nroCliente = nroCliente; }
-    public void    setClienteNombre(String nombre)    { this.clienteNombre = nombre; }
-    public void    setRequiereLavado(boolean v)       { this.requiereLavado = v; }
-    public void    setRequiereEmpaque(boolean v)      { this.requiereEmpaque = v; }
+    public void    setId(Integer id)                        { this.id = id; }
+    public void    setNroCliente(int nroCliente)            { this.nroCliente = nroCliente; }
+    public void    setClienteNombre(String nombre)          { this.clienteNombre = nombre; }
+    public void    setRequiereLavado(boolean v)             { this.requiereLavado = v; }
+    public void    setRequiereEmpaque(boolean v)            { this.requiereEmpaque = v; }
+
+    // ── Remito ────────────────────────────────────────────────────────────────
+
+    public TipoIngresoOtros getTipoIngreso()                { return tipoIngreso; }
+    public void    setTipoIngreso(TipoIngresoOtros t)       { this.tipoIngreso = t; }
+
+    public String  getRemitoId()                            { return remitoId; }
+    public void    setRemitoId(String remitoId)             { this.remitoId = remitoId; }
+
+    public Integer getRemitoCantidad()                      { return remitoCantidad; }
+    public void    setRemitoCantidad(Integer cant)          { this.remitoCantidad = cant; }
+
+    public String  getRemitoObservaciones()                 { return remitoObservaciones; }
+    public void    setRemitoObservaciones(String obs)       { this.remitoObservaciones = obs; }
 }
