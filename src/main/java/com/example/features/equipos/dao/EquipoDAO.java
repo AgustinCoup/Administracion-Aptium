@@ -7,7 +7,7 @@ import com.example.features.equipos.model.Equipo;
 import com.example.features.equipos.model.EstadoEquipo;
 import com.example.features.equipos.model.Material;
 import com.example.infrastructure.db.ConnectionPool;
-import com.example.features.equipos.model.EquipoAuditoria;
+import com.example.infrastructure.db.TransactionalConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.sql.*;
@@ -47,15 +47,14 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * @throws DatabaseException si hay error durante la transacción
      */
     public boolean guardarEquipo(Equipo equipo) {
-        Connection conn = null;
-        try {
-            conn = ConnectionPool.getConnection();
-            conn.setAutoCommit(false); // Iniciamos transacción
-
-            // 1. Insertar el encabezado del Equipo (sin codigo_equipo)
-            String sqlEquipo = "INSERT INTO equipos (nro_cliente, nro_profesional, paciente, nro_institucion, estado, requiere_lavado, requiere_empaque) " +
-                               "VALUES (?, ?, ?, ?, ?, ?, ?)";
-            
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+ 
+            // 1. Insertar encabezado del Equipo
+            String sqlEquipo =
+                "INSERT INTO equipos (nro_cliente, nro_profesional, paciente, nro_institucion, " +
+                "estado, requiere_lavado, requiere_empaque) VALUES (?, ?, ?, ?, ?, ?, ?)";
+ 
             int equipoId;
             try (PreparedStatement psE = conn.prepareStatement(sqlEquipo, Statement.RETURN_GENERATED_KEYS)) {
                 psE.setInt(1, equipo.getNroCliente());
@@ -70,8 +69,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
                 psE.setBoolean(6, equipo.isRequiereLavado());
                 psE.setBoolean(7, equipo.isRequiereEmpaque());
                 psE.executeUpdate();
-                
-                // Obtener el ID generado automáticamente
+ 
                 try (ResultSet rs = psE.getGeneratedKeys()) {
                     if (rs.next()) {
                         equipoId = rs.getInt(1);
@@ -81,63 +79,68 @@ public class EquipoDAO implements DAO<Equipo, String> {
                     }
                 }
             }
-
-            // 2. Insertar la lista de Materiales (con estado) y registrar movimiento inicial
-            String sqlMaterial = "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado) " +
-                                 "VALUES (?, ?, ?, ?)";
-            String sqlMovimiento = "INSERT INTO material_movimientos " +
-                                   "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
-                                   "VALUES (?, ?, ?, ?, ?)";
-
-            try (PreparedStatement psM = conn.prepareStatement(sqlMaterial, Statement.RETURN_GENERATED_KEYS);
-                 PreparedStatement psMov = conn.prepareStatement(sqlMovimiento)) {
-                for (Material mat : equipo.getMateriales()) {
-                    psM.setInt(1, equipoId);
-                    psM.setInt(2, mat.getCodigo());
-                    psM.setInt(3, mat.getCantidad());
-                    psM.setString(4, mat.getEstado().getNombre());
-                    psM.executeUpdate();
-
-                    int materialId;
-                    try (ResultSet rsMat = psM.getGeneratedKeys()) {
-                        if (rsMat.next()) {
-                            materialId = rsMat.getInt(1);
-                        } else {
-                            throw new SQLException("No se generó ID para material");
-                        }
-                    }
-
-                    psMov.setInt(1, materialId);
-                    psMov.setInt(2, equipoId);
-                    psMov.setInt(3, mat.getCantidad());
-                    psMov.setNull(4, Types.VARCHAR);
-                    psMov.setString(5, mat.getEstado().getNombre());
-                    psMov.executeUpdate();
+ 
+            // 2. Insertar materiales y registrar movimiento inicial
+            List<Material> materiales = equipo.getMateriales();
+            if (materiales != null) {
+                for (Material mat : materiales) {
+                    guardarMaterialEnEquipo(conn, equipoId, mat);
                 }
             }
-
-            conn.commit();
+ 
+            tx.commit();
             log.info("Equipo guardado exitosamente: ID={}", equipoId);
             return true;
-
+ 
         } catch (SQLException e) {
-            if (conn != null) {
-                try { 
-                    conn.rollback(); 
-                    log.warn("Transacción revertida por error");
-                } catch (SQLException ex) { 
-                    log.error("Error al hacer rollback", ex); 
-                }
-            }
             log.error("Error al guardar equipo", e);
             throw new DatabaseException("Error al guardar equipo en la base de datos", e);
-        } finally {
-            if (conn != null) {
-                try { conn.close(); } catch (SQLException e) { 
-                    log.error("Error al cerrar conexión", e); 
+        }
+    }
+
+    /**
+     * Inserta un material del equipo y su movimiento inicial dentro de la misma transacción.
+     * Devuelve el id generado para el material recién creado.
+     */
+    private int guardarMaterialEnEquipo(Connection conn, int equipoId, Material material) throws SQLException {
+        String sqlInsertMaterial = "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado) " +
+                                   "VALUES (?, ?, ?, ?)";
+        String sqlInsertMovimiento = "INSERT INTO material_movimientos " +
+                                     "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
+                                     "VALUES (?, ?, ?, ?, ?)";
+
+        int codigoCatalogo = material.getCodigo();
+        int cantidad = material.getCantidad();
+        EstadoEquipo estadoMaterial = material.getEstado() != null ? material.getEstado() : EstadoEquipo.NUEVO;
+
+        int nuevoMaterialId;
+        try (PreparedStatement ps = conn.prepareStatement(sqlInsertMaterial, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, equipoId);
+            ps.setInt(2, codigoCatalogo);
+            ps.setInt(3, cantidad);
+            ps.setString(4, estadoMaterial.getNombre());
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) {
+                    nuevoMaterialId = rs.getInt(1);
+                } else {
+                    throw new SQLException("No se generó ID para el nuevo material");
                 }
             }
         }
+
+        try (PreparedStatement ps = conn.prepareStatement(sqlInsertMovimiento)) {
+            ps.setInt(1, nuevoMaterialId);
+            ps.setInt(2, equipoId);
+            ps.setInt(3, cantidad);
+            ps.setNull(4, Types.VARCHAR);
+            ps.setString(5, estadoMaterial.getNombre());
+            ps.executeUpdate();
+        }
+
+        log.info("Material código={} (cantidad={}) agregado al equipo {} -> id={}",
+            codigoCatalogo, cantidad, equipoId, nuevoMaterialId);
+        return nuevoMaterialId;
     }
 
     /**

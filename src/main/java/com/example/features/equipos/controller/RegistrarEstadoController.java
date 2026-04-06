@@ -255,7 +255,7 @@ public class RegistrarEstadoController {
             Integer equipoId = entry.getKey();
             Map<Integer, MovimientoMaterial> cambiosEquipo = entry.getValue();
 
-            boolean exitoso = model.getMaterialService().aplicarMovimientos(
+            boolean exitoso = model.aplicarMovimientos(
                 equipoId,
                 new java.util.ArrayList<>(cambiosEquipo.values())
             );

@@ -84,7 +84,7 @@ public class OrthopediaInputController {
         });
         
         panel.getPanelMateriales().setOnNumeroChangedListener((codigo, campoDescripcion) -> {
-            String descripcion = model.getCatalogoService().obtenerDescripcion(codigo);
+            String descripcion = model.obtenerDescripcionMaterial(codigo);
             campoDescripcion.setText(
                 descripcion != null ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO);
         });

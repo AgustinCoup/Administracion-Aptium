@@ -10,6 +10,7 @@ import com.example.features.equipos.dao.EquipoDAO;
 import com.example.features.equipos.dao.MaterialDAO;
 import com.example.features.equipos.model.Equipo;
 import com.example.features.equipos.service.EquipoCorreccionService;
+import com.example.features.equipos.view.PantallaAuditoria;
 import com.example.features.equipos.view.PantallaCorrecciones;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -93,10 +94,15 @@ public class CorreccionsController {
     }
 
     /**
-     * Expone el servicio para que UiCoordinator pueda inyectarlo en PantallaAuditoria.
+     * Inyecta el servicio de corrección en la pantalla de auditoría.
+     *
+     * <p>UiCoordinator llama a este método una única vez durante el arranque,
+     * evitando que tenga que conocer los servicios internos de este controlador.
+     *
+     * @param pantalla pantalla de auditoría a inicializar
      */
-    public EquipoCorreccionService getCorreccionService() {
-        return correccionService;
+    public void inicializarPantallaAuditoria(PantallaAuditoria pantalla) {
+        pantalla.inicializar(correccionService);
     }
 
     // ── Operaciones ──────────────────────────────────────────────────────────
@@ -191,10 +197,6 @@ public class CorreccionsController {
         }).start();
     }
 
-    /**
-     * Agrega un material nuevo al equipo seleccionado.
-     * Llama al servicio, recarga la lista de equipos y notifica al refrescador global.
-     */
     private void agregarMaterial(Integer equipoId, Integer codigoCatalogo,
                                  Integer cantidad, String motivo) {
         new Thread(() -> {

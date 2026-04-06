@@ -191,7 +191,7 @@ public class EquiposParaEntregarController {
             return;
         }
 
-        boolean exitoso = model.getMaterialService().entregarInstitucionCompleta(institucionSeleccionada.getId());
+        boolean exitoso = model.entregarInstitucionCompleta(institucionSeleccionada.getId());
 
         if (exitoso) {
             log.info("Institución {} entregada exitosamente, refrescando pantallas...", institucionSeleccionada.getNombre());
