@@ -20,13 +20,14 @@ import com.example.ui.shell.PantallaPrincipal;
  *
  * Responsabilidades:
  * - Instanciar cada controller con su vista y modelo correspondientes.
- * - Inyectar servicios en las vistas que los necesiten (p. ej. PantallaAuditoria).
+ * - Delegar inyecciones que un controller no puede hacerse a sí mismo
+ *   (p. ej. inicializar PantallaAuditoria desde CorreccionsController).
  * - Cablear los listeners de navegación entre pantallas.
  * - Construir el Runnable de refresco global que cada controller dispara al modificar datos.
  */
 public class UiCoordinator {
 
-    private final AppModel       model;
+    private final AppModel        model;
     private final PantallaPrincipal vista;
 
     public UiCoordinator(AppModel model, PantallaPrincipal vista) {
@@ -60,13 +61,10 @@ public class UiCoordinator {
             vista.getPantallaVerLotes(), model);
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
-        // Se realiza aquí porque el servicio vive en CorreccionsController y
-        // PantallaAuditoria no debe conocer al controller que la originó.
-        vista.getPantallaAuditoria()
-             .inicializar(correccionesController.getCorreccionService());
+        // CorreccionsController conoce el servicio; el coordinator no necesita conocerlo.
+        correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());
 
         // ── Navegación: botón "Ver Auditoría" en PantallaCorrecciones ────────
-        // El controller no conoce el CardLayout; el coordinator registra el lambda.
         correccionesController.setOnVerAuditoria(() ->
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.AUDITORIA));
 
@@ -79,8 +77,8 @@ public class UiCoordinator {
             verLotesController
         );
 
-        OnEstadosActualizadosListener refrescarEstados  = refrescarPantallas::run;
-        OnEquipoGuardadoListener      refrescarEquipos  = refrescarPantallas::run;
+        OnEstadosActualizadosListener refrescarEstados = refrescarPantallas::run;
+        OnEquipoGuardadoListener      refrescarEquipos = refrescarPantallas::run;
 
         registrarEstadoController.setOnEstadosActualizados(refrescarEstados);
         equiposParaEntregarController.setOnEstadosActualizados(refrescarEstados);

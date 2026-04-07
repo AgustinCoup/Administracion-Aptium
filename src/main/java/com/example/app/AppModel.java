@@ -1,8 +1,8 @@
 package com.example.app;
 
 import com.example.infrastructure.db.ConnectionPool;
-import com.example.app.AppContext;
 import com.example.features.equipos.ortopedias.model.Equipo;
+import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
 import com.example.features.equipos.ortopedias.service.IMaterialFilter;
@@ -32,111 +32,58 @@ import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
 
 /**
- * Modelo principal de la aplicación - Coordinador de Servicios.
- * 
- * Responsabilidad: Actúa como fachada que coordina entre los servicios
- * de negocio. No contiene lógica de negocio propia.
- * 
- * Servicios delegados:
- * - EquipoService: Gestión completa del ciclo de vida de equipos
- * - CatalogoService: Gestión del catálogo de materiales
- * - ClienteService: Gestión de búsqueda y consultas de clientes
- * 
- * Arquitectura: Service Layer con inyección de dependencias.
- * Respeta Single Responsibility Principle.
+ * Fachada principal de la aplicación.
+ *
+ * <p>Responsabilidad única: exponer operaciones de negocio con nombre semántico,
+ * delegando la implementación a los servicios correspondientes.
+ * Ningún controlador debe referenciar servicios internos directamente.
+ *
+ * <p>Regla de extensión: cada nueva operación de negocio se agrega aquí como
+ * un método de delegación explícito. No exponer servicios internos (get*Service).
  */
 public class AppModel {
 
     private static final Logger log = LoggerFactory.getLogger(AppModel.class);
 
-    /**
-     * Servicio de gestión de equipos ortopédicos.
-     */
-    private EquipoService equipoService;
-    
-    /**
-     * Servicio de gestión del catálogo de materiales.
-     */
-    private CatalogoService catalogoService;
-    
-    /**
-     * Servicio de gestión de clientes para autocompletado.
-     */
-    private ClienteService clienteService;
-    
-    /**
-     * Servicio de gestión de profesionales para autocompletado.
-     */
-    private ProfesionalService profesionalService;
-    
-    /**
-     * Servicio de gestión de instituciones para autocompletado.
-     */
-    private InstitucionService institucionService;
-
-    /**
-     * Servicio de gestión de materiales.
-     */
-    private MaterialService materialService;
-
-    /**
-     * Servicio de gestión de autoclaves.
-     */
-    private AutoclaveService autoclaveService;
-
-    /**
-     * Servicio de gestión de lotes.
-     */
-    private LoteService loteService;
-
-    /**
-     * Servicio para validar reglas de estados.
-     * Interface: permite testing e inyección de dependencias.
-     */
-    private IEstadoValidator estadoValidator;
-
-    /**
-     * Servicio para filtrar colecciones de materiales.
-     * Interface: permite testing y múltiples implementaciones.
-     */
-    private IMaterialFilter materialFilter;
-
-    /**
-     * Servicio para cálculos de capacidad y volumen.
-     * Interface: permite testing de lógica matemática.
-     */
-    private ICapacidadCalculator capacidadCalculator;
-
-    private CatalogoOtrosService catalogoOtrosService;
-    private EquipoOtrosService equipoOtrosService;
+    private final EquipoService        equipoService;
+    private final CatalogoService      catalogoService;
+    private final ClienteService       clienteService;
+    private final ProfesionalService   profesionalService;
+    private final InstitucionService   institucionService;
+    private final MaterialService      materialService;
+    private final AutoclaveService     autoclaveService;
+    private final LoteService          loteService;
+    private final IEstadoValidator     estadoValidator;
+    private final IMaterialFilter      materialFilter;
+    private final ICapacidadCalculator capacidadCalculator;
 
     /**
      * Constructor con inyección de dependencias.
-     * Todas las dependencias se resuelven en AppContext.
+     * Todas las dependencias se resuelven en {@link AppContext}.
      */
     public AppModel(AppContext context) {
         if (context == null) {
             throw new IllegalArgumentException("AppContext no puede ser nulo");
         }
-
-        this.equipoService = context.getEquipoService();
-        this.catalogoService = context.getCatalogoService();
-        this.clienteService = context.getClienteService();
-        this.profesionalService = context.getProfesionalService();
-        this.institucionService = context.getInstitucionService();
-        this.materialService = context.getMaterialService();
-        this.autoclaveService = context.getAutoclaveService();
-        this.loteService = context.getLoteService();
-        this.estadoValidator = context.getEstadoValidator();
-        this.materialFilter = context.getMaterialFilter();
+        this.equipoService       = context.getEquipoService();
+        this.catalogoService     = context.getCatalogoService();
+        this.clienteService      = context.getClienteService();
+        this.profesionalService  = context.getProfesionalService();
+        this.institucionService  = context.getInstitucionService();
+        this.materialService     = context.getMaterialService();
+        this.autoclaveService    = context.getAutoclaveService();
+        this.loteService         = context.getLoteService();
+        this.estadoValidator     = context.getEstadoValidator();
+        this.materialFilter      = context.getMaterialFilter();
         this.capacidadCalculator = context.getCapacidadCalculator();
         this.catalogoOtrosService = context.getCatalogoOtrosService();
         this.equipoOtrosService = context.getEquipoOtrosService();
     }
 
+    // ==================== INFRAESTRUCTURA ====================
+
     /**
-     * Verifica que la aplicacion pueda abrir una conexion basica.
-     * La inicialización de la BD se hace en App.java con DatabaseInitializer.
+     * Verifica que la aplicación pueda abrir una conexión básica.
      */
     public boolean validarConexion() {
         try (Connection conn = ConnectionPool.getConnection()) {
@@ -147,81 +94,73 @@ public class AppModel {
         }
     }
 
-    /**
-     * Devuelve una nueva conexion para operaciones posteriores.
-     */
-    public Connection nuevaConexion() throws SQLException {
-        return ConnectionPool.getConnection();
-    }
+    // ==================== EQUIPOS ====================
 
-    // ==================== DELEGACIÓN A EQUIPO SERVICE ====================
-
-    /**
-     * Guarda un nuevo equipo completo con sus materiales en la base de datos.
-     * Delega a EquipoService.
-     */
     public boolean guardarEquipo(Equipo equipo) {
         return equipoService.guardarEquipo(equipo);
     }
 
-    /**
-     * Obtiene todos los equipos registrados en la base de datos.
-     */
     public List<Equipo> obtenerTodosLosEquipos() {
         return equipoService.obtenerTodos();
     }
 
-    /**
-     * Obtiene un equipo específico por su ID.
-     */
     public Equipo obtenerEquipoPorId(String id) {
         return equipoService.obtenerPorId(id);
     }
 
-    /**
-     * Actualiza el estado de un equipo existente.
-     */
     public boolean actualizarEquipo(Equipo equipo) {
         return equipoService.actualizar(equipo);
     }
 
-    /**
-     * Obtiene el total de equipos en la base de datos.
-     */
     public long contarEquipos() {
         return equipoService.contar();
     }
 
-    // ==================== DELEGACIÓN A CATALOGO SERVICE ====================
+    // ==================== MATERIALES ====================
 
     /**
-     * Obtiene todas las descripciones del catálogo de materiales.
+     * Aplica una lista de movimientos de material dentro de una transacción.
+     * Cada movimiento avanza una cantidad hacia el siguiente estado de flujo.
+     *
+     * @param equipoId   ID del equipo al que pertenecen los materiales
+     * @param movimientos Lista de movimientos a aplicar
+     * @return true si todas las operaciones fueron exitosas
      */
+    public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {
+        return materialService.aplicarMovimientos(equipoId, movimientos);
+    }
+
+    /**
+     * Marca como entregados todos los materiales pendientes de una institución.
+     *
+     * @param nroInstitucion ID de la institución a entregar
+     * @return true si la operación fue exitosa
+     */
+    public boolean entregarInstitucionCompleta(int nroInstitucion) {
+        return materialService.entregarInstitucionCompleta(nroInstitucion);
+    }
+
+    // ==================== CATÁLOGO ====================
+
     public Map<Integer, String> obtenerCatalogo() {
         return catalogoService.obtenerCatalogo();
     }
 
-    /**
-     * Obtiene la descripción de un material específico.
-     */
     public String obtenerDescripcionMaterial(int codigo) {
         return catalogoService.obtenerDescripcion(codigo);
     }
 
-    /**
-     * Obtiene todos los volúmenes del catálogo de materiales.
-     */
     public Map<Integer, Integer> obtenerVolumenesCatalogo() {
         return catalogoService.obtenerVolumenes();
     }
 
-    // ==================== DELEGACIÓN A AUTOCLAVE SERVICE ====================
+    // ==================== AUTOCLAVES ====================
 
     public List<Autoclave> obtenerAutoclaves() {
         return autoclaveService.obtenerTodos();
     }
 
-    // ==================== DELEGACIÓN A LOTE SERVICE ====================
+    // ==================== LOTES ====================
 
     public Map<String, Lote> obtenerLotesActivosPorAutoclave() {
         return loteService.obtenerLotesActivosPorAutoclave();
@@ -252,18 +191,10 @@ public class AppModel {
         return loteService.marcarLoteFallo(loteId);
     }
 
-    /**
-     * Devuelve los lotes cuya fecha_inicio cae dentro del rango dado.
-     * Usado por LoteReporteService para generar el reporte de impresión.
-     */
     public List<Lote> obtenerLotesEnRango(LocalDate desde, LocalDate hasta) {
         return loteService.obtenerLotesEnRango(desde, hasta);
     }
 
-    /**
-     * Devuelve los nombres de los clientes (sin repetir) asociados al lote.
-     * Usado por LoteReporteService para construir la columna "Cliente" del reporte.
-     */
     public List<String> obtenerClientesPorLote(int loteId) {
         return loteService.obtenerClientesPorLote(loteId);
     }
@@ -272,206 +203,72 @@ public class AppModel {
         return loteService.obtenerMaterialesPorClientePorLote(loteId);
     }
 
-    // ==================== DELEGACIÓN A CLIENTE SERVICE ====================
+    // ==================== CLIENTES ====================
 
-    /**
-     * Busca clientes cuyo nombre contenga el substring proporcionado.
-     * 
-     * Utilizado por el componente de autocompletado en el formulario.
-     * Requiere mínimo 3 caracteres para ejecutar la búsqueda.
-     * 
-     * @param substring Texto a buscar en los nombres de clientes
-     * @return Lista de clientes que coinciden con la búsqueda
-     */
     public List<Cliente> buscarClientes(String substring) {
         return clienteService.buscarClientes(substring);
     }
 
-    /**
-     * Obtiene un cliente específico por su identificador.
-     * 
-     * @param id Identificador único del cliente
-     * @return Cliente encontrado, o null si no existe
-     */
     public Cliente obtenerClientePorId(int id) {
         return clienteService.obtenerClientePorId(id);
     }
 
-    /**
-     * Guarda un nuevo cliente en la base de datos.
-     * 
-     * @param cliente Cliente a guardar
-     * @return true si se guardó exitosamente, false en caso contrario
-     */
     public boolean guardarCliente(Cliente cliente) {
         return clienteService.guardarCliente(cliente);
     }
 
-    // ==================== DELEGACIÓN A PROFESIONAL SERVICE ====================
+    // ==================== PROFESIONALES ====================
 
-    /**
-     * Guarda un nuevo profesional en la base de datos.
-     * 
-     * @param profesional Profesional a guardar
-     * @return true si se guardó exitosamente, false en caso contrario
-     */
+    public List<Profesional> buscarProfesionales(String nombre) {
+        return profesionalService.buscarProfesionales(nombre);
+    }
+
+    public Profesional obtenerProfesionalPorId(int id) {
+        return profesionalService.obtenerProfesionalPorId(id);
+    }
+
     public boolean guardarProfesional(Profesional profesional) {
         return profesionalService.guardarProfesional(profesional);
     }
 
-    // ==================== DELEGACIÓN A INSTITUCIÓN SERVICE ====================
+    // ==================== INSTITUCIONES ====================
 
-    /**
-     * Guarda una nueva institución en la base de datos.
-     * 
-     * @param institucion Institución a guardar
-     * @return true si se guardó exitosamente, false en caso contrario
-     */
+    public List<Institucion> buscarInstituciones(String nombre) {
+        return institucionService.buscarInstituciones(nombre);
+    }
+
+    public Institucion obtenerInstitucionPorId(int id) {
+        return institucionService.obtenerInstitucionPorId(id);
+    }
+
     public boolean guardarInstitucion(Institucion institucion) {
         return institucionService.guardarInstitucion(institucion);
     }
 
-    // ==================== ACCESO DIRECTO A SERVICIOS ====================
+    // ==================== LÓGICA DE NEGOCIO (estrategias) ====================
 
     /**
-     * Proporciona acceso directo al servicio de equipos.
-     * Utilizado para consultas y operaciones especializadas.
-     * 
-     * @return Servicio de equipos
-     */
-    public EquipoService getEquipoService() {
-        return equipoService;
-    }
-
-    /**
-     * Proporciona acceso directo al servicio de catálogo.
-     * 
-     * @return Servicio de catálogo de materiales
-     */
-    public CatalogoService getCatalogoService() {
-        return catalogoService;
-    }
-
-    /**
-     * Proporciona acceso directo al servicio de clientes.
-     * 
-     * @return Servicio de búsqueda y gestión de clientes
-     */
-    public ClienteService getClienteService() {
-        return clienteService;
-    }
-
-    /**
-     * Proporciona acceso directo al servicio de materiales.
-     * 
-     * @return Servicio de materiales
-     */
-    public MaterialService getMaterialService() {
-        return materialService;
-    }
-    
-    // ==================== DELEGACIÓN A PROFESIONAL SERVICE ====================
-    
-    /**
-     * Busca profesionales cuyo nombre contenga el texto proporcionado.
-     * Requiere mínimo 3 caracteres.
-     * 
-     * @param nombre Texto a buscar
-     * @return Lista de profesionales que coinciden con la búsqueda
-     */
-    public List<Profesional> buscarProfesionales(String nombre) {
-        return profesionalService.buscarProfesionales(nombre);
-    }
-    
-    /**
-     * Obtiene un profesional por su ID.
-     * 
-     * @param id Identificador único del profesional
-     * @return Profesional encontrado, o null si no existe
-     */
-    public Profesional obtenerProfesionalPorId(int id) {
-        return profesionalService.obtenerProfesionalPorId(id);
-    }
-    
-    /**
-     * Proporciona acceso directo al servicio de profesionales.
-     * 
-     * @return Servicio de búsqueda y gestión de profesionales
-     */
-    public ProfesionalService getProfesionalService() {
-        return profesionalService;
-    }
-    
-    // ==================== DELEGACIÓN A INSTITUCION SERVICE ====================
-    
-    /**
-     * Busca instituciones cuyo nombre contenga el texto proporcionado.
-     * Requiere mínimo 3 caracteres.
-     * 
-     * @param nombre Texto a buscar
-     * @return Lista de instituciones que coinciden con la búsqueda
-     */
-    public List<Institucion> buscarInstituciones(String nombre) {
-        return institucionService.buscarInstituciones(nombre);
-    }
-    
-    /**
-     * Obtiene una institución por su ID.
-     * 
-     * @param id Identificador único de la institución
-     * @return Institución encontrada, o null si no existe
-     */
-    public Institucion obtenerInstitucionPorId(int id) {
-        return institucionService.obtenerInstitucionPorId(id);
-    }
-    
-    /**
-     * Proporciona acceso directo al servicio de instituciones.
-     * 
-     * @return Servicio de búsqueda y gestión de instituciones
-     */
-    public InstitucionService getInstitucionService() {
-        return institucionService;
-    }
-
-    // ==================== SERVICIOS DE LÓGICA DE NEGOCIO ====================
-
-    /**
-     * Proporciona acceso al validador de estados.
-     * Valida transiciones de estado según reglas de flujo.
-     * 
-     * @return Validador de estados
+     * Valida transiciones de estado según las reglas del flujo de esterilización.
+     * Se expone para controllers que orquestan validaciones complejas de múltiples pasos.
      */
     public IEstadoValidator getEstadoValidator() {
         return estadoValidator;
     }
 
     /**
-     * Proporciona acceso al filtrador de materiales.
-     * Filtra materiales según criterios de negocio.
-     * 
-     * @return Filtrador de materiales
+     * Filtra materiales según criterios de negocio configurables.
+     * Se expone para controllers que construyen vistas filtradas de materiales.
      */
     public IMaterialFilter getMaterialFilter() {
         return materialFilter;
     }
 
     /**
-     * Proporciona acceso al calculador de capacidad.
-     * Realiza cálculos de volumen y capacidad.
-     * 
-     * @return Calculador de capacidad
+     * Realiza cálculos de volumen y capacidad de lotes.
+     * Se expone para controllers que necesitan calcular capacidades antes de lanzar.
      */
     public ICapacidadCalculator getCapacidadCalculator() {
         return capacidadCalculator;
-    }
-
-    public CatalogoOtrosService getCatalogoOtrosService() {
-        return catalogoOtrosService;
-    }
-
-    public EquipoOtrosService getEquipoOtrosService() {
-        return equipoOtrosService;
     }
 }
 
