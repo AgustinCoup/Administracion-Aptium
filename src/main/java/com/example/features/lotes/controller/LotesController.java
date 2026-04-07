@@ -19,6 +19,8 @@ import com.example.features.lotes.view.helpers.PanelLotesContenido;
 
 import javax.swing.*;
 import java.awt.datatransfer.DataFlavor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.awt.datatransfer.Transferable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 
 public class LotesController {
+
+    private static final Logger log = LoggerFactory.getLogger(LotesController.class);
 
     private final PanelLotesContenido panel;
     private final AppModel model;
@@ -54,7 +58,7 @@ public class LotesController {
             flavor = new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType +
                     ";class=\"" + MaterialLoteItem.class.getName() + "\"");
         } catch (ClassNotFoundException e) {
-            e.printStackTrace();
+            log.error("No se pudo registrar el DataFlavor para drag-and-drop", e);
         }
         MATERIAL_LOTE_FLAVOR = flavor;
     }
@@ -348,7 +352,7 @@ public class LotesController {
                     quitarMaterialDePendientes(item);
                     cargarDatos();
                     return true;
-                } catch (Exception e) { e.printStackTrace(); return false; }
+                } catch (Exception e) { log.error("Error al procesar drop en tabla disponibles", e); return false; }
             }
         };
 
@@ -397,7 +401,7 @@ public class LotesController {
                     SwingUtilities.invokeLater(() -> agregarMaterial(item));
                     return true;
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    log.error("Error al procesar drop en tabla autoclave", e);
                     SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Error: " + e.getMessage()));
                     return false;
                 }

@@ -10,8 +10,10 @@ import com.example.features.autoclaves.service.AutoclaveService;
 import com.example.features.lotes.service.CapacidadCalculatorImpl;
 import com.example.features.catalogo.service.CatalogoService;
 import com.example.features.clientes.service.ClienteService;
+import com.example.features.equipos.ortopedias.dao.AuditoriaDAO;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.dao.MaterialDAO;
+import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.ortopedias.service.EstadoValidatorImpl;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
@@ -42,6 +44,7 @@ public class AppContext {
     private final ICapacidadCalculator capacidadCalculator;
     private final CatalogoOtrosService catalogoOtrosService;
     private final EquipoOtrosService equipoOtrosService;
+    private final EquipoCorreccionService equipoCorreccionService;
 
     public AppContext(
         EquipoService equipoService,
@@ -56,13 +59,14 @@ public class AppContext {
         IMaterialFilter materialFilter,
         ICapacidadCalculator capacidadCalculator,
         CatalogoOtrosService catalogoOtrosService,
-        EquipoOtrosService equipoOtrosService
+        EquipoOtrosService equipoOtrosService,
+        EquipoCorreccionService equipoCorreccionService
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
             || profesionalService == null || institucionService == null || materialService == null
             || autoclaveService == null || loteService == null || estadoValidator == null
             || materialFilter == null || capacidadCalculator == null || catalogoOtrosService == null
-            || equipoOtrosService == null) {
+            || equipoOtrosService == null || equipoCorreccionService == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -79,6 +83,7 @@ public class AppContext {
         this.capacidadCalculator = capacidadCalculator;
         this.catalogoOtrosService = catalogoOtrosService;
         this.equipoOtrosService = equipoOtrosService;
+        this.equipoCorreccionService = equipoCorreccionService;
     }
 
     public static AppContext createDefault() {
@@ -93,7 +98,11 @@ public class AppContext {
         CatalogoOtrosDAO catalogoOtrosDAO = new CatalogoOtrosDAO();
         EquipoOtrosDAO equipoOtrosDAO = new EquipoOtrosDAO(catalogoOtrosDAO);
 
+        AuditoriaDAO auditoriaDAO = new AuditoriaDAO();
+
         EquipoService equipoService = new EquipoService(equipoDAO);
+        EquipoCorreccionService equipoCorreccionService = new EquipoCorreccionService(
+            equipoDAO, materialDAO, auditoriaDAO, catalogoDAO);
         EquipoOtrosService equipoOtrosService = new EquipoOtrosService(equipoOtrosDAO);
         CatalogoService catalogoService = new CatalogoService(catalogoDAO);
         CatalogoOtrosService catalogoOtrosService = new CatalogoOtrosService(catalogoOtrosDAO);
@@ -121,7 +130,8 @@ public class AppContext {
             materialFilter,
             capacidadCalculator,
             catalogoOtrosService,
-            equipoOtrosService
+            equipoOtrosService,
+            equipoCorreccionService
         );
     }
 
@@ -175,6 +185,10 @@ public class AppContext {
 
     public EquipoOtrosService getEquipoOtrosService() {
         return equipoOtrosService;
+    }
+
+    public EquipoCorreccionService getEquipoCorreccionService() {
+        return equipoCorreccionService;
     }
 }
 

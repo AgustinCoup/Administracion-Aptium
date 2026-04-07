@@ -4,6 +4,7 @@ import com.example.app.ui.AppController;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.app.AppModel;
 import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +37,17 @@ public class App {
     private static final Logger log = LoggerFactory.getLogger(App.class);
     
     public static void main(String[] args) {
+        // Handler global para excepciones no manejadas (incluyendo las del EDT de Swing)
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            log.error("Excepción no manejada en hilo '{}'", thread.getName(), throwable);
+            SwingUtilities.invokeLater(() ->
+                JOptionPane.showMessageDialog(null,
+                    "Ocurrió un error inesperado. Intentá de nuevo.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE)
+            );
+        });
+
         try {
             // ==================== PASO 1: SHUTDOWN HOOK ====================
             // Registrar shutdown hook para cerrar el Connection Pool correctamente

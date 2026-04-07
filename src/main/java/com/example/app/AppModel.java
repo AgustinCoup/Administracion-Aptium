@@ -3,6 +3,7 @@ package com.example.app;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
+import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
 import com.example.features.equipos.ortopedias.service.IMaterialFilter;
@@ -45,17 +46,20 @@ public class AppModel {
 
     private static final Logger log = LoggerFactory.getLogger(AppModel.class);
 
-    private final EquipoService        equipoService;
-    private final CatalogoService      catalogoService;
-    private final ClienteService       clienteService;
-    private final ProfesionalService   profesionalService;
-    private final InstitucionService   institucionService;
-    private final MaterialService      materialService;
-    private final AutoclaveService     autoclaveService;
-    private final LoteService          loteService;
-    private final IEstadoValidator     estadoValidator;
-    private final IMaterialFilter      materialFilter;
-    private final ICapacidadCalculator capacidadCalculator;
+    private final EquipoService          equipoService;
+    private final CatalogoService        catalogoService;
+    private final ClienteService         clienteService;
+    private final ProfesionalService     profesionalService;
+    private final InstitucionService     institucionService;
+    private final MaterialService        materialService;
+    private final AutoclaveService       autoclaveService;
+    private final LoteService            loteService;
+    private final IEstadoValidator       estadoValidator;
+    private final IMaterialFilter        materialFilter;
+    private final ICapacidadCalculator   capacidadCalculator;
+    private final CatalogoOtrosService   catalogoOtrosService;
+    private final EquipoOtrosService     equipoOtrosService;
+    private final EquipoCorreccionService equipoCorreccionService;
 
     /**
      * Constructor con inyección de dependencias.
@@ -78,6 +82,7 @@ public class AppModel {
         this.capacidadCalculator = context.getCapacidadCalculator();
         this.catalogoOtrosService = context.getCatalogoOtrosService();
         this.equipoOtrosService = context.getEquipoOtrosService();
+        this.equipoCorreccionService = context.getEquipoCorreccionService();
     }
 
     // ==================== INFRAESTRUCTURA ====================
@@ -269,6 +274,22 @@ public class AppModel {
      */
     public ICapacidadCalculator getCapacidadCalculator() {
         return capacidadCalculator;
+    }
+
+    public CatalogoOtrosService getCatalogoOtrosService() {
+        return catalogoOtrosService;
+    }
+
+    public EquipoOtrosService getEquipoOtrosService() {
+        return equipoOtrosService;
+    }
+
+    public MaterialService getMaterialService() {
+        return materialService;
+    }
+
+    public EquipoCorreccionService getEquipoCorreccionService() {
+        return equipoCorreccionService;
     }
 }
 

@@ -1,6 +1,5 @@
 package com.example.features.equipos.ortopedias.service;
 
-import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ValidationException;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
@@ -70,16 +69,11 @@ public class EquipoService {
         
         validationBuilder.throwIfHasErrors();
         
-        try {
-            boolean resultado = equipoDAO.guardarEquipo(equipo);
-            if (resultado) {
-                log.info("Equipo guardado exitosamente: {}", equipo.getClienteNombre());
-            }
-            return resultado;
-        } catch (DatabaseException e) {
-            log.error("Error al guardar equipo: {}", equipo.getClienteNombre(), e);
-            throw e; // Re-lanzar para que el Controller lo maneje
+        boolean resultado = equipoDAO.guardarEquipo(equipo);
+        if (resultado) {
+            log.info("Equipo guardado exitosamente: {}", equipo.getClienteNombre());
         }
+        return resultado;
     }
 
     /**
@@ -88,12 +82,7 @@ public class EquipoService {
      * @return Lista de equipos
      */
     public List<Equipo> obtenerTodos() {
-        try {
-            return equipoDAO.obtenerTodos();
-        } catch (Exception e) {
-            log.error("Error al obtener equipos", e);
-            return List.of(); // Retorna lista vacía en caso de error
-        }
+        return equipoDAO.obtenerTodos();
     }
 
     /**
@@ -103,12 +92,7 @@ public class EquipoService {
      * @return El equipo si existe, null si no
      */
     public Equipo obtenerPorId(String id) {
-        try {
-            return equipoDAO.obtenerPorId(id);
-        } catch (Exception e) {
-            log.error("Error al obtener equipo con ID: {}", id, e);
-            return null;
-        }
+        return equipoDAO.obtenerPorId(id);
     }
 
     /**
@@ -122,17 +106,11 @@ public class EquipoService {
             log.warn("Intento de actualizar equipo inválido");
             return false;
         }
-        
-        try {
-            boolean resultado = equipoDAO.actualizar(equipo);
-            if (resultado) {
-                log.info("Equipo actualizado: {}", equipo.getId());
-            }
-            return resultado;
-        } catch (Exception e) {
-            log.error("Error al actualizar equipo", e);
-            return false;
+        boolean resultado = equipoDAO.actualizar(equipo);
+        if (resultado) {
+            log.info("Equipo actualizado: {}", equipo.getId());
         }
+        return resultado;
     }
 
     /**
@@ -141,12 +119,7 @@ public class EquipoService {
      * @return Cantidad de equipos
      */
     public long contar() {
-        try {
-            return equipoDAO.contar();
-        } catch (Exception e) {
-            log.error("Error al contar equipos", e);
-            return 0;
-        }
+        return equipoDAO.contar();
     }
 
     /**
@@ -156,12 +129,7 @@ public class EquipoService {
      * @return true si existe
      */
     public boolean existe(String id) {
-        try {
-            return equipoDAO.existe(id);
-        } catch (Exception e) {
-            log.error("Error al verificar existencia de equipo", e);
-            return false;
-        }
+        return equipoDAO.existe(id);
     }
 }
 

@@ -8,8 +8,12 @@ import com.example.common.constants.Constantes;
 import com.example.app.AppModel;
 import com.example.ui.common.Estilos;
 import com.example.ui.shell.PantallaPrincipal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class AppController {
+
+    private static final Logger log = LoggerFactory.getLogger(AppController.class);
 
     private final AppModel model;
     private PantallaPrincipal vista;
@@ -45,7 +49,7 @@ public class AppController {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
             configurarFuentesDialogos();
         } catch (Exception e) {
-            e.printStackTrace();
+            log.warn("No se pudo aplicar el Look and Feel del sistema", e);
         }
     }
 

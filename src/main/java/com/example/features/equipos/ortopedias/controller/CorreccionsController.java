@@ -4,10 +4,6 @@ import com.example.app.AppModel;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ValidationException;
 import com.example.common.constants.Constantes;
-import com.example.features.catalogo.dao.CatalogoDAO;
-import com.example.features.equipos.ortopedias.dao.AuditoriaDAO;
-import com.example.features.equipos.ortopedias.dao.EquipoDAO;
-import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.features.equipos.ortopedias.view.PantallaAuditoria;
@@ -45,12 +41,7 @@ public class CorreccionsController {
     public CorreccionsController(PantallaCorrecciones panel, AppModel model) {
         this.panel = panel;
 
-        this.correccionService = new EquipoCorreccionService(
-            new EquipoDAO(),
-            new MaterialDAO(),
-            new AuditoriaDAO(),
-            new CatalogoDAO()
-        );
+        this.correccionService = model.getEquipoCorreccionService();
 
         // ── Cablear callbacks de la vista ─────────────────────────────────────
         panel.setOnModificarCantidad((equipoId, materialId, cantidad, motivo) ->

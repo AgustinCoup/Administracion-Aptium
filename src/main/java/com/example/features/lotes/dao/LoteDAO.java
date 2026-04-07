@@ -1,5 +1,6 @@
 package com.example.features.lotes.dao;
 
+import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.dao.EquipoMaterialHelper;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.lotes.model.Lote;
@@ -7,22 +8,19 @@ import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.infrastructure.db.TransactionalConnection;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class LoteDAO {
-
-    private static final Logger log = LoggerFactory.getLogger(LoteDAO.class);
 
     // ── Consultas ────────────────────────────────────────────────────────────
 
@@ -41,7 +39,7 @@ public class LoteDAO {
                 activos.put(lote.getAutoclaveNombre(), lote);
             }
         } catch (SQLException e) {
-            log.error("Error al obtener lotes activos", e);
+            throw new DatabaseException("Error al obtener lotes activos", e);
         }
         return activos;
     }
@@ -58,7 +56,7 @@ public class LoteDAO {
 
             while (rs.next()) finalizados.add(mapLote(rs));
         } catch (SQLException e) {
-            log.error("Error al obtener lotes finalizados", e);
+            throw new DatabaseException("Error al obtener lotes finalizados", e);
         }
         return finalizados;
     }
@@ -75,7 +73,7 @@ public class LoteDAO {
 
             while (rs.next()) todos.add(mapLote(rs));
         } catch (SQLException e) {
-            log.error("Error al obtener todos los lotes", e);
+            throw new DatabaseException("Error al obtener todos los lotes", e);
         }
         return todos;
     }
@@ -101,7 +99,7 @@ public class LoteDAO {
                 while (rs.next()) lotes.add(mapLote(rs));
             }
         } catch (SQLException e) {
-            log.error("Error al obtener lotes en rango [{} - {}]", desde, hasta, e);
+            throw new DatabaseException("Error al obtener lotes en rango [" + desde + " - " + hasta + "]", e);
         }
         return lotes;
     }
@@ -122,7 +120,7 @@ public class LoteDAO {
                 while (rs.next()) clientes.add(rs.getString("nombre"));
             }
         } catch (SQLException e) {
-            log.error("Error al obtener clientes del lote {}", loteId, e);
+            throw new DatabaseException("Error al obtener clientes del lote " + loteId, e);
         }
         return clientes;
     }
@@ -148,7 +146,7 @@ public class LoteDAO {
                 }
             }
         } catch (SQLException e) {
-            log.error("Error al obtener materiales por cliente del lote {}", loteId, e);
+            throw new DatabaseException("Error al obtener materiales por cliente del lote " + loteId, e);
         }
         return resultado;
     }
@@ -178,7 +176,7 @@ public class LoteDAO {
                 }
             }
         } catch (SQLException e) {
-            log.error("Error al obtener materiales del lote {}", loteId, e);
+            throw new DatabaseException("Error al obtener materiales del lote " + loteId, e);
         }
         return materiales;
     }
@@ -193,7 +191,7 @@ public class LoteDAO {
                 return false;  // lote ya cerrado: tx.close() hace rollback automático
             }
  
-            Map<Integer, Boolean> equiposAfectados = new HashMap<>();
+            Set<Integer> equiposAfectados = new HashSet<>();
             try (PreparedStatement pstmt = conn.prepareStatement(
                     "SELECT id, equipo_id, cantidad, estado FROM equipo_materiales WHERE lote_id = ? FOR UPDATE")) {
                 pstmt.setInt(1, loteId);
@@ -204,7 +202,7 @@ public class LoteDAO {
                         int cantidad = rs.getInt("cantidad");
                         String estadoActual = rs.getString("estado");
 
-                        equiposAfectados.put(equipoId, true);
+                        equiposAfectados.add(equipoId);
                         actualizarEstadoMaterial(conn, materialId, EstadoEquipo.ESTERILIZADO.getNombre());
                         registrarMovimiento(conn, materialId, equipoId, cantidad, estadoActual,
                             EstadoEquipo.ESTERILIZADO.getNombre());
@@ -212,13 +210,12 @@ public class LoteDAO {
                 }
             }
  
-            procesarEquiposAfectados(conn, equiposAfectados.keySet());
- 
+            procesarEquiposAfectados(conn, equiposAfectados);
+
             tx.commit();
             return true;
         } catch (SQLException e) {
-            log.error("Error al finalizar lote: {}", loteId, e);
-            return false;
+            throw new DatabaseException("Error al finalizar lote " + loteId, e);
         }
     }
 
@@ -230,7 +227,7 @@ public class LoteDAO {
                 return false;  // lote ya cerrado: rollback automático
             }
  
-            Map<Integer, Boolean> equiposAfectados = new HashMap<>();
+            Set<Integer> equiposAfectados = new HashSet<>();
             try (PreparedStatement pstmt = conn.prepareStatement(
                     "SELECT id, equipo_id, cantidad FROM equipo_materiales " +
                     "WHERE lote_id = ? AND estado = ? FOR UPDATE")) {
@@ -242,7 +239,7 @@ public class LoteDAO {
                         int equipoId = rs.getInt("equipo_id");
                         int cantidad = rs.getInt("cantidad");
 
-                        equiposAfectados.put(equipoId, true);
+                        equiposAfectados.add(equipoId);
 
                         String estadoAnterior = obtenerEstadoAnteriorDesdeMovimiento(conn, materialId,
                             EstadoEquipo.ESTERILIZANDO.getNombre(), EstadoEquipo.EMPAQUETADO.getNombre());
@@ -254,43 +251,43 @@ public class LoteDAO {
                 }
             }
  
-            procesarEquiposAfectados(conn, equiposAfectados.keySet());
- 
+            procesarEquiposAfectados(conn, equiposAfectados);
+
             tx.commit();
             return true;
         } catch (SQLException e) {
-            log.error("Error al marcar lote como fallido: {}", loteId, e);
-            return false;
+            throw new DatabaseException("Error al marcar lote como fallido " + loteId, e);
         }
     }
 
     public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
                            List<LoteMovimiento> movimientos) {
-        if (movimientos == null || movimientos.isEmpty()) return null;
- 
+        if (movimientos == null || movimientos.isEmpty()) {
+            throw new IllegalArgumentException("La lista de movimientos no puede ser nula o vacía");
+        }
+
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
- 
+
             int anio      = java.time.LocalDate.now().getYear();
             int secuencia = obtenerSiguienteSecuencia(conn, anio);
             String idNegocio = construirIdNegocio(anio, secuencia);
- 
+
             int loteId = insertarLote(conn, idNegocio, anio, secuencia, autoclaveNombre,
                                       capacidadTotal, capacidadUsada);
- 
-            Map<Integer, Boolean> equiposAfectados = new HashMap<>();
+
+            Set<Integer> equiposAfectados = new HashSet<>();
             for (LoteMovimiento mov : movimientos) {
-                equiposAfectados.put(mov.getEquipoId(), true);
+                equiposAfectados.add(mov.getEquipoId());
                 aplicarMovimientoLote(conn, loteId, mov);
             }
- 
-            procesarEquiposSoloRecalculo(conn, equiposAfectados.keySet());
+
+            procesarEquiposSoloRecalculo(conn, equiposAfectados);
  
             tx.commit();
             return obtenerLotePorId(conn, loteId);
         } catch (SQLException e) {
-            log.error("Error al lanzar lote para autoclave: {}", autoclaveNombre, e);
-            return null;
+            throw new DatabaseException("Error al lanzar lote para autoclave: " + autoclaveNombre, e);
         }
     }
 
@@ -414,16 +411,8 @@ public class LoteDAO {
         String sqlSelect =
             "SELECT codigo_catalogo, cantidad, estado " +
             "FROM equipo_materiales WHERE id = ? AND equipo_id = ? FOR UPDATE";
-        String sqlUpdateCantidad =
-            "UPDATE equipo_materiales SET cantidad = ? WHERE id = ? AND equipo_id = ?";
-        String sqlUpdateEstado =
-            "UPDATE equipo_materiales SET estado = ?, lote_id = ? WHERE id = ? AND equipo_id = ?";
         String sqlInsert =
             "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado, lote_id) " +
-            "VALUES (?, ?, ?, ?, ?)";
-        String sqlMovimiento =
-            "INSERT INTO material_movimientos " +
-            "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
             "VALUES (?, ?, ?, ?, ?)";
 
         int materialId = movimiento.getMaterialId();
@@ -543,20 +532,7 @@ public class LoteDAO {
                 if (rs.next()) return mapLote(rs);
             }
         }
-        return null;
+        throw new SQLException("No se encontró el lote recién insertado con id=" + loteId);
     }
 
-    // ── Infra ────────────────────────────────────────────────────────────────
-
-    private void rollback(Connection conn) {
-        if (conn != null) {
-            try { conn.rollback(); } catch (SQLException ex) { log.error("Error en rollback", ex); }
-        }
-    }
-
-    private void cerrar(Connection conn) {
-        if (conn != null) {
-            try { conn.close(); } catch (SQLException e) { log.error("Error al cerrar conexión", e); }
-        }
-    }
 }

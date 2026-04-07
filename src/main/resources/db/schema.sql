@@ -171,7 +171,12 @@ CREATE TABLE IF NOT EXISTS equipo_otros (
     estado           VARCHAR(50) DEFAULT 'Nuevo',
     requiere_lavado  TINYINT(1)  NOT NULL DEFAULT 1,
     requiere_empaque TINYINT(1)  NOT NULL DEFAULT 1,
+    tipo_ingreso     VARCHAR(10) NOT NULL DEFAULT 'DETALLES' COMMENT 'REMITO | DETALLES',
+    remito_id        VARCHAR(30) NULL COMMENT 'Identificador: ddmmaaaa-{id}',
+    remito_cantidad  INT         NULL COMMENT 'Cantidad de elementos del remito',
+    remito_observaciones TEXT    NULL COMMENT 'Observaciones opcionales del remito',
     fecha_ingreso    TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_otros_remito_id (remito_id),
     FOREIGN KEY (nro_cliente) REFERENCES clientes(id) ON DELETE RESTRICT
 );
 

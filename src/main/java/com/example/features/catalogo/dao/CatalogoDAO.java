@@ -1,7 +1,10 @@
 package com.example.features.catalogo.dao;
 
 import com.example.common.dao.DAO;
+import com.example.common.exception.DatabaseException;
 import com.example.infrastructure.db.ConnectionPool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,7 +16,10 @@ import java.util.Map;
  * Implementa operaciones CRUD sobre la tabla catalogo_descripciones.
  */
 public class CatalogoDAO implements DAO<String, Integer> {
-    
+
+    private static final Logger log = LoggerFactory.getLogger(CatalogoDAO.class);
+
+
     /**
      * Guarda una descripción en el catálogo.
      * Si el código ya existe, actualiza la descripción.
@@ -35,8 +41,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
             pstmt.executeUpdate();
             return true;
         } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
+            throw new DatabaseException("Error al guardar descripción para código: " + codigo, e);
         }
     }
     
@@ -58,7 +63,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
                 return rs.getString("descripcion");
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Error al obtener descripción para código: " + codigo, e);
         }
         return null;
     }
@@ -81,7 +86,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
                 return rs.getInt("volumen");
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Error al obtener volumen para código: " + codigo, e);
         }
         return null;
     }
@@ -103,7 +108,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
                 catalogo.put(rs.getInt("codigo"), rs.getString("descripcion"));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Error al obtener catálogo de descripciones", e);
         }
         return catalogo;
     }
@@ -125,7 +130,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
                 volumenes.put(rs.getInt("codigo"), rs.getInt("volumen"));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Error al obtener catálogo de volúmenes", e);
         }
         return volumenes;
     }
@@ -166,7 +171,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
                 descripciones.add(rs.getString("descripcion"));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Error al obtener todas las descripciones", e);
         }
         return descripciones;
     }
@@ -194,11 +199,10 @@ public class CatalogoDAO implements DAO<String, Integer> {
             int filasEliminadas = pstmt.executeUpdate();
             return filasEliminadas > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
+            throw new DatabaseException("Error al eliminar código del catálogo: " + codigo, e);
         }
     }
-    
+
     /**
      * Obtiene el total de códigos en el catálogo (implementa interfaz DAO).
      */
@@ -214,7 +218,7 @@ public class CatalogoDAO implements DAO<String, Integer> {
                 return rs.getLong(1);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Error al contar entradas del catálogo", e);
         }
         return 0;
     }

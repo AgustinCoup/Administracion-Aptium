@@ -15,7 +15,10 @@ import java.util.Map;
 
 /**
  * DAO para gestionar operaciones sobre materiales individuales.
- * Permite actualizar el estado de materiales específicos.
+ *
+ * <p>La lógica compartida de recálculo de estado de equipo y unificación de
+ * duplicados se delega a {@link EquipoMaterialHelper}, que es la única fuente
+ * de verdad para esas operaciones.
  */
 public class MaterialDAO {
 
@@ -23,51 +26,35 @@ public class MaterialDAO {
 
     // ── Métodos transaccionales ──────────────────────────────────────────────
 
-    /**
-     * Actualiza el estado de un material específico en la base de datos.
-     * Después de actualizar el material, recalcula y actualiza el estado del equipo.
-     */
     public boolean actualizarEstadoMaterial(int equipoId, int codigoCatalogo, EstadoEquipo nuevoEstado) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
 
-            // 1. Actualizar el estado del material
             String sqlMaterial = "UPDATE equipo_materiales SET estado = ? WHERE equipo_id = ? AND codigo_catalogo = ?";
             try (PreparedStatement pstmt = conn.prepareStatement(sqlMaterial)) {
                 pstmt.setString(1, nuevoEstado.getNombre());
                 pstmt.setInt(2, equipoId);
                 pstmt.setInt(3, codigoCatalogo);
-                int filasAfectadas = pstmt.executeUpdate();
-                if (filasAfectadas == 0) {
+                if (pstmt.executeUpdate() == 0) {
                     throw new SQLException("No se encontró el material a actualizar");
                 }
             }
 
-            // 2. Recalcular el estado del equipo basado en el material más atrasado
-            recalcularEstadoEquipo(conn, equipoId);
-
+            EquipoMaterialHelper.recalcularEstadoEquipo(conn, equipoId);
             tx.commit();
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al actualizar estado del material", e);
-            return false;
+            throw new DatabaseException("Error al actualizar estado del material", e);
         }
     }
 
-    /**
-     * Actualiza múltiples materiales de un equipo en una sola transacción.
-     * Útil para confirmar varios cambios pendientes a la vez.
-     */
     public boolean actualizarMultiplesMateriales(int equipoId, Map<Integer, EstadoEquipo> actualizaciones) {
-        if (actualizaciones == null || actualizaciones.isEmpty()) {
-            return true;
-        }
+        if (actualizaciones == null || actualizaciones.isEmpty()) return true;
 
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
 
-            // 1. Actualizar cada lote de material por ID (batch)
             String sqlMaterial = "UPDATE equipo_materiales SET estado = ? WHERE equipo_id = ? AND id = ?";
             try (PreparedStatement pstmt = conn.prepareStatement(sqlMaterial)) {
                 for (Map.Entry<Integer, EstadoEquipo> entry : actualizaciones.entrySet()) {
@@ -79,26 +66,17 @@ public class MaterialDAO {
                 pstmt.executeBatch();
             }
 
-            // 2. Recalcular el estado del equipo
-            recalcularEstadoEquipo(conn, equipoId);
-
+            EquipoMaterialHelper.recalcularEstadoEquipo(conn, equipoId);
             tx.commit();
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al actualizar múltiples materiales", e);
-            return false;
+            throw new DatabaseException("Error al actualizar múltiples materiales", e);
         }
     }
 
-    /**
-     * Aplica movimientos de subcantidades creando lotes nuevos cuando es necesario.
-     * Cada movimiento avanza una cantidad hacia un estado destino dentro de la misma transacción.
-     */
     public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {
-        if (movimientos == null || movimientos.isEmpty()) {
-            return true;
-        }
+        if (movimientos == null || movimientos.isEmpty()) return true;
 
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
@@ -217,28 +195,20 @@ public class MaterialDAO {
                 }
             }
 
-            unificarMaterialesDuplicados(conn, equipoId);
-            recalcularEstadoEquipo(conn, equipoId);
-
+            EquipoMaterialHelper.unificarMaterialesDuplicados(conn, equipoId);
+            EquipoMaterialHelper.recalcularEstadoEquipo(conn, equipoId);
             tx.commit();
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al aplicar movimientos de materiales", e);
-            return false;
+            throw new DatabaseException("Error al aplicar movimientos de materiales", e);
         }
     }
 
-    /**
-     * Marca todos los materiales entregables de una institución como entregados.
-     * Solo afecta materiales que estén >= ESTERILIZADO y < ENTREGADO.
-     * Actualiza el estado de todos los equipos afectados.
-     */
     public boolean entregarInstitucionCompleta(int nroInstitucion) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
 
-            // 1. Obtener todos los equipos de la institución
             List<Integer> equiposIds = new ArrayList<>();
             try (PreparedStatement pstmt = conn.prepareStatement(
                     "SELECT id FROM equipos WHERE nro_institucion = ?")) {
@@ -253,7 +223,6 @@ public class MaterialDAO {
                 return true;
             }
 
-            // 2. Para cada equipo, marcar materiales esterilizados como ENTREGADO
             String sqlSelectMateriales =
                 "SELECT id, estado, cantidad FROM equipo_materiales " +
                 "WHERE equipo_id = ? AND LOWER(estado) = 'esterilizado' FOR UPDATE";
@@ -290,8 +259,7 @@ public class MaterialDAO {
                     }
                 }
 
-                // 3. Recalcular estado del equipo
-                recalcularEstadoEquipo(conn, equipoId);
+                EquipoMaterialHelper.recalcularEstadoEquipo(conn, equipoId);
             }
 
             tx.commit();
@@ -300,16 +268,12 @@ public class MaterialDAO {
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al entregar institución completa: {}", nroInstitucion, e);
-            return false;
+            throw new DatabaseException("Error al entregar institución completa: " + nroInstitucion, e);
         }
     }
 
     // ── Métodos simples (sin transacción propia) ─────────────────────────────
 
-    /**
-     * Actualiza la cantidad de un material específico.
-     */
     public boolean actualizarCantidad(Integer materialId, Integer cantidadNueva) {
         String sql = "UPDATE equipo_materiales SET cantidad = ? WHERE id = ?";
         try (Connection conn = ConnectionPool.getConnection();
@@ -323,14 +287,10 @@ public class MaterialDAO {
             }
             return false;
         } catch (SQLException e) {
-            log.error("Error al actualizar cantidad del material {}", materialId, e);
-            return false;
+            throw new DatabaseException("Error al actualizar cantidad del material " + materialId, e);
         }
     }
 
-    /**
-     * Obtiene la cantidad actual de un material.
-     */
     public Integer obtenerCantidad(Integer materialId) {
         String sql = "SELECT cantidad FROM equipo_materiales WHERE id = ?";
         try (Connection conn = ConnectionPool.getConnection();
@@ -340,14 +300,11 @@ public class MaterialDAO {
                 if (rs.next()) return rs.getInt("cantidad");
             }
         } catch (SQLException e) {
-            log.error("Error al obtener cantidad del material {}", materialId, e);
+            throw new DatabaseException("Error al obtener cantidad del material " + materialId, e);
         }
-        return null;
+        return null; // no encontrado
     }
 
-    /**
-     * Actualiza el código de catálogo de un material específico.
-     */
     public boolean actualizarCodigo(Integer materialId, Integer codigoNuevo) {
         String sql = "UPDATE equipo_materiales SET codigo_catalogo = ? WHERE id = ?";
         try (Connection conn = ConnectionPool.getConnection();
@@ -361,15 +318,10 @@ public class MaterialDAO {
             }
             return false;
         } catch (SQLException e) {
-            log.error("Error al actualizar código del material {}", materialId, e);
-            return false;
+            throw new DatabaseException("Error al actualizar código del material " + materialId, e);
         }
     }
 
-    /**
-     * Obtiene información de un material específico.
-     * @return Array con [codigo, equipoId, descripcion, cantidad, estado] o null si no existe
-     */
     public Object[] obtenerMaterial(Integer materialId) {
         String sql =
             "SELECT em.codigo_catalogo, em.equipo_id, cd.descripcion, em.cantidad, em.estado " +
@@ -391,15 +343,11 @@ public class MaterialDAO {
                 }
             }
         } catch (SQLException e) {
-            log.error("Error al obtener material {}", materialId, e);
+            throw new DatabaseException("Error al obtener material " + materialId, e);
         }
-        return null;
+        return null; // no encontrado
     }
 
-    /**
-     * Agrega un material nuevo a un equipo y registra su movimiento inicial.
-     * Devuelve el ID generado para el material nuevo.
-     */
     public Integer agregarMaterial(Integer equipoId, Integer codigoCatalogo, Integer cantidad) {
         String sqlInsertMaterial =
             "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado) " +
@@ -446,15 +394,10 @@ public class MaterialDAO {
             return nuevoMaterialId;
 
         } catch (SQLException e) {
-            log.error("Error al agregar material código={} al equipo {}", codigoCatalogo, equipoId, e);
             throw new DatabaseException("Error al agregar material al equipo", e);
         }
     }
 
-    /**
-     * Obtiene todos los materiales de un equipo que coinciden con un código de catálogo.
-     * Cada fila contiene: id, codigo_catalogo, descripcion, cantidad y estado.
-     */
     public List<Object[]> obtenerMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo) {
         List<Object[]> materiales = new ArrayList<>();
         String sql =
@@ -481,16 +424,12 @@ public class MaterialDAO {
                 }
             }
         } catch (SQLException e) {
-            log.error("Error al obtener materiales por código {} en equipo {}", codigoCatalogo, equipoId, e);
             throw new DatabaseException("Error al obtener materiales por código", e);
         }
 
         return materiales;
     }
 
-    /**
-     * Elimina todos los materiales de un código específico dentro de un equipo.
-     */
     public boolean eliminarMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo) {
         String sqlSelectIds =
             "SELECT id FROM equipo_materiales WHERE equipo_id = ? AND codigo_catalogo = ?";
@@ -539,155 +478,7 @@ public class MaterialDAO {
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al eliminar materiales con código {} del equipo {}", codigoCatalogo, equipoId, e);
             throw new DatabaseException("Error al eliminar materiales por código", e);
         }
-    }
-
-    // ── Helpers privados (ejecutan dentro de una transacción activa) ─────────
-
-    /**
-     * Recalcula y actualiza el estado del equipo basándose en el material con
-     * el estado más atrasado en el flujo de esterilización.
-     *
-     * <p>Debe llamarse dentro de una transacción activa.
-     */
-    private void recalcularEstadoEquipo(Connection conn, int equipoId) throws SQLException {
-        String sqlCalcularEstado =
-            "SELECT MIN(CASE " +
-            "  WHEN estado = 'Nuevo'         THEN 1 " +
-            "  WHEN estado = 'Lavando'       THEN 2 " +
-            "  WHEN estado = 'Lavado'        THEN 3 " +
-            "  WHEN estado = 'Empaquetado'   THEN 4 " +
-            "  WHEN estado = 'Esterilizando' THEN 5 " +
-            "  WHEN estado = 'Esterilizado'  THEN 6 " +
-            "  WHEN estado = 'Entregado'     THEN 7 " +
-            "  ELSE 1 END) AS orden_minimo " +
-            "FROM equipo_materiales WHERE equipo_id = ?";
-
-        EstadoEquipo estadoEquipo = EstadoEquipo.NUEVO;
-        try (PreparedStatement pstmt = conn.prepareStatement(sqlCalcularEstado)) {
-            pstmt.setInt(1, equipoId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    int ordenMinimo = rs.getInt("orden_minimo");
-                    for (EstadoEquipo estado : EstadoEquipo.values()) {
-                        if (estado.getOrden() == ordenMinimo) {
-                            estadoEquipo = estado;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        try (PreparedStatement pstmt = conn.prepareStatement(
-                "UPDATE equipos SET estado = ? WHERE id = ?")) {
-            pstmt.setString(1, estadoEquipo.getNombre());
-            pstmt.setInt(2, equipoId);
-            pstmt.executeUpdate();
-        }
-    }
-
-    /**
-     * Unifica filas de equipo_materiales que tienen el mismo equipo_id,
-     * codigo_catalogo y estado (ocurre cuando sublotes convergen al mismo estado).
-     *
-     * <p>Debe llamarse dentro de una transacción activa.
-     */
-    private void unificarMaterialesDuplicados(Connection conn, int equipoId) throws SQLException {
-        String sqlGrupos =
-            "SELECT codigo_catalogo, estado, SUM(cantidad) AS cantidad_total " +
-            "FROM equipo_materiales " +
-            "WHERE equipo_id = ? " +
-            "GROUP BY codigo_catalogo, estado " +
-            "HAVING COUNT(*) > 1";
-
-        List<int[]>  grupos        = new ArrayList<>();
-        List<String> estadosGrupos = new ArrayList<>();
-
-        try (PreparedStatement pstmt = conn.prepareStatement(sqlGrupos)) {
-            pstmt.setInt(1, equipoId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    grupos.add(new int[]{ rs.getInt("codigo_catalogo"), rs.getInt("cantidad_total") });
-                    estadosGrupos.add(rs.getString("estado"));
-                }
-            }
-        }
-
-        for (int i = 0; i < grupos.size(); i++) {
-            unificarGrupo(conn, equipoId,
-                grupos.get(i)[0], estadosGrupos.get(i), grupos.get(i)[1]);
-        }
-    }
-
-    private void unificarGrupo(Connection conn, int equipoId, int codigo,
-                                String estado, int cantidadTotal) throws SQLException {
-        String sqlSuperviviente =
-            "SELECT em.id " +
-            "FROM equipo_materiales em " +
-            "LEFT JOIN (" +
-            "  SELECT material_id, MAX(fecha) AS ultima_fecha " +
-            "  FROM material_movimientos GROUP BY material_id" +
-            ") mm ON em.id = mm.material_id " +
-            "WHERE em.equipo_id = ? AND em.codigo_catalogo = ? AND em.estado = ? " +
-            "ORDER BY mm.ultima_fecha DESC, em.id DESC " +
-            "LIMIT 1";
-
-        int supervivienteId;
-        try (PreparedStatement pstmt = conn.prepareStatement(sqlSuperviviente)) {
-            pstmt.setInt(1, equipoId);
-            pstmt.setInt(2, codigo);
-            pstmt.setString(3, estado);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (!rs.next()) return;
-                supervivienteId = rs.getInt("id");
-            }
-        }
-
-        try (PreparedStatement pstmt = conn.prepareStatement(
-                "UPDATE equipo_materiales SET cantidad = ? WHERE id = ?")) {
-            pstmt.setInt(1, cantidadTotal);
-            pstmt.setInt(2, supervivienteId);
-            pstmt.executeUpdate();
-        }
-
-        List<Integer> idsAEliminar = new ArrayList<>();
-        try (PreparedStatement pstmt = conn.prepareStatement(
-                "SELECT id FROM equipo_materiales " +
-                "WHERE equipo_id = ? AND codigo_catalogo = ? AND estado = ? AND id <> ?")) {
-            pstmt.setInt(1, equipoId);
-            pstmt.setInt(2, codigo);
-            pstmt.setString(3, estado);
-            pstmt.setInt(4, supervivienteId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) idsAEliminar.add(rs.getInt("id"));
-            }
-        }
-
-        if (idsAEliminar.isEmpty()) return;
-
-        try (PreparedStatement pstmt = conn.prepareStatement(
-                "UPDATE material_movimientos SET material_id = ? WHERE material_id = ?")) {
-            for (int id : idsAEliminar) {
-                pstmt.setInt(1, supervivienteId);
-                pstmt.setInt(2, id);
-                pstmt.addBatch();
-            }
-            pstmt.executeBatch();
-        }
-
-        try (PreparedStatement pstmt = conn.prepareStatement(
-                "DELETE FROM equipo_materiales WHERE id = ?")) {
-            for (int id : idsAEliminar) {
-                pstmt.setInt(1, id);
-                pstmt.addBatch();
-            }
-            pstmt.executeBatch();
-        }
-
-        log.debug("Unificados {} lotes del material código={} estado={} en equipo={} → superviviente={}",
-            idsAEliminar.size() + 1, codigo, estado, equipoId, supervivienteId);
     }
 }
