@@ -23,6 +23,7 @@ public class PantallaEquiposParaEntregar extends JPanel {
     private JTable tablaInstituciones;
     private JTable tablaMateriales;
     private JButton btnEntregarInstitucion;
+    private JLabel lblVolumen;
     private Consumer<InstitucionEntregaItem> onInstitucionSeleccionada;
     public PantallaEquiposParaEntregar(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
@@ -76,6 +77,13 @@ public class PantallaEquiposParaEntregar extends JPanel {
         gbc.gridy = 3;
         gbc.weighty = 0.55;
         contenido.add(scrollMateriales, gbc);
+
+        lblVolumen = new JLabel();
+        lblVolumen.setFont(Estilos.Fuentes.LABEL);
+        lblVolumen.setVisible(false);
+        gbc.gridy = 4;
+        gbc.weighty = 0;
+        contenido.add(lblVolumen, gbc);
 
         tablaInstituciones.getSelectionModel().addListSelectionListener(crearListenerSeleccionInstitucion());
 
@@ -157,6 +165,15 @@ public class PantallaEquiposParaEntregar extends JPanel {
         int respuesta = JOptionPane.showConfirmDialog(this, mensaje, titulo,
             JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
         return respuesta == JOptionPane.YES_OPTION;
+    }
+
+    public void mostrarVolumenCliente(int litros) {
+        lblVolumen.setText("Volumen total esterilizado: " + litros + " L");
+        lblVolumen.setVisible(true);
+    }
+
+    public void ocultarVolumen() {
+        lblVolumen.setVisible(false);
     }
 }
 

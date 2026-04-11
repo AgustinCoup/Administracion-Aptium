@@ -4,8 +4,6 @@ import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 
@@ -15,13 +13,7 @@ import java.util.Map;
  */
 public class MaterialService {
 
-    private static final Logger log = LoggerFactory.getLogger(MaterialService.class);
-
     private final MaterialDAO materialDAO;
-
-    public MaterialService() {
-        this(new MaterialDAO());
-    }
 
     public MaterialService(MaterialDAO materialDAO) {
         if (materialDAO == null) {
@@ -38,16 +30,8 @@ public class MaterialService {
      * @return true si la operación fue exitosa
      */
     public boolean actualizarMultiplesMateriales(int equipoId, Map<Integer, EstadoEquipo> actualizaciones) {
-        if (actualizaciones == null || actualizaciones.isEmpty()) {
-            return true;
-        }
-
-        try {
-            return materialDAO.actualizarMultiplesMateriales(equipoId, actualizaciones);
-        } catch (Exception e) {
-            log.error("Error al actualizar múltiples materiales", e);
-            return false;
-        }
+        if (actualizaciones == null || actualizaciones.isEmpty()) return true;
+        return materialDAO.actualizarMultiplesMateriales(equipoId, actualizaciones);
     }
 
     /**
@@ -58,16 +42,8 @@ public class MaterialService {
      * @return true si la operacion fue exitosa
      */
     public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {
-        if (movimientos == null || movimientos.isEmpty()) {
-            return true;
-        }
-
-        try {
-            return materialDAO.aplicarMovimientos(equipoId, movimientos);
-        } catch (Exception e) {
-            log.error("Error al aplicar movimientos de materiales", e);
-            return false;
-        }
+        if (movimientos == null || movimientos.isEmpty()) return true;
+        return materialDAO.aplicarMovimientos(equipoId, movimientos);
     }
 
     /**
@@ -78,12 +54,7 @@ public class MaterialService {
      * @return true si la operación fue exitosa
      */
     public boolean entregarInstitucionCompleta(int nroInstitucion) {
-        try {
-            return materialDAO.entregarInstitucionCompleta(nroInstitucion);
-        } catch (Exception e) {
-            log.error("Error al entregar institución completa: {}", nroInstitucion, e);
-            return false;
-        }
+        return materialDAO.entregarInstitucionCompleta(nroInstitucion);
     }
 }
 

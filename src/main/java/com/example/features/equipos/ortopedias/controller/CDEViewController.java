@@ -37,7 +37,7 @@ public class CDEViewController extends AbstractFilterController<EquipoRegistrabl
     public void cargarDatos() {
         List<EquipoRegistrableInterface> todos = new ArrayList<>();
         todos.addAll(model.obtenerTodosLosEquipos());
-        todos.addAll(model.getEquipoOtrosService().obtenerTodos());
+        todos.addAll(model.obtenerTodosLosEquiposOtros());
         recargarCache(todos);
     }
 

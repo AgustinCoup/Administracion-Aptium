@@ -66,6 +66,10 @@ public class DatabaseInitializer {
                 ejecutarScript(conn, "/db/seed_catalogo.sql");
             }
 
+            if (tablaVacia(conn, "catalogo_otros")) {
+                ejecutarScript(conn, "/db/seed_catalogo_otros.sql");
+            }
+
             log.info("Base de datos inicializada correctamente");
         } catch (SQLException e) {
             log.error("Error al inicializar base de datos", e);

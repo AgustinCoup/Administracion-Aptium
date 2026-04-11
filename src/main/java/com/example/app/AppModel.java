@@ -5,9 +5,8 @@ import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.features.equipos.ortopedias.service.EquipoService;
-import com.example.features.equipos.ortopedias.service.IEstadoValidator;
-import com.example.features.equipos.ortopedias.service.IMaterialFilter;
 import com.example.features.equipos.ortopedias.service.MaterialService;
+import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.catalogo.service.CatalogoOtrosService;
 import com.example.features.catalogo.service.CatalogoService;
@@ -19,7 +18,6 @@ import com.example.features.instituciones.model.Institucion;
 import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.autoclaves.service.AutoclaveService;
 import com.example.features.lotes.service.LoteService;
-import com.example.features.lotes.service.ICapacidadCalculator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.sql.Connection;
@@ -54,9 +52,6 @@ public class AppModel {
     private final MaterialService        materialService;
     private final AutoclaveService       autoclaveService;
     private final LoteService            loteService;
-    private final IEstadoValidator       estadoValidator;
-    private final IMaterialFilter        materialFilter;
-    private final ICapacidadCalculator   capacidadCalculator;
     private final CatalogoOtrosService   catalogoOtrosService;
     private final EquipoOtrosService     equipoOtrosService;
     private final EquipoCorreccionService equipoCorreccionService;
@@ -77,9 +72,6 @@ public class AppModel {
         this.materialService     = context.getMaterialService();
         this.autoclaveService    = context.getAutoclaveService();
         this.loteService         = context.getLoteService();
-        this.estadoValidator     = context.getEstadoValidator();
-        this.materialFilter      = context.getMaterialFilter();
-        this.capacidadCalculator = context.getCapacidadCalculator();
         this.catalogoOtrosService = context.getCatalogoOtrosService();
         this.equipoOtrosService = context.getEquipoOtrosService();
         this.equipoCorreccionService = context.getEquipoCorreccionService();
@@ -250,44 +242,36 @@ public class AppModel {
         return institucionService.guardarInstitucion(institucion);
     }
 
-    // ==================== LÓGICA DE NEGOCIO (estrategias) ====================
+    // ==================== EQUIPOS OTROS ====================
+
+    public List<EquipoOtros> obtenerTodosLosEquiposOtros() {
+        return equipoOtrosService.obtenerTodos();
+    }
+
+    public boolean guardarEquipoOtros(EquipoOtros equipo) {
+        return equipoOtrosService.guardarEquipo(equipo);
+    }
+
+    public boolean aplicarMovimientosOtros(int equipoId, List<MovimientoMaterial> movimientos) {
+        return equipoOtrosService.aplicarMovimientos(equipoId, movimientos);
+    }
+
+    public boolean entregarClienteOtrosCompleto(int nroCliente) {
+        return equipoOtrosService.entregarClienteCompleto(nroCliente);
+    }
+
+    // ==================== CATÁLOGO OTROS ====================
+
+    public List<String> buscarMaterialesOtrosPorDescripcion(String texto) {
+        return catalogoOtrosService.buscarPorDescripcionParcial(texto);
+    }
+
+    // ==================== CORRECCIONES ====================
 
     /**
-     * Valida transiciones de estado según las reglas del flujo de esterilización.
-     * Se expone para controllers que orquestan validaciones complejas de múltiples pasos.
+     * Expone el servicio completo porque CorreccionsController lo necesita como
+     * objeto para inicializar PantallaAuditoria. Excepción reconocida al patrón facade.
      */
-    public IEstadoValidator getEstadoValidator() {
-        return estadoValidator;
-    }
-
-    /**
-     * Filtra materiales según criterios de negocio configurables.
-     * Se expone para controllers que construyen vistas filtradas de materiales.
-     */
-    public IMaterialFilter getMaterialFilter() {
-        return materialFilter;
-    }
-
-    /**
-     * Realiza cálculos de volumen y capacidad de lotes.
-     * Se expone para controllers que necesitan calcular capacidades antes de lanzar.
-     */
-    public ICapacidadCalculator getCapacidadCalculator() {
-        return capacidadCalculator;
-    }
-
-    public CatalogoOtrosService getCatalogoOtrosService() {
-        return catalogoOtrosService;
-    }
-
-    public EquipoOtrosService getEquipoOtrosService() {
-        return equipoOtrosService;
-    }
-
-    public MaterialService getMaterialService() {
-        return materialService;
-    }
-
     public EquipoCorreccionService getEquipoCorreccionService() {
         return equipoCorreccionService;
     }

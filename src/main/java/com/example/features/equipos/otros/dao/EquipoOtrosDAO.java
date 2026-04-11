@@ -182,7 +182,8 @@ public class EquipoOtrosDAO {
         String sql =
             "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
             "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
-            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones " +
+            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
+            "eo.volumen_equipo " +
             "FROM equipo_otros eo " +
             "JOIN clientes c ON eo.nro_cliente = c.id " +
             "ORDER BY eo.estado, eo.id DESC";
@@ -200,6 +201,84 @@ public class EquipoOtrosDAO {
             log.error("Error al obtener todos los EquipoOtros", e);
         }
         return lista;
+    }
+
+    // ── Entrega ───────────────────────────────────────────────────────────────
+
+    /**
+     * Marca como ENTREGADO todos los materiales esterilizados de equipos_otros
+     * cuyo nro_cliente coincide. Para REMITO sin filas reales, actualiza
+     * el estado del equipo directamente.
+     */
+    public boolean entregarClienteCompleto(int nroCliente) {
+        Connection conn = null;
+        try {
+            conn = ConnectionPool.getConnection();
+            conn.setAutoCommit(false);
+
+            // IDs de equipos del cliente
+            List<Integer> equipoIds = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT id FROM equipo_otros WHERE nro_cliente = ?")) {
+                ps.setInt(1, nroCliente);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) equipoIds.add(rs.getInt("id"));
+                }
+            }
+
+            String sqlMov =
+                "INSERT INTO otros_material_movimientos " +
+                "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
+                "VALUES (?, ?, ?, ?, ?)";
+
+            for (int equipoId : equipoIds) {
+                // Materiales reales esterilizados
+                List<int[]> mats = new ArrayList<>();
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT id, cantidad, estado FROM equipo_otros_materiales " +
+                        "WHERE equipo_otros_id = ? AND estado = ? FOR UPDATE")) {
+                    ps.setInt(1, equipoId);
+                    ps.setString(2, EstadoEquipo.ESTERILIZADO.getNombre());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            mats.add(new int[]{rs.getInt("id"), rs.getInt("cantidad")});
+                        }
+                    }
+                }
+                for (int[] mat : mats) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE equipo_otros_materiales SET estado = ? WHERE id = ?")) {
+                        ps.setString(1, EstadoEquipo.ENTREGADO.getNombre());
+                        ps.setInt(2, mat[0]);
+                        ps.executeUpdate();
+                    }
+                    registrarMovimiento(conn, sqlMov, mat[0], equipoId, mat[1],
+                        EstadoEquipo.ESTERILIZADO.getNombre(), EstadoEquipo.ENTREGADO);
+                }
+
+                // REMITO sin filas reales: actualizar estado del equipo si está esterilizado
+                if (mats.isEmpty()) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE equipo_otros SET estado = ? " +
+                            "WHERE id = ? AND estado = ?")) {
+                        ps.setString(1, EstadoEquipo.ENTREGADO.getNombre());
+                        ps.setInt(2, equipoId);
+                        ps.setString(3, EstadoEquipo.ESTERILIZADO.getNombre());
+                        ps.executeUpdate();
+                    }
+                } else {
+                    recalcularEstadoEquipo(conn, equipoId);
+                }
+            }
+
+            conn.commit();
+            return true;
+        } catch (SQLException e) {
+            rollback(conn, e);
+            return false;
+        } finally {
+            close(conn);
+        }
     }
 
     // ── Aplicar movimientos (split/merge) ─────────────────────────────────────
@@ -246,10 +325,61 @@ public class EquipoOtrosDAO {
                 "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
                 "VALUES (?, ?, ?, ?, ?)";
 
+            boolean anyDetalles = false;  // Bug 1: saber si hay movimientos sobre materiales reales
+
             for (var mov : movimientos) {
                 int matId         = mov.getMaterialId();
                 int cantidadMover = mov.getCantidad();
                 EstadoEquipo dest = mov.getEstadoDestino();
+
+                // REMITO (matId==0): crear filas reales en equipo_otros_materiales
+                if (matId == 0) {
+                    // Leer estado y cantidad actuales del equipo
+                    String estadoActual;
+                    int remitoCant;
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT estado, remito_cantidad, requiere_lavado, requiere_empaque " +
+                            "FROM equipo_otros WHERE id = ?")) {
+                        ps.setInt(1, equipoId);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            if (!rs.next()) throw new SQLException("equipo_otros no encontrado: " + equipoId);
+                            estadoActual = rs.getString("estado");
+                            remitoCant   = rs.getInt("remito_cantidad");
+                            if (dest == null) {
+                                dest = Equipo.calcularSiguienteEstado(
+                                    EstadoEquipo.desdeBD(estadoActual),
+                                    rs.getBoolean("requiere_lavado"),
+                                    rs.getBoolean("requiere_empaque"));
+                            }
+                        }
+                    }
+                    if (dest == null) throw new SQLException("Estado final para REMITO: " + equipoId);
+
+                    int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, "Elementos");
+                    String sqlIns =
+                        "INSERT INTO equipo_otros_materiales " +
+                        "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
+                        "VALUES (?, ?, 'Elementos', ?, ?)";
+                    String sqlMov2 =
+                        "INSERT INTO otros_material_movimientos " +
+                        "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
+                        "VALUES (?, ?, ?, ?, ?)";
+
+                    if (cantidadMover >= remitoCant) {
+                        // Avanza todo: una sola fila en el nuevo estado
+                        int nuevoId = insertarMaterialOtros(conn, sqlIns, equipoId, catalogoId, remitoCant, dest.getNombre());
+                        registrarMovimiento(conn, sqlMov2, nuevoId, equipoId, remitoCant, estadoActual, dest);
+                    } else {
+                        // Split: fila restante (no necesita movimiento) + fila avanzada
+                        insertarMaterialOtros(conn, sqlIns, equipoId, catalogoId,
+                                remitoCant - cantidadMover, estadoActual);
+                        int idAvanzado = insertarMaterialOtros(conn, sqlIns, equipoId, catalogoId,
+                                cantidadMover, dest.getNombre());
+                        registrarMovimiento(conn, sqlMov2, idAvanzado, equipoId, cantidadMover, estadoActual, dest);
+                    }
+                    anyDetalles = true; // hay filas reales → recalcular
+                    continue;
+                }
 
                 int    catalogoId;
                 String descripcion;
@@ -267,6 +397,8 @@ public class EquipoOtrosDAO {
                         estadoActual   = rs.getString("estado");
                     }
                 }
+
+                anyDetalles = true;
 
                 if (cantidadMover <= 0 || cantidadMover > cantidadActual)
                     throw new SQLException("Cantidad inválida para mover: " + matId);
@@ -309,7 +441,10 @@ public class EquipoOtrosDAO {
                 }
             }
 
-            recalcularEstadoEquipo(conn, equipoId);
+            if (anyDetalles) {
+                unificarMaterialesDuplicados(conn, equipoId);  // Bug 2
+                recalcularEstadoEquipo(conn, equipoId);        // Bug 1: solo si hay materiales reales
+            }
             conn.commit();
             return true;
 
@@ -335,6 +470,7 @@ public class EquipoOtrosDAO {
         eq.setRemitoId(rs.getString("remito_id"));
         eq.setRemitoCantidad(rs.getObject("remito_cantidad") != null ? rs.getInt("remito_cantidad") : null);
         eq.setRemitoObservaciones(rs.getString("remito_observaciones"));
+        eq.setVolumenEquipo(rs.getInt("volumen_equipo"));
         return eq;
     }
 
@@ -400,6 +536,30 @@ public class EquipoOtrosDAO {
             ps.setString(1, nuevoEstado.getNombre());
             ps.setInt   (2, equipoId);
             ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Unifica filas de {@code equipo_otros_materiales} con la misma
+     * {@code (equipo_otros_id, descripcion, estado)}.
+     * Delega en {@link EquipoOtrosMaterialHelper#unificarMaterialesDuplicados}.
+     */
+    private void unificarMaterialesDuplicados(Connection conn, int equipoId) throws SQLException {
+        EquipoOtrosMaterialHelper.unificarMaterialesDuplicados(conn, equipoId);
+    }
+
+    private int insertarMaterialOtros(Connection conn, String sql, int equipoId,
+                                      int catalogoId, int cantidad, String estado) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, equipoId);
+            ps.setInt(2, catalogoId);
+            ps.setInt(3, cantidad);
+            ps.setString(4, estado);
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) return rs.getInt(1);
+                throw new SQLException("No se generó ID para equipo_otros_materiales");
+            }
         }
     }
 

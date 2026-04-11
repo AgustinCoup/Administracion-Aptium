@@ -2,6 +2,7 @@ package com.example.features.lotes.dao;
 
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.dao.EquipoMaterialHelper;
+import com.example.features.equipos.otros.dao.EquipoOtrosMaterialHelper;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMaterialInfo;
@@ -153,16 +154,26 @@ public class LoteDAO {
 
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
         List<LoteMaterialInfo> materiales = new ArrayList<>();
-        String sql = "SELECT em.id, em.equipo_id, em.codigo_catalogo, cd.descripcion, " +
-                     "em.cantidad, cd.volumen " +
-                     "FROM equipo_materiales em " +
-                     "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
-                     "WHERE em.lote_id = ? ORDER BY em.id";
+        // UNION: materiales de ortopedia + materiales de equipo_otros
+        String sql =
+            "SELECT em.id, em.equipo_id, em.codigo_catalogo, " +
+            "       COALESCE(cd.descripcion, '') AS descripcion, em.cantidad, " +
+            "       COALESCE(cd.volumen, 1) AS volumen " +
+            "FROM equipo_materiales em " +
+            "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
+            "WHERE em.lote_id = ? " +
+            "UNION ALL " +
+            "SELECT eom.id, eom.equipo_otros_id, 0, eom.descripcion, eom.cantidad, " +
+            "       COALESCE(eom.volumen_lote, 1) " +
+            "FROM equipo_otros_materiales eom " +
+            "WHERE eom.lote_id = ? " +
+            "ORDER BY id";
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setInt(1, loteId);
+            pstmt.setInt(2, loteId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
                     materiales.add(new LoteMaterialInfo(
@@ -186,11 +197,12 @@ public class LoteDAO {
     public boolean finalizarLote(int loteId) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
- 
+
             if (!actualizarEstadoLoteAbierto(conn, loteId, "EXITOSO")) {
-                return false;  // lote ya cerrado: tx.close() hace rollback automático
+                return false;
             }
- 
+
+            // Ortopedia
             Set<Integer> equiposAfectados = new HashSet<>();
             try (PreparedStatement pstmt = conn.prepareStatement(
                     "SELECT id, equipo_id, cantidad, estado FROM equipo_materiales WHERE lote_id = ? FOR UPDATE")) {
@@ -201,7 +213,6 @@ public class LoteDAO {
                         int equipoId = rs.getInt("equipo_id");
                         int cantidad = rs.getInt("cantidad");
                         String estadoActual = rs.getString("estado");
-
                         equiposAfectados.add(equipoId);
                         actualizarEstadoMaterial(conn, materialId, EstadoEquipo.ESTERILIZADO.getNombre());
                         registrarMovimiento(conn, materialId, equipoId, cantidad, estadoActual,
@@ -209,8 +220,28 @@ public class LoteDAO {
                     }
                 }
             }
- 
             procesarEquiposAfectados(conn, equiposAfectados);
+
+            // Otros
+            Set<Integer> equiposOtrosAfectados = new HashSet<>();
+            try (PreparedStatement pstmt = conn.prepareStatement(
+                    "SELECT id, equipo_otros_id, cantidad, estado FROM equipo_otros_materiales WHERE lote_id = ? FOR UPDATE")) {
+                pstmt.setInt(1, loteId);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        int materialId   = rs.getInt("id");
+                        int equipoOtrosId = rs.getInt("equipo_otros_id");
+                        int cantidad     = rs.getInt("cantidad");
+                        String estadoActual = rs.getString("estado");
+                        equiposOtrosAfectados.add(equipoOtrosId);
+                        actualizarEstadoMaterialOtros(conn, materialId, EstadoEquipo.ESTERILIZADO.getNombre());
+                        registrarMovimientoOtros(conn, materialId, equipoOtrosId, cantidad, estadoActual,
+                            EstadoEquipo.ESTERILIZADO.getNombre());
+                    }
+                }
+            }
+            procesarEquiposOtrosAfectados(conn, equiposOtrosAfectados);
+            for (Integer eqId : equiposOtrosAfectados) acumularVolumenEquipoOtros(conn, eqId, loteId);
 
             tx.commit();
             return true;
@@ -222,11 +253,12 @@ public class LoteDAO {
     public boolean marcarLoteFallo(int loteId) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
- 
+
             if (!actualizarEstadoLoteAbierto(conn, loteId, "FALLIDO")) {
-                return false;  // lote ya cerrado: rollback automático
+                return false;
             }
- 
+
+            // Ortopedia
             Set<Integer> equiposAfectados = new HashSet<>();
             try (PreparedStatement pstmt = conn.prepareStatement(
                     "SELECT id, equipo_id, cantidad FROM equipo_materiales " +
@@ -236,22 +268,41 @@ public class LoteDAO {
                 try (ResultSet rs = pstmt.executeQuery()) {
                     while (rs.next()) {
                         int materialId = rs.getInt("id");
-                        int equipoId = rs.getInt("equipo_id");
-                        int cantidad = rs.getInt("cantidad");
-
+                        int equipoId   = rs.getInt("equipo_id");
+                        int cantidad   = rs.getInt("cantidad");
                         equiposAfectados.add(equipoId);
-
                         String estadoAnterior = obtenerEstadoAnteriorDesdeMovimiento(conn, materialId,
                             EstadoEquipo.ESTERILIZANDO.getNombre(), EstadoEquipo.EMPAQUETADO.getNombre());
-
                         actualizarEstadoMaterial(conn, materialId, estadoAnterior);
                         registrarMovimiento(conn, materialId, equipoId, cantidad,
                             EstadoEquipo.ESTERILIZANDO.getNombre(), estadoAnterior);
                     }
                 }
             }
- 
             procesarEquiposAfectados(conn, equiposAfectados);
+
+            // Otros
+            Set<Integer> equiposOtrosAfectados = new HashSet<>();
+            try (PreparedStatement pstmt = conn.prepareStatement(
+                    "SELECT id, equipo_otros_id, cantidad FROM equipo_otros_materiales " +
+                    "WHERE lote_id = ? AND estado = ? FOR UPDATE")) {
+                pstmt.setInt(1, loteId);
+                pstmt.setString(2, EstadoEquipo.ESTERILIZANDO.getNombre());
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        int materialId    = rs.getInt("id");
+                        int equipoOtrosId = rs.getInt("equipo_otros_id");
+                        int cantidad      = rs.getInt("cantidad");
+                        equiposOtrosAfectados.add(equipoOtrosId);
+                        String estadoAnterior = obtenerEstadoAnteriorOtros(conn, materialId,
+                            EstadoEquipo.ESTERILIZANDO.getNombre(), EstadoEquipo.EMPAQUETADO.getNombre());
+                        actualizarEstadoMaterialOtros(conn, materialId, estadoAnterior);
+                        registrarMovimientoOtros(conn, materialId, equipoOtrosId, cantidad,
+                            EstadoEquipo.ESTERILIZANDO.getNombre(), estadoAnterior);
+                    }
+                }
+            }
+            procesarEquiposOtrosAfectados(conn, equiposOtrosAfectados);
 
             tx.commit();
             return true;
@@ -276,13 +327,20 @@ public class LoteDAO {
             int loteId = insertarLote(conn, idNegocio, anio, secuencia, autoclaveNombre,
                                       capacidadTotal, capacidadUsada);
 
-            Set<Integer> equiposAfectados = new HashSet<>();
+            Set<Integer> equiposAfectados      = new HashSet<>();
+            Set<Integer> equiposOtrosAfectados = new HashSet<>();
             for (LoteMovimiento mov : movimientos) {
-                equiposAfectados.add(mov.getEquipoId());
-                aplicarMovimientoLote(conn, loteId, mov);
+                if (mov.isEsOtros()) {
+                    equiposOtrosAfectados.add(mov.getEquipoId());
+                    aplicarMovimientoLoteOtros(conn, loteId, mov);
+                } else {
+                    equiposAfectados.add(mov.getEquipoId());
+                    aplicarMovimientoLote(conn, loteId, mov);
+                }
             }
 
             procesarEquiposSoloRecalculo(conn, equiposAfectados);
+            procesarEquiposOtrosAfectados(conn, equiposOtrosAfectados);
  
             tx.commit();
             return obtenerLotePorId(conn, loteId);
@@ -404,6 +462,14 @@ public class LoteDAO {
 
     private void unificarMaterialesDuplicados(Connection conn, int equipoId) throws SQLException {
         EquipoMaterialHelper.unificarMaterialesDuplicados(conn, equipoId);
+    }
+
+    private void procesarEquiposOtrosAfectados(Connection conn, Iterable<Integer> equiposOtrosAfectados)
+            throws SQLException {
+        for (Integer eqId : equiposOtrosAfectados) {
+            recalcularEstadoEquipoOtros(conn, eqId);
+            EquipoOtrosMaterialHelper.unificarMaterialesDuplicados(conn, eqId);
+        }
     }
 
     private void aplicarMovimientoLote(Connection conn, int loteId,
@@ -533,6 +599,244 @@ public class LoteDAO {
             }
         }
         throw new SQLException("No se encontró el lote recién insertado con id=" + loteId);
+    }
+
+    // ── Helpers para equipo_otros_materiales ─────────────────────────────────
+
+    /**
+     * Aplica un movimiento de lote sobre equipo_otros_materiales.
+     * materialId < 0 indica REMITO (no hay fila real); se crea una nueva.
+     * materialId > 0 indica DETALLES (fila existente).
+     */
+    private void aplicarMovimientoLoteOtros(Connection conn, int loteId,
+                                             LoteMovimiento movimiento) throws SQLException {
+        int materialId    = movimiento.getMaterialId();
+        int equipoOtrosId = movimiento.getEquipoId();
+        int cantidadMover = movimiento.getCantidad();
+        Integer volumenLote = movimiento.getVolumenOtros();
+
+        if (materialId < 0) {
+            // REMITO: crear fila sintética en equipo_otros_materiales
+            int catalogoId = obtenerOCrearCatalogoOtros(conn, "Elementos");
+            int nuevoMatId;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO equipo_otros_materiales " +
+                    "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado, lote_id, volumen_lote) " +
+                    "VALUES (?, ?, 'Elementos', ?, ?, ?, ?)",
+                    Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, equipoOtrosId);
+                ps.setInt(2, catalogoId);
+                ps.setInt(3, cantidadMover);
+                ps.setString(4, EstadoEquipo.ESTERILIZANDO.getNombre());
+                ps.setInt(5, loteId);
+                if (volumenLote != null) ps.setInt(6, volumenLote);
+                else                     ps.setNull(6, Types.INTEGER);
+                ps.executeUpdate();
+                try (ResultSet rs = ps.getGeneratedKeys()) {
+                    if (!rs.next()) throw new SQLException("No se generó ID para material remito en lote");
+                    nuevoMatId = rs.getInt(1);
+                }
+            }
+            // Actualizar estado del equipo_otros a ESTERILIZANDO
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE equipo_otros SET estado = ? WHERE id = ?")) {
+                ps.setString(1, EstadoEquipo.ESTERILIZANDO.getNombre());
+                ps.setInt(2, equipoOtrosId);
+                ps.executeUpdate();
+            }
+            registrarMovimientoOtros(conn, nuevoMatId, equipoOtrosId, cantidadMover,
+                null, EstadoEquipo.ESTERILIZANDO.getNombre());
+            return;
+        }
+
+        // DETALLES: fila real
+        String sqlSelect =
+            "SELECT catalogo_otros_id, descripcion, cantidad, estado " +
+            "FROM equipo_otros_materiales WHERE id = ? AND equipo_otros_id = ? FOR UPDATE";
+
+        int    catalogoId;
+        String descripcion;
+        int    cantidadActual;
+        String estadoActual;
+
+        try (PreparedStatement ps = conn.prepareStatement(sqlSelect)) {
+            ps.setInt(1, materialId);
+            ps.setInt(2, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new SQLException("No se encontró material otros para lote: " + materialId);
+                catalogoId     = rs.getInt("catalogo_otros_id");
+                descripcion    = rs.getString("descripcion");
+                cantidadActual = rs.getInt("cantidad");
+                estadoActual   = rs.getString("estado");
+            }
+        }
+
+        if (cantidadMover <= 0 || cantidadMover > cantidadActual)
+            throw new SQLException("Cantidad inválida para mover en lote otros: " + materialId);
+
+        if (cantidadMover == cantidadActual) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE equipo_otros_materiales SET estado = ?, lote_id = ?, volumen_lote = ? WHERE id = ?")) {
+                ps.setString(1, EstadoEquipo.ESTERILIZANDO.getNombre());
+                ps.setInt(2, loteId);
+                if (volumenLote != null) ps.setInt(3, volumenLote);
+                else                     ps.setNull(3, Types.INTEGER);
+                ps.setInt(4, materialId);
+                ps.executeUpdate();
+            }
+            registrarMovimientoOtros(conn, materialId, equipoOtrosId, cantidadMover, estadoActual,
+                EstadoEquipo.ESTERILIZANDO.getNombre());
+        } else {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE equipo_otros_materiales SET cantidad = ? WHERE id = ?")) {
+                ps.setInt(1, cantidadActual - cantidadMover);
+                ps.setInt(2, materialId);
+                ps.executeUpdate();
+            }
+            int nuevoMatId;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO equipo_otros_materiales " +
+                    "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado, lote_id, volumen_lote) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, equipoOtrosId);
+                ps.setInt(2, catalogoId);
+                ps.setString(3, descripcion);
+                ps.setInt(4, cantidadMover);
+                ps.setString(5, EstadoEquipo.ESTERILIZANDO.getNombre());
+                ps.setInt(6, loteId);
+                if (volumenLote != null) ps.setInt(7, volumenLote);
+                else                     ps.setNull(7, Types.INTEGER);
+                ps.executeUpdate();
+                try (ResultSet rs = ps.getGeneratedKeys()) {
+                    if (!rs.next()) throw new SQLException("No se generó ID para split material otros en lote");
+                    nuevoMatId = rs.getInt(1);
+                }
+            }
+            registrarMovimientoOtros(conn, nuevoMatId, equipoOtrosId, cantidadMover, estadoActual,
+                EstadoEquipo.ESTERILIZANDO.getNombre());
+        }
+    }
+
+    private int obtenerOCrearCatalogoOtros(Connection conn, String descripcion) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT id FROM catalogo_otros WHERE descripcion = ?")) {
+            ps.setString(1, descripcion);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO catalogo_otros (descripcion) VALUES (?)",
+                Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, descripcion);
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        }
+        throw new SQLException("No se pudo obtener o crear catalogo_otros: " + descripcion);
+    }
+
+    private void recalcularEstadoEquipoOtros(Connection conn, int equipoOtrosId) throws SQLException {
+        String sqlCalc =
+            "SELECT MIN(CASE " +
+            "  WHEN estado='Nuevo'         THEN 1 " +
+            "  WHEN estado='Lavando'       THEN 2 " +
+            "  WHEN estado='Lavado'        THEN 3 " +
+            "  WHEN estado='Empaquetado'   THEN 4 " +
+            "  WHEN estado='Esterilizando' THEN 5 " +
+            "  WHEN estado='Esterilizado'  THEN 6 " +
+            "  WHEN estado='Entregado'     THEN 7 " +
+            "  ELSE 1 END) AS orden_minimo " +
+            "FROM equipo_otros_materiales WHERE equipo_otros_id = ?";
+
+        EstadoEquipo nuevoEstado = EstadoEquipo.NUEVO;
+        try (PreparedStatement ps = conn.prepareStatement(sqlCalc)) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && rs.getObject("orden_minimo") != null) {
+                    int orden = rs.getInt("orden_minimo");
+                    for (EstadoEquipo e : EstadoEquipo.values()) {
+                        if (e.getOrden() == orden) { nuevoEstado = e; break; }
+                    }
+                }
+            }
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE equipo_otros SET estado = ? WHERE id = ?")) {
+            ps.setString(1, nuevoEstado.getNombre());
+            ps.setInt(2, equipoOtrosId);
+            ps.executeUpdate();
+        }
+    }
+
+    private void actualizarEstadoMaterialOtros(Connection conn, int materialId,
+                                               String nuevoEstado) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE equipo_otros_materiales SET estado = ? WHERE id = ?")) {
+            ps.setString(1, nuevoEstado);
+            ps.setInt(2, materialId);
+            ps.executeUpdate();
+        }
+    }
+
+    private void registrarMovimientoOtros(Connection conn, int materialId, int equipoOtrosId,
+                                          int cantidad, String estadoOrigen,
+                                          String estadoDestino) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO otros_material_movimientos " +
+                "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
+                "VALUES (?, ?, ?, ?, ?)")) {
+            ps.setInt(1, materialId);
+            ps.setInt(2, equipoOtrosId);
+            ps.setInt(3, cantidad);
+            if (estadoOrigen != null) ps.setString(4, estadoOrigen);
+            else                      ps.setNull(4, Types.VARCHAR);
+            ps.setString(5, estadoDestino);
+            ps.executeUpdate();
+        }
+    }
+
+    /** Suma los volumen_lote del equipo en este lote y los acumula en equipo_otros.volumen_equipo. */
+    private void acumularVolumenEquipoOtros(Connection conn, int equipoOtrosId,
+                                            int loteId) throws SQLException {
+        int suma = 0;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COALESCE(SUM(volumen_lote), 0) FROM equipo_otros_materiales " +
+                "WHERE equipo_otros_id = ? AND lote_id = ?")) {
+            ps.setInt(1, equipoOtrosId);
+            ps.setInt(2, loteId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) suma = rs.getInt(1);
+            }
+        }
+        if (suma > 0) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE equipo_otros SET volumen_equipo = volumen_equipo + ? WHERE id = ?")) {
+                ps.setInt(1, suma);
+                ps.setInt(2, equipoOtrosId);
+                ps.executeUpdate();
+            }
+        }
+    }
+
+    private String obtenerEstadoAnteriorOtros(Connection conn, int materialId,
+                                              String estadoDestino, String valorPorDefecto)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT estado_origen FROM otros_material_movimientos " +
+                "WHERE material_id = ? AND estado_destino = ? ORDER BY fecha DESC LIMIT 1")) {
+            ps.setInt(1, materialId);
+            ps.setString(2, estadoDestino);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String est = rs.getString("estado_origen");
+                    return est != null ? est : valorPorDefecto;
+                }
+            }
+        }
+        return valorPorDefecto;
     }
 
 }

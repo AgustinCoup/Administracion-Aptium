@@ -1,6 +1,7 @@
 package com.example.features.equipos.ortopedias.controller;
 
 import com.example.common.constants.Constantes;
+import com.example.common.model.EquipoKey;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
@@ -30,11 +31,10 @@ public class RegistrarEstadoController {
     private final AppModel                    model;
     private OnEstadosActualizadosListener     onEstadosActualizadosListener;
 
-    // Buffer de cambios pendientes: Map<EquipoId, Map<MaterialId, Movimiento>>
-    // La clave de equipo es el ID de la tabla correspondiente (equipos o equipo_otros).
-    // Para distinguir el tipo guardamos el equipo completo en equiposPendientes.
-    private final Map<Integer, Map<Integer, MovimientoMaterial>> cambiosPendientes = new HashMap<>();
-    private final Map<Integer, EquipoRegistrableInterface>               equiposPendientes = new HashMap<>();
+    // Buffer de cambios pendientes indexado por EquipoKey (tipo + id).
+    // Necesario porque equipos y equipo_otros tienen auto-increment independientes.
+    private final Map<EquipoKey, Map<Integer, MovimientoMaterial>> cambiosPendientes = new HashMap<>();
+    private final Map<EquipoKey, EquipoRegistrableInterface>       equiposPendientes = new HashMap<>();
 
     public RegistrarEstadoController(PantallaRegistrarEstado panel, AppModel model,
                                      OnEstadosActualizadosListener onEstadosActualizadosListener) {
@@ -82,7 +82,7 @@ public class RegistrarEstadoController {
             .collect(Collectors.toList());
 
         // Equipos "otros"
-        List<EquipoRegistrableInterface> otros = model.getEquipoOtrosService().obtenerTodos()
+        List<EquipoRegistrableInterface> otros = model.obtenerTodosLosEquiposOtros()
             .stream()
             .filter(eq -> eq.calcularEstado() != EstadoEquipo.ENTREGADO)
             .collect(Collectors.toList());
@@ -165,10 +165,10 @@ public class RegistrarEstadoController {
         );
         if (cantidad == null) return;
 
-        int equipoId = equipo.getId();
+        EquipoKey key = new EquipoKey(equipo.getTipo(), equipo.getId());
 
-        if (cambiosPendientes.containsKey(equipoId) &&
-            cambiosPendientes.get(equipoId).containsKey(material.getId())) {
+        if (cambiosPendientes.containsKey(key) &&
+            cambiosPendientes.get(key).containsKey(material.getId())) {
             panel.mostrarAdvertencia(Constantes.Mensajes.MATERIAL_CAMBIO_PENDIENTE_DUP);
             return;
         }
@@ -180,11 +180,11 @@ public class RegistrarEstadoController {
             return;
         }
 
-        cambiosPendientes.putIfAbsent(equipoId, new HashMap<>());
-        equiposPendientes.put(equipoId, equipo);
+        cambiosPendientes.putIfAbsent(key, new HashMap<>());
+        equiposPendientes.put(key, equipo);
 
         MovimientoMaterial movimiento = new MovimientoMaterial(material.getId(), cantidad, siguienteEstado);
-        cambiosPendientes.get(equipoId).put(material.getId(), movimiento);
+        cambiosPendientes.get(key).put(material.getId(), movimiento);
 
         equipo.aplicarMovimientoPreview(material, cantidad, siguienteEstado);
         panel.recargarMateriales();
@@ -235,24 +235,20 @@ public class RegistrarEstadoController {
         boolean todosExitosos = true;
         StringBuilder errores = new StringBuilder();
 
-        for (Map.Entry<Integer, Map<Integer, MovimientoMaterial>> entry : cambiosPendientes.entrySet()) {
-            Integer equipoId                         = entry.getKey();
+        for (Map.Entry<EquipoKey, Map<Integer, MovimientoMaterial>> entry : cambiosPendientes.entrySet()) {
+            EquipoKey key                            = entry.getKey();
             List<MovimientoMaterial> movs            = new java.util.ArrayList<>(entry.getValue().values());
-            EquipoRegistrableInterface equipo                = equiposPendientes.get(equipoId);
-            EquipoRegistrableInterface.TipoEquipo tipo       = equipo != null
-                ? equipo.getTipo()
-                : EquipoRegistrableInterface.TipoEquipo.ORTOPEDIA; // fallback seguro
 
             boolean exitoso;
-            if (tipo == EquipoRegistrableInterface.TipoEquipo.OTROS) {
-                exitoso = model.getEquipoOtrosService().aplicarMovimientos(equipoId, movs);
+            if (key.getTipo() == EquipoRegistrableInterface.TipoEquipo.OTROS) {
+                exitoso = model.aplicarMovimientosOtros(key.getId(), movs);
             } else {
-                exitoso = model.getMaterialService().aplicarMovimientos(equipoId, movs);
+                exitoso = model.aplicarMovimientos(key.getId(), movs);
             }
 
             if (!exitoso) {
                 todosExitosos = false;
-                errores.append(String.format(Constantes.Mensajes.ERROR_ACTUALIZAR_EQUIPO_ID, equipoId));
+                errores.append(String.format(Constantes.Mensajes.ERROR_ACTUALIZAR_EQUIPO_ID, key.getId()));
             }
         }
 

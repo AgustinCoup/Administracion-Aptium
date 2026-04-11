@@ -103,8 +103,7 @@ public class OtrosInputController {
                 consumerSugerencias.accept(List.of());
                 return;
             }
-            List<String> sugerencias = model.getCatalogoOtrosService()
-                                            .buscarPorDescripcionParcial(texto.trim());
+            List<String> sugerencias = model.buscarMaterialesOtrosPorDescripcion(texto.trim());
             consumerSugerencias.accept(sugerencias);
         });
     }
@@ -180,7 +179,7 @@ public class OtrosInputController {
     private void persistir(EquipoOtros equipo) {
         boolean exito;
         try {
-            exito = model.getEquipoOtrosService().guardarEquipo(equipo);
+            exito = model.guardarEquipoOtros(equipo);
         } catch (com.example.common.exception.ValidationException ex) {
             String msg = ex.getValidationErrors().isEmpty()
                 ? "Error de validación."

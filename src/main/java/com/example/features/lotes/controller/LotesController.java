@@ -8,6 +8,9 @@ import com.example.features.autoclaves.model.Autoclave;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.Material;
+import com.example.features.equipos.otros.model.EquipoOtros;
+import com.example.features.equipos.otros.model.MaterialOtros;
+import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
@@ -44,10 +47,11 @@ public class LotesController {
     private AutoclaveItem autoclaveSeleccionado;
 
     /**
-     * Mapa equipoId → clienteNombre, construido en cargarDatos().
-     * Se usa para poblar la columna "Cliente" en ambas tablas de materiales.
+     * Mapa equipoId → clienteNombre para ortopedia y otros respectivamente.
+     * Se usan mapas separados para evitar colisiones de ID entre tablas distintas.
      */
-    private Map<Integer, String> clientesPorEquipo = new HashMap<>();
+    private Map<Integer, String> clientesPorEquipo      = new HashMap<>();
+    private Map<Integer, String> clientesPorEquipoOtros = new HashMap<>();
 
     // DataFlavor personalizado para transferir MaterialLoteItem en la misma JVM
     public static final DataFlavor MATERIAL_LOTE_FLAVOR;
@@ -142,11 +146,15 @@ public class LotesController {
         // NOTA: se asume que Equipo expone getClienteNombre(). Si el método tiene otro
         //       nombre en tu modelo (ej. getCliente()), cambiá solo esa línea.
         clientesPorEquipo.clear();
+        clientesPorEquipoOtros.clear();
         if (equipoContexto != null) {
             clientesPorEquipo.put(equipoContexto.getId(), equipoContexto.getClienteNombre());
         } else {
             for (Equipo eq : model.obtenerTodosLosEquipos()) {
                 clientesPorEquipo.put(eq.getId(), eq.getClienteNombre());
+            }
+            for (EquipoOtros eq : model.obtenerTodosLosEquiposOtros()) {
+                clientesPorEquipoOtros.put(eq.getId(), eq.getClienteNombre());
             }
         }
 
@@ -225,6 +233,32 @@ public class LotesController {
             }
         }
 
+        // EquipoOtros: REMITO y DETALLES
+        for (EquipoOtros equipo : model.obtenerTodosLosEquiposOtros()) {
+            String clienteNombre = clientesPorEquipoOtros.getOrDefault(equipo.getId(), "");
+            List<MaterialOtros> mats = equipo.getMateriales();
+            boolean remitoSinFilas = equipo.getTipoIngreso() == TipoIngresoOtros.REMITO
+                                     && (mats == null || mats.isEmpty());
+            if (remitoSinFilas) {
+                EstadoEquipo siguiente = equipo.getSiguienteEstado(equipo.getEstado());
+                if (siguiente != EstadoEquipo.ESTERILIZANDO) continue;
+                int cantidad = equipo.getRemitoCantidad() != null ? equipo.getRemitoCantidad() : 1;
+                // materialId negativo = -equipoId, señal única de REMITO para el DAO
+                disponibles.add(new MaterialLoteItem(
+                        -equipo.getId(), equipo.getId(), "Elementos", cantidad, 1, clienteNombre, true));
+            } else {
+                if (mats == null) continue;
+                for (MaterialOtros material : mats) {
+                    EstadoEquipo siguiente = equipo.getSiguienteEstado(material.getEstado());
+                    if (siguiente != EstadoEquipo.ESTERILIZANDO) continue;
+                    if (material.getId() == null) continue;
+                    disponibles.add(new MaterialLoteItem(
+                            material.getId(), equipo.getId(), material.getDescripcion(),
+                            material.getCantidad(), 1, clienteNombre, true));
+                }
+            }
+        }
+
         return disponibles;
     }
 
@@ -265,7 +299,10 @@ public class LotesController {
             List<LoteMaterialInfo> materialesLote = lote != null ? lote.getMateriales() : new ArrayList<>();
             List<MaterialLoteItem> items = new ArrayList<>();
             for (LoteMaterialInfo info : materialesLote) {
-                String clienteNombre = clientesPorEquipo.getOrDefault(info.getEquipoId(), "");
+                // codigoCatalogo == 0 indica material de equipo_otros_materiales
+                String clienteNombre = info.getCodigoCatalogo() == 0
+                        ? clientesPorEquipoOtros.getOrDefault(info.getEquipoId(), "")
+                        : clientesPorEquipo.getOrDefault(info.getEquipoId(), "");
                 items.add(new MaterialLoteItem(
                         info.getMaterialId(),
                         info.getEquipoId(),
@@ -326,124 +363,197 @@ public class LotesController {
 
         if (tablaDisponibles == null || tablaAutoclave == null || MATERIAL_LOTE_FLAVOR == null) return;
 
-        // Tabla Disponibles: ORIGEN para drag
-        TransferHandler handlerDisponibles = new TransferHandler() {
-            @Override public int getSourceActions(JComponent c) { return COPY; }
-
-            @Override
-            protected Transferable createTransferable(JComponent c) {
-                MaterialLoteItem item = panel.getMaterialDisponibleSeleccionado();
-                return item == null ? null : new MaterialLoteTransferable(item, MATERIAL_LOTE_FLAVOR);
-            }
-
-            @Override
-            public boolean canImport(TransferSupport support) {
-                if (!support.isDrop()) return false;
-                boolean ok = support.isDataFlavorSupported(MATERIAL_LOTE_FLAVOR);
-                support.setShowDropLocation(ok);
-                return ok;
-            }
-
-            @Override
-            public boolean importData(TransferSupport support) {
-                if (!canImport(support)) return false;
-                try {
-                    MaterialLoteItem item = (MaterialLoteItem) support.getTransferable().getTransferData(MATERIAL_LOTE_FLAVOR);
-                    quitarMaterialDePendientes(item);
-                    cargarDatos();
-                    return true;
-                } catch (Exception e) { log.error("Error al procesar drop en tabla disponibles", e); return false; }
-            }
-        };
-
         tablaDisponibles.setDragEnabled(true);
         tablaDisponibles.setDropMode(DropMode.ON);
         tablaDisponibles.setFillsViewportHeight(true);
-        tablaDisponibles.setTransferHandler(handlerDisponibles);
-
-        // Tabla Autoclave: DESTINO para drop
-        TransferHandler handlerAutoclave = new TransferHandler() {
-            @Override public int getSourceActions(JComponent c) { return MOVE; }
-
-            @Override
-            protected Transferable createTransferable(JComponent c) {
-                MaterialLoteItem item = panel.getMaterialAutoclaveSeleccionado();
-                return item == null ? null : new MaterialLoteTransferable(item, MATERIAL_LOTE_FLAVOR);
-            }
-
-            @Override
-            protected void exportDone(JComponent source, Transferable data, int action) {
-                if (action == MOVE) SwingUtilities.invokeLater(() -> cargarDatos());
-            }
-
-            @Override
-            public boolean canImport(TransferSupport support) {
-                if (!support.isDrop()) return false;
-                if (!support.isDataFlavorSupported(MATERIAL_LOTE_FLAVOR)) return false;
-                if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()) return false;
-                support.setShowDropLocation(true);
-                return true;
-            }
-
-            @Override
-            public boolean importData(TransferSupport support) {
-                if (!canImport(support)) return false;
-                if (autoclaveSeleccionado == null) {
-                    SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Debe seleccionar un autoclave primero."));
-                    return false;
-                }
-                if (autoclaveSeleccionado.isOcupado()) {
-                    SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Este autoclave ya tiene un lote en progreso."));
-                    return false;
-                }
-                try {
-                    MaterialLoteItem item = (MaterialLoteItem) support.getTransferable().getTransferData(MATERIAL_LOTE_FLAVOR);
-                    SwingUtilities.invokeLater(() -> agregarMaterial(item));
-                    return true;
-                } catch (Exception e) {
-                    log.error("Error al procesar drop en tabla autoclave", e);
-                    SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Error: " + e.getMessage()));
-                    return false;
-                }
-            }
-        };
+        tablaDisponibles.setTransferHandler(new DisponiblesTransferHandler());
 
         tablaAutoclave.setDragEnabled(true);
         tablaAutoclave.setDropMode(DropMode.ON);
         tablaAutoclave.setFillsViewportHeight(true);
-        tablaAutoclave.setTransferHandler(handlerAutoclave);
+        tablaAutoclave.setTransferHandler(new AutoclaveTransferHandler());
+    }
+
+    // ── Tabla Disponibles: ORIGEN para drag, DESTINO para devolver ────────────
+
+    private class DisponiblesTransferHandler extends TransferHandler {
+        @Override public int getSourceActions(JComponent c) { return COPY; }
+
+        @Override
+        protected Transferable createTransferable(JComponent c) {
+            MaterialLoteItem item = panel.getMaterialDisponibleSeleccionado();
+            return item == null ? null : new MaterialLoteTransferable(item, MATERIAL_LOTE_FLAVOR);
+        }
+
+        @Override
+        public boolean canImport(TransferSupport support) {
+            if (!support.isDrop()) return false;
+            boolean ok = support.isDataFlavorSupported(MATERIAL_LOTE_FLAVOR);
+            support.setShowDropLocation(ok);
+            return ok;
+        }
+
+        @Override
+        public boolean importData(TransferSupport support) {
+            if (!canImport(support)) return false;
+            try {
+                MaterialLoteItem item = (MaterialLoteItem) support.getTransferable()
+                        .getTransferData(MATERIAL_LOTE_FLAVOR);
+                quitarMaterialDePendientes(item);
+                cargarDatos();
+                return true;
+            } catch (Exception e) {
+                log.error("Error al procesar drop en tabla disponibles", e);
+                return false;
+            }
+        }
+    }
+
+    // ── Tabla Autoclave: DESTINO para drop, ORIGEN para devolver ─────────────
+
+    private class AutoclaveTransferHandler extends TransferHandler {
+        private boolean draggingFromSelf = false;
+
+        @Override public int getSourceActions(JComponent c) { return MOVE; }
+
+        @Override
+        protected Transferable createTransferable(JComponent c) {
+            MaterialLoteItem item = panel.getMaterialAutoclaveSeleccionado();
+            if (item == null) return null;
+            draggingFromSelf = true;
+            return new MaterialLoteTransferable(item, MATERIAL_LOTE_FLAVOR);
+        }
+
+        @Override
+        protected void exportDone(JComponent source, Transferable data, int action) {
+            draggingFromSelf = false;
+            if (action == MOVE) SwingUtilities.invokeLater(() -> cargarDatos());
+        }
+
+        @Override
+        public boolean canImport(TransferSupport support) {
+            if (!support.isDrop()) return false;
+            if (!support.isDataFlavorSupported(MATERIAL_LOTE_FLAVOR)) return false;
+            if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()) return false;
+            if (draggingFromSelf) return false;
+            support.setShowDropLocation(true);
+            return true;
+        }
+
+        @Override
+        public boolean importData(TransferSupport support) {
+            if (!canImport(support)) return false;
+            if (autoclaveSeleccionado == null) {
+                SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Debe seleccionar un autoclave primero."));
+                return false;
+            }
+            if (autoclaveSeleccionado.isOcupado()) {
+                SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Este autoclave ya tiene un lote en progreso."));
+                return false;
+            }
+            try {
+                MaterialLoteItem item = (MaterialLoteItem) support.getTransferable()
+                        .getTransferData(MATERIAL_LOTE_FLAVOR);
+                SwingUtilities.invokeLater(() -> agregarMaterial(item));
+                return true;
+            } catch (Exception e) {
+                log.error("Error al procesar drop en tabla autoclave", e);
+                SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Error: " + e.getMessage()));
+                return false;
+            }
+        }
     }
 
     private void agregarMaterial(MaterialLoteItem item) {
         if (item == null || autoclaveSeleccionado == null) return;
 
-        Integer cantidadElegida = CantidadDialogHelper.pedirCantidad(
-                panel,
-                item.getDescripcion(),
-                item.getCantidad(),
-                (chkTodos, spinner) -> chkTodos.addActionListener(e -> {
-                    if (chkTodos.isSelected()) {
-                        spinner.setValue(item.getCantidad());
-                        spinner.setEnabled(false);
-                    } else {
-                        spinner.setEnabled(true);
-                    }
-                })
-        );
+        Integer cantidadElegida;
+        Integer volumenOtros = null;
 
-        if (cantidadElegida == null) return;
+        if (item.isEsOtros()) {
+            int[] result = pedirCantidadYVolumen(item.getDescripcion(), item.getCantidad());
+            if (result == null) return;
+            cantidadElegida = result[0];
+            volumenOtros    = result[1];
+        } else {
+            cantidadElegida = CantidadDialogHelper.pedirCantidad(
+                    panel,
+                    item.getDescripcion(),
+                    item.getCantidad(),
+                    (chkTodos, spinner) -> chkTodos.addActionListener(e -> {
+                        if (chkTodos.isSelected()) {
+                            spinner.setValue(item.getCantidad());
+                            spinner.setEnabled(false);
+                        } else {
+                            spinner.setEnabled(true);
+                        }
+                    })
+            );
+            if (cantidadElegida == null) return;
+        }
 
-        int volumenNecesario = cantidadElegida * item.getVolumen();
-        int capacidadUsada   = calcularCapacidadPendiente(autoclaveSeleccionado.getNombre());
+        int volumenNecesario = item.isEsOtros()
+                ? volumenOtros
+                : cantidadElegida * item.getVolumen();
+        int capacidadUsada = calcularCapacidadPendiente(autoclaveSeleccionado.getNombre());
         if (capacidadUsada + volumenNecesario > autoclaveSeleccionado.getCapacidad()) {
             panel.mostrarAdvertencia(
                     "El volumen calculado supera la capacidad del autoclave.\n" +
                     "Puede ajustar el volumen final en el campo \"Volumen final\" antes de lanzar.");
         }
 
+        item.setVolumenOtros(volumenOtros);
         ajustarDisponibles(item, cantidadElegida);
         agregarPendiente(autoclaveSeleccionado.getNombre(), item, cantidadElegida);
         cargarDatos();
+    }
+
+    /**
+     * Diálogo unificado para equipo_otros: pide cantidad y litros en un solo paso.
+     * Retorna int[]{cantidad, litros} o null si el usuario cancela.
+     */
+    private int[] pedirCantidadYVolumen(String descripcion, int cantidadMax) {
+        JSpinner spCantidad = new JSpinner(new SpinnerNumberModel(cantidadMax, 1, cantidadMax, 1));
+        spCantidad.setEditor(new JSpinner.NumberEditor(spCantidad, "0"));
+        JCheckBox chkTodos = new JCheckBox("Todos", true);
+        spCantidad.setEnabled(false);
+        chkTodos.addActionListener(e -> {
+            if (chkTodos.isSelected()) {
+                spCantidad.setValue(cantidadMax);
+                spCantidad.setEnabled(false);
+            } else {
+                spCantidad.setEnabled(true);
+            }
+        });
+
+        JSpinner spLitros = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
+        spLitros.setEditor(new JSpinner.NumberEditor(spLitros, "0"));
+
+        JPanel dlgPanel = new JPanel(new java.awt.GridBagLayout());
+        java.awt.GridBagConstraints gbc = new java.awt.GridBagConstraints();
+        gbc.insets = new java.awt.Insets(4, 5, 4, 5);
+        gbc.anchor = java.awt.GridBagConstraints.WEST;
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        dlgPanel.add(new JLabel("<html><b>" + descripcion + "</b></html>"), gbc);
+
+        gbc.gridy = 1; gbc.gridwidth = 1;
+        dlgPanel.add(new JLabel("Cantidad:"), gbc);
+        gbc.gridx = 1;
+        dlgPanel.add(spCantidad, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 2;
+        dlgPanel.add(chkTodos, gbc);
+
+        gbc.gridy = 3;
+        dlgPanel.add(new JLabel("Volumen (litros):"), gbc);
+        gbc.gridx = 1;
+        dlgPanel.add(spLitros, gbc);
+
+        int res = JOptionPane.showConfirmDialog(panel, dlgPanel,
+                "Agregar al autoclave", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+        if (res != JOptionPane.OK_OPTION) return null;
+        return new int[]{ (Integer) spCantidad.getValue(), (Integer) spLitros.getValue() };
     }
 
     private void ajustarDisponibles(MaterialLoteItem item, int cantidad) {
@@ -469,14 +579,16 @@ public class LotesController {
                 return;
             }
         }
-        pendientes.add(new MaterialLoteItem(
+        MaterialLoteItem nuevo = new MaterialLoteItem(
                 item.getMaterialId(),
                 item.getEquipoId(),
                 item.getDescripcion(),
                 cantidad,
                 item.getVolumen(),
-                item.getClienteNombre()
-        ));
+                item.getClienteNombre(),
+                item.isEsOtros());
+        nuevo.setVolumenOtros(item.getVolumenOtros());
+        pendientes.add(nuevo);
     }
 
     private void quitarMaterial() {
@@ -569,7 +681,9 @@ public class LotesController {
 
         List<LoteMovimiento> movimientos = new ArrayList<>();
         for (MaterialLoteItem item : pendientes) {
-            movimientos.add(new LoteMovimiento(item.getMaterialId(), item.getEquipoId(), item.getCantidad()));
+            movimientos.add(new LoteMovimiento(
+                    item.getMaterialId(), item.getEquipoId(), item.getCantidad(),
+                    item.isEsOtros(), item.getVolumenOtros()));
         }
 
         Lote lote = model.lanzarLote(autoclaveSeleccionado.getNombre(),
@@ -621,7 +735,13 @@ public class LotesController {
 
     private int calcularCapacidad(List<MaterialLoteItem> materiales) {
         int total = 0;
-        for (MaterialLoteItem item : materiales) total += item.getVolumenTotal();
+        for (MaterialLoteItem item : materiales) {
+            if (item.isEsOtros() && item.getVolumenOtros() != null) {
+                total += item.getVolumenOtros();
+            } else {
+                total += item.getVolumenTotal();
+            }
+        }
         return total;
     }
 

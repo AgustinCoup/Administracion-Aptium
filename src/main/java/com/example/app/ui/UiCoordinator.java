@@ -8,9 +8,9 @@ import com.example.features.equipos.ortopedias.controller.EquiposParaEntregarCon
 import com.example.features.equipos.ortopedias.controller.OrthopediaInputController;
 import com.example.features.equipos.ortopedias.controller.RegistrarEstadoController;
 import com.example.features.equipos.otros.controller.OtrosInputController;
-import com.example.features.equipos.otros.view.PantallaIngresoOtros;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
+import com.example.features.lotes.service.LoteReporteService;
 import com.example.ui.events.OnEquipoGuardadoListener;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.ui.shell.PantallaPrincipal;
@@ -57,8 +57,9 @@ public class UiCoordinator {
         LotesController lotesController = new LotesController(
             vista.getPantallaLotes(), model, null);
 
+        LoteReporteService loteReporteService = new LoteReporteService(model);
         VerLotesController verLotesController = new VerLotesController(
-            vista.getPantallaVerLotes(), model);
+            vista.getPantallaVerLotes(), model, loteReporteService);
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
         // CorreccionsController conoce el servicio; el coordinator no necesita conocerlo.

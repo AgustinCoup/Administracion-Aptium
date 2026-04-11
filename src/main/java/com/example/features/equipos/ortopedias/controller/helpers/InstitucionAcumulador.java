@@ -1,15 +1,17 @@
 package com.example.features.equipos.ortopedias.controller.helpers;
 
+import com.example.common.model.EntregaDestinoKey;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class InstitucionAcumulador {
-    private final int id;
+    private final EntregaDestinoKey key;
     private final String nombre;
     private final List<Integer> equipoIds = new ArrayList<>();
 
-    public InstitucionAcumulador(int id, String nombre) {
-        this.id = id;
+    public InstitucionAcumulador(EntregaDestinoKey key, String nombre) {
+        this.key = key;
         this.nombre = nombre;
     }
 
@@ -19,17 +21,7 @@ public class InstitucionAcumulador {
         }
     }
 
-    public int getId() {
-        return id;
-    }
-
-    public String getNombre() {
-        return nombre;
-    }
-
-    public int getEquiposCount() {
-        return equipoIds.size();
-    }
+    public EntregaDestinoKey getKey() { return key; }
+    public String getNombre()         { return nombre; }
+    public int getEquiposCount()      { return equipoIds.size(); }
 }
-
-

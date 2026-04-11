@@ -5,6 +5,7 @@ import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.util.Validador;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.Material;
+import com.example.features.equipos.ortopedias.view.helpers.AgregarMaterialDialog;
 import com.example.features.equipos.ortopedias.view.helpers.PanelEquipoMaterial;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.PanelHeader;
@@ -63,7 +64,7 @@ public class PantallaCorrecciones extends JPanel {
     private BiConsumer<Integer, String>                       onEliminarEquipo;
     private TripleConsumer<Integer, Integer, String>          onEliminarMaterial;
     private Runnable                                          onVerAuditoria;
-    private BiConsumer<Integer, JTextField>                   onCodigoNuevoChanged;
+    private java.util.function.BiConsumer<Integer, JTextField> onCodigoNuevoChanged;
     private Runnable                                          onPantallaVisible;
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -230,77 +231,21 @@ public class PantallaCorrecciones extends JPanel {
         Equipo equipo = obtenerEquipoOrtopedia("Agregar Material");
         if (equipo == null) return;
 
-        JPanel panel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets  = new Insets(6, 6, 6, 6);
-        gbc.fill    = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 0.3;
-
-        gbc.gridx = 0; gbc.gridy = 0;
-        JLabel lblCod = new JLabel("Código:");
-        lblCod.setFont(Estilos.Fuentes.LABEL);
-        panel.add(lblCod, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.7;
-        JTextField txtCodigo = new JTextField(10);
-        txtCodigo.setFont(Estilos.Fuentes.INPUT);
-        Validador.aplicarSoloNumeros(txtCodigo);
-        panel.add(txtCodigo, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;
-        JLabel lblDesc = new JLabel("Descripción:");
-        lblDesc.setFont(Estilos.Fuentes.LABEL);
-        panel.add(lblDesc, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.7;
-        JTextField txtDesc = new JTextField();
-        txtDesc.setFont(Estilos.Fuentes.INPUT);
-        txtDesc.setEditable(false);
-        txtDesc.setBackground(new Color(240, 240, 240));
-        panel.add(txtDesc, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.3;
-        JLabel lblCant = new JLabel("Cantidad:");
-        lblCant.setFont(Estilos.Fuentes.LABEL);
-        panel.add(lblCant, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.7;
-        JSpinner spinCant = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
-        spinCant.setFont(Estilos.Fuentes.INPUT);
-        panel.add(spinCant, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.3;
-        JLabel lblMot = new JLabel("Motivo:");
-        lblMot.setFont(Estilos.Fuentes.LABEL);
-        panel.add(lblMot, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.7; gbc.weighty = 1.0;
-        gbc.fill = GridBagConstraints.BOTH;
-        JTextArea txtMot = new JTextArea(3, 25);
-        txtMot.setFont(Estilos.Fuentes.INPUT);
-        txtMot.setLineWrap(true);
-        txtMot.setWrapStyleWord(true);
-        panel.add(new JScrollPane(txtMot), gbc);
-
-        txtCodigo.getDocument().addDocumentListener(simpleListener(() -> {
-            String cod = txtCodigo.getText().trim();
-            if (cod.isEmpty()) { txtDesc.setText(""); return; }
-            if (!Validador.soloNumeros(cod)) { txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO); return; }
-            if (onCodigoNuevoChanged != null) {
-                try { onCodigoNuevoChanged.accept(Integer.parseInt(cod), txtDesc); }
-                catch (NumberFormatException ex) { txtDesc.setText(Constantes.Textos.CODIGO_INVALIDO); }
-            }
-        }));
+        AgregarMaterialDialog dialogo = new AgregarMaterialDialog(onCodigoNuevoChanged);
 
         int resultado = JOptionPane.showConfirmDialog(
-            this, panel, "Agregar Material al Equipo",
+            this, dialogo.panel, "Agregar Material al Equipo",
             JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (resultado != JOptionPane.OK_OPTION) return;
 
-        String codigoStr = txtCodigo.getText().trim();
-        String motivo    = txtMot.getText().trim();
+        String codigoStr = dialogo.getCodigo();
+        String motivo    = dialogo.getMotivo();
         if (codigoStr.isEmpty())               { mostrarError("Debe ingresar un código de catálogo"); return; }
         if (!Validador.soloNumeros(codigoStr)) { mostrarError("El código debe ser un número entero"); return; }
         if (motivo.isEmpty())                  { mostrarError("El motivo es obligatorio"); return; }
 
         Integer codigo   = Integer.parseInt(codigoStr);
-        Integer cantidad = (Integer) spinCant.getValue();
+        Integer cantidad = dialogo.getCantidad();
 
         boolean codigoYaExiste = equipo.getMateriales().stream()
             .anyMatch(m -> m.getCodigo() == codigo);
@@ -311,7 +256,7 @@ public class PantallaCorrecciones extends JPanel {
             return;
         }
 
-        String descFinal = txtDesc.getText().trim();
+        String descFinal = dialogo.getDescripcion();
         int confirmar = JOptionPane.showConfirmDialog(this,
             String.format("¿Agregar al equipo de %s?\n\nMaterial: %s - %s\nCantidad: %d",
                 equipo.getClienteNombre(), codigo,
@@ -551,7 +496,7 @@ public class PantallaCorrecciones extends JPanel {
     public void setOnEliminarEquipo   (BiConsumer<Integer, String> cb)                       { onEliminarEquipo     = cb; }
     public void setOnEliminarMaterial (TripleConsumer<Integer, Integer, String> cb)          { onEliminarMaterial   = cb; }
     public void setOnVerAuditoria     (Runnable cb)                                          { onVerAuditoria       = cb; }
-    public void setOnCodigoNuevoChanged(BiConsumer<Integer, JTextField> cb)                  { onCodigoNuevoChanged = cb; }
+    public void setOnCodigoNuevoChanged(java.util.function.BiConsumer<Integer, JTextField> cb) { onCodigoNuevoChanged = cb; }
     public void setOnPantallaVisible  (Runnable cb)                                          { onPantallaVisible    = cb; }
 
     // ── Interfaces funcionales ────────────────────────────────────────────────

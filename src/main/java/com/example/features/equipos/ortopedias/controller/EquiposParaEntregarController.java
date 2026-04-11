@@ -9,12 +9,16 @@ import java.util.Map;
 
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.common.constants.Constantes;
+import com.example.common.model.EntregaDestinoKey;
+import com.example.common.model.EntregaDestinoKey.TipoDestino;
 import com.example.app.AppModel;
 import com.example.features.equipos.ortopedias.controller.helpers.InstitucionAcumulador;
 import com.example.features.equipos.ortopedias.controller.helpers.MaterialAgrupado;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.Material;
+import com.example.features.equipos.otros.model.EquipoOtros;
+import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.ortopedias.view.PantallaEquiposParaEntregar;
 import com.example.features.equipos.ortopedias.view.helpers.InstitucionEntregaItem;
 import com.example.features.equipos.ortopedias.view.helpers.MaterialEntregaItem;
@@ -27,7 +31,8 @@ public class EquiposParaEntregarController {
     
     private final PantallaEquiposParaEntregar panel;
     private final AppModel model;
-    private final Map<Integer, List<MaterialEntregaItem>> materialesPorInstitucion = new HashMap<>();
+    private final Map<EntregaDestinoKey, List<MaterialEntregaItem>> materialesPorDestino  = new HashMap<>();
+    private final Map<EntregaDestinoKey, Integer>                   volumenPorDestino     = new HashMap<>();
     private OnEstadosActualizadosListener onEstadosActualizadosListener;
 
     public EquiposParaEntregarController(PantallaEquiposParaEntregar panel, AppModel model,
@@ -51,56 +56,95 @@ public class EquiposParaEntregarController {
         panel.setOnInstitucionSeleccionada(institucion -> {
             if (institucion == null) {
                 panel.limpiarMateriales();
+                panel.ocultarVolumen();
                 return;
             }
             List<MaterialEntregaItem> materiales =
-                materialesPorInstitucion.getOrDefault(institucion.getId(), List.of());
+                materialesPorDestino.getOrDefault(institucion.getKey(), List.of());
             panel.actualizarMateriales(materiales);
+            if (institucion.getKey().getTipo() == TipoDestino.CLIENTE) {
+                int litros = volumenPorDestino.getOrDefault(institucion.getKey(), 0);
+                panel.mostrarVolumenCliente(litros);
+            } else {
+                panel.ocultarVolumen();
+            }
         });
 
         panel.setOnEntregarInstitucion(e -> entregarInstitucion());
     }
 
     public void cargarDatos() {
-        List<Equipo> equipos = model.obtenerTodosLosEquipos();
+        materialesPorDestino.clear();
+        volumenPorDestino.clear();
+        Map<EntregaDestinoKey, InstitucionAcumulador> destinos = new LinkedHashMap<>();
 
-        materialesPorInstitucion.clear();
-        Map<Integer, InstitucionAcumulador> instituciones = new LinkedHashMap<>();
-
-        for (Equipo equipo : equipos) {
-            if (!equipoEsEntregable(equipo)) {
-                continue;
-            }
+        // ── Ortopedia: agrupa por institución ──────────────────────────────────
+        for (Equipo equipo : model.obtenerTodosLosEquipos()) {
+            if (!equipoEsEntregable(equipo)) continue;
 
             List<MaterialEntregaItem> materiales = construirMateriales(equipo);
-            if (materiales.isEmpty()) {
-                continue;
-            }
+            if (materiales.isEmpty()) continue;
 
             int institucionId = equipo.getNroInstitucion() != null ? equipo.getNroInstitucion() : -1;
             String institucionNombre = equipo.getInstitucionNombre();
             final String nombreFinal = (institucionNombre == null || institucionNombre.isBlank())
-                ? Constantes.Textos.SIN_INSTITUCION
-                : institucionNombre;
+                ? Constantes.Textos.SIN_INSTITUCION : institucionNombre;
 
-            InstitucionAcumulador acumulador = instituciones.computeIfAbsent(
-                institucionId,
-                id -> new InstitucionAcumulador(id, nombreFinal)
-            );
-            acumulador.agregarEquipo(equipo.getId());
-
-            materialesPorInstitucion
-                .computeIfAbsent(institucionId, id -> new ArrayList<>())
-                .addAll(materiales);
+            EntregaDestinoKey key = new EntregaDestinoKey(TipoDestino.INSTITUCION, institucionId);
+            destinos.computeIfAbsent(key, k -> new InstitucionAcumulador(k, nombreFinal))
+                    .agregarEquipo(equipo.getId());
+            materialesPorDestino.computeIfAbsent(key, k -> new ArrayList<>()).addAll(materiales);
         }
 
-        List<InstitucionEntregaItem> filasInstituciones = instituciones.values().stream()
+        // ── EquipoOtros: agrupa por cliente ────────────────────────────────────
+        for (EquipoOtros equipo : model.obtenerTodosLosEquiposOtros()) {
+            if (equipo.calcularEstado().getOrden() < EstadoEquipo.ESTERILIZADO.getOrden()) continue;
+
+            List<MaterialEntregaItem> materiales = construirMaterialesOtros(equipo);
+            if (materiales.isEmpty()) continue;
+
+            EntregaDestinoKey key = new EntregaDestinoKey(TipoDestino.CLIENTE, equipo.getNroCliente());
+            String nombreCliente = equipo.getClienteNombre() != null ? equipo.getClienteNombre() : "Sin cliente";
+            destinos.computeIfAbsent(key, k -> new InstitucionAcumulador(k, nombreCliente))
+                    .agregarEquipo(equipo.getId());
+            materialesPorDestino.computeIfAbsent(key, k -> new ArrayList<>()).addAll(materiales);
+            volumenPorDestino.merge(key, equipo.getVolumenEquipo(), Integer::sum);
+        }
+
+        List<InstitucionEntregaItem> filasInstituciones = destinos.values().stream()
             .sorted(Comparator.comparing(InstitucionAcumulador::getNombre, String.CASE_INSENSITIVE_ORDER))
-            .map(ac -> new InstitucionEntregaItem(ac.getId(), ac.getNombre(), ac.getEquiposCount()))
+            .map(ac -> new InstitucionEntregaItem(ac.getKey(), ac.getNombre(), ac.getEquiposCount()))
             .toList();
 
         panel.actualizarInstituciones(filasInstituciones);
         panel.limpiarMateriales();
+    }
+
+    private List<MaterialEntregaItem> construirMaterialesOtros(EquipoOtros equipo) {
+        List<MaterialEntregaItem> resultado = new ArrayList<>();
+        List<MaterialOtros> mats = equipo.getMateriales();
+
+        if (mats.isEmpty()) {
+            // REMITO sin filas reales: una sola fila "Elementos"
+            if (equipo.getRemitoCantidad() != null && equipo.getRemitoCantidad() > 0) {
+                resultado.add(new MaterialEntregaItem("Elementos", equipo.getRemitoCantidad(), false));
+            }
+            return resultado;
+        }
+
+        // DETALLES o REMITO con filas reales: agrupar por descripción
+        Map<String, int[]> agrupados = new LinkedHashMap<>();
+        for (MaterialOtros m : mats) {
+            if (m.getEstado().getOrden() < EstadoEquipo.ESTERILIZADO.getOrden()) continue;
+            int[] contadores = agrupados.computeIfAbsent(m.getDescripcion(), k -> new int[2]);
+            contadores[0] += m.getCantidad();
+            if (m.getEstado() == EstadoEquipo.ENTREGADO) contadores[1] += m.getCantidad();
+        }
+        for (Map.Entry<String, int[]> e : agrupados.entrySet()) {
+            int pendiente = e.getValue()[0] - e.getValue()[1];
+            if (pendiente > 0) resultado.add(new MaterialEntregaItem(e.getKey(), pendiente, false));
+        }
+        return resultado;
     }
 
     private boolean equipoEsEntregable(Equipo equipo) {
@@ -167,8 +211,8 @@ public class EquiposParaEntregarController {
             return;
         }
 
-        List<MaterialEntregaItem> todosMateriales = 
-            materialesPorInstitucion.getOrDefault(institucionSeleccionada.getId(), List.of());
+        List<MaterialEntregaItem> todosMateriales =
+            materialesPorDestino.getOrDefault(institucionSeleccionada.getKey(), List.of());
 
         List<MaterialEntregaItem> materialesPendientes = todosMateriales.stream()
             .filter(m -> !m.isEntregado())
@@ -192,7 +236,10 @@ public class EquiposParaEntregarController {
             return;
         }
 
-        boolean exitoso = model.entregarInstitucionCompleta(institucionSeleccionada.getId());
+        EntregaDestinoKey key = institucionSeleccionada.getKey();
+        boolean exitoso = key.getTipo() == TipoDestino.CLIENTE
+            ? model.entregarClienteOtrosCompleto(key.getId())
+            : model.entregarInstitucionCompleta(key.getId());
 
         if (exitoso) {
             log.info("Institución {} entregada exitosamente, refrescando pantallas...", institucionSeleccionada.getNombre());

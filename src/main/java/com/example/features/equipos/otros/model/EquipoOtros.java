@@ -41,6 +41,8 @@ public class EquipoOtros implements EquipoRegistrableInterface {
     private Integer          remitoCantidad;     // cantidad global del remito
     private String           remitoObservaciones;
 
+    private int              volumenEquipo       = 0; // litros acumulados en lotes exitosos
+
     private final List<MaterialOtros> materiales = new ArrayList<>();
 
     public EquipoOtros() {
@@ -73,7 +75,9 @@ public class EquipoOtros implements EquipoRegistrableInterface {
 
     @Override
     public EstadoEquipo calcularEstado() {
-        if (materiales.isEmpty()) return EstadoEquipo.NUEVO;
+        // REMITO sin filas reales: el estado vive en el campo 'estado' del equipo
+        if (tipoIngreso == TipoIngresoOtros.REMITO && materiales.isEmpty()) return estado;
+        if (materiales.isEmpty()) return estado;
         EstadoEquipo masAtrasado = EstadoEquipo.ENTREGADO;
         for (MaterialOtros m : materiales) {
             if (m.getEstado().getOrden() < masAtrasado.getOrden()) {
@@ -92,8 +96,22 @@ public class EquipoOtros implements EquipoRegistrableInterface {
         return Equipo.calcularSiguienteEstado(estadoActual, requiereLavado, requiereEmpaque);
     }
 
+    /**
+     * Para REMITO sin filas reales: expone un material sintético con id=0
+     * que señala al DAO para crear las filas al persistir.
+     * Para REMITO con filas ya creadas (post-split): devuelve esas filas reales.
+     * Para DETALLES: devuelve la lista real de materiales.
+     */
     @Override
     public List<MaterialRegistrableInterface> getMaterialesRegistrables() {
+        if (tipoIngreso == TipoIngresoOtros.REMITO && materiales.isEmpty()) {
+            MaterialOtros sintetico = new MaterialOtros(
+                0, null, "Elementos",
+                remitoCantidad != null ? remitoCantidad : 1,
+                estado, null
+            );
+            return Collections.singletonList(sintetico);
+        }
         return Collections.unmodifiableList(materiales);
     }
 
@@ -106,6 +124,19 @@ public class EquipoOtros implements EquipoRegistrableInterface {
     public void aplicarMovimientoPreview(MaterialRegistrableInterface material,
                                          int cantidad,
                                          EstadoEquipo estadoDestino) {
+        if (tipoIngreso == TipoIngresoOtros.REMITO && materiales.isEmpty()) {
+            // El material sintético tiene id=0; simulamos el split en memoria.
+            int total = remitoCantidad != null ? remitoCantidad : 1;
+            if (cantidad >= total) {
+                // Avanza todo: una sola fila sintética en el nuevo estado
+                materiales.add(new MaterialOtros(0, null, "Elementos", total, estadoDestino, null));
+            } else {
+                // Split: fila restante en estado actual + fila nueva en estado destino
+                materiales.add(new MaterialOtros(0,    null, "Elementos", total - cantidad, estado,       null));
+                materiales.add(new MaterialOtros(null, null, "Elementos", cantidad,         estadoDestino, null));
+            }
+            return;
+        }
         MaterialOtros m = (MaterialOtros) material;
         int cantidadActual = m.getCantidad();
 
@@ -195,4 +226,7 @@ public class EquipoOtros implements EquipoRegistrableInterface {
 
     public String  getRemitoObservaciones()                 { return remitoObservaciones; }
     public void    setRemitoObservaciones(String obs)       { this.remitoObservaciones = obs; }
+
+    public int     getVolumenEquipo()                       { return volumenEquipo; }
+    public void    setVolumenEquipo(int volumen)            { this.volumenEquipo = volumen; }
 }

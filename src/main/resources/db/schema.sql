@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS equipo_otros (
     remito_id        VARCHAR(30) NULL COMMENT 'Identificador: ddmmaaaa-{id}',
     remito_cantidad  INT         NULL COMMENT 'Cantidad de elementos del remito',
     remito_observaciones TEXT    NULL COMMENT 'Observaciones opcionales del remito',
+    volumen_equipo   INT         NOT NULL DEFAULT 0 COMMENT 'Suma acumulada de litros en lotes exitosos',
     fecha_ingreso    TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_otros_remito_id (remito_id),
     FOREIGN KEY (nro_cliente) REFERENCES clientes(id) ON DELETE RESTRICT
@@ -189,6 +190,7 @@ CREATE TABLE IF NOT EXISTS equipo_otros_materiales (
     cantidad         INT          NOT NULL DEFAULT 1,
     estado           VARCHAR(50)  DEFAULT 'Nuevo',
     lote_id          INT,
+    volumen_lote     INT          NULL COMMENT 'Litros que ocupa este grupo al esterilizar',
     INDEX idx_otros_mat_equipo  (equipo_otros_id),
     INDEX idx_otros_mat_estado  (equipo_otros_id, estado),
     INDEX idx_otros_mat_lote    (lote_id),

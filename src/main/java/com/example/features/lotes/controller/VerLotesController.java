@@ -24,11 +24,11 @@ public class VerLotesController extends AbstractFilterController<Lote> {
     private final FilterStrategy<Lote, LotesFilterCriteria> filterStrategy;
     private final LoteReporteService                reporteService;
 
-    public VerLotesController(PantallaVerLotes panel, AppModel model) {
+    public VerLotesController(PantallaVerLotes panel, AppModel model, LoteReporteService reporteService) {
         this.panel          = panel;
         this.model          = model;
         this.filterStrategy = new LotesFilterStrategy();
-        this.reporteService = new LoteReporteService(model);
+        this.reporteService = reporteService;
 
         this.panel.setOnFiltrosChanged(this::aplicarFiltros);
         this.panel.setOnImprimir(this::abrirDialogoImprimir);

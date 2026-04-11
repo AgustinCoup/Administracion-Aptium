@@ -5,9 +5,6 @@ import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,8 +20,6 @@ import java.util.List;
  * </ul>
  */
 public class EquipoOtrosService {
-
-    private static final Logger log = LoggerFactory.getLogger(EquipoOtrosService.class);
 
     private final EquipoOtrosDAO dao;
 
@@ -67,12 +62,15 @@ public class EquipoOtrosService {
      * Retorna todos los equipos "otros" (sin filtrar por estado).
      */
     public List<EquipoOtros> obtenerTodos() {
-        try {
-            return dao.obtenerTodos();
-        } catch (Exception e) {
-            log.error("Error al obtener EquipoOtros", e);
-            return List.of();
-        }
+        return dao.obtenerTodos();
+    }
+
+    /**
+     * Marca como entregados todos los materiales esterilizados de equipos_otros
+     * cuyo nro_cliente coincide.
+     */
+    public boolean entregarClienteCompleto(int nroCliente) {
+        return dao.entregarClienteCompleto(nroCliente);
     }
 
     /**
@@ -81,11 +79,6 @@ public class EquipoOtrosService {
      * al confirmar cambios pendientes de tipo OTROS.
      */
     public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {
-        try {
-            return dao.aplicarMovimientos(equipoId, movimientos);
-        } catch (Exception e) {
-            log.error("Error aplicando movimientos a EquipoOtros id={}", equipoId, e);
-            return false;
-        }
+        return dao.aplicarMovimientos(equipoId, movimientos);
     }
 }
