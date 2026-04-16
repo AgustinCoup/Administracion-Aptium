@@ -33,12 +33,27 @@ public class ConnectionPool {
 
     private static HikariDataSource dataSource;
     private static final Properties PROPS = new Properties();
-    
-    // Bloque estático: Se ejecuta UNA SOLA VEZ al cargar la clase
+
+    /** Solo para tests — null en producción. Establecer con {@link #setDataSourceForTesting}. */
+    private static volatile javax.sql.DataSource testDataSource = null;
+
+    /**
+     * Solo para tests de integración con H2.
+     * Debe llamarse ANTES de que cualquier DAO intente obtener una conexión.
+     * Nunca llamar desde código productivo.
+     */
+    public static void setDataSourceForTesting(javax.sql.DataSource ds) {
+        testDataSource = ds;
+    }
+
+    // Bloque estático: Se ejecuta UNA SOLA VEZ al cargar la clase.
+    // Skipeado cuando la propiedad aptium.testing=true está activa (tests).
     static {
-        cargarConfiguracion();
-        crearBaseDeDatosSiNoExiste(); // PRIMERO: Asegurar que la BD existe
-        inicializarPool();            // SEGUNDO: Conectar al pool con la BD específica
+        if (System.getProperty("aptium.testing") == null) {
+            cargarConfiguracion();
+            crearBaseDeDatosSiNoExiste(); // PRIMERO: Asegurar que la BD existe
+            inicializarPool();            // SEGUNDO: Conectar al pool con la BD específica
+        }
     }
     
     /**
@@ -287,6 +302,10 @@ public class ConnectionPool {
      * @throws SQLException Si no hay conexiones disponibles después del timeout
      */
     public static Connection getConnection() throws SQLException {
+        javax.sql.DataSource override = testDataSource;
+        if (override != null) {
+            return override.getConnection();
+        }
         if (dataSource == null) {
             throw new SQLException("Connection Pool no inicializado");
         }

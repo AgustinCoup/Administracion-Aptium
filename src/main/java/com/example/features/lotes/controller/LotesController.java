@@ -262,18 +262,24 @@ public class LotesController {
         return disponibles;
     }
 
+    /** Clave compuesta para evitar colisiones entre IDs de ortopedias y otros (tablas distintas). */
+    private String claveItem(MaterialLoteItem item) {
+        return (item.isEsOtros() ? "O" : "E") + item.getMaterialId();
+    }
+
     private void aplicarPendientesEnDisponibles() {
-        Map<Integer, MaterialLoteItem> disponiblesPorId = new LinkedHashMap<>();
+        Map<String, MaterialLoteItem> disponiblesPorId = new LinkedHashMap<>();
         for (MaterialLoteItem item : materialesDisponibles) {
-            disponiblesPorId.put(item.getMaterialId(), item);
+            disponiblesPorId.put(claveItem(item), item);
         }
 
         for (List<MaterialLoteItem> pendientes : pendientesPorAutoclave.values()) {
             for (MaterialLoteItem pendiente : pendientes) {
-                MaterialLoteItem disponible = disponiblesPorId.get(pendiente.getMaterialId());
+                String clave = claveItem(pendiente);
+                MaterialLoteItem disponible = disponiblesPorId.get(clave);
                 if (disponible == null) continue;
                 int restante = disponible.getCantidad() - pendiente.getCantidad();
-                if (restante <= 0) disponiblesPorId.remove(pendiente.getMaterialId());
+                if (restante <= 0) disponiblesPorId.remove(clave);
                 else disponible.setCantidad(restante);
             }
         }
@@ -303,14 +309,22 @@ public class LotesController {
                 String clienteNombre = info.getCodigoCatalogo() == 0
                         ? clientesPorEquipoOtros.getOrDefault(info.getEquipoId(), "")
                         : clientesPorEquipo.getOrDefault(info.getEquipoId(), "");
-                items.add(new MaterialLoteItem(
-                        info.getMaterialId(),
-                        info.getEquipoId(),
-                        info.getDescripcion(),
-                        info.getCantidad(),
-                        info.getVolumen(),
-                        clienteNombre
-                ));
+                // codigoCatalogo == 0 discrimina materiales de equipo_otros_materiales.
+                // Para "otros": volumen en DB es el total declarado → setVolumenOtros.
+                // Para ortopedia: volumen es unitario (del catálogo) → volumenTotal = cantidad × volumen.
+                boolean esOtros = info.getCodigoCatalogo() == 0;
+                MaterialLoteItem nuevoItem;
+                if (esOtros) {
+                    nuevoItem = new MaterialLoteItem(
+                            info.getMaterialId(), info.getEquipoId(), info.getDescripcion(),
+                            info.getCantidad(), 1, clienteNombre, true);
+                    nuevoItem.setVolumenOtros(info.getVolumen());
+                } else {
+                    nuevoItem = new MaterialLoteItem(
+                            info.getMaterialId(), info.getEquipoId(), info.getDescripcion(),
+                            info.getCantidad(), info.getVolumen(), clienteNombre);
+                }
+                items.add(nuevoItem);
             }
             panel.setMaterialesAutoclave(items);
             panel.setCapacidad(autoclave.getCapacidadUsada(), autoclave.getCapacidad());
@@ -559,7 +573,7 @@ public class LotesController {
     private void ajustarDisponibles(MaterialLoteItem item, int cantidad) {
         MaterialLoteItem encontrado = null;
         for (MaterialLoteItem disponible : materialesDisponibles) {
-            if (disponible.getMaterialId() == item.getMaterialId()) {
+            if (claveItem(disponible).equals(claveItem(item))) {
                 encontrado = disponible;
                 break;
             }
@@ -574,7 +588,7 @@ public class LotesController {
         List<MaterialLoteItem> pendientes = pendientesPorAutoclave
                 .computeIfAbsent(autoclaveNombre, k -> new ArrayList<>());
         for (MaterialLoteItem existente : pendientes) {
-            if (existente.getMaterialId() == item.getMaterialId()) {
+            if (claveItem(existente).equals(claveItem(item))) {
                 existente.setCantidad(existente.getCantidad() + cantidad);
                 return;
             }
@@ -606,12 +620,12 @@ public class LotesController {
 
         List<MaterialLoteItem> pendientes = pendientesPorAutoclave
                 .getOrDefault(autoclaveSeleccionado.getNombre(), new ArrayList<>());
-        pendientes.removeIf(item -> item.getMaterialId() == seleccionado.getMaterialId());
+        pendientes.removeIf(item -> claveItem(item).equals(claveItem(seleccionado)));
         pendientesPorAutoclave.put(autoclaveSeleccionado.getNombre(), pendientes);
 
         boolean encontrado = false;
         for (MaterialLoteItem disponible : materialesDisponibles) {
-            if (disponible.getMaterialId() == seleccionado.getMaterialId()) {
+            if (claveItem(disponible).equals(claveItem(seleccionado))) {
                 disponible.setCantidad(disponible.getCantidad() + seleccionado.getCantidad());
                 encontrado = true;
                 break;

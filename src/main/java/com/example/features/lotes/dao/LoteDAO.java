@@ -152,6 +152,41 @@ public class LoteDAO {
         return resultado;
     }
 
+    public Map<String, List<String>> obtenerOtrosPorClientePorLote(int loteId) {
+        Map<String, List<String>> resultado      = new LinkedHashMap<>();
+        Map<String, Integer>      litrosPorCliente = new LinkedHashMap<>();
+        String sql =
+            "SELECT c.nombre AS cliente, eo.remito_id, " +
+            "       eom.descripcion, eom.cantidad, " +
+            "       COALESCE(eom.volumen_lote, 0) AS litros " +
+            "FROM equipo_otros_materiales eom " +
+            "  JOIN equipo_otros eo ON eom.equipo_otros_id = eo.id " +
+            "  JOIN clientes c     ON eo.nro_cliente       = c.id " +
+            "WHERE eom.lote_id = ? " +
+            "ORDER BY c.nombre, eom.id";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, loteId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String  cliente   = rs.getString("cliente");
+                    String  remitoId  = rs.getString("remito_id");
+                    String  linea     = remitoId != null
+                            ? remitoId
+                            : rs.getString("descripcion") + " x" + rs.getInt("cantidad");
+                    resultado.computeIfAbsent(cliente, k -> new ArrayList<>()).add(linea);
+                    litrosPorCliente.merge(cliente, rs.getInt("litros"), Integer::sum);
+                }
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al obtener materiales otros por cliente del lote " + loteId, e);
+        }
+        for (Map.Entry<String, List<String>> entry : resultado.entrySet())
+            entry.getValue().add("Litros: " + litrosPorCliente.getOrDefault(entry.getKey(), 0));
+        return resultado;
+    }
+
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
         List<LoteMaterialInfo> materiales = new ArrayList<>();
         // UNION: materiales de ortopedia + materiales de equipo_otros
@@ -353,7 +388,7 @@ public class LoteDAO {
 
     private int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
         try (PreparedStatement pstmt = conn.prepareStatement(
-                "SELECT COALESCE(MAX(secuencia), 0) AS max_seq FROM lotes WHERE anio = ? FOR UPDATE")) {
+                "SELECT COALESCE(MAX(secuencia), 0) AS max_seq FROM lotes WHERE anio = ?")) {
             pstmt.setInt(1, anio);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) return rs.getInt("max_seq") + 1;

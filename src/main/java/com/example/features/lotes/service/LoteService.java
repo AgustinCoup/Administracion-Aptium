@@ -44,6 +44,10 @@ public class LoteService {
         return loteDAO.obtenerMaterialesPorClientePorLote(loteId);
     }
 
+    public Map<String, List<String>> obtenerOtrosPorClientePorLote(int loteId) {
+        return loteDAO.obtenerOtrosPorClientePorLote(loteId);
+    }
+
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
         return loteDAO.obtenerMaterialesPorLote(loteId);
     }

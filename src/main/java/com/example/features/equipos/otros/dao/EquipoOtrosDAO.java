@@ -104,7 +104,16 @@ public class EquipoOtrosDAO {
 
             // 2a. Modo REMITO: generar y persistir remito_id
             if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
-                String remitoId = LocalDate.now().format(FMT_REMITO) + "-" + equipoId;
+                String fechaHoy = LocalDate.now().format(FMT_REMITO);
+                int secuencial;
+                try (PreparedStatement psCount = conn.prepareStatement(
+                        "SELECT COUNT(*) FROM equipo_otros WHERE remito_id LIKE ?")) {
+                    psCount.setString(1, fechaHoy + "-%");
+                    try (ResultSet rsCount = psCount.executeQuery()) {
+                        secuencial = rsCount.next() ? rsCount.getInt(1) + 1 : 1;
+                    }
+                }
+                String remitoId = fechaHoy + "-" + secuencial;
                 equipo.setRemitoId(remitoId);
 
                 String sqlRem = "UPDATE equipo_otros SET remito_id = ? WHERE id = ?";

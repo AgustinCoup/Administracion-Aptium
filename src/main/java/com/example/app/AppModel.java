@@ -200,6 +200,10 @@ public class AppModel {
         return loteService.obtenerMaterialesPorClientePorLote(loteId);
     }
 
+    public Map<String, List<String>> obtenerOtrosPorClientePorLote(int loteId) {
+        return loteService.obtenerOtrosPorClientePorLote(loteId);
+    }
+
     // ==================== CLIENTES ====================
 
     public List<Cliente> buscarClientes(String substring) {

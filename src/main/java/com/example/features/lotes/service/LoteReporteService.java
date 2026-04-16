@@ -111,20 +111,31 @@ public class LoteReporteService {
             String fechaStr = lote.getFechaInicio() != null
                 ? lote.getFechaInicio().toLocalDate().format(FMT) : "";
 
-            Map<String, List<String>> materialesPorCliente =
+            Map<String, List<String>> ortopedias =
                 model.obtenerMaterialesPorClientePorLote(lote.getId());
+            Map<String, List<String>> otros =
+                model.obtenerOtrosPorClientePorLote(lote.getId());
 
             String detalles;
-            if (materialesPorCliente.isEmpty()) {
+            if (ortopedias.isEmpty() && otros.isEmpty()) {
                 detalles = "(sin materiales)";
             } else {
                 StringBuilder sb = new StringBuilder();
-                for (Map.Entry<String, List<String>> entry : materialesPorCliente.entrySet()) {
-                    sb.append(entry.getKey()).append(":\n");
-                    for (String mat : entry.getValue()) {
-                        sb.append("  • ").append(mat).append("\n");
+                if (!ortopedias.isEmpty()) {
+                    sb.append("— Ortopedias —\n");
+                    for (Map.Entry<String, List<String>> entry : ortopedias.entrySet()) {
+                        sb.append(entry.getKey()).append(":\n");
+                        for (String mat : entry.getValue()) sb.append("  • ").append(mat).append("\n");
+                        sb.append("\n");
                     }
-                    sb.append("\n"); // línea en blanco entre clientes
+                }
+                if (!otros.isEmpty()) {
+                    sb.append("— Otros —\n");
+                    for (Map.Entry<String, List<String>> entry : otros.entrySet()) {
+                        sb.append(entry.getKey()).append(":\n");
+                        for (String mat : entry.getValue()) sb.append("  • ").append(mat).append("\n");
+                        sb.append("\n");
+                    }
                 }
                 detalles = sb.toString().stripTrailing();
             }
