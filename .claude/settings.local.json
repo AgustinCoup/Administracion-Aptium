@@ -3,7 +3,8 @@
     "allow": [
       "Bash(mvn compile:*)",
       "Bash(mvn test:*)",
-      "Bash(mvn verify:*)"
+      "Bash(mvn verify:*)",
+      "Bash(mvn clean *)"
     ]
   }
 }

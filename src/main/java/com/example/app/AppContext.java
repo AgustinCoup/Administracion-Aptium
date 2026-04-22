@@ -27,6 +27,7 @@ import com.example.features.profesionales.service.ProfesionalService;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.catalogo.service.CatalogoOtrosService;
+import com.example.features.equipos.otros.service.EquipoOtrosCorreccionService;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
 
 public class AppContext {
@@ -45,6 +46,7 @@ public class AppContext {
     private final CatalogoOtrosService catalogoOtrosService;
     private final EquipoOtrosService equipoOtrosService;
     private final EquipoCorreccionService equipoCorreccionService;
+    private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
 
     public AppContext(
         EquipoService equipoService,
@@ -60,13 +62,15 @@ public class AppContext {
         ICapacidadCalculator capacidadCalculator,
         CatalogoOtrosService catalogoOtrosService,
         EquipoOtrosService equipoOtrosService,
-        EquipoCorreccionService equipoCorreccionService
+        EquipoCorreccionService equipoCorreccionService,
+        EquipoOtrosCorreccionService equipoOtrosCorreccionService
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
             || profesionalService == null || institucionService == null || materialService == null
             || autoclaveService == null || loteService == null || estadoValidator == null
             || materialFilter == null || capacidadCalculator == null || catalogoOtrosService == null
-            || equipoOtrosService == null || equipoCorreccionService == null) {
+            || equipoOtrosService == null || equipoCorreccionService == null
+            || equipoOtrosCorreccionService == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -84,6 +88,7 @@ public class AppContext {
         this.catalogoOtrosService = catalogoOtrosService;
         this.equipoOtrosService = equipoOtrosService;
         this.equipoCorreccionService = equipoCorreccionService;
+        this.equipoOtrosCorreccionService = equipoOtrosCorreccionService;
     }
 
     public static AppContext createDefault() {
@@ -103,6 +108,8 @@ public class AppContext {
         EquipoService equipoService = new EquipoService(equipoDAO);
         EquipoCorreccionService equipoCorreccionService = new EquipoCorreccionService(
             equipoDAO, materialDAO, auditoriaDAO, catalogoDAO);
+        EquipoOtrosCorreccionService equipoOtrosCorreccionService = new EquipoOtrosCorreccionService(
+            equipoOtrosDAO, auditoriaDAO, catalogoOtrosDAO);
         EquipoOtrosService equipoOtrosService = new EquipoOtrosService(equipoOtrosDAO);
         CatalogoService catalogoService = new CatalogoService(catalogoDAO);
         CatalogoOtrosService catalogoOtrosService = new CatalogoOtrosService(catalogoOtrosDAO);
@@ -131,7 +138,8 @@ public class AppContext {
             capacidadCalculator,
             catalogoOtrosService,
             equipoOtrosService,
-            equipoCorreccionService
+            equipoCorreccionService,
+            equipoOtrosCorreccionService
         );
     }
 
@@ -189,6 +197,10 @@ public class AppContext {
 
     public EquipoCorreccionService getEquipoCorreccionService() {
         return equipoCorreccionService;
+    }
+
+    public EquipoOtrosCorreccionService getEquipoOtrosCorreccionService() {
+        return equipoOtrosCorreccionService;
     }
 }
 

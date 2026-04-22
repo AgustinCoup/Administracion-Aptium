@@ -134,7 +134,7 @@ class EquipoCorreccionServiceTest {
         assertTrue(resultado);
         verify(materialDAO).actualizarCantidad(2, 5);
         verify(auditoriaDAO).registrarCambio(eq(1), eq(2), eq("MODIFICACION_CANTIDAD"),
-            eq("cantidad"), eq("3"), eq("5"), eq("corrección"));
+            eq("cantidad"), eq("3"), eq("5"), eq("corrección"), eq("ORTOPEDIA"));
     }
 
     // ── modificarCodigoMaterial — validaciones ────────────────────────────────
@@ -194,7 +194,7 @@ class EquipoCorreccionServiceTest {
         assertTrue(resultado);
         verify(materialDAO).actualizarCodigo(1, 200);
         verify(auditoriaDAO).registrarCambio(eq(1), eq(1), eq("MODIFICACION_CODIGO"),
-            eq("codigo_catalogo"), anyString(), anyString(), eq("motivo"));
+            eq("codigo_catalogo"), anyString(), anyString(), eq("motivo"), eq("ORTOPEDIA"));
     }
 
     // ── eliminarEquipo ────────────────────────────────────────────────────────
@@ -223,7 +223,7 @@ class EquipoCorreccionServiceTest {
         Equipo e = equipoConEstado(EstadoEquipo.NUEVO);
         when(equipoDAO.obtenerPorId("1")).thenReturn(e);
         when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
-            any(), any(), any(), anyString())).thenReturn(false);
+            any(), any(), any(), anyString(), anyString())).thenReturn(false);
 
         assertThrows(DatabaseException.class,
             () -> service.eliminarEquipo(1, "motivo"));
@@ -235,9 +235,9 @@ class EquipoCorreccionServiceTest {
         e.agregarMaterial(new Material(1, 100, "Mat", 2, EstadoEquipo.NUEVO));
         when(equipoDAO.obtenerPorId("1")).thenReturn(e);
         when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
-            any(), any(), any(), anyString())).thenReturn(true);
+            any(), any(), any(), anyString(), anyString())).thenReturn(true);
         when(auditoriaDAO.registrarMaterialEliminado(any(), any(), anyInt(), any(), any(),
-            any(), anyString())).thenReturn(true);
+            any(), anyString(), anyString())).thenReturn(true);
 
         assertTrue(service.eliminarEquipo(1, "baja por error"));
         verify(equipoDAO).eliminar("1");
@@ -281,7 +281,7 @@ class EquipoCorreccionServiceTest {
         );
         when(materialDAO.obtenerMaterialesPorCodigo(1, 100)).thenReturn(mats);
         when(auditoriaDAO.registrarMaterialEliminado(any(), any(), anyInt(), any(), any(),
-            any(), anyString())).thenReturn(true);
+            any(), anyString(), anyString())).thenReturn(true);
 
         assertTrue(service.eliminarMaterial(1, 100, "motivo"));
         verify(materialDAO).eliminarMaterialesPorCodigo(1, 100);
@@ -343,7 +343,7 @@ class EquipoCorreccionServiceTest {
 
         assertTrue(service.agregarMaterialAEquipo(1, 100, 2, "reposición"));
         verify(auditoriaDAO).registrarCambio(eq(1), eq(99), eq("ADICION_MATERIAL"),
-            eq("material_nuevo"), isNull(), eq("2"), eq("reposición"));
+            eq("material_nuevo"), isNull(), eq("2"), eq("reposición"), eq("ORTOPEDIA"));
     }
 
     // ── consultas ─────────────────────────────────────────────────────────────

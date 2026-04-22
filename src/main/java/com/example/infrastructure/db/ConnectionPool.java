@@ -46,6 +46,12 @@ public class ConnectionPool {
         testDataSource = ds;
     }
 
+    /** Retorna el DataSource activo (test o producción). Usado por Flyway. */
+    public static javax.sql.DataSource getDataSource() {
+        javax.sql.DataSource override = testDataSource;
+        return override != null ? override : dataSource;
+    }
+
     // Bloque estático: Se ejecuta UNA SOLA VEZ al cargar la clase.
     // Skipeado cuando la propiedad aptium.testing=true está activa (tests).
     static {

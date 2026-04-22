@@ -212,6 +212,61 @@ public class EquipoOtrosDAO {
         return lista;
     }
 
+    /** Retorna los equipos "otros" en estado "Nuevo" (editables para correcciones). */
+    public List<EquipoOtros> obtenerEquiposNuevos() {
+        List<EquipoOtros> lista = new ArrayList<>();
+        String sql =
+            "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
+            "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
+            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
+            "eo.volumen_equipo " +
+            "FROM equipo_otros eo " +
+            "JOIN clientes c ON eo.nro_cliente = c.id " +
+            "WHERE eo.estado = 'Nuevo' " +
+            "ORDER BY eo.id DESC";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt  = conn.createStatement();
+             ResultSet rs    = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                EquipoOtros eq = mapearEquipo(rs);
+                cargarMateriales(conn, eq);
+                lista.add(eq);
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener EquipoOtros nuevos", e);
+        }
+        return lista;
+    }
+
+    /** Retorna un equipo_otros por id, con sus materiales cargados, o null si no existe. */
+    public EquipoOtros obtenerPorId(int id) {
+        String sql =
+            "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
+            "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
+            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
+            "eo.volumen_equipo " +
+            "FROM equipo_otros eo " +
+            "JOIN clientes c ON eo.nro_cliente = c.id " +
+            "WHERE eo.id = ?";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    EquipoOtros eq = mapearEquipo(rs);
+                    cargarMateriales(conn, eq);
+                    return eq;
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener EquipoOtros id={}", id, e);
+        }
+        return null;
+    }
+
     // ── Entrega ───────────────────────────────────────────────────────────────
 
     /**

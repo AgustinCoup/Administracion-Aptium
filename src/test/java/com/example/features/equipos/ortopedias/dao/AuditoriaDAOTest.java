@@ -30,13 +30,13 @@ class AuditoriaDAOTest extends AbstractDAOTest {
     @Test
     void registrarCambio_conMaterialId_retornaTrue() {
         assertTrue(dao.registrarCambio(10, 5, "MODIFICACION_CANTIDAD",
-            "cantidad", "3", "5", "corrección test"));
+            "cantidad", "3", "5", "corrección test", "ORTOPEDIA"));
     }
 
     @Test
     void registrarCambio_sinMaterialId_retornaTrue() {
         assertTrue(dao.registrarCambio(10, null, "MODIFICACION_CODIGO",
-            "codigo_catalogo", "100", "200", "reasignación test"));
+            "codigo_catalogo", "100", "200", "reasignación test", "ORTOPEDIA"));
     }
 
     // ── registrarEquipoEliminado ───────────────────────────────────────────────
@@ -45,7 +45,7 @@ class AuditoriaDAOTest extends AbstractDAOTest {
     void registrarEquipoEliminado_todosLosCampos_retornaTrue() {
         assertTrue(dao.registrarEquipoEliminado(
             42, 1, "Cliente A", 2, "Paciente X",
-            3, "Inst B", "Nuevo", "baja por error test"));
+            3, "Inst B", "Nuevo", "baja por error test", "ORTOPEDIA"));
     }
 
     @Test
@@ -53,7 +53,7 @@ class AuditoriaDAOTest extends AbstractDAOTest {
         // nroProfesional, paciente, nroInstitucion pueden ser null
         assertTrue(dao.registrarEquipoEliminado(
             43, 1, "Cliente B", null, null,
-            null, null, "Nuevo", "baja test sin profesional"));
+            null, null, "Nuevo", "baja test sin profesional", "ORTOPEDIA"));
     }
 
     // ── registrarMaterialEliminado ────────────────────────────────────────────
@@ -61,19 +61,19 @@ class AuditoriaDAOTest extends AbstractDAOTest {
     @Test
     void registrarMaterialEliminado_conMaterialId_retornaTrue() {
         assertTrue(dao.registrarMaterialEliminado(
-            10, 5, 400, "Tornillera", 2, "Nuevo", "baja test"));
+            10, 5, 400, "Tornillera", 2, "Nuevo", "baja test", "ORTOPEDIA"));
     }
 
     @Test
     void registrarMaterialEliminado_materialIdNull_retornaTrue() {
         assertTrue(dao.registrarMaterialEliminado(
-            10, null, 400, "Tornillera", 2, "Nuevo", "baja sin id test"));
+            10, null, 400, "Tornillera", 2, "Nuevo", "baja sin id test", "ORTOPEDIA"));
     }
 
     @Test
     void registrarMaterialEliminado_cantidadNull_retornaTrue() {
         assertTrue(dao.registrarMaterialEliminado(
-            10, 5, 400, "Tornillera", null, "Nuevo", "baja sin cantidad test"));
+            10, 5, 400, "Tornillera", null, "Nuevo", "baja sin cantidad test", "ORTOPEDIA"));
     }
 
     // ── obtenerPorEquipo ──────────────────────────────────────────────────────
@@ -85,8 +85,8 @@ class AuditoriaDAOTest extends AbstractDAOTest {
 
     @Test
     void obtenerPorEquipo_conRegistros_retornaLista() {
-        dao.registrarCambio(55, 1, "MODIFICACION_CANTIDAD", "cantidad", "2", "4", "motivo");
-        dao.registrarCambio(55, 2, "MODIFICACION_CODIGO", "codigo_catalogo", "100", "200", "motivo");
+        dao.registrarCambio(55, 1, "MODIFICACION_CANTIDAD", "cantidad", "2", "4", "motivo", "ORTOPEDIA");
+        dao.registrarCambio(55, 2, "MODIFICACION_CODIGO", "codigo_catalogo", "100", "200", "motivo", "ORTOPEDIA");
 
         List<EquipoAuditoria> lista = dao.obtenerPorEquipo(55);
         assertEquals(2, lista.size());
@@ -95,8 +95,8 @@ class AuditoriaDAOTest extends AbstractDAOTest {
 
     @Test
     void obtenerPorEquipo_soloDevuelveRegistrosDelEquipoConsultado() {
-        dao.registrarCambio(60, 1, "MODIFICACION_CANTIDAD", "cantidad", "1", "2", "m1");
-        dao.registrarCambio(61, 2, "MODIFICACION_CANTIDAD", "cantidad", "1", "2", "m2");
+        dao.registrarCambio(60, 1, "MODIFICACION_CANTIDAD", "cantidad", "1", "2", "m1", "ORTOPEDIA");
+        dao.registrarCambio(61, 2, "MODIFICACION_CANTIDAD", "cantidad", "1", "2", "m2", "ORTOPEDIA");
 
         List<EquipoAuditoria> lista = dao.obtenerPorEquipo(60);
         assertEquals(1, lista.size());
@@ -112,14 +112,14 @@ class AuditoriaDAOTest extends AbstractDAOTest {
 
     @Test
     void obtenerTodos_conRegistros_retornaListaNonEmpty() {
-        dao.registrarCambio(70, 1, "MODIFICACION_CANTIDAD", "cantidad", "3", "5", "test vista");
+        dao.registrarCambio(70, 1, "MODIFICACION_CANTIDAD", "cantidad", "3", "5", "test vista", "ORTOPEDIA");
         List<EquipoAuditoria> todos = dao.obtenerTodos();
         assertFalse(todos.isEmpty());
     }
 
     @Test
     void obtenerTodos_incluyeEliminaciones() {
-        dao.registrarEquipoEliminado(80, 1, "Cliente Test", null, null, null, null, "Nuevo", "motivo");
+        dao.registrarEquipoEliminado(80, 1, "Cliente Test", null, null, null, null, "Nuevo", "motivo", "ORTOPEDIA");
         List<EquipoAuditoria> todos = dao.obtenerTodos();
         assertTrue(todos.stream().anyMatch(a -> "ELIMINACION_EQUIPO".equals(a.getTipoCambio())));
     }

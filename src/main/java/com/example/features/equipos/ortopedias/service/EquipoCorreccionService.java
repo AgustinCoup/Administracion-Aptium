@@ -75,7 +75,7 @@ public class EquipoCorreccionService {
 
             materialDAO.actualizarCantidad(materialId, cantidadNueva);
             auditoriaDAO.registrarCambio(equipoId, materialId, "MODIFICACION_CANTIDAD",
-                "cantidad", String.valueOf(cantidadAnterior), String.valueOf(cantidadNueva), motivo.trim());
+                "cantidad", String.valueOf(cantidadAnterior), String.valueOf(cantidadNueva), motivo.trim(), "ORTOPEDIA");
 
             log.info("Cantidad de material {} del equipo {} modificada de {} a {} - Motivo: {}",
                 materialId, equipoId, cantidadAnterior, cantidadNueva, motivo);
@@ -122,7 +122,7 @@ public class EquipoCorreccionService {
             String valAnterior = codigoAnterior + " (" + (descripcionAnterior != null ? descripcionAnterior : "N/A") + ")";
             String valNuevo    = codigoNuevo    + " (" + descripcionNueva + ")";
             auditoriaDAO.registrarCambio(equipoId, materialId, "MODIFICACION_CODIGO",
-                "codigo_catalogo", valAnterior, valNuevo, motivo.trim());
+                "codigo_catalogo", valAnterior, valNuevo, motivo.trim(), "ORTOPEDIA");
 
             log.info("Código de material {} del equipo {} modificado de {} a {} - Motivo: {}",
                 materialId, equipoId, codigoAnterior, codigoNuevo, motivo);
@@ -156,7 +156,7 @@ public class EquipoCorreccionService {
                 equipo.getId(), equipo.getNroCliente(), equipo.getClienteNombre(),
                 equipo.getNroProfesional(), equipo.getPacienteNombre(),
                 equipo.getNroInstitucion(), equipo.getInstitucionNombre(),
-                equipo.getEstado().getNombre(), motivo.trim());
+                equipo.getEstado().getNombre(), motivo.trim(), "ORTOPEDIA");
             if (!snapEquipo) throw new DatabaseException("No se pudo registrar el snapshot de equipo eliminado");
 
             for (Material material : equipo.getMateriales()) {
@@ -164,7 +164,7 @@ public class EquipoCorreccionService {
                     equipo.getId(), material.getId(), material.getCodigo(),
                     material.getDescripcion(), material.getCantidad(),
                     material.getEstado() != null ? material.getEstado().getNombre() : null,
-                    motivo.trim());
+                    motivo.trim(), "ORTOPEDIA");
                 if (!snapMat) throw new DatabaseException("No se pudo registrar el snapshot de materiales eliminados");
             }
 
@@ -208,7 +208,7 @@ public class EquipoCorreccionService {
                 String  estado      = (String)  material[4];
 
                 boolean snap = auditoriaDAO.registrarMaterialEliminado(
-                    equipoId, materialId, codigo, descripcion, cantidad, estado, motivo.trim());
+                    equipoId, materialId, codigo, descripcion, cantidad, estado, motivo.trim(), "ORTOPEDIA");
                 if (!snap) throw new DatabaseException("No se pudo registrar el snapshot del material eliminado");
             }
 
@@ -280,7 +280,8 @@ public class EquipoCorreccionService {
                 "material_nuevo",
                 null,
                 String.valueOf(cantidad),
-                motivo.trim()
+                motivo.trim(),
+                "ORTOPEDIA"
             );
 
             log.info("Material código={} (cantidad={}) agregado al equipo {} - Motivo: {}",

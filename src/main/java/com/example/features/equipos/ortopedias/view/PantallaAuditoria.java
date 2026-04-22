@@ -69,6 +69,7 @@ public class PantallaAuditoria extends JPanel {
     private JDateChooser              dateChooserDesde;
     private JDateChooser              dateChooserHasta;
     private CheckableComboBox<String> cmbTiposCambio;
+    private CheckableComboBox<String> cmbTipoEquipo;
 
     // ── Constructor ──────────────────────────────────────────────────────────
 
@@ -145,12 +146,20 @@ public class PantallaAuditoria extends JPanel {
         // Por defecto ningún tipo seleccionado → se muestran todos los registros.
         // El usuario selecciona los que quiere filtrar de forma positiva.
 
+        JLabel lblTipoEquipo = new JLabel("Tipo Equipo:");
+        lblTipoEquipo.setFont(Estilos.Fuentes.LABEL);
+        cmbTipoEquipo = new CheckableComboBox<>(new String[]{"Ortopedia", "Otros"});
+        cmbTipoEquipo.setFont(Estilos.Fuentes.INPUT);
+        cmbTipoEquipo.setPreferredSize(new Dimension(140, 25));
+
         panelControles.add(lblDesde);
         panelControles.add(dateChooserDesde);
         panelControles.add(lblHasta);
         panelControles.add(dateChooserHasta);
         panelControles.add(lblTipo);
         panelControles.add(cmbTiposCambio);
+        panelControles.add(lblTipoEquipo);
+        panelControles.add(cmbTipoEquipo);
 
         JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         JButton btnLimpiar = new JButton("Limpiar Filtros");
@@ -163,6 +172,7 @@ public class PantallaAuditoria extends JPanel {
 
         FilterUiHelper.bindOnDateChange(this::aplicarFiltros, dateChooserDesde, dateChooserHasta);
         cmbTiposCambio.setOnSelectionChange(this::aplicarFiltros);
+        cmbTipoEquipo.setOnSelectionChange(this::aplicarFiltros);
 
         return panelFiltros;
     }
@@ -230,6 +240,7 @@ public class PantallaAuditoria extends JPanel {
         List<EquipoAuditoria> filtradas = auditoriasCargadas.stream()
             .filter(this::cumpleFechas)
             .filter(this::cumpleTipo)
+            .filter(this::cumpleTipoEquipo)
             .collect(Collectors.toList());
 
         actualizarTabla(filtradas);
@@ -312,10 +323,18 @@ public class PantallaAuditoria extends JPanel {
      * Limpia todos los filtros: fechas y selección de tipos.
      * Dejar el CheckableComboBox vacío muestra todos los registros (sin filtro de tipo).
      */
+    private boolean cumpleTipoEquipo(EquipoAuditoria a) {
+        List<String> seleccionados = cmbTipoEquipo.getSelectedItems();
+        if (seleccionados.isEmpty()) return true;
+        String label = "OTROS".equals(a.getTipoEquipo()) ? "Otros" : "Ortopedia";
+        return seleccionados.contains(label);
+    }
+
     private void limpiarFiltros() {
         dateChooserDesde.setDate(null);
         dateChooserHasta.setDate(null);
         cmbTiposCambio.clearSelection();
+        cmbTipoEquipo.clearSelection();
         aplicarFiltros();
     }
 }

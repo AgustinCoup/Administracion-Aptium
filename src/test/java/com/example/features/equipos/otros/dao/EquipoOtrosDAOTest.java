@@ -183,6 +183,69 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
         assertEquals(3, total);
     }
 
+    // ── obtenerEquiposNuevos ──────────────────────────────────────────────────
+
+    @Test
+    void obtenerEquiposNuevos_conEquipoEnEstadoNuevo_retornaEquipo() {
+        List<EquipoOtros> lista = dao.obtenerEquiposNuevos();
+        assertEquals(1, lista.size());
+        assertEquals(equipoDetalles.getId(), lista.get(0).getId());
+    }
+
+    @Test
+    void obtenerEquiposNuevos_equipoEnOtroEstado_noApareceEnLista() throws SQLException {
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Lavando' WHERE id = " + equipoDetalles.getId());
+        assertTrue(dao.obtenerEquiposNuevos().isEmpty());
+    }
+
+    @Test
+    void obtenerEquiposNuevos_equipoRemito_incluyeRemitoCantidad() {
+        EquipoOtros remito = nuevoRemito(7);
+        dao.guardar(remito);
+
+        List<EquipoOtros> lista = dao.obtenerEquiposNuevos();
+        EquipoOtros encontrado = lista.stream()
+            .filter(e -> e.getId().equals(remito.getId()))
+            .findFirst()
+            .orElse(null);
+
+        assertNotNull(encontrado);
+        assertEquals(7, encontrado.getRemitoCantidad());
+    }
+
+    @Test
+    void obtenerEquiposNuevos_multipleEquipos_retornaAmbos() {
+        EquipoOtros segundo = new EquipoOtros();
+        segundo.setNroCliente(2);
+        segundo.setTipoIngreso(TipoIngresoOtros.DETALLES);
+        segundo.agregarMaterial(new MaterialOtros("TestDesc Segundo", 1));
+        dao.guardar(segundo);
+
+        assertEquals(2, dao.obtenerEquiposNuevos().size());
+    }
+
+    // ── obtenerPorId ──────────────────────────────────────────────────────────
+
+    @Test
+    void obtenerPorId_idExistente_retornaEquipo() {
+        EquipoOtros encontrado = dao.obtenerPorId(equipoDetalles.getId());
+        assertNotNull(encontrado);
+        assertEquals(equipoDetalles.getId(), encontrado.getId());
+    }
+
+    @Test
+    void obtenerPorId_idInexistente_retornaNull() {
+        assertNull(dao.obtenerPorId(9999));
+    }
+
+    @Test
+    void obtenerPorId_incluyeMateriales() {
+        EquipoOtros encontrado = dao.obtenerPorId(equipoDetalles.getId());
+        assertNotNull(encontrado);
+        assertEquals(1, encontrado.getMateriales().size());
+        assertEquals("TestDescMat Principal", encontrado.getMateriales().get(0).getDescripcion());
+    }
+
     // ── helper ────────────────────────────────────────────────────────────────
 
     private EquipoOtros nuevoRemito(int cantidad) {

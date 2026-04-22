@@ -29,6 +29,9 @@ public class EquipoAuditoria {
     /** Código + descripción del material afectado (ej: "406 - Makita"). Populado solo en obtenerTodos(). */
     private String materialInfo;
 
+    /** Discriminador: ORTOPEDIA | OTROS. Populado solo en obtenerTodos(). */
+    private String tipoEquipo;
+
     public EquipoAuditoria() {
     }
 
@@ -79,6 +82,9 @@ public class EquipoAuditoria {
 
     public String getMaterialInfo() { return materialInfo; }
     public void setMaterialInfo(String materialInfo) { this.materialInfo = materialInfo; }
+
+    public String getTipoEquipo() { return tipoEquipo; }
+    public void setTipoEquipo(String tipoEquipo) { this.tipoEquipo = tipoEquipo; }
 
     @Override
     public String toString() {

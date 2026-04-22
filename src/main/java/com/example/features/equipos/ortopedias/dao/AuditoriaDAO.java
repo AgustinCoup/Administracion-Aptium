@@ -39,11 +39,12 @@ public class AuditoriaDAO {
      */
     public boolean registrarCambio(Integer equipoId, Integer materialId,
                                    String tipoCambio, String campoModificado,
-                                   String valorAnterior, String valorNuevo, String motivo) {
+                                   String valorAnterior, String valorNuevo, String motivo,
+                                   String tipoEquipo) {
         String sql =
             "INSERT INTO equipos_auditoria " +
-            "(equipo_id, material_id, tipo_cambio, campo_modificado, valor_anterior, valor_nuevo, motivo) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?)";
+            "(equipo_id, material_id, tipo_cambio, campo_modificado, valor_anterior, valor_nuevo, motivo, tipo_equipo) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -55,9 +56,10 @@ public class AuditoriaDAO {
             ps.setString(5, valorAnterior);
             ps.setString(6, valorNuevo);
             ps.setString(7, motivo);
+            ps.setString(8, tipoEquipo != null ? tipoEquipo : "ORTOPEDIA");
 
             ps.executeUpdate();
-            log.debug("Auditoría registrada: equipo={}, tipo={}", equipoId, tipoCambio);
+            log.debug("Auditoría registrada: equipo={}, tipo={}, tipoEquipo={}", equipoId, tipoCambio, tipoEquipo);
             return true;
 
         } catch (SQLException e) {
@@ -79,12 +81,13 @@ public class AuditoriaDAO {
                                             Integer nroInstitucion,
                                             String institucionNombre,
                                             String estado,
-                                            String motivo) {
+                                            String motivo,
+                                            String tipoEquipo) {
         String sql =
             "INSERT INTO equipos_eliminados " +
             "(equipo_id_original, nro_cliente, cliente_nombre, nro_profesional, paciente, " +
-            " nro_institucion, institucion_nombre, estado, motivo) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            " nro_institucion, institucion_nombre, estado, motivo, tipo_equipo) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -98,6 +101,7 @@ public class AuditoriaDAO {
             ps.setString(7, institucionNombre);
             ps.setString(8, estado);
             ps.setString(9, motivo);
+            ps.setString(10, tipoEquipo != null ? tipoEquipo : "ORTOPEDIA");
 
             ps.executeUpdate();
             return true;
@@ -117,28 +121,30 @@ public class AuditoriaDAO {
                                               String descripcion,
                                               Integer cantidad,
                                               String estado,
-                                              String motivo) {
+                                              String motivo,
+                                              String tipoEquipo) {
         String sql =
             "INSERT INTO materiales_eliminados " +
-            "(equipo_id_original, material_id_original, codigo_catalogo, descripcion, cantidad, estado, motivo) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?)";
+            "(equipo_id_original, material_id_original, codigo_catalogo, descripcion, cantidad, estado, motivo, tipo_equipo) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setInt(1, equipoIdOriginal);
             if (materialIdOriginal != null) ps.setInt(2, materialIdOriginal); else ps.setNull(2, Types.INTEGER);
-            ps.setInt(3, codigoCatalogo);
+            if (codigoCatalogo != null) ps.setInt(3, codigoCatalogo); else ps.setNull(3, Types.INTEGER);
             ps.setString(4, descripcion);
             if (cantidad != null) ps.setInt(5, cantidad); else ps.setNull(5, Types.INTEGER);
             ps.setString(6, estado);
             ps.setString(7, motivo);
+            ps.setString(8, tipoEquipo != null ? tipoEquipo : "ORTOPEDIA");
 
             ps.executeUpdate();
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al registrar material eliminado equipo={}, código={}", equipoIdOriginal, codigoCatalogo, e);
+            log.error("Error al registrar material eliminado equipo={}", equipoIdOriginal, e);
             return false;
         }
     }
@@ -190,7 +196,7 @@ public class AuditoriaDAO {
         String sql =
             "SELECT id, equipo_id, material_id, tipo_cambio, campo_modificado, " +
             "       valor_anterior, valor_nuevo, motivo, fecha_cambio, " +
-            "       cliente_nombre, material_info " +
+            "       cliente_nombre, material_info, tipo_equipo " +
             "FROM vista_auditoria " +
             "ORDER BY fecha_cambio DESC";
 
@@ -236,6 +242,7 @@ public class AuditoriaDAO {
         if (conExtendidos) {
             a.setClienteNombre(rs.getString("cliente_nombre"));
             a.setMaterialInfo(rs.getString("material_info"));
+            a.setTipoEquipo(rs.getString("tipo_equipo"));
         }
 
         return a;

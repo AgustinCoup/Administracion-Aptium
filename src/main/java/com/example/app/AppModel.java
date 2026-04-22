@@ -7,6 +7,7 @@ import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.ortopedias.service.MaterialService;
 import com.example.features.equipos.otros.model.EquipoOtros;
+import com.example.features.equipos.otros.service.EquipoOtrosCorreccionService;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.catalogo.service.CatalogoOtrosService;
 import com.example.features.catalogo.service.CatalogoService;
@@ -55,6 +56,7 @@ public class AppModel {
     private final CatalogoOtrosService   catalogoOtrosService;
     private final EquipoOtrosService     equipoOtrosService;
     private final EquipoCorreccionService equipoCorreccionService;
+    private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
 
     /**
      * Constructor con inyección de dependencias.
@@ -75,6 +77,7 @@ public class AppModel {
         this.catalogoOtrosService = context.getCatalogoOtrosService();
         this.equipoOtrosService = context.getEquipoOtrosService();
         this.equipoCorreccionService = context.getEquipoCorreccionService();
+        this.equipoOtrosCorreccionService = context.getEquipoOtrosCorreccionService();
     }
 
     // ==================== INFRAESTRUCTURA ====================
@@ -278,6 +281,10 @@ public class AppModel {
      */
     public EquipoCorreccionService getEquipoCorreccionService() {
         return equipoCorreccionService;
+    }
+
+    public EquipoOtrosCorreccionService getEquipoOtrosCorreccionService() {
+        return equipoOtrosCorreccionService;
     }
 }
 

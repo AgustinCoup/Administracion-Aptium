@@ -2,11 +2,16 @@ package com.example.features.equipos.ortopedias.view;
 
 import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoRegistrableInterface;
+import com.example.common.model.MaterialRegistrableInterface;
 import com.example.common.util.Validador;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.Material;
 import com.example.features.equipos.ortopedias.view.helpers.AgregarMaterialDialog;
+import com.example.features.equipos.ortopedias.view.helpers.AgregarMaterialOtrosDialog;
 import com.example.features.equipos.ortopedias.view.helpers.PanelEquipoMaterial;
+import com.example.features.equipos.otros.model.EquipoOtros;
+import com.example.features.equipos.otros.model.MaterialOtros;
+import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.PanelHeader;
 
@@ -19,17 +24,6 @@ import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Pantalla para correcciones de equipos en estado "Nuevo".
- *
- * Solo opera sobre equipos de ortopedia ({@link Equipo}).
- * Si el equipo seleccionado es de tipo "Otros", las operaciones de
- * modificación quedan deshabilitadas y se muestra un mensaje al usuario.
- *
- * El uso de {@link IEquipoRegistrable} en los métodos que interactúan con
- * {@link PanelEquipoMaterial} es necesario porque dicho panel ahora trabaja
- * con la interfaz; los casts internos son seguros gracias al guard instanceof.
- */
 public class PantallaCorrecciones extends JPanel {
 
     private PanelEquipoMaterial panelTablas;
@@ -57,12 +51,21 @@ public class PantallaCorrecciones extends JPanel {
     private JLabel lblCodigoNuevo;
     private JLabel lblDescripcionNueva;
 
-    // ── Callbacks ─────────────────────────────────────────────────────────────
+    // ── Callbacks ortopedia ───────────────────────────────────────────────────
     private QuartaConsumer<Integer, Integer, Integer, String> onModificarCantidad;
     private QuartaConsumer<Integer, Integer, Integer, String> onModificarCodigo;
     private QuartaConsumer<Integer, Integer, Integer, String> onAgregarMaterial;
     private BiConsumer<Integer, String>                       onEliminarEquipo;
     private TripleConsumer<Integer, Integer, String>          onEliminarMaterial;
+
+    // ── Callbacks otros ───────────────────────────────────────────────────────
+    private TripleConsumer<Integer, Integer, String>          onModificarCantidadRemito;
+    private QuartaConsumer<Integer, Integer, Integer, String> onModificarCantidadMaterialOtros;
+    private QuartaConsumer<Integer, String, Integer, String>  onAgregarMaterialOtros;
+    private TripleConsumer<Integer, String, String>           onEliminarMaterialOtros;
+    private BiConsumer<Integer, String>                       onEliminarEquipoOtros;
+
+    // ── Callbacks generales ───────────────────────────────────────────────────
     private Runnable                                          onVerAuditoria;
     private java.util.function.BiConsumer<Integer, JTextField> onCodigoNuevoChanged;
     private Runnable                                          onPantallaVisible;
@@ -228,11 +231,33 @@ public class PantallaCorrecciones extends JPanel {
     // ── Diálogo "Agregar Material" ────────────────────────────────────────────
 
     private void abrirDialogoAgregarMaterial() {
+        EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
+        if (sel == null) { mostrarError("Debe seleccionar un equipo"); return; }
+
+        if (sel instanceof EquipoOtros) {
+            EquipoOtros equipoOtros = (EquipoOtros) sel;
+            AgregarMaterialOtrosDialog dialogo = new AgregarMaterialOtrosDialog();
+            int resultado = JOptionPane.showConfirmDialog(
+                this, dialogo.panel, "Agregar Material al Equipo",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (resultado != JOptionPane.OK_OPTION) return;
+            String desc   = dialogo.getDescripcion();
+            String motivo = dialogo.getMotivo();
+            if (desc.isEmpty())   { mostrarError("La descripción es obligatoria"); return; }
+            if (motivo.isEmpty()) { mostrarError("El motivo es obligatorio"); return; }
+            int cantidad = dialogo.getCantidad();
+            if (confirmar(String.format("¿Agregar al equipo de %s?\n\nMaterial: %s\nCantidad: %d",
+                    equipoOtros.getClienteNombre(), desc, cantidad))) {
+                if (onAgregarMaterialOtros != null)
+                    onAgregarMaterialOtros.accept(equipoOtros.getId(), desc, cantidad, motivo);
+            }
+            return;
+        }
+
         Equipo equipo = obtenerEquipoOrtopedia("Agregar Material");
         if (equipo == null) return;
 
         AgregarMaterialDialog dialogo = new AgregarMaterialDialog(onCodigoNuevoChanged);
-
         int resultado = JOptionPane.showConfirmDialog(
             this, dialogo.panel, "Agregar Material al Equipo",
             JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
@@ -257,14 +282,11 @@ public class PantallaCorrecciones extends JPanel {
         }
 
         String descFinal = dialogo.getDescripcion();
-        int confirmar = JOptionPane.showConfirmDialog(this,
-            String.format("¿Agregar al equipo de %s?\n\nMaterial: %s - %s\nCantidad: %d",
+        if (confirmar(String.format("¿Agregar al equipo de %s?\n\nMaterial: %s - %s\nCantidad: %d",
                 equipo.getClienteNombre(), codigo,
-                descFinal.isEmpty() ? "(desconocido)" : descFinal, cantidad),
-            "Confirmar adición", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-
-        if (confirmar == JOptionPane.YES_OPTION && onAgregarMaterial != null) {
-            onAgregarMaterial.accept(equipo.getId(), codigo, cantidad, motivo);
+                descFinal.isEmpty() ? "(desconocido)" : descFinal, cantidad))) {
+            if (onAgregarMaterial != null)
+                onAgregarMaterial.accept(equipo.getId(), codigo, cantidad, motivo);
         }
     }
 
@@ -281,24 +303,38 @@ public class PantallaCorrecciones extends JPanel {
         txtDescripcionNueva.setVisible(!esModificarCantidad);
     }
 
-    /**
-     * Callback del panel cuando se selecciona un equipo.
-     * Habilita botones SOLO si es un equipo de ortopedia.
-     */
     private void onEquipoSeleccionado(EquipoRegistrableInterface equipo) {
         boolean esOrtopedia = equipo instanceof Equipo;
-        btnEliminarEquipo.setEnabled(esOrtopedia);
-        btnAgregarMaterial.setEnabled(esOrtopedia);
-        if (equipo != null && !esOrtopedia) {
-            mostrarMensaje("Correcciones solo disponibles para equipos de ortopedia.");
+        boolean esRemito    = equipo instanceof EquipoOtros
+            && ((EquipoOtros) equipo).getTipoIngreso() == TipoIngresoOtros.REMITO;
+        boolean esDetalles  = equipo instanceof EquipoOtros
+            && ((EquipoOtros) equipo).getTipoIngreso() == TipoIngresoOtros.DETALLES;
+
+        // "Modificar Código" no aplica a equipos Otros (sin código numérico)
+        cmbOperacion.setEnabled(esOrtopedia);
+        if (!esOrtopedia) {
+            cmbOperacion.setSelectedIndex(0);
+            actualizarCamposEdicion();
         }
+
+        btnEliminarEquipo.setEnabled(esOrtopedia || esRemito || esDetalles);
+        btnAgregarMaterial.setEnabled(esOrtopedia || esDetalles);
+        // guardar y eliminarMaterial quedan deshabilitados hasta que se seleccione un material
+        btnGuardarCambios.setEnabled(false);
+        btnEliminarMaterial.setEnabled(false);
     }
 
     private void onMaterialSelectionChanged() {
-        boolean sel          = panelTablas.getMaterialSeleccionadoIndex() >= 0;
-        boolean esOrtopedia  = panelTablas.getEquipoSeleccionado() instanceof Equipo;
-        btnGuardarCambios.setEnabled(sel && esOrtopedia);
-        btnEliminarMaterial.setEnabled(sel && esOrtopedia);
+        boolean sel = panelTablas.getMaterialSeleccionadoIndex() >= 0;
+        EquipoRegistrableInterface equipo = panelTablas.getEquipoSeleccionado();
+        boolean esOrtopedia = equipo instanceof Equipo;
+        boolean esDetalles  = equipo instanceof EquipoOtros
+            && ((EquipoOtros) equipo).getTipoIngreso() == TipoIngresoOtros.DETALLES;
+        boolean esRemito    = equipo instanceof EquipoOtros
+            && ((EquipoOtros) equipo).getTipoIngreso() == TipoIngresoOtros.REMITO;
+
+        btnGuardarCambios.setEnabled(sel && (esOrtopedia || esDetalles || esRemito));
+        btnEliminarMaterial.setEnabled(sel && (esOrtopedia || esDetalles));
     }
 
     private void notificarCambioCodigo() {
@@ -312,6 +348,36 @@ public class PantallaCorrecciones extends JPanel {
     }
 
     private void guardarCambios() {
+        EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
+        if (sel == null) { mostrarError("Debe seleccionar un equipo"); return; }
+
+        String motivo = txtMotivo.getText().trim();
+        if (motivo.isEmpty()) { mostrarError("El motivo del cambio es obligatorio"); return; }
+
+        if (sel instanceof EquipoOtros) {
+            EquipoOtros equipoOtros = (EquipoOtros) sel;
+            int cantidadNueva = (Integer) spinCantidad.getValue();
+
+            if (equipoOtros.getTipoIngreso() == TipoIngresoOtros.REMITO) {
+                if (confirmar("¿Modificar cantidad del remito a " + cantidadNueva + "?")) {
+                    if (onModificarCantidadRemito != null)
+                        onModificarCantidadRemito.accept(equipoOtros.getId(), cantidadNueva, motivo);
+                    limpiarFormulario();
+                }
+            } else {
+                int matIdx = panelTablas.getMaterialSeleccionadoIndex();
+                if (matIdx < 0) { mostrarError("Debe seleccionar un material"); return; }
+                List<MaterialRegistrableInterface> mats = equipoOtros.getMaterialesRegistrables();
+                MaterialOtros material = (MaterialOtros) mats.get(matIdx);
+                if (confirmar("¿Modificar cantidad de \"" + material.getDescripcion() + "\" a " + cantidadNueva + "?")) {
+                    if (onModificarCantidadMaterialOtros != null)
+                        onModificarCantidadMaterialOtros.accept(equipoOtros.getId(), material.getId(), cantidadNueva, motivo);
+                    limpiarFormulario();
+                }
+            }
+            return;
+        }
+
         Equipo equipo = obtenerEquipoOrtopedia("Guardar cambios");
         if (equipo == null) return;
 
@@ -319,9 +385,6 @@ public class PantallaCorrecciones extends JPanel {
         if (matIdx < 0) { mostrarError("Debe seleccionar un material"); return; }
 
         Material material = equipo.getMateriales().get(matIdx);
-        String motivo = txtMotivo.getText().trim();
-        if (motivo.isEmpty()) { mostrarError("El motivo del cambio es obligatorio"); return; }
-
         boolean esModificarCantidad =
             "Modificar Cantidad".equals(cmbOperacion.getSelectedItem().toString());
 
@@ -386,20 +449,45 @@ public class PantallaCorrecciones extends JPanel {
     }
 
     private void solicitarEliminacion() {
-        Equipo equipo = obtenerEquipoOrtopedia("Eliminar equipo");
-        if (equipo == null) return;
+        EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
+        if (sel == null) { mostrarError("Debe seleccionar un equipo"); return; }
+
         String motivo = JOptionPane.showInputDialog(
             this, "Ingrese el motivo de la eliminación:", "Eliminar Equipo", JOptionPane.WARNING_MESSAGE);
-        if (motivo != null && !motivo.trim().isEmpty() && onEliminarEquipo != null)
-            onEliminarEquipo.accept(equipo.getId(), motivo.trim());
+        if (motivo == null || motivo.trim().isEmpty()) return;
+
+        if (sel instanceof EquipoOtros) {
+            if (onEliminarEquipoOtros != null)
+                onEliminarEquipoOtros.accept(sel.getId(), motivo.trim());
+        } else if (sel instanceof Equipo && onEliminarEquipo != null) {
+            onEliminarEquipo.accept(sel.getId(), motivo.trim());
+        }
     }
 
     private void solicitarEliminacionMaterial() {
-        Equipo equipo = obtenerEquipoOrtopedia("Eliminar material");
-        if (equipo == null) return;
+        EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
+        if (sel == null) { mostrarError("Debe seleccionar un equipo"); return; }
         int matIdx = panelTablas.getMaterialSeleccionadoIndex();
         if (matIdx < 0) { mostrarError("Debe seleccionar un material"); return; }
 
+        if (sel instanceof EquipoOtros) {
+            EquipoOtros equipoOtros = (EquipoOtros) sel;
+            MaterialOtros material  = equipoOtros.getMateriales().get(matIdx);
+            int resp = JOptionPane.showConfirmDialog(this,
+                String.format("¿Está seguro de que desea eliminar todos los materiales con descripción \"%s\" del equipo?\n\nEsta acción no se puede deshacer.",
+                    material.getDescripcion()),
+                "Confirmar Eliminación de Material", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (resp == JOptionPane.YES_OPTION) {
+                String motivo = JOptionPane.showInputDialog(
+                    this, "Ingrese el motivo de la eliminación:", "Eliminar Material", JOptionPane.WARNING_MESSAGE);
+                if (motivo != null && !motivo.trim().isEmpty() && onEliminarMaterialOtros != null)
+                    onEliminarMaterialOtros.accept(equipoOtros.getId(), material.getDescripcion(), motivo.trim());
+            }
+            return;
+        }
+
+        Equipo equipo = obtenerEquipoOrtopedia("Eliminar material");
+        if (equipo == null) return;
         Material material = equipo.getMateriales().get(matIdx);
         int resp = JOptionPane.showConfirmDialog(this,
             String.format("¿Está seguro de que desea eliminar TODOS los materiales con código %d (%s) del equipo?\n\nEsta acción no se puede deshacer.",
@@ -417,13 +505,6 @@ public class PantallaCorrecciones extends JPanel {
         if (onVerAuditoria != null) onVerAuditoria.run();
     }
 
-    /**
-     * Obtiene el equipo seleccionado casteado a {@link Equipo} (ortopedia).
-     * Si no hay selección o el equipo es de tipo "Otros", muestra un mensaje
-     * apropiado y retorna null.
-     *
-     * @param accion Nombre de la acción que intentó el usuario (para el mensaje)
-     */
     private Equipo obtenerEquipoOrtopedia(String accion) {
         EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
         if (sel == null) {
@@ -449,13 +530,13 @@ public class PantallaCorrecciones extends JPanel {
 
     // ── API pública ───────────────────────────────────────────────────────────
 
-    /**
-     * Llamado por {@link com.example.features.equipos.controller.CorreccionsController}.
-     * Acepta List<Equipo> (solo ortopedia) y hace el upcasting internamente.
-     */
     public void actualizarListaEquipos(List<Equipo> equipos) {
         List<EquipoRegistrableInterface> lista = new ArrayList<>(equipos);
         panelTablas.actualizarEquipos(lista);
+    }
+
+    public void actualizarListaEquiposUnificada(List<EquipoRegistrableInterface> equipos) {
+        panelTablas.actualizarEquipos(equipos);
     }
 
     public void recargarMateriales()  { panelTablas.recargarMateriales(); }
@@ -480,24 +561,35 @@ public class PantallaCorrecciones extends JPanel {
     public void mostrarCargando(boolean cargando) {
         progreso.setVisible(cargando);
         panelTablas.setEnabled(!cargando);
-        boolean matSel      = panelTablas.getMaterialSeleccionadoIndex() >= 0;
-        boolean eqOrtopedia = panelTablas.getEquipoSeleccionado() instanceof Equipo;
-        btnGuardarCambios.setEnabled(!cargando && matSel && eqOrtopedia);
-        btnEliminarMaterial.setEnabled(!cargando && matSel && eqOrtopedia);
-        btnEliminarEquipo.setEnabled(!cargando && eqOrtopedia);
-        btnAgregarMaterial.setEnabled(!cargando && eqOrtopedia);
+        EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
+        boolean matSel     = panelTablas.getMaterialSeleccionadoIndex() >= 0;
+        boolean esOrtopedia = sel instanceof Equipo;
+        boolean esDetalles  = sel instanceof EquipoOtros
+            && ((EquipoOtros) sel).getTipoIngreso() == TipoIngresoOtros.DETALLES;
+        boolean esRemito    = sel instanceof EquipoOtros
+            && ((EquipoOtros) sel).getTipoIngreso() == TipoIngresoOtros.REMITO;
+
+        btnGuardarCambios.setEnabled(!cargando && matSel && (esOrtopedia || esDetalles || esRemito));
+        btnEliminarMaterial.setEnabled(!cargando && matSel && (esOrtopedia || esDetalles));
+        btnEliminarEquipo.setEnabled(!cargando && (esOrtopedia || esDetalles || esRemito));
+        btnAgregarMaterial.setEnabled(!cargando && (esOrtopedia || esDetalles));
     }
 
     // ── Setters de callbacks ──────────────────────────────────────────────────
 
-    public void setOnModificarCantidad(QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCantidad  = cb; }
-    public void setOnModificarCodigo  (QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCodigo    = cb; }
-    public void setOnAgregarMaterial  (QuartaConsumer<Integer, Integer, Integer, String> cb) { onAgregarMaterial    = cb; }
-    public void setOnEliminarEquipo   (BiConsumer<Integer, String> cb)                       { onEliminarEquipo     = cb; }
-    public void setOnEliminarMaterial (TripleConsumer<Integer, Integer, String> cb)          { onEliminarMaterial   = cb; }
-    public void setOnVerAuditoria     (Runnable cb)                                          { onVerAuditoria       = cb; }
-    public void setOnCodigoNuevoChanged(java.util.function.BiConsumer<Integer, JTextField> cb) { onCodigoNuevoChanged = cb; }
-    public void setOnPantallaVisible  (Runnable cb)                                          { onPantallaVisible    = cb; }
+    public void setOnModificarCantidad(QuartaConsumer<Integer, Integer, Integer, String> cb)         { onModificarCantidad               = cb; }
+    public void setOnModificarCodigo  (QuartaConsumer<Integer, Integer, Integer, String> cb)         { onModificarCodigo                 = cb; }
+    public void setOnAgregarMaterial  (QuartaConsumer<Integer, Integer, Integer, String> cb)         { onAgregarMaterial                 = cb; }
+    public void setOnEliminarEquipo   (BiConsumer<Integer, String> cb)                               { onEliminarEquipo                  = cb; }
+    public void setOnEliminarMaterial (TripleConsumer<Integer, Integer, String> cb)                  { onEliminarMaterial                = cb; }
+    public void setOnModificarCantidadRemito        (TripleConsumer<Integer, Integer, String> cb)    { onModificarCantidadRemito         = cb; }
+    public void setOnModificarCantidadMaterialOtros (QuartaConsumer<Integer, Integer, Integer, String> cb) { onModificarCantidadMaterialOtros = cb; }
+    public void setOnAgregarMaterialOtros           (QuartaConsumer<Integer, String, Integer, String> cb)  { onAgregarMaterialOtros           = cb; }
+    public void setOnEliminarMaterialOtros          (TripleConsumer<Integer, String, String> cb)     { onEliminarMaterialOtros           = cb; }
+    public void setOnEliminarEquipoOtros            (BiConsumer<Integer, String> cb)                 { onEliminarEquipoOtros             = cb; }
+    public void setOnVerAuditoria     (Runnable cb)                                                  { onVerAuditoria                    = cb; }
+    public void setOnCodigoNuevoChanged(java.util.function.BiConsumer<Integer, JTextField> cb)       { onCodigoNuevoChanged              = cb; }
+    public void setOnPantallaVisible  (Runnable cb)                                                  { onPantallaVisible                 = cb; }
 
     // ── Interfaces funcionales ────────────────────────────────────────────────
 
