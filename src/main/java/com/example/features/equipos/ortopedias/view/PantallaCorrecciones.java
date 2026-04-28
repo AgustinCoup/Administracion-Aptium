@@ -23,6 +23,7 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 public class PantallaCorrecciones extends JPanel {
 
@@ -69,6 +70,10 @@ public class PantallaCorrecciones extends JPanel {
     private Runnable                                          onVerAuditoria;
     private java.util.function.BiConsumer<Integer, JTextField> onCodigoNuevoChanged;
     private Runnable                                          onPantallaVisible;
+
+    // ── Catálogo otros (para el diálogo "Agregar Material") ───────────────────
+    private Function<String, List<String>> buscarMaterialesOtros;
+    private Function<String, Boolean>      verificarMaterialOtros;
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -135,7 +140,7 @@ public class PantallaCorrecciones extends JPanel {
         lblOp.setFont(Estilos.Fuentes.LABEL);
         panel.add(lblOp, gbc);
         gbc.gridx = 1; gbc.weightx = 0.7;
-        cmbOperacion = new JComboBox<>(new String[]{"Modificar Cantidad", "Modificar Código"});
+        cmbOperacion = new JComboBox<>(new String[]{Constantes.Mensajes.OPERACION_MODIFICAR_CANTIDAD, Constantes.Mensajes.OPERACION_MODIFICAR_CODIGO});
         cmbOperacion.setFont(Estilos.Fuentes.INPUT);
         cmbOperacion.addActionListener(e -> actualizarCamposEdicion());
         panel.add(cmbOperacion, gbc);
@@ -232,11 +237,13 @@ public class PantallaCorrecciones extends JPanel {
 
     private void abrirDialogoAgregarMaterial() {
         EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
-        if (sel == null) { mostrarError("Debe seleccionar un equipo"); return; }
+        if (sel == null) { mostrarError(Constantes.Mensajes.DEBE_SELECCIONAR_EQUIPO); return; }
 
         if (sel instanceof EquipoOtros) {
             EquipoOtros equipoOtros = (EquipoOtros) sel;
-            AgregarMaterialOtrosDialog dialogo = new AgregarMaterialOtrosDialog();
+            AgregarMaterialOtrosDialog dialogo = new AgregarMaterialOtrosDialog(
+                buscarMaterialesOtros  != null ? buscarMaterialesOtros  : t -> List.of(),
+                verificarMaterialOtros != null ? verificarMaterialOtros : t -> false);
             int resultado = JOptionPane.showConfirmDialog(
                 this, dialogo.panel, "Agregar Material al Equipo",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
@@ -244,7 +251,7 @@ public class PantallaCorrecciones extends JPanel {
             String desc   = dialogo.getDescripcion();
             String motivo = dialogo.getMotivo();
             if (desc.isEmpty())   { mostrarError("La descripción es obligatoria"); return; }
-            if (motivo.isEmpty()) { mostrarError("El motivo es obligatorio"); return; }
+            if (motivo.isEmpty()) { mostrarError(Constantes.Mensajes.MOTIVO_OBLIGATORIO); return; }
             int cantidad = dialogo.getCantidad();
             if (confirmar(String.format("¿Agregar al equipo de %s?\n\nMaterial: %s\nCantidad: %d",
                     equipoOtros.getClienteNombre(), desc, cantidad))) {
@@ -267,7 +274,7 @@ public class PantallaCorrecciones extends JPanel {
         String motivo    = dialogo.getMotivo();
         if (codigoStr.isEmpty())               { mostrarError("Debe ingresar un código de catálogo"); return; }
         if (!Validador.soloNumeros(codigoStr)) { mostrarError("El código debe ser un número entero"); return; }
-        if (motivo.isEmpty())                  { mostrarError("El motivo es obligatorio"); return; }
+        if (motivo.isEmpty())                  { mostrarError(Constantes.Mensajes.MOTIVO_OBLIGATORIO); return; }
 
         Integer codigo   = Integer.parseInt(codigoStr);
         Integer cantidad = dialogo.getCantidad();
@@ -294,7 +301,7 @@ public class PantallaCorrecciones extends JPanel {
 
     private void actualizarCamposEdicion() {
         boolean esModificarCantidad =
-            "Modificar Cantidad".equals(cmbOperacion.getSelectedItem().toString());
+            Constantes.Mensajes.OPERACION_MODIFICAR_CANTIDAD.equals(cmbOperacion.getSelectedItem().toString());
         lblCantidad.setVisible(esModificarCantidad);
         spinCantidad.setVisible(esModificarCantidad);
         lblCodigoNuevo.setVisible(!esModificarCantidad);
@@ -310,7 +317,7 @@ public class PantallaCorrecciones extends JPanel {
         boolean esDetalles  = equipo instanceof EquipoOtros
             && ((EquipoOtros) equipo).getTipoIngreso() == TipoIngresoOtros.DETALLES;
 
-        // "Modificar Código" no aplica a equipos Otros (sin código numérico)
+        // Constantes.Mensajes.OPERACION_MODIFICAR_CODIGO no aplica a equipos Otros (sin código numérico)
         cmbOperacion.setEnabled(esOrtopedia);
         if (!esOrtopedia) {
             cmbOperacion.setSelectedIndex(0);
@@ -349,7 +356,7 @@ public class PantallaCorrecciones extends JPanel {
 
     private void guardarCambios() {
         EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
-        if (sel == null) { mostrarError("Debe seleccionar un equipo"); return; }
+        if (sel == null) { mostrarError(Constantes.Mensajes.DEBE_SELECCIONAR_EQUIPO); return; }
 
         String motivo = txtMotivo.getText().trim();
         if (motivo.isEmpty()) { mostrarError("El motivo del cambio es obligatorio"); return; }
@@ -366,7 +373,7 @@ public class PantallaCorrecciones extends JPanel {
                 }
             } else {
                 int matIdx = panelTablas.getMaterialSeleccionadoIndex();
-                if (matIdx < 0) { mostrarError("Debe seleccionar un material"); return; }
+                if (matIdx < 0) { mostrarError(Constantes.Mensajes.DEBE_SELECCIONAR_MATERIAL); return; }
                 List<MaterialRegistrableInterface> mats = equipoOtros.getMaterialesRegistrables();
                 MaterialOtros material = (MaterialOtros) mats.get(matIdx);
                 if (confirmar("¿Modificar cantidad de \"" + material.getDescripcion() + "\" a " + cantidadNueva + "?")) {
@@ -382,11 +389,11 @@ public class PantallaCorrecciones extends JPanel {
         if (equipo == null) return;
 
         int matIdx = panelTablas.getMaterialSeleccionadoIndex();
-        if (matIdx < 0) { mostrarError("Debe seleccionar un material"); return; }
+        if (matIdx < 0) { mostrarError(Constantes.Mensajes.DEBE_SELECCIONAR_MATERIAL); return; }
 
         Material material = equipo.getMateriales().get(matIdx);
         boolean esModificarCantidad =
-            "Modificar Cantidad".equals(cmbOperacion.getSelectedItem().toString());
+            Constantes.Mensajes.OPERACION_MODIFICAR_CANTIDAD.equals(cmbOperacion.getSelectedItem().toString());
 
         try {
             if (esModificarCantidad) {
@@ -450,10 +457,10 @@ public class PantallaCorrecciones extends JPanel {
 
     private void solicitarEliminacion() {
         EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
-        if (sel == null) { mostrarError("Debe seleccionar un equipo"); return; }
+        if (sel == null) { mostrarError(Constantes.Mensajes.DEBE_SELECCIONAR_EQUIPO); return; }
 
         String motivo = JOptionPane.showInputDialog(
-            this, "Ingrese el motivo de la eliminación:", "Eliminar Equipo", JOptionPane.WARNING_MESSAGE);
+            this, Constantes.Mensajes.MOTIVO_PROMPT, "Eliminar Equipo", JOptionPane.WARNING_MESSAGE);
         if (motivo == null || motivo.trim().isEmpty()) return;
 
         if (sel instanceof EquipoOtros) {
@@ -466,9 +473,9 @@ public class PantallaCorrecciones extends JPanel {
 
     private void solicitarEliminacionMaterial() {
         EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
-        if (sel == null) { mostrarError("Debe seleccionar un equipo"); return; }
+        if (sel == null) { mostrarError(Constantes.Mensajes.DEBE_SELECCIONAR_EQUIPO); return; }
         int matIdx = panelTablas.getMaterialSeleccionadoIndex();
-        if (matIdx < 0) { mostrarError("Debe seleccionar un material"); return; }
+        if (matIdx < 0) { mostrarError(Constantes.Mensajes.DEBE_SELECCIONAR_MATERIAL); return; }
 
         if (sel instanceof EquipoOtros) {
             EquipoOtros equipoOtros = (EquipoOtros) sel;
@@ -479,7 +486,7 @@ public class PantallaCorrecciones extends JPanel {
                 "Confirmar Eliminación de Material", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (resp == JOptionPane.YES_OPTION) {
                 String motivo = JOptionPane.showInputDialog(
-                    this, "Ingrese el motivo de la eliminación:", "Eliminar Material", JOptionPane.WARNING_MESSAGE);
+                    this, Constantes.Mensajes.MOTIVO_PROMPT, "Eliminar Material", JOptionPane.WARNING_MESSAGE);
                 if (motivo != null && !motivo.trim().isEmpty() && onEliminarMaterialOtros != null)
                     onEliminarMaterialOtros.accept(equipoOtros.getId(), material.getDescripcion(), motivo.trim());
             }
@@ -495,7 +502,7 @@ public class PantallaCorrecciones extends JPanel {
             "Confirmar Eliminación de Material", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (resp == JOptionPane.YES_OPTION) {
             String motivo = JOptionPane.showInputDialog(
-                this, "Ingrese el motivo de la eliminación:", "Eliminar Material", JOptionPane.WARNING_MESSAGE);
+                this, Constantes.Mensajes.MOTIVO_PROMPT, "Eliminar Material", JOptionPane.WARNING_MESSAGE);
             if (motivo != null && !motivo.trim().isEmpty() && onEliminarMaterial != null)
                 onEliminarMaterial.accept(equipo.getId(), material.getCodigo(), motivo.trim());
         }
@@ -508,7 +515,7 @@ public class PantallaCorrecciones extends JPanel {
     private Equipo obtenerEquipoOrtopedia(String accion) {
         EquipoRegistrableInterface sel = panelTablas.getEquipoSeleccionado();
         if (sel == null) {
-            mostrarError("Debe seleccionar un equipo");
+            mostrarError(Constantes.Mensajes.DEBE_SELECCIONAR_EQUIPO);
             return null;
         }
         if (!(sel instanceof Equipo)) {
@@ -587,6 +594,8 @@ public class PantallaCorrecciones extends JPanel {
     public void setOnAgregarMaterialOtros           (QuartaConsumer<Integer, String, Integer, String> cb)  { onAgregarMaterialOtros           = cb; }
     public void setOnEliminarMaterialOtros          (TripleConsumer<Integer, String, String> cb)     { onEliminarMaterialOtros           = cb; }
     public void setOnEliminarEquipoOtros            (BiConsumer<Integer, String> cb)                 { onEliminarEquipoOtros             = cb; }
+    public void setBuscarMaterialesOtros            (Function<String, List<String>> fn)              { buscarMaterialesOtros             = fn; }
+    public void setVerificarMaterialOtros           (Function<String, Boolean> fn)                   { verificarMaterialOtros            = fn; }
     public void setOnVerAuditoria     (Runnable cb)                                                  { onVerAuditoria                    = cb; }
     public void setOnCodigoNuevoChanged(java.util.function.BiConsumer<Integer, JTextField> cb)       { onCodigoNuevoChanged              = cb; }
     public void setOnPantallaVisible  (Runnable cb)                                                  { onPantallaVisible                 = cb; }

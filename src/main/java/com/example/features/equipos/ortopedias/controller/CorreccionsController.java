@@ -61,13 +61,18 @@ public class CorreccionsController {
 
         panel.setOnEliminarEquipoOtros(this::eliminarEquipoOtros);
 
+        panel.setBuscarMaterialesOtros(texto -> model.buscarMaterialesOtrosPorDescripcion(texto));
+        panel.setVerificarMaterialOtros(desc  -> model.existeMaterialOtros(desc));
+
         // ── General ───────────────────────────────────────────────────────────
         panel.setOnPantallaVisible(this::cargarEquiposNuevos);
 
         panel.setOnCodigoNuevoChanged((codigo, campoDescripcion) -> {
-            String descripcion = correccionService.obtenerDescripcionMaterial(codigo);
-            campoDescripcion.setText(descripcion != null
-                ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO);
+            new Thread(() -> {
+                String descripcion = correccionService.obtenerDescripcionMaterial(codigo);
+                SwingUtilities.invokeLater(() -> campoDescripcion.setText(descripcion != null
+                    ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO));
+            }).start();
         });
 
         cargarEquiposNuevos();
@@ -91,9 +96,9 @@ public class CorreccionsController {
     // ── Carga ────────────────────────────────────────────────────────────────
 
     private void cargarEquiposNuevos() {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 List<Equipo>      ortopedias = correccionService.obtenerEquiposNuevos();
                 List<EquipoOtros> otros      = otrosService.obtenerEquiposOtrosNuevos();
 
@@ -122,9 +127,9 @@ public class CorreccionsController {
 
     private void modificarCantidadMaterial(Integer equipoId, Integer materialId,
                                            Integer cantidadNueva, String motivo) {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = correccionService.modificarCantidadMaterial(
                     equipoId, materialId, cantidadNueva, motivo);
                 SwingUtilities.invokeLater(() -> {
@@ -143,9 +148,9 @@ public class CorreccionsController {
 
     private void modificarCodigoMaterial(Integer equipoId, Integer materialId,
                                          Integer codigoNuevo, String motivo) {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = correccionService.modificarCodigoMaterial(
                     equipoId, materialId, codigoNuevo, motivo);
                 SwingUtilities.invokeLater(() -> {
@@ -164,9 +169,9 @@ public class CorreccionsController {
 
     private void agregarMaterial(Integer equipoId, Integer codigoCatalogo,
                                  Integer cantidad, String motivo) {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = correccionService.agregarMaterialAEquipo(
                     equipoId, codigoCatalogo, cantidad, motivo);
                 SwingUtilities.invokeLater(() -> {
@@ -191,9 +196,9 @@ public class CorreccionsController {
             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (respuesta != JOptionPane.YES_OPTION) return;
 
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = correccionService.eliminarEquipo(equipoId, motivo);
                 SwingUtilities.invokeLater(() -> {
                     if (ok) { panel.mostrarMensaje("Equipo eliminado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
@@ -210,9 +215,9 @@ public class CorreccionsController {
     }
 
     private void eliminarMaterial(Integer equipoId, Integer codigoCatalogo, String motivo) {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = correccionService.eliminarMaterial(equipoId, codigoCatalogo, motivo);
                 SwingUtilities.invokeLater(() -> {
                     if (ok) { panel.mostrarMensaje("Material eliminado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
@@ -231,9 +236,9 @@ public class CorreccionsController {
     // ── Operaciones otros ────────────────────────────────────────────────────
 
     private void modificarCantidadRemito(Integer equipoId, Integer cantidadNueva, String motivo) {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = otrosService.modificarCantidadRemito(equipoId, cantidadNueva, motivo);
                 SwingUtilities.invokeLater(() -> {
                     if (ok) { panel.mostrarMensaje("Cantidad del remito modificada correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
@@ -251,9 +256,9 @@ public class CorreccionsController {
 
     private void modificarCantidadMaterialOtros(Integer equipoId, Integer materialId,
                                                 Integer cantidadNueva, String motivo) {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = otrosService.modificarCantidadMaterial(equipoId, materialId, cantidadNueva, motivo);
                 SwingUtilities.invokeLater(() -> {
                     if (ok) { panel.mostrarMensaje("Cantidad modificada correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
@@ -271,9 +276,9 @@ public class CorreccionsController {
 
     private void agregarMaterialOtros(Integer equipoId, String descripcion,
                                       Integer cantidad, String motivo) {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = otrosService.agregarMaterial(equipoId, descripcion, cantidad, motivo);
                 SwingUtilities.invokeLater(() -> {
                     if (ok) { panel.mostrarMensaje("Material agregado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
@@ -290,9 +295,9 @@ public class CorreccionsController {
     }
 
     private void eliminarMaterialOtros(Integer equipoId, String descripcion, String motivo) {
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = otrosService.eliminarMaterial(equipoId, descripcion, motivo);
                 SwingUtilities.invokeLater(() -> {
                     if (ok) { panel.mostrarMensaje("Material eliminado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
@@ -316,9 +321,9 @@ public class CorreccionsController {
             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (respuesta != JOptionPane.YES_OPTION) return;
 
+        panel.mostrarCargando(true);
         new Thread(() -> {
             try {
-                panel.mostrarCargando(true);
                 boolean ok = otrosService.eliminarEquipo(equipoId, motivo);
                 SwingUtilities.invokeLater(() -> {
                     if (ok) { panel.mostrarMensaje("Equipo eliminado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }

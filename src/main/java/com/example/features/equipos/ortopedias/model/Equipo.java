@@ -68,6 +68,10 @@ public class Equipo implements EquipoRegistrableInterface {
     public void aplicarMovimientoPreview(MaterialRegistrableInterface material,
                                          int cantidad,
                                          EstadoEquipo estadoDestino) {
+        if (!(material instanceof Material)) {
+            throw new IllegalArgumentException(
+                "Se esperaba Material, se recibió: " + material.getClass().getSimpleName());
+        }
         aplicarMovimientoPreview((Material) material, cantidad, estadoDestino);
     }
 

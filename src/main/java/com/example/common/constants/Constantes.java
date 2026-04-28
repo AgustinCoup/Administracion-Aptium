@@ -51,6 +51,13 @@ public final class Constantes {
         public static final String ERROR_GUARDAR_DATOS = "Error al guardar los datos. Intente nuevamente.";
         public static final String ERROR_CARGAR_DATOS  = "Error al cargar los datos.";
 
+        public static final String DEBE_SELECCIONAR_EQUIPO      = "Debe seleccionar un equipo";
+        public static final String DEBE_SELECCIONAR_MATERIAL    = "Debe seleccionar un material";
+        public static final String MOTIVO_OBLIGATORIO           = "El motivo es obligatorio";
+        public static final String MOTIVO_PROMPT                = "Ingrese el motivo de la eliminación:";
+        public static final String OPERACION_MODIFICAR_CANTIDAD = "Modificar Cantidad";
+        public static final String OPERACION_MODIFICAR_CODIGO   = "Modificar Código";
+
         public static final String CAMPO_CLIENTE_OBLIGATORIO     = "El campo Cliente es obligatorio.";
         public static final String CAMPO_INSTITUCION_OBLIGATORIO = "El campo Institución es obligatorio.";
         public static final String CLIENTE_NO_SELECCIONADO       = "Debe seleccionar un cliente de la lista de sugerencias.";
@@ -210,7 +217,6 @@ public final class Constantes {
      * Formatos y patrones de validación.
      */
     public static final class Formatos {
-        public static final String REGEX_NOMBRE_APELLIDO    = "^[a-zA-ZáéíóúÁÉÍÓÚñÑ]+\\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$";
         public static final String FORMATO_CODIGO_EQUIPO    = "%d%d";
         public static final String FORMATO_SPINNER_CANTIDAD = "#0.##";
         public static final String FORMATO_FECHA_HORA       = "dd/MM/yyyy HH:mm";
@@ -282,6 +288,7 @@ public final class Constantes {
         public static final String ENTIDAD_CLIENTE                       = "Cliente";
         public static final String ENTIDAD_PROFESIONAL                   = "Profesional";
         public static final String ENTIDAD_INSTITUCION                   = "Institución";
+        public static final String ENTIDAD_CATALOGO_OTROS                = "material del catálogo";
         public static final String BOTON_PASAR_A                         = "Pasar a %s";
         public static final String BOTON_SELECCIONE_MATERIAL             = "Seleccione un material";
         public static final String BOTON_ESTADO_FINAL                    = "Material en estado final";

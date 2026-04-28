@@ -5,9 +5,7 @@ import com.example.ui.common.Estilos;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.List;
-import java.util.LinkedHashMap;
 import java.util.Set;
 
 import javax.swing.*;
@@ -116,24 +114,17 @@ public class PanelMateriales extends JPanel {
      * @return true si hay al menos un código duplicado (debe bloquearse el guardado)
      */
     public boolean tieneDuplicados() {
-        // Contar frecuencia de cada código no vacío
-        Map<String, Integer> frecuencia = new LinkedHashMap<>();
+        List<String> codigos = new ArrayList<>();
         for (MaterialRow row : materialRows) {
             String cod = row.numero.getText().trim();
-            if (!cod.isEmpty() && Validador.soloNumeros(cod)) {
-                frecuencia.merge(cod, 1, Integer::sum);
-            }
+            if (!cod.isEmpty() && Validador.soloNumeros(cod)) codigos.add(cod);
         }
 
-        boolean hayDuplicado = false;
+        Set<String> duplicados = Validador.detectarDuplicados(codigos);
+
         for (MaterialRow row : materialRows) {
             String cod = row.numero.getText().trim();
-            boolean esDuplicado = !cod.isEmpty()
-                && Validador.soloNumeros(cod)
-                && frecuencia.getOrDefault(cod, 0) > 1;
-
-            if (esDuplicado) {
-                hayDuplicado = true;
+            if (duplicados.contains(cod)) {
                 row.numero.setBackground(COLOR_DUPLICADO);
                 row.numero.setToolTipText("Código duplicado: unifique estas filas antes de guardar");
             } else {
@@ -141,7 +132,7 @@ public class PanelMateriales extends JPanel {
                 row.numero.setToolTipText(null);
             }
         }
-        return hayDuplicado;
+        return !duplicados.isEmpty();
     }
 
     // ── Construcción de filas ────────────────────────────────────────────────

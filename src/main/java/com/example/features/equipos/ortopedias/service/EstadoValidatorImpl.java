@@ -59,6 +59,15 @@ public class EstadoValidatorImpl implements IEstadoValidator {
         EstadoEquipo siguiente = obtenerProximoEstado(material, equipo);
         return siguiente == EstadoEquipo.ESTERILIZANDO;
     }
+
+    @Override
+    public boolean esAvanzableManualmente(EstadoEquipo estadoActual, EstadoEquipo estadoSiguiente) {
+        if (estadoActual == null || estadoSiguiente == null) return false;
+        return estadoActual  != EstadoEquipo.ESTERILIZANDO
+            && estadoActual  != EstadoEquipo.ESTERILIZADO
+            && estadoSiguiente != EstadoEquipo.ESTERILIZANDO
+            && estadoSiguiente != EstadoEquipo.ESTERILIZADO;
+    }
 }
 
 

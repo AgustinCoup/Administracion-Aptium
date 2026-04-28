@@ -1,13 +1,22 @@
 package com.example.features.equipos.ortopedias.view.helpers;
 
+import com.example.common.constants.Constantes;
+import com.example.ui.common.AutocompleteListener;
 import com.example.ui.common.Estilos;
+import com.example.ui.dialogs.NuevoElementoDialog;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.List;
+import java.util.function.Function;
 
 /**
  * Panel de formulario para el diálogo "Agregar Material" en equipos de tipo Otros.
- * A diferencia de {@link AgregarMaterialDialog}, la descripción es texto libre.
+ * A diferencia de {@link AgregarMaterialDialog}, la descripción es texto libre con
+ * autocompletado contra catalogo_otros. Al perder el foco con una descripción que no
+ * existe en el catálogo se abre {@link NuevoElementoDialog} (misma estética que el
+ * diálogo de nuevo cliente/profesional/institución); si el usuario cancela, el campo
+ * se vacía.
  */
 public class AgregarMaterialOtrosDialog {
 
@@ -16,12 +25,15 @@ public class AgregarMaterialOtrosDialog {
     private final JSpinner   spinCant;
     private final JTextArea  txtMot;
 
-    public AgregarMaterialOtrosDialog() {
+    public AgregarMaterialOtrosDialog(
+            Function<String, List<String>> buscar,
+            Function<String, Boolean> verificar) {
         panel    = new JPanel(new GridBagLayout());
         txtDesc  = new JTextField();
         spinCant = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
         txtMot   = new JTextArea(3, 25);
         construirPanel();
+        configurarAutocomplete(buscar, verificar);
     }
 
     public String getDescripcion() { return txtDesc.getText().trim(); }
@@ -59,5 +71,34 @@ public class AgregarMaterialOtrosDialog {
         txtMot.setLineWrap(true);
         txtMot.setWrapStyleWord(true);
         panel.add(new JScrollPane(txtMot), gbc);
+    }
+
+    private void configurarAutocomplete(
+            Function<String, List<String>> buscar,
+            Function<String, Boolean> verificar) {
+        // confirmedText evita re-preguntar si el usuario mueve el foco sin cambiar el texto
+        String[] confirmedText = {null};
+
+        new AutocompleteListener<>(
+            txtDesc,
+            buscar,
+            s -> confirmedText[0] = s, // seleccionado del popup → ya confirmado
+            text -> {
+                if (text.equals(confirmedText[0])) return;
+                if (verificar.apply(text)) { confirmedText[0] = text; return; }
+                Window w = SwingUtilities.getWindowAncestor(panel);
+                NuevoElementoDialog d = new NuevoElementoDialog(
+                    w, Constantes.Textos.ENTIDAD_CATALOGO_OTROS, text);
+                d.setVisible(true);
+                String nombre = d.obtenerResultado();
+                if (nombre != null) {
+                    confirmedText[0] = nombre;
+                    txtDesc.setText(nombre);
+                } else {
+                    confirmedText[0] = null;
+                    txtDesc.setText("");
+                }
+            },
+            1 /* minChars */);
     }
 }

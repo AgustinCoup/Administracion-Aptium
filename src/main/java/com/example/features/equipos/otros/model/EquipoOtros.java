@@ -137,6 +137,10 @@ public class EquipoOtros implements EquipoRegistrableInterface {
             }
             return;
         }
+        if (!(material instanceof MaterialOtros)) {
+            throw new IllegalArgumentException(
+                "Se esperaba MaterialOtros, se recibió: " + material.getClass().getSimpleName());
+        }
         MaterialOtros m = (MaterialOtros) material;
         int cantidadActual = m.getCantidad();
 

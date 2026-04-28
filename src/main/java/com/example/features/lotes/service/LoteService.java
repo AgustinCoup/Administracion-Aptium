@@ -1,5 +1,6 @@
 package com.example.features.lotes.service;
 
+import com.example.common.exception.ValidationException;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.dao.LoteDAO;
 import com.example.features.lotes.model.LoteMaterialInfo;
@@ -54,14 +55,33 @@ public class LoteService {
 
     public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
                            List<LoteMovimiento> movimientos) {
+        ValidationException.Builder builder = ValidationException.builder();
+        builder.addErrorIf(autoclaveNombre == null || autoclaveNombre.isBlank(),
+            "El nombre del autoclave es obligatorio");
+        builder.addErrorIf(capacidadTotal <= 0,
+            "La capacidad total debe ser mayor a cero");
+        builder.addErrorIf(capacidadUsada <= 0,
+            "La capacidad usada debe ser mayor a cero");
+        builder.addErrorIf(capacidadUsada > capacidadTotal,
+            "La capacidad usada no puede superar la capacidad total");
+        builder.addErrorIf(movimientos == null || movimientos.isEmpty(),
+            "El lote debe contener al menos un material");
+        builder.throwIfHasErrors();
+
         return loteDAO.lanzarLote(autoclaveNombre, capacidadTotal, capacidadUsada, movimientos);
     }
 
     public boolean finalizarLote(int loteId) {
+        ValidationException.builder()
+            .addErrorIf(loteId <= 0, "ID de lote inválido: " + loteId)
+            .throwIfHasErrors();
         return loteDAO.finalizarLote(loteId);
     }
 
     public boolean marcarLoteFallo(int loteId) {
+        ValidationException.builder()
+            .addErrorIf(loteId <= 0, "ID de lote inválido: " + loteId)
+            .throwIfHasErrors();
         return loteDAO.marcarLoteFallo(loteId);
     }
 }

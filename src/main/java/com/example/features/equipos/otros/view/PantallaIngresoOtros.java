@@ -1,6 +1,7 @@
 package com.example.features.equipos.otros.view;
 
 import com.example.common.constants.Constantes;
+import com.example.features.equipos.common.view.PantallaIngresoBase;
 import com.example.features.equipos.otros.view.helpers.PanelMaterialesOtros;
 import com.example.features.equipos.otros.view.helpers.PanelRemito;
 import com.example.ui.common.Estilos;
@@ -34,7 +35,7 @@ import java.util.List;
  * La pantalla no contiene lógica de negocio; delega todo al
  * {@link com.example.features.equipos.otros.controller.OtrosInputController}.
  */
-public class PantallaIngresoOtros extends JPanel {
+public class PantallaIngresoOtros extends JPanel implements PantallaIngresoBase {
 
     // ── Nombres de tarjetas del CardLayout interno ────────────────────────────
     private static final String CARD_REMITO   = "REMITO";

@@ -1,5 +1,6 @@
 package com.example.features.equipos.ortopedias.service;
 
+import com.example.common.exception.ValidationException;
 import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
@@ -43,6 +44,18 @@ public class MaterialService {
      */
     public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {
         if (movimientos == null || movimientos.isEmpty()) return true;
+
+        ValidationException.Builder builder = ValidationException.builder();
+        for (MovimientoMaterial mov : movimientos) {
+            builder.addErrorIf(mov.getMaterialId() <= 0,
+                "ID de material inválido: " + mov.getMaterialId());
+            builder.addErrorIf(mov.getCantidad() <= 0,
+                "La cantidad a mover debe ser mayor a cero (material " + mov.getMaterialId() + ")");
+            builder.addErrorIf(mov.getEstadoDestino() == null,
+                "El estado destino no puede ser nulo (material " + mov.getMaterialId() + ")");
+        }
+        builder.throwIfHasErrors();
+
         return materialDAO.aplicarMovimientos(equipoId, movimientos);
     }
 

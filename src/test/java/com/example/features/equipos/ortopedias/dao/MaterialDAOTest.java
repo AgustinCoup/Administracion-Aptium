@@ -176,14 +176,11 @@ class MaterialDAOTest extends AbstractDAOTest {
     }
 
     @Test
-    void aplicarMovimientos_estadoDestinoNulo_calculaSiguienteEstado() {
-        // Equipo con requiereLavado=true (default) → NUEVO → siguiente = LAVANDO
+    void aplicarMovimientos_estadoDestinoNulo_lanzaExcepcion() {
         List<MovimientoMaterial> movs = List.of(
             new MovimientoMaterial(materialId, 3, null));
-        dao.aplicarMovimientos(equipo.getId(), movs);
-
-        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
-        assertEquals(EstadoEquipo.LAVANDO, cargado.getMateriales().get(0).getEstado());
+        assertThrows(DatabaseException.class,
+            () -> dao.aplicarMovimientos(equipo.getId(), movs));
     }
 
     @Test

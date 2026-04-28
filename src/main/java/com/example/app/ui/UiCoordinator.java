@@ -10,7 +10,6 @@ import com.example.features.equipos.ortopedias.controller.RegistrarEstadoControl
 import com.example.features.equipos.otros.controller.OtrosInputController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
-import com.example.features.lotes.service.LoteReporteService;
 import com.example.ui.events.OnEquipoGuardadoListener;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.ui.shell.PantallaPrincipal;
@@ -40,29 +39,32 @@ public class UiCoordinator {
 
     public void inicializar() {
 
+        // ── Listener diferido: rompe el ciclo controller → runnable → controller ─
+        Runnable[] refrescarRef = { null };
+        OnEstadosActualizadosListener refrescarEstados = () -> { if (refrescarRef[0] != null) refrescarRef[0].run(); };
+        OnEquipoGuardadoListener      refrescarEquipos = () -> { if (refrescarRef[0] != null) refrescarRef[0].run(); };
+
         // ── Controllers ──────────────────────────────────────────────────────
         CDEViewController cdeViewController = new CDEViewController(
             vista.getPantallaVerCDEv2(), model);
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
-            vista.getPantallaRegistrarEstado(), model, null);
+            vista.getPantallaRegistrarEstado(), model, refrescarEstados);
 
         EquiposParaEntregarController equiposParaEntregarController =
             new EquiposParaEntregarController(
-                vista.getPantallaEquiposParaEntregar(), model, null);
+                vista.getPantallaEquiposParaEntregar(), model, refrescarEstados);
 
         CorreccionsController correccionesController = new CorreccionsController(
             vista.getPantallaCorrecciones(), model);
 
         LotesController lotesController = new LotesController(
-            vista.getPantallaLotes(), model, null);
+            vista.getPantallaLotes(), model, refrescarEstados);
 
-        LoteReporteService loteReporteService = new LoteReporteService(model);
         VerLotesController verLotesController = new VerLotesController(
-            vista.getPantallaVerLotes(), model, loteReporteService);
+            vista.getPantallaVerLotes(), model, model.getLoteReporteService());
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
-        // CorreccionsController conoce el servicio; el coordinator no necesita conocerlo.
         correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());
 
         // ── Navegación: botón "Ver Auditoría" en PantallaCorrecciones ────────
@@ -70,7 +72,7 @@ public class UiCoordinator {
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.AUDITORIA));
 
         // ── Refresco global de pantallas ─────────────────────────────────────
-        Runnable refrescarPantallas = crearRefrescador(
+        refrescarRef[0] = crearRefrescador(
             cdeViewController,
             registrarEstadoController,
             equiposParaEntregarController,
@@ -78,13 +80,7 @@ public class UiCoordinator {
             verLotesController
         );
 
-        OnEstadosActualizadosListener refrescarEstados = refrescarPantallas::run;
-        OnEquipoGuardadoListener      refrescarEquipos = refrescarPantallas::run;
-
-        registrarEstadoController.setOnEstadosActualizados(refrescarEstados);
-        equiposParaEntregarController.setOnEstadosActualizados(refrescarEstados);
-        lotesController.setOnEstadosActualizados(refrescarEstados);
-        correccionesController.setOnCambiosAplicados(refrescarPantallas);
+        correccionesController.setOnCambiosAplicados(() -> refrescarRef[0].run());
 
         new OrthopediaInputController(
             vista.getPanelIngresoOrtopedia(),

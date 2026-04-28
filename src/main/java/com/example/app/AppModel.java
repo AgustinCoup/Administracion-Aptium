@@ -18,6 +18,7 @@ import com.example.features.profesionales.service.ProfesionalService;
 import com.example.features.instituciones.model.Institucion;
 import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.autoclaves.service.AutoclaveService;
+import com.example.features.lotes.service.LoteReporteService;
 import com.example.features.lotes.service.LoteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +31,8 @@ import com.example.features.autoclaves.model.Autoclave;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
+import com.example.features.equipos.ortopedias.model.EstadoEquipo;
+import com.example.features.equipos.ortopedias.service.IEstadoValidator;
 
 /**
  * Fachada principal de la aplicación.
@@ -57,6 +60,8 @@ public class AppModel {
     private final EquipoOtrosService     equipoOtrosService;
     private final EquipoCorreccionService equipoCorreccionService;
     private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
+    private final IEstadoValidator        estadoValidator;
+    private final LoteReporteService      loteReporteService;
 
     /**
      * Constructor con inyección de dependencias.
@@ -78,6 +83,8 @@ public class AppModel {
         this.equipoOtrosService = context.getEquipoOtrosService();
         this.equipoCorreccionService = context.getEquipoCorreccionService();
         this.equipoOtrosCorreccionService = context.getEquipoOtrosCorreccionService();
+        this.estadoValidator       = context.getEstadoValidator();
+        this.loteReporteService    = new LoteReporteService(this);
     }
 
     // ==================== INFRAESTRUCTURA ====================
@@ -92,6 +99,12 @@ public class AppModel {
             log.error("Error al validar conexión", e);
             return false;
         }
+    }
+
+    // ==================== ESTADO VALIDATOR ====================
+
+    public boolean esAvanzableManualmente(EstadoEquipo estadoActual, EstadoEquipo estadoSiguiente) {
+        return estadoValidator.esAvanzableManualmente(estadoActual, estadoSiguiente);
     }
 
     // ==================== EQUIPOS ====================
@@ -273,6 +286,10 @@ public class AppModel {
         return catalogoOtrosService.buscarPorDescripcionParcial(texto);
     }
 
+    public boolean existeMaterialOtros(String descripcion) {
+        return catalogoOtrosService.existeDescripcion(descripcion);
+    }
+
     // ==================== CORRECCIONES ====================
 
     /**
@@ -285,6 +302,10 @@ public class AppModel {
 
     public EquipoOtrosCorreccionService getEquipoOtrosCorreccionService() {
         return equipoOtrosCorreccionService;
+    }
+
+    public LoteReporteService getLoteReporteService() {
+        return loteReporteService;
     }
 }
 

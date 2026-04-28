@@ -115,10 +115,7 @@ public class RegistrarEstadoController {
         MaterialRegistrableInterface material = equipo.getMaterialesRegistrables().get(materialIndex);
         EstadoEquipo siguienteEstado  = equipo.getSiguienteEstado(material.getEstado());
 
-        if (material.getEstado() == EstadoEquipo.ESTERILIZANDO ||
-            siguienteEstado == EstadoEquipo.ESTERILIZANDO ||
-            siguienteEstado == EstadoEquipo.ESTERILIZADO  ||
-            material.getEstado() == EstadoEquipo.ESTERILIZADO) {
+        if (!model.esAvanzableManualmente(material.getEstado(), siguienteEstado)) {
             panel.setAvanzarEnabled(false);
             panel.setAvanzarVisible(false);
             return;

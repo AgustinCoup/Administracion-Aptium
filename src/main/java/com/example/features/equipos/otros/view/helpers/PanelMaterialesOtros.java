@@ -3,11 +3,15 @@ package com.example.features.equipos.otros.view.helpers;
 import com.example.common.constants.Constantes;
 import com.example.ui.common.Estilos;
 
+import com.example.common.constants.Constantes;
+import com.example.ui.dialogs.NuevoElementoDialog;
+
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -42,6 +46,9 @@ public class PanelMaterialesOtros extends JPanel {
      * Puede ser null si no hay controller configurado aún.
      */
     private BiConsumer<String, java.util.function.Consumer<List<String>>> onDescripcionChangedListener;
+
+    /** Verifica si una descripción existe exactamente en catalogo_otros. Null = sin verificación. */
+    private Function<String, Boolean> onVerificarDescripcion;
 
     private static final int MAX_VISIBLE_ROWS = 10;
 
@@ -104,6 +111,10 @@ public class PanelMaterialesOtros extends JPanel {
         this.onDescripcionChangedListener = listener;
     }
 
+    public void setOnVerificarDescripcion(Function<String, Boolean> fn) {
+        this.onVerificarDescripcion = fn;
+    }
+
     public List<OtrosMaterialRow> getFilas() {
         return filas;
     }
@@ -132,6 +143,34 @@ public class PanelMaterialesOtros extends JPanel {
         txtDesc.setMargin(Estilos.Espaciados.INSETS_INPUT);
         txtDesc.setPreferredSize(new Dimension(250, inputHeight));
         txtDesc.setMinimumSize(new Dimension(120, inputHeight));
+
+        // Verificación de catálogo al perder el foco.
+        // confirmedText rastrea el último valor aceptado para evitar re-preguntar
+        // si el usuario mueve el foco sin haber cambiado el texto.
+        String[] confirmedText = {null};
+        txtDesc.addFocusListener(new FocusAdapter() {
+            @Override public void focusLost(FocusEvent e) {
+                String texto = txtDesc.getText().trim();
+                if (texto.isEmpty() || onVerificarDescripcion == null) return;
+                if (texto.equals(confirmedText[0])) return;
+                if (onVerificarDescripcion.apply(texto)) {
+                    confirmedText[0] = texto;
+                    return;
+                }
+                Window w = SwingUtilities.getWindowAncestor(PanelMaterialesOtros.this);
+                NuevoElementoDialog d = new NuevoElementoDialog(
+                    w, Constantes.Textos.ENTIDAD_CATALOGO_OTROS, texto);
+                d.setVisible(true);
+                String nombre = d.obtenerResultado();
+                if (nombre != null) {
+                    confirmedText[0] = nombre;
+                    txtDesc.setText(nombre);
+                } else {
+                    confirmedText[0] = null;
+                    txtDesc.setText("");
+                }
+            }
+        });
 
         // Popup de autocomplete
         JPopupMenu popup           = new JPopupMenu();

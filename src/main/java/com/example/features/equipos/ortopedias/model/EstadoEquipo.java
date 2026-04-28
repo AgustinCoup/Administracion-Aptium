@@ -78,10 +78,10 @@ public enum EstadoEquipo {
     
     /**
      * Verifica si el estado es el final del proceso.
-     * @return true si es ESTERILIZADO
+     * @return true si es ENTREGADO
      */
     public boolean esFinal() {
-        return this == ESTERILIZADO;
+        return this == ENTREGADO;
     }
     
     /**

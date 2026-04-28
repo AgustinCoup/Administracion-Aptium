@@ -32,6 +32,7 @@ public class AutocompleteListener<T> implements DocumentListener {
     private final Function<String, List<T>> searchFunction;
     private final Consumer<T>               onItemSelected;
     private final Consumer<String>          onNoMatch;
+    private final int                       minChars;
 
     private final PopupManager popup;
 
@@ -42,15 +43,25 @@ public class AutocompleteListener<T> implements DocumentListener {
             JTextField textField,
             Function<String, List<T>> searchFunction,
             Consumer<T> onItemSelected,
-            Consumer<String> onNoMatch) {
+            Consumer<String> onNoMatch,
+            int minChars) {
 
         this.textField      = textField;
         this.searchFunction = searchFunction;
         this.onItemSelected = onItemSelected;
         this.onNoMatch      = onNoMatch;
+        this.minChars       = minChars;
         this.popup          = new PopupManager();
 
         configurarListeners();
+    }
+
+    public AutocompleteListener(
+            JTextField textField,
+            Function<String, List<T>> searchFunction,
+            Consumer<T> onItemSelected,
+            Consumer<String> onNoMatch) {
+        this(textField, searchFunction, onItemSelected, onNoMatch, 3);
     }
 
     /** Constructor sin callback onNoMatch (compatibilidad hacia atrás). */
@@ -58,7 +69,7 @@ public class AutocompleteListener<T> implements DocumentListener {
             JTextField textField,
             Function<String, List<T>> searchFunction,
             Consumer<T> onItemSelected) {
-        this(textField, searchFunction, onItemSelected, null);
+        this(textField, searchFunction, onItemSelected, null, 3);
     }
 
     // ── Configuración de listeners ────────────────────────────────────────────
@@ -81,7 +92,7 @@ public class AutocompleteListener<T> implements DocumentListener {
                 String texto = textField.getText().trim();
                 if (texto.isEmpty()) return;
                 if (selectedItem != null && selectedItem.toString().equals(texto)) return;
-                if (onNoMatch != null && texto.length() >= 3) {
+                if (onNoMatch != null && texto.length() >= minChars) {
                     popup.hide();
                     onNoMatch.accept(texto);
                 }
@@ -166,9 +177,8 @@ public class AutocompleteListener<T> implements DocumentListener {
             popupMenu.setFocusable(false);
         }
 
-        /** Actualiza las sugerencias según el texto; oculta el popup si hay menos de 3 caracteres. */
         void actualizar(String texto) {
-            if (texto.length() < 3) { popupMenu.setVisible(false); return; }
+            if (texto.length() < minChars) { popupMenu.setVisible(false); return; }
 
             List<T> resultados = searchFunction.apply(texto);
             listModel.clear();

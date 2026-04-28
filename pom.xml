@@ -195,8 +195,8 @@
             <phase>package</phase>
             <configuration>
               <target>
-                <mkdir dir="C:/Trabajo/Administracion-Aptium/app"/>
-                <copy file="${project.build.directory}/aptium.jar" tofile="C:/Trabajo/Administracion-Aptium/app/aptium.jar" overwrite="true"/>
+                <mkdir dir="${project.basedir}/app"/>
+                <copy file="${project.build.directory}/aptium.jar" tofile="${project.basedir}/app/aptium.jar" overwrite="true"/>
               </target>
             </configuration>
             <goals>

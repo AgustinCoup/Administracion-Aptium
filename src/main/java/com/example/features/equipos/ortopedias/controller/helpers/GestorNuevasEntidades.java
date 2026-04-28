@@ -7,7 +7,7 @@ import com.example.ui.common.AutocompleteListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javax.swing.*;
-import java.awt.Frame;
+import java.awt.Window;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -29,7 +29,7 @@ public class GestorNuevasEntidades<T extends Autocompletable> {
     
     private static final Logger log = LoggerFactory.getLogger(GestorNuevasEntidades.class);
     
-    private final Frame ventanaParente;
+    private final Window ventanaParente;
     private final String nombreEntidad;
     private final Consumer<String> actualizarCampoVista;
     private final Consumer<Integer> actualizarSeleccion;
@@ -40,7 +40,7 @@ public class GestorNuevasEntidades<T extends Autocompletable> {
     /**
      * Constructor del gestor de nuevas entidades.
      * 
-     * @param ventanaParente Frame de la ventana para mostrar diálogos modales
+     * @param ventanaParente Window de la ventana para mostrar diálogos modales
      * @param nombreEntidad Nombre de la entidad (ej: "Cliente", "Profesional")
      * @param actualizarCampoVista Callback para actualizar el campo de texto de la vista
      * @param actualizarSeleccion Callback para actualizar el ID seleccionado
@@ -49,7 +49,7 @@ public class GestorNuevasEntidades<T extends Autocompletable> {
      * @param creador Función que crea una nueva instancia de T
      */
     public GestorNuevasEntidades(
-            Frame ventanaParente,
+            Window ventanaParente,
             String nombreEntidad,
             Consumer<String> actualizarCampoVista,
             Consumer<Integer> actualizarSeleccion,

@@ -131,11 +131,14 @@ public abstract class SimpleEntityDAO<T extends Autocompletable> implements DAO<
 
     @Override
     public boolean existe(Integer id) {
-        try {
-            obtenerPorId(id);
-            return true;
-        } catch (ResourceNotFoundException e) {
-            return false;
+        String sql = "SELECT COUNT(*) FROM " + getTableName() + " WHERE id = ?";
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() && rs.getLong(1) > 0;
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al verificar existencia de " + getEntityName() + " con ID: " + id, e);
         }
     }
 

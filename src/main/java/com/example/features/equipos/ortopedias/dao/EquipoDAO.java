@@ -4,7 +4,6 @@ import com.example.common.dao.DAO;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ResourceNotFoundException;
 import com.example.features.equipos.ortopedias.model.Equipo;
-import com.example.features.equipos.ortopedias.model.EquipoAuditoria;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.Material;
 import com.example.infrastructure.db.ConnectionPool;
@@ -13,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.time.ZoneId;
 
@@ -29,6 +29,31 @@ import java.time.ZoneId;
 public class EquipoDAO implements DAO<Equipo, String> {
 
     private static final Logger log = LoggerFactory.getLogger(EquipoDAO.class);
+
+    private static final String SQL_CABECERA_EQUIPO =
+        "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, " +
+        "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
+        "       e.requiere_lavado, e.requiere_empaque " +
+        "FROM equipos e " +
+        "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
+        "LEFT JOIN instituciones i ON e.nro_institucion = i.id ";
+
+    // Query con materiales incluidos — resuelve el N+1 para listados masivos
+    private static final String SQL_EQUIPOS_CON_MATERIALES =
+        "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, " +
+        "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
+        "       e.requiere_lavado, e.requiere_empaque, " +
+        "       em.id AS mat_id, em.codigo_catalogo, cd.descripcion AS mat_descripcion, " +
+        "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, mm.ultimo_movimiento " +
+        "FROM equipos e " +
+        "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
+        "LEFT JOIN instituciones i ON e.nro_institucion = i.id " +
+        "LEFT JOIN equipo_materiales em ON em.equipo_id = e.id " +
+        "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
+        "LEFT JOIN (" +
+        "  SELECT material_id, MAX(fecha) AS ultimo_movimiento " +
+        "  FROM material_movimientos GROUP BY material_id" +
+        ") mm ON em.id = mm.material_id ";
 
     /**
      * Guarda un equipo completo y su lista de materiales en una sola transacción.
@@ -153,32 +178,17 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     @Override
     public Equipo obtenerPorId(String id) {
-        String sql = "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque FROM equipos e LEFT JOIN clientes c ON e.nro_cliente = c.id LEFT JOIN instituciones i ON e.nro_institucion = i.id WHERE e.id = ?";
-        
+        String sql = SQL_CABECERA_EQUIPO + "WHERE e.id = ?";
+
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
+
             pstmt.setInt(1, Integer.parseInt(id));
             ResultSet rs = pstmt.executeQuery();
-            
+
             if (rs.next()) {
-                Equipo eq = new Equipo();
-                eq.setId(rs.getInt("id"));
-                eq.setNroCliente(rs.getInt("nro_cliente"));
-                eq.setClienteNombre(rs.getString("cliente_nombre"));
-                Integer nroProfesional = rs.getObject("nro_profesional", Integer.class);
-                eq.setNroProfesional(nroProfesional);
-                eq.setPacienteNombre(rs.getString("paciente"));
-                Integer nroInstitucion = rs.getObject("nro_institucion", Integer.class);
-                eq.setNroInstitucion(nroInstitucion);
-                eq.setInstitucionNombre(rs.getString("nombre"));
-                eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
-                eq.setRequiereLavado(rs.getBoolean("requiere_lavado"));
-                eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
-                
-                // Cargar materiales asociados con su estado
+                Equipo eq = mapearEquipoBase(rs);
                 cargarMateriales(conn, eq);
-                
                 return eq;
             } else {
                 throw new ResourceNotFoundException("Equipo", id);
@@ -189,6 +199,59 @@ public class EquipoDAO implements DAO<Equipo, String> {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("ID de equipo inválido: " + id, e);
         }
+    }
+
+    private Equipo mapearEquipoBase(ResultSet rs) throws SQLException {
+        Equipo eq = new Equipo();
+        eq.setId(rs.getInt("id"));
+        eq.setNroCliente(rs.getInt("nro_cliente"));
+        eq.setClienteNombre(rs.getString("cliente_nombre"));
+        eq.setNroProfesional(rs.getObject("nro_profesional", Integer.class));
+        eq.setPacienteNombre(rs.getString("paciente"));
+        eq.setNroInstitucion(rs.getObject("nro_institucion", Integer.class));
+        eq.setInstitucionNombre(rs.getString("institucion_nombre"));
+        eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
+        eq.setRequiereLavado(rs.getBoolean("requiere_lavado"));
+        eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
+        return eq;
+    }
+
+    private Material mapearMaterial(ResultSet rs) throws SQLException {
+        Timestamp ts = rs.getTimestamp("ultimo_movimiento");
+        return new Material(
+            rs.getInt("mat_id"),
+            rs.getInt("codigo_catalogo"),
+            rs.getString("mat_descripcion"),
+            rs.getInt("mat_cantidad"),
+            EstadoEquipo.desdeBD(rs.getString("mat_estado")),
+            ts != null ? java.time.LocalDateTime.ofInstant(ts.toInstant(), ZoneId.systemDefault()) : null
+        );
+    }
+
+    private List<Equipo> obtenerEquiposConJoin(String extraWhere, Object... params) {
+        String sql = SQL_EQUIPOS_CON_MATERIALES + extraWhere;
+        LinkedHashMap<Integer, Equipo> mapa = new LinkedHashMap<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int i = 0; i < params.length; i++) {
+                ps.setObject(i + 1, params[i]);
+            }
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                int equipoId = rs.getInt("id");
+                if (!mapa.containsKey(equipoId)) {
+                    mapa.put(equipoId, mapearEquipoBase(rs));
+                }
+                Integer matId = rs.getObject("mat_id", Integer.class);
+                if (matId != null) {
+                    mapa.get(equipoId).agregarMaterial(mapearMaterial(rs));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener equipos", e);
+            throw new DatabaseException("Error al obtener equipos", e);
+        }
+        return new ArrayList<>(mapa.values());
     }
 
     /**
@@ -238,37 +301,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * Método público para compatibilidad con código existente.
      */
     public List<Equipo> obtenerTodosLosEquipos() {
-        List<Equipo> equipos = new ArrayList<>();
-        String sql = "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque FROM equipos e LEFT JOIN clientes c ON e.nro_cliente = c.id LEFT JOIN instituciones i ON e.nro_institucion = i.id ORDER BY e.estado, e.id DESC";
-        
-        try (Connection conn = ConnectionPool.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            
-            while (rs.next()) {
-                Equipo eq = new Equipo();
-                eq.setId(rs.getInt("id"));
-                eq.setNroCliente(rs.getInt("nro_cliente"));
-                eq.setClienteNombre(rs.getString("cliente_nombre"));
-                Integer nroProfesional = rs.getObject("nro_profesional", Integer.class);
-                eq.setNroProfesional(nroProfesional);
-                eq.setPacienteNombre(rs.getString("paciente"));
-                Integer nroInstitucion = rs.getObject("nro_institucion", Integer.class);
-                eq.setNroInstitucion(nroInstitucion);
-                eq.setInstitucionNombre(rs.getString("nombre"));
-                eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
-                eq.setRequiereLavado(rs.getBoolean("requiere_lavado"));
-                eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
-                
-                // Cargar materiales asociados con su estado
-                cargarMateriales(conn, eq);
-                
-                equipos.add(eq);
-            }
-        } catch (SQLException e) {
-            log.error("Error al obtener todos los equipos", e);
-        }
-        return equipos;
+        return obtenerEquiposConJoin("ORDER BY e.estado, e.id DESC, em.id");
     }
 
     /**
@@ -353,40 +386,10 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * @return Lista de equipos en estado NUEVO
      */
     public List<Equipo> obtenerEquiposNuevos() {
-        List<Equipo> equipos = new ArrayList<>();
-        String sql = "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, e.nro_institucion, i.nombre, e.estado, e.requiere_lavado, e.requiere_empaque " +
-                    "FROM equipos e " +
-                    "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
-                    "LEFT JOIN instituciones i ON e.nro_institucion = i.id " +
-                    "WHERE e.estado = 'Nuevo' " +
-                    "ORDER BY e.fecha_ingreso DESC";
-        
-        try (Connection conn = ConnectionPool.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            
-            while (rs.next()) {
-                Equipo eq = new Equipo();
-                eq.setId(rs.getInt("id"));
-                eq.setNroCliente(rs.getInt("nro_cliente"));
-                eq.setClienteNombre(rs.getString("cliente_nombre"));
-                Integer nroProfesional = rs.getObject("nro_profesional", Integer.class);
-                eq.setNroProfesional(nroProfesional);
-                eq.setPacienteNombre(rs.getString("paciente"));
-                Integer nroInstitucion = rs.getObject("nro_institucion", Integer.class);
-                eq.setNroInstitucion(nroInstitucion);
-                eq.setInstitucionNombre(rs.getString("nombre"));
-                eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
-                eq.setRequiereLavado(rs.getBoolean("requiere_lavado"));
-                eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
-                
-                cargarMateriales(conn, eq);
-                equipos.add(eq);
-            }
-        } catch (SQLException e) {
-            log.error("Error al obtener equipos nuevos", e);
-        }
-        return equipos;
+        return obtenerEquiposConJoin(
+            "WHERE e.estado = ? ORDER BY e.fecha_ingreso DESC, em.id",
+            EstadoEquipo.NUEVO.getNombre()
+        );
     }
 
 

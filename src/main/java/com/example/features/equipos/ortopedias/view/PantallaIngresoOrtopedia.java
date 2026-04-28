@@ -8,6 +8,7 @@ import javax.swing.*;
 
 import com.example.common.constants.Constantes;
 import com.example.common.util.Validador;
+import com.example.features.equipos.common.view.PantallaIngresoBase;
 import com.example.features.equipos.ortopedias.view.helpers.PanelMateriales;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.PanelHeader;
@@ -19,7 +20,7 @@ import com.example.ui.common.PanelHeader;
  * Delegación: PanelMateriales gestiona la tabla dinámica de materiales.
  * Esta pantalla fue refactorizada para respetar el SRP (Single Responsibility Principle).
  */
-public class PantallaIngresoOrtopedia extends JPanel {
+public class PantallaIngresoOrtopedia extends JPanel implements PantallaIngresoBase {
     
     // UI Components
     private JTextField txtCliente;
@@ -375,6 +376,21 @@ public class PantallaIngresoOrtopedia extends JPanel {
         selectedClienteId = -1;
         selectedProfesionalId = -1;
         selectedInstitucionId = -1;
+    }
+
+    @Override
+    public void mostrarAdvertencia(String mensaje) {
+        JOptionPane.showMessageDialog(this, mensaje, Constantes.Mensajes.TITULO_ADVERTENCIA, JOptionPane.WARNING_MESSAGE);
+    }
+
+    @Override
+    public void mostrarInfo(String mensaje) {
+        JOptionPane.showMessageDialog(this, mensaje, Constantes.Mensajes.TITULO_EXITO, JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    @Override
+    public void mostrarError(String mensaje) {
+        JOptionPane.showMessageDialog(this, mensaje, Constantes.Mensajes.TITULO_ERROR_GUARDAR, JOptionPane.ERROR_MESSAGE);
     }
 }
 

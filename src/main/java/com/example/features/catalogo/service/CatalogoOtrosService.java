@@ -37,4 +37,14 @@ public class CatalogoOtrosService {
             return List.of();
         }
     }
+
+    public boolean existeDescripcion(String descripcion) {
+        if (descripcion == null || descripcion.isBlank()) return false;
+        try {
+            return dao.obtenerIdPorDescripcion(descripcion) != -1;
+        } catch (Exception e) {
+            log.error("Error al verificar descripción en catálogo: '{}'", descripcion, e);
+            return false;
+        }
+    }
 }

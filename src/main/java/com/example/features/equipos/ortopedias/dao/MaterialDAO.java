@@ -1,7 +1,6 @@
 package com.example.features.equipos.ortopedias.dao;
 
 import com.example.common.exception.DatabaseException;
-import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.infrastructure.db.ConnectionPool;
@@ -94,19 +93,6 @@ public class MaterialDAO {
                 "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
                 "VALUES (?, ?, ?, ?, ?)";
 
-            boolean requiereLavado  = true;
-            boolean requiereEmpaque = true;
-            String sqlEquipoConfig = "SELECT requiere_lavado, requiere_empaque FROM equipos WHERE id = ?";
-            try (PreparedStatement pstmt = conn.prepareStatement(sqlEquipoConfig)) {
-                pstmt.setInt(1, equipoId);
-                try (ResultSet rs = pstmt.executeQuery()) {
-                    if (rs.next()) {
-                        requiereLavado  = rs.getBoolean("requiere_lavado");
-                        requiereEmpaque = rs.getBoolean("requiere_empaque");
-                    }
-                }
-            }
-
             for (MovimientoMaterial movimiento : movimientos) {
                 int materialId      = movimiento.getMaterialId();
                 int cantidadMover   = movimiento.getCantidad();
@@ -134,13 +120,7 @@ public class MaterialDAO {
                 }
 
                 if (estadoDestino == null) {
-                    EstadoEquipo estadoActualEnum = EstadoEquipo.desdeBD(estadoActual);
-                    estadoDestino = Equipo.calcularSiguienteEstado(
-                        estadoActualEnum, requiereLavado, requiereEmpaque);
-                }
-
-                if (estadoDestino == null) {
-                    throw new SQLException("El lote ya está en el estado final: " + materialId);
+                    throw new SQLException("El estado destino no puede ser nulo (material " + materialId + ")");
                 }
 
                 if (cantidadMover == cantidadActual) {

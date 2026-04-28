@@ -49,6 +49,16 @@ public interface IEstadoValidator {
      * @return true si el próximo estado es ESTERILIZANDO
      */
     boolean necesitaEsterilizado(Material material, Equipo equipo);
+
+    /**
+     * Indica si el avance de estado puede hacerse manualmente desde la pantalla
+     * de registro. ESTERILIZANDO y ESTERILIZADO son gestionados por autoclave.
+     *
+     * @param estadoActual    Estado actual del material
+     * @param estadoSiguiente Siguiente estado calculado (puede ser null)
+     * @return true si la transición es ejecutable manualmente
+     */
+    boolean esAvanzableManualmente(EstadoEquipo estadoActual, EstadoEquipo estadoSiguiente);
 }
 
 

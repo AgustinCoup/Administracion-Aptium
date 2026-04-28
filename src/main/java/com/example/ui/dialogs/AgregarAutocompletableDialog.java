@@ -1,125 +1,36 @@
 package com.example.ui.dialogs;
 
 import com.example.common.model.Autocompletable;
-import com.example.common.constants.Constantes;
-import javax.swing.*;
-import java.awt.*;
+
+import java.awt.Window;
+import java.util.function.Supplier;
 
 /**
- * Diálogo genérico para agregar una nueva autocompletable (Cliente, Profesional, Institución).
- * 
- * Evita duplicación de código entre múltiples diálogos específicos.
- * 
- * @param <T> Tipo de autocompletable a crear (debe implementar Autocompletable)
+ * Diálogo para agregar una nueva autocompletable (Cliente, Profesional, Institución).
+ * Extiende {@link NuevoElementoDialog} y añade la creación de la entidad tipada.
+ *
+ * @param <T> Tipo de autocompletable a crear (debe implementar {@link Autocompletable})
  */
-public class AgregarAutocompletableDialog<T extends Autocompletable> extends JDialog {
-    
-    private JTextField txtNombre;
-    private JButton btnAgregar;
-    private JButton btnCancelar;
-    private T entidadResultado;
-    private final String nombreEntidad;
-    private final java.util.function.Supplier<T> creador;
-    
-    /**
-     * Constructor del diálogo genérico.
-     * 
-     * @param parent Ventana parente
-     * @param nombrePropuesto Nombre sugerido
-     * @param nombreEntidad Nombre de la entidad (ej: "Cliente", "Profesional")
-     * @param creador Función que crea una nueva instancia de T
-     */
-    public AgregarAutocompletableDialog(Frame parent, String nombrePropuesto, String nombreEntidad, 
-                                 java.util.function.Supplier<T> creador) {
-        super(parent, String.format(Constantes.Textos.DIALOG_TITULO_AGREGAR, nombreEntidad), true);
-        this.nombreEntidad = nombreEntidad;
+public class AgregarAutocompletableDialog<T extends Autocompletable> extends NuevoElementoDialog {
+
+    private final Supplier<T> creador;
+
+    public AgregarAutocompletableDialog(Window parent, String nombrePropuesto,
+                                        String nombreEntidad, Supplier<T> creador) {
+        super(parent, nombreEntidad, nombrePropuesto);
         this.creador = creador;
-        this.entidadResultado = null;
-        
-        inicializarComponentes(nombrePropuesto);
-        configurarLayout();
-        configurarEventos();
-        
-        setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-        pack();
-        setLocationRelativeTo(parent);
     }
-    
-    private void inicializarComponentes(String nombrePropuesto) {
-        txtNombre = new JTextField(nombrePropuesto, 30);
-        btnAgregar = new JButton(Constantes.Botones.AGREGAR_TEXTO);
-        btnCancelar = new JButton(Constantes.Botones.CANCELAR);
-    }
-    
-    private void configurarLayout() {
-        JPanel panelPrincipal = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(10, 10, 10, 10);
-        
-        // Etiqueta
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.gridwidth = 2;
-        String mensaje = String.format(Constantes.Textos.DIALOG_MENSAJE_AGREGAR, nombreEntidad.toLowerCase());
-        JLabel lblMensaje = new JLabel(mensaje);
-        panelPrincipal.add(lblMensaje, gbc);
-        
-        // Campo de nombre
-        gbc.gridy = 1;
-        gbc.gridwidth = 1;
-        JLabel lblNombre = new JLabel(Constantes.Textos.LABEL_NOMBRE);
-        panelPrincipal.add(lblNombre, gbc);
-        
-        gbc.gridx = 1;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        panelPrincipal.add(txtNombre, gbc);
-        
-        // Botones
-        gbc.gridx = 0;
-        gbc.gridy = 2;
-        gbc.gridwidth = 1;
-        gbc.fill = GridBagConstraints.NONE;
-        panelPrincipal.add(btnAgregar, gbc);
-        
-        gbc.gridx = 1;
-        panelPrincipal.add(btnCancelar, gbc);
-        
-        add(panelPrincipal);
-    }
-    
-    private void configurarEventos() {
-        btnAgregar.addActionListener(e -> confirmarAgregar());
-        btnCancelar.addActionListener(e -> cancelar());
-        
-        // Enter en el campo de texto = agregar
-        txtNombre.addActionListener(e -> confirmarAgregar());
-    }
-    
-    private void confirmarAgregar() {
-        String nombre = txtNombre.getText().trim();
-        if (nombre.isEmpty()) {
-            JOptionPane.showMessageDialog(this, Constantes.Mensajes.NOMBRE_VACIO,
-                Constantes.Mensajes.TITULO_ERROR, JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-        
-        entidadResultado = creador.get();
-        entidadResultado.setId(0);
-        entidadResultado.setNombre(nombre);
-        dispose();
-    }
-    
-    private void cancelar() {
-        entidadResultado = null;
-        dispose();
-    }
-    
+
     /**
-     * Retorna la autocompletable creada, o null si el usuario canceló.
+     * Retorna la entidad creada con el nombre confirmado, o {@code null} si el usuario canceló.
+     * Llamar DESPUÉS de que el diálogo se haya cerrado (tras {@code setVisible(true)}).
      */
     public T obtenerEntidad() {
-        return entidadResultado;
+        String nombre = obtenerResultado();
+        if (nombre == null) return null;
+        T entidad = creador.get();
+        entidad.setId(0);
+        entidad.setNombre(nombre);
+        return entidad;
     }
 }
-
-

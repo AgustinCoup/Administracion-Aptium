@@ -87,9 +87,15 @@ class LoteServiceTest {
     @Test
     void lanzarLote_delegaADAO() {
         Lote lote = mock(Lote.class);
-        List<LoteMovimiento> movs = Collections.emptyList();
+        List<LoteMovimiento> movs = List.of(new LoteMovimiento(1, 1, 10));
         when(loteDAO.lanzarLote("AutoA", 500, 300, movs)).thenReturn(lote);
         assertSame(lote, service.lanzarLote("AutoA", 500, 300, movs));
+    }
+
+    @Test
+    void lanzarLote_movimientosVacios_lanzaValidationException() {
+        assertThrows(com.example.common.exception.ValidationException.class,
+            () -> service.lanzarLote("AutoA", 500, 300, Collections.emptyList()));
     }
 
     @Test
