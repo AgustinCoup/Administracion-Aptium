@@ -7,6 +7,7 @@ import com.example.features.equipos.ortopedias.controller.CorreccionsController;
 import com.example.features.equipos.ortopedias.controller.EquiposParaEntregarController;
 import com.example.features.equipos.ortopedias.controller.OrthopediaInputController;
 import com.example.features.equipos.ortopedias.controller.RegistrarEstadoController;
+import com.example.features.equipos.controller.VerEquiposController;
 import com.example.features.equipos.otros.controller.OtrosInputController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
@@ -63,6 +64,9 @@ public class UiCoordinator {
 
         VerLotesController verLotesController = new VerLotesController(
             vista.getPantallaVerLotes(), model, model.getLoteReporteService());
+
+        new VerEquiposController(vista.getPantallaVerEquipos(), model,
+            model.getEquipoReporteService(), model.getEquipoOtrosReporteService());
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
         correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());

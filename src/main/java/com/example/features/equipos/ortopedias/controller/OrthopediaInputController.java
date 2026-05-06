@@ -55,7 +55,6 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
             profesional -> panel.setSelectedProfesionalId(profesional.getId()),
             nombre -> gestorNuevosProfesionales.manejarEntidadNoExistente(nombre)
         );
-        panel.getTxtProfesional().getDocument().addDocumentListener(autocompleteProfesionalListener);
 
         autocompleteInstitucionListener = new AutocompleteListener<>(
             panel.getTxtInstitucion(),
@@ -63,7 +62,6 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
             institucion -> panel.setSelectedInstitucionId(institucion.getId()),
             nombre -> gestorNuevasInstituciones.manejarEntidadNoExistente(nombre)
         );
-        panel.getTxtInstitucion().getDocument().addDocumentListener(autocompleteInstitucionListener);
 
         gestorNuevosProfesionales = new GestorNuevasEntidades<>(
             obtenerVentanaParente(),

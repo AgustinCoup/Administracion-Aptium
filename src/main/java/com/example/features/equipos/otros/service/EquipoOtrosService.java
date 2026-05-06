@@ -5,6 +5,7 @@ import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -65,6 +66,10 @@ public class EquipoOtrosService {
         return dao.obtenerTodos();
     }
 
+    public EquipoOtros obtenerPorId(int id) {
+        return dao.obtenerPorId(id);
+    }
+
     /**
      * Marca como entregados todos los materiales esterilizados de equipos_otros
      * cuyo nro_cliente coincide.
@@ -80,5 +85,9 @@ public class EquipoOtrosService {
      */
     public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {
         return dao.aplicarMovimientos(equipoId, movimientos);
+    }
+
+    public List<EquipoOtros> obtenerEntreFechas(LocalDate desde, LocalDate hasta) {
+        return dao.obtenerEntreFechas(desde, hasta);
     }
 }

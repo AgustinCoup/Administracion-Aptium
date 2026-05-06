@@ -120,6 +120,8 @@ public class AutocompleteListener<T> implements DocumentListener {
                 }
             }
         });
+
+        textField.getDocument().addDocumentListener(this);
     }
 
     private void seleccionarItemActual() {
@@ -172,7 +174,8 @@ public class AutocompleteListener<T> implements DocumentListener {
             scrollPane = new JScrollPane(suggestionList);
             scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
             scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-            scrollPane.setPreferredSize(new Dimension(textField.getPreferredSize().width, 0));
+            scrollPane.setPreferredSize(new Dimension(
+                    Math.max(textField.getWidth(), textField.getPreferredSize().width), 0));
             popupMenu.add(scrollPane);
             popupMenu.setFocusable(false);
         }
@@ -188,8 +191,11 @@ public class AutocompleteListener<T> implements DocumentListener {
                 suggestionList.setSelectedIndex(0);
 
                 int visibleRows = Math.min(listModel.getSize(), MAX_VISIBLE_ROWS);
+                int popupWidth  = textField.getWidth() > 0
+                        ? textField.getWidth()
+                        : textField.getPreferredSize().width;
                 scrollPane.setPreferredSize(new Dimension(
-                        textField.getPreferredSize().width,
+                        popupWidth,
                         visibleRows * cellHeight() + 2));
                 scrollPane.revalidate();
 

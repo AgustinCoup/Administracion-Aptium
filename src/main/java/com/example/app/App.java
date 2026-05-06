@@ -2,7 +2,6 @@ package com.example.app;
 
 import com.example.app.ui.AppController;
 import com.example.infrastructure.db.ConnectionPool;
-import com.example.app.AppModel;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import org.slf4j.Logger;

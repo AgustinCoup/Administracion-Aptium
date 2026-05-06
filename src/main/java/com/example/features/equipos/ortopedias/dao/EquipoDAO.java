@@ -14,6 +14,7 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.time.LocalDate;
 import java.time.ZoneId;
 
 /**
@@ -33,7 +34,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
     private static final String SQL_CABECERA_EQUIPO =
         "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
-        "       e.requiere_lavado, e.requiere_empaque " +
+        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso " +
         "FROM equipos e " +
         "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
         "LEFT JOIN instituciones i ON e.nro_institucion = i.id ";
@@ -42,7 +43,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
     private static final String SQL_EQUIPOS_CON_MATERIALES =
         "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
-        "       e.requiere_lavado, e.requiere_empaque, " +
+        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, " +
         "       em.id AS mat_id, em.codigo_catalogo, cd.descripcion AS mat_descripcion, " +
         "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, mm.ultimo_movimiento " +
         "FROM equipos e " +
@@ -213,6 +214,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
         eq.setEstado(EstadoEquipo.desdeBD(rs.getString("estado")));
         eq.setRequiereLavado(rs.getBoolean("requiere_lavado"));
         eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
+        Timestamp fi = rs.getTimestamp("fecha_ingreso");
+        eq.setFechaIngreso(fi != null ? fi.toLocalDateTime() : null);
         return eq;
     }
 
@@ -389,6 +392,14 @@ public class EquipoDAO implements DAO<Equipo, String> {
         return obtenerEquiposConJoin(
             "WHERE e.estado = ? ORDER BY e.fecha_ingreso DESC, em.id",
             EstadoEquipo.NUEVO.getNombre()
+        );
+    }
+
+    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta) {
+        return obtenerEquiposConJoin(
+            "WHERE e.fecha_ingreso >= ? AND e.fecha_ingreso <= ? ORDER BY e.fecha_ingreso, em.id",
+            Timestamp.valueOf(desde.atStartOfDay()),
+            Timestamp.valueOf(hasta.atTime(23, 59, 59))
         );
     }
 

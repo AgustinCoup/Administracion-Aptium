@@ -37,8 +37,7 @@ public class PantallaEsterilizacion extends JPanel {
         btnParaEntregar.setFont(Estilos.Fuentes.BOTON);
 
         btnIngresar.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.ES_ORTOPEDIA));
-        //btnVer.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_CDE));
-        btnVer.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_CDE_V2));
+        btnVer.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_EQUIPOS));
 
         btnRegistrar.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.REGISTRAR_ESTADO));
         btnParaEntregar.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.EQUIPOS_PARA_ENTREGAR));

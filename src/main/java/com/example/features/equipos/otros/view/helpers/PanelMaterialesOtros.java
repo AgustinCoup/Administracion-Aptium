@@ -1,35 +1,26 @@
 package com.example.features.equipos.otros.view.helpers;
 
 import com.example.common.constants.Constantes;
+import com.example.ui.common.AutocompleteListener;
 import com.example.ui.common.Estilos;
-
-import com.example.common.constants.Constantes;
 import com.example.ui.dialogs.NuevoElementoDialog;
 
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 
 /**
  * Panel de materiales para el ingreso de tipo "Otros".
  *
  * Diferencias respecto a {@link com.example.features.equipos.view.helpers.PanelMateriales}:
  * - El primer campo de cada fila es un {@link JTextField} de texto libre (descripción).
- * - Al escribir, dispara un autocomplete con sugerencias de {@code catalogo_otros}
- *   a partir de 1 carácter, con popup flotante idéntico al {@code AutocompleteListener}.
- * - No hay campo de código numérico.
- * - No hay lógica de duplicados por código (no aplica para texto libre).
- *
- * La comunicación con el controller se hace mediante un callback:
- * {@code setOnDescripcionChangedListener(BiConsumer<String, Consumer<List<String>>>)}
- * El controller recibe el texto y un Consumer para entregar las sugerencias de vuelta.
+ * - Al escribir dispara autocompletado contra {@code catalogo_otros} desde 1 carácter.
+ * - Al perder el foco con texto no presente en el catálogo abre {@link NuevoElementoDialog}.
+ * - No hay campo de código numérico ni lógica de duplicados.
  */
 public class PanelMaterialesOtros extends JPanel {
 
@@ -40,15 +31,8 @@ public class PanelMaterialesOtros extends JPanel {
     private final int   inputHeight;
     private JPanel listPanel;
 
-    /**
-     * Callback para el autocomplete de descripción.
-     * El controller recibe: (textoEscrito, consumerDeSugerencias)
-     * Puede ser null si no hay controller configurado aún.
-     */
-    private BiConsumer<String, java.util.function.Consumer<List<String>>> onDescripcionChangedListener;
-
-    /** Verifica si una descripción existe exactamente en catalogo_otros. Null = sin verificación. */
-    private Function<String, Boolean> onVerificarDescripcion;
+    private Function<String, List<String>> buscarFn;
+    private Function<String, Boolean>      verificarFn;
 
     private static final int MAX_VISIBLE_ROWS = 10;
 
@@ -102,17 +86,10 @@ public class PanelMaterialesOtros extends JPanel {
 
     // ── API pública ───────────────────────────────────────────────────────────
 
-    /**
-     * Registra el callback de autocomplete.
-     * Debe llamarse desde el controller antes de que el usuario empiece a escribir.
-     */
-    public void setOnDescripcionChangedListener(
-            BiConsumer<String, java.util.function.Consumer<List<String>>> listener) {
-        this.onDescripcionChangedListener = listener;
-    }
-
-    public void setOnVerificarDescripcion(Function<String, Boolean> fn) {
-        this.onVerificarDescripcion = fn;
+    public void configurarAutocompletado(Function<String, List<String>> buscar,
+                                         Function<String, Boolean> verificar) {
+        this.buscarFn    = buscar;
+        this.verificarFn = verificar;
     }
 
     public List<OtrosMaterialRow> getFilas() {
@@ -136,7 +113,6 @@ public class PanelMaterialesOtros extends JPanel {
         gbc.fill   = GridBagConstraints.HORIZONTAL;
         int rowIdx = filas.size();
 
-        // Campo descripción (texto libre con autocomplete)
         JTextField txtDesc = new JTextField();
         txtDesc.setFont(inputFont);
         txtDesc.setColumns(35);
@@ -144,82 +120,29 @@ public class PanelMaterialesOtros extends JPanel {
         txtDesc.setPreferredSize(new Dimension(250, inputHeight));
         txtDesc.setMinimumSize(new Dimension(120, inputHeight));
 
-        // Verificación de catálogo al perder el foco.
         // confirmedText rastrea el último valor aceptado para evitar re-preguntar
         // si el usuario mueve el foco sin haber cambiado el texto.
         String[] confirmedText = {null};
-        txtDesc.addFocusListener(new FocusAdapter() {
-            @Override public void focusLost(FocusEvent e) {
-                String texto = txtDesc.getText().trim();
-                if (texto.isEmpty() || onVerificarDescripcion == null) return;
-                if (texto.equals(confirmedText[0])) return;
-                if (onVerificarDescripcion.apply(texto)) {
-                    confirmedText[0] = texto;
-                    return;
-                }
+
+        new AutocompleteListener<>(
+            txtDesc,
+            text -> buscarFn != null ? buscarFn.apply(text) : List.of(),
+            s    -> confirmedText[0] = s,
+            text -> {
+                if (verificarFn == null) return;
+                if (text.equals(confirmedText[0])) return;
+                if (verificarFn.apply(text)) { confirmedText[0] = text; return; }
                 Window w = SwingUtilities.getWindowAncestor(PanelMaterialesOtros.this);
                 NuevoElementoDialog d = new NuevoElementoDialog(
-                    w, Constantes.Textos.ENTIDAD_CATALOGO_OTROS, texto);
+                    w, Constantes.Textos.ENTIDAD_CATALOGO_OTROS, text);
                 d.setVisible(true);
                 String nombre = d.obtenerResultado();
-                if (nombre != null) {
-                    confirmedText[0] = nombre;
-                    txtDesc.setText(nombre);
-                } else {
-                    confirmedText[0] = null;
-                    txtDesc.setText("");
-                }
-            }
-        });
+                if (nombre != null) { confirmedText[0] = nombre; txtDesc.setText(nombre); }
+                else                { confirmedText[0] = null;   txtDesc.setText(""); }
+            },
+            1 /* minChars */
+        );
 
-        // Popup de autocomplete
-        JPopupMenu popup           = new JPopupMenu();
-        DefaultListModel<String> listModel = new DefaultListModel<>();
-        JList<String> lista        = new JList<>(listModel);
-        lista.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        JScrollPane scrollPopup    = new JScrollPane(lista);
-        scrollPopup.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        scrollPopup.setPreferredSize(new Dimension(250, 0));
-        popup.add(scrollPopup);
-        popup.setFocusable(false);
-
-        // Listener de documento → actualizar sugerencias
-        txtDesc.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e)  { actualizarSugerencias(txtDesc, popup, listModel, scrollPopup, lista); }
-            @Override public void removeUpdate(DocumentEvent e)  { actualizarSugerencias(txtDesc, popup, listModel, scrollPopup, lista); }
-            @Override public void changedUpdate(DocumentEvent e) {}
-        });
-
-        // Selección con mouse
-        lista.addMouseListener(new MouseAdapter() {
-            @Override public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 1) seleccionarSugerencia(txtDesc, lista, popup);
-            }
-        });
-
-        // Navegación con teclado desde el campo
-        txtDesc.addKeyListener(new KeyAdapter() {
-            @Override public void keyPressed(KeyEvent e) {
-                if (!popup.isVisible()) return;
-                int idx  = lista.getSelectedIndex();
-                int size = listModel.getSize();
-                switch (e.getKeyCode()) {
-                    case KeyEvent.VK_DOWN:
-                        if (size > 0) { lista.setSelectedIndex((idx + 1) % size); lista.ensureIndexIsVisible(lista.getSelectedIndex()); }
-                        e.consume(); break;
-                    case KeyEvent.VK_UP:
-                        if (size > 0) { lista.setSelectedIndex((idx - 1 + size) % size); lista.ensureIndexIsVisible(lista.getSelectedIndex()); }
-                        e.consume(); break;
-                    case KeyEvent.VK_ENTER:
-                        if (idx >= 0) { seleccionarSugerencia(txtDesc, lista, popup); e.consume(); }
-                        break;
-                    case KeyEvent.VK_ESCAPE:
-                        popup.setVisible(false); e.consume(); break;
-                }
-            }
-        });
-
-        // Spinner cantidad (idéntico al de PanelMateriales)
         SpinnerNumberModel spModel = new SpinnerNumberModel(1.0, 1.0, null, 1.0);
         JSpinner spCantidad = new JSpinner(spModel);
         spCantidad.setFont(inputFont);
@@ -228,7 +151,6 @@ public class PanelMaterialesOtros extends JPanel {
         editor.getTextField().setColumns(4);
         spCantidad.addChangeListener(ev -> actualizarTotal());
 
-        // Botón eliminar fila
         JButton btnDel = new JButton(Constantes.Botones.ELIMINAR_FILA);
         btnDel.setFont(Estilos.Fuentes.BOTON_PEQUENO);
         btnDel.setPreferredSize(new Dimension(45, inputHeight));
@@ -236,10 +158,8 @@ public class PanelMaterialesOtros extends JPanel {
         btnDel.setToolTipText(Constantes.Textos.TOOLTIP_ELIMINAR_FILA);
 
         OtrosMaterialRow fila = new OtrosMaterialRow(txtDesc, spCantidad, btnDel);
-
         btnDel.addActionListener(e -> eliminarFila(fila));
 
-        // Agregar componentes al panel
         gbc.gridx = 0; gbc.gridy = rowIdx; gbc.weightx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         listPanel.add(txtDesc, gbc);
@@ -254,47 +174,6 @@ public class PanelMaterialesOtros extends JPanel {
 
         filas.add(fila);
         actualizarTotal();
-    }
-
-    private void actualizarSugerencias(JTextField txtDesc, JPopupMenu popup,
-                                        DefaultListModel<String> listModel,
-                                        JScrollPane scrollPopup, JList<String> lista) {
-        String texto = txtDesc.getText().trim();
-        if (texto.isEmpty()) {
-            popup.setVisible(false);
-            return;
-        }
-        if (onDescripcionChangedListener == null) return;
-
-        // Pedir sugerencias al controller de forma síncrona en el EDT
-        onDescripcionChangedListener.accept(texto, sugerencias -> {
-            listModel.clear();
-            if (sugerencias == null || sugerencias.isEmpty()) {
-                popup.setVisible(false);
-                return;
-            }
-            for (String s : sugerencias) listModel.addElement(s);
-            lista.setSelectedIndex(0);
-
-            int visibles = Math.min(listModel.getSize(), MAX_VISIBLE_ROWS);
-            int cellH    = 22; // estimado conservador
-            scrollPopup.setPreferredSize(new Dimension(txtDesc.getWidth(), visibles * cellH + 2));
-            scrollPopup.revalidate();
-
-            if (!popup.isVisible()) {
-                popup.show(txtDesc, 0, txtDesc.getHeight());
-            } else {
-                popup.pack();
-            }
-        });
-    }
-
-    private void seleccionarSugerencia(JTextField txtDesc, JList<String> lista, JPopupMenu popup) {
-        String seleccionada = lista.getSelectedValue();
-        if (seleccionada != null) {
-            txtDesc.setText(seleccionada);
-            popup.setVisible(false);
-        }
     }
 
     private void eliminarUltimaFila() {

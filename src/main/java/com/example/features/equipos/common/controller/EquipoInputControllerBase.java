@@ -61,7 +61,6 @@ public abstract class EquipoInputControllerBase<P extends JPanel & PantallaIngre
             cliente -> panel.setSelectedClienteId(cliente.getId()),
             nombre  -> gestorNuevosClientes.manejarEntidadNoExistente(nombre)
         );
-        panel.getTxtCliente().getDocument().addDocumentListener(autocompleteClienteListener);
 
         gestorNuevosClientes = new GestorNuevasEntidades<>(
             obtenerVentanaParente(),

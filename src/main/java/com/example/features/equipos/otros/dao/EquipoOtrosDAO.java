@@ -192,7 +192,7 @@ public class EquipoOtrosDAO {
             "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
             "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
             "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-            "eo.volumen_equipo " +
+            "eo.volumen_equipo, eo.fecha_ingreso " +
             "FROM equipo_otros eo " +
             "JOIN clientes c ON eo.nro_cliente = c.id " +
             "ORDER BY eo.estado, eo.id DESC";
@@ -219,7 +219,7 @@ public class EquipoOtrosDAO {
             "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
             "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
             "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-            "eo.volumen_equipo " +
+            "eo.volumen_equipo, eo.fecha_ingreso " +
             "FROM equipo_otros eo " +
             "JOIN clientes c ON eo.nro_cliente = c.id " +
             "WHERE eo.estado = 'Nuevo' " +
@@ -246,7 +246,7 @@ public class EquipoOtrosDAO {
             "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
             "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
             "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-            "eo.volumen_equipo " +
+            "eo.volumen_equipo, eo.fecha_ingreso " +
             "FROM equipo_otros eo " +
             "JOIN clientes c ON eo.nro_cliente = c.id " +
             "WHERE eo.id = ?";
@@ -535,6 +535,8 @@ public class EquipoOtrosDAO {
         eq.setRemitoCantidad(rs.getObject("remito_cantidad") != null ? rs.getInt("remito_cantidad") : null);
         eq.setRemitoObservaciones(rs.getString("remito_observaciones"));
         eq.setVolumenEquipo(rs.getInt("volumen_equipo"));
+        Timestamp fi = rs.getTimestamp("fecha_ingreso");
+        eq.setFechaIngreso(fi != null ? fi.toLocalDateTime() : null);
         return eq;
     }
 
@@ -647,6 +649,36 @@ public class EquipoOtrosDAO {
                 log.error("Error en rollback", ex);
             }
         }
+    }
+
+    /** Retorna todos los equipos "otros" con fecha_ingreso dentro del rango [desde, hasta], todos los estados. */
+    public List<EquipoOtros> obtenerEntreFechas(LocalDate desde, LocalDate hasta) {
+        List<EquipoOtros> lista = new ArrayList<>();
+        String sql =
+            "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
+            "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
+            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
+            "eo.volumen_equipo, eo.fecha_ingreso " +
+            "FROM equipo_otros eo " +
+            "JOIN clientes c ON eo.nro_cliente = c.id " +
+            "WHERE eo.fecha_ingreso >= ? AND eo.fecha_ingreso <= ? " +
+            "ORDER BY eo.fecha_ingreso, eo.id";
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.valueOf(desde.atStartOfDay()));
+            ps.setTimestamp(2, Timestamp.valueOf(hasta.atTime(23, 59, 59)));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    EquipoOtros eq = mapearEquipo(rs);
+                    cargarMateriales(conn, eq);
+                    lista.add(eq);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener EquipoOtros entre fechas", e);
+        }
+        return lista;
     }
 
     private void close(Connection conn) {

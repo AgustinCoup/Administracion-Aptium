@@ -26,14 +26,9 @@ public class OtrosInputController extends EquipoInputControllerBase<PantallaIngr
     }
 
     private void inicializarEventosEspecificos() {
-        panel.getPanelMateriales().setOnDescripcionChangedListener((texto, consumerSugerencias) -> {
-            if (texto == null || texto.trim().isEmpty()) {
-                consumerSugerencias.accept(List.of());
-                return;
-            }
-            consumerSugerencias.accept(model.buscarMaterialesOtrosPorDescripcion(texto.trim()));
-        });
-        panel.getPanelMateriales().setOnVerificarDescripcion(desc -> model.existeMaterialOtros(desc));
+        panel.getPanelMateriales().configurarAutocompletado(
+            texto -> model.buscarMaterialesOtrosPorDescripcion(texto),
+            desc  -> model.existeMaterialOtros(desc));
     }
 
     @Override

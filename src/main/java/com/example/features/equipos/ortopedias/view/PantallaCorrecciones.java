@@ -149,10 +149,26 @@ public class PantallaCorrecciones extends JPanel {
         lblCantidad = new JLabel("Nueva cantidad:");
         lblCantidad.setFont(Estilos.Fuentes.LABEL);
         panel.add(lblCantidad, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.7;
+        gbc.gridx = 1; gbc.weightx = 0.7; gbc.fill = GridBagConstraints.NONE; gbc.anchor = GridBagConstraints.WEST;
         spinCantidad = new JSpinner(new SpinnerNumberModel(1, 1, 1000, 1));
         spinCantidad.setFont(Estilos.Fuentes.INPUT);
+        JSpinner.NumberEditor cantEditor = new JSpinner.NumberEditor(spinCantidad, "#");
+        spinCantidad.setEditor(cantEditor);
+        cantEditor.getTextField().setColumns(spinCantidad.getValue().toString().length());
+        spinCantidad.addChangeListener(ev -> {
+            int digits = spinCantidad.getValue().toString().length();
+            JTextField tf = ((JSpinner.NumberEditor) spinCantidad.getEditor()).getTextField();
+            if (tf.getColumns() != digits) {
+                tf.setColumns(digits);
+                spinCantidad.invalidate();
+                if (spinCantidad.getParent() != null) {
+                    spinCantidad.getParent().revalidate();
+                    spinCantidad.getParent().repaint();
+                }
+            }
+        });
         panel.add(spinCantidad, gbc);
+        gbc.fill = GridBagConstraints.HORIZONTAL; gbc.anchor = GridBagConstraints.CENTER;
 
         gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.3;
         lblCodigoNuevo = new JLabel("Nuevo código:");

@@ -3,6 +3,7 @@ package com.example.features.equipos.ortopedias.model;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -26,7 +27,8 @@ public class Equipo implements EquipoRegistrableInterface {
     private String institucionNombre;
 
     // Estado y Fecha
-    private EstadoEquipo estado;
+    private EstadoEquipo  estado;
+    private LocalDateTime fechaIngreso;
     private List<Material> materiales;
     private boolean requiereLavado;
     private boolean requiereEmpaque;
@@ -211,4 +213,7 @@ public class Equipo implements EquipoRegistrableInterface {
 
     public void    setRequiereLavado(boolean requiereLavado) { this.requiereLavado = requiereLavado; }
     public void    setRequiereEmpaque(boolean requiereEmpaque){ this.requiereEmpaque = requiereEmpaque; }
+
+    public LocalDateTime getFechaIngreso()               { return fechaIngreso; }
+    public void    setFechaIngreso(LocalDateTime v)      { this.fechaIngreso = v; }
 }

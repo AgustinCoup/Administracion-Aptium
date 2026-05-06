@@ -1,0 +1,110 @@
+<!-- Created with Jaspersoft Studio version 7.0.3.final using JasperReports Library version 7.0.3 -->
+<jasperReport name="ReporteOtros" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="11223344-5566-7788-99aa-bbccdd112233">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="One Empty Record"/>
+	<query language="sql"><![CDATA[]]></query>
+	<field name="fechaIngreso" class="java.lang.String"/>
+	<field name="cliente"      class="java.lang.String"/>
+	<field name="tipoIngreso"  class="java.lang.String"/>
+	<field name="materiales"   class="java.lang.String"/>
+	<background height="701" splitType="Stretch">
+		<element kind="image" uuid="aa112233-4455-6677-8899-aabb11223301" x="0" y="70" width="555" height="590">
+			<expression><![CDATA["aptium_watermark-removebg-preview.png"]]></expression>
+		</element>
+	</background>
+	<pageHeader height="80" splitType="Stretch">
+		<element kind="image" uuid="aa112233-4455-6677-8899-aabb11223302" x="131" y="10" width="269" height="50">
+			<expression><![CDATA["Aptium_logo.png"]]></expression>
+		</element>
+	</pageHeader>
+	<columnHeader height="27" splitType="Stretch">
+		<element kind="staticText" uuid="bb112233-4455-6677-8899-bbcc11223301" x="0" y="0" width="65" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Fecha]]></text>
+			<box>
+				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="bb112233-4455-6677-8899-bbcc11223302" x="65" y="0" width="115" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Cliente]]></text>
+			<box>
+				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="bb112233-4455-6677-8899-bbcc11223303" x="180" y="0" width="115" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Tipo / Remito]]></text>
+			<box>
+				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="bb112233-4455-6677-8899-bbcc11223304" x="295" y="0" width="260" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Materiales]]></text>
+			<box>
+				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="20" splitType="Stretch">
+			<element kind="textField" uuid="cc112233-4455-6677-8899-ccdd11223301" stretchType="ContainerHeight" x="0" y="0" width="65" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{fechaIngreso}]]></expression>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="cc112233-4455-6677-8899-ccdd11223302" stretchType="ContainerHeight" x="65" y="0" width="115" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{cliente}]]></expression>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="cc112233-4455-6677-8899-ccdd11223303" x="180" y="0" width="115" height="20" fontName="Arial" fontSize="10.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{tipoIngreso}]]></expression>
+				<box topPadding="3" leftPadding="2" bottomPadding="3" rightPadding="2">
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="cc112233-4455-6677-8899-ccdd11223304" x="295" y="0" width="260" height="20" fontName="Arial" fontSize="10.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{materiales}]]></expression>
+				<box topPadding="3" leftPadding="4" bottomPadding="3" rightPadding="4">
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+			</element>
+		</band>
+	</detail>
+	<pageFooter height="30" splitType="Stretch">
+		<element kind="textField" uuid="dd112233-4455-6677-8899-ddee11223301" x="355" y="0" width="100" height="30" hTextAlign="Right">
+			<expression><![CDATA["Página " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="dd112233-4455-6677-8899-ddee11223302" x="455" y="0" width="100" height="30" evaluationTime="Report" hTextAlign="Left">
+			<expression><![CDATA[" de " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<summary height="30" splitType="Stretch">
+		<element kind="textField" uuid="dd112233-4455-6677-8899-ddee11223303" x="455" y="0" width="100" height="30" pattern="dd/MM/yyyy">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+	</summary>
+</jasperReport>

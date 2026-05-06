@@ -18,6 +18,8 @@ import com.example.features.profesionales.service.ProfesionalService;
 import com.example.features.instituciones.model.Institucion;
 import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.autoclaves.service.AutoclaveService;
+import com.example.features.equipos.ortopedias.service.EquipoReporteService;
+import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
 import com.example.features.lotes.service.LoteReporteService;
 import com.example.features.lotes.service.LoteService;
 import org.slf4j.Logger;
@@ -61,7 +63,9 @@ public class AppModel {
     private final EquipoCorreccionService equipoCorreccionService;
     private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
     private final IEstadoValidator        estadoValidator;
-    private final LoteReporteService      loteReporteService;
+    private final LoteReporteService         loteReporteService;
+    private final EquipoReporteService       equipoReporteService;
+    private final EquipoOtrosReporteService  equipoOtrosReporteService;
 
     /**
      * Constructor con inyección de dependencias.
@@ -83,8 +87,10 @@ public class AppModel {
         this.equipoOtrosService = context.getEquipoOtrosService();
         this.equipoCorreccionService = context.getEquipoCorreccionService();
         this.equipoOtrosCorreccionService = context.getEquipoOtrosCorreccionService();
-        this.estadoValidator       = context.getEstadoValidator();
-        this.loteReporteService    = new LoteReporteService(this);
+        this.estadoValidator           = context.getEstadoValidator();
+        this.loteReporteService        = new LoteReporteService(this);
+        this.equipoReporteService      = new EquipoReporteService(this);
+        this.equipoOtrosReporteService = new EquipoOtrosReporteService(this);
     }
 
     // ==================== INFRAESTRUCTURA ====================
@@ -127,6 +133,10 @@ public class AppModel {
 
     public long contarEquipos() {
         return equipoService.contar();
+    }
+
+    public List<Equipo> obtenerEquiposEntreFechas(LocalDate desde, LocalDate hasta) {
+        return equipoService.obtenerEntreFechas(desde, hasta);
     }
 
     // ==================== MATERIALES ====================
@@ -268,6 +278,10 @@ public class AppModel {
         return equipoOtrosService.obtenerTodos();
     }
 
+    public EquipoOtros obtenerEquipoOtrosPorId(int id) {
+        return equipoOtrosService.obtenerPorId(id);
+    }
+
     public boolean guardarEquipoOtros(EquipoOtros equipo) {
         return equipoOtrosService.guardarEquipo(equipo);
     }
@@ -278,6 +292,10 @@ public class AppModel {
 
     public boolean entregarClienteOtrosCompleto(int nroCliente) {
         return equipoOtrosService.entregarClienteCompleto(nroCliente);
+    }
+
+    public List<EquipoOtros> obtenerEquiposOtrosEntreFechas(LocalDate desde, LocalDate hasta) {
+        return equipoOtrosService.obtenerEntreFechas(desde, hasta);
     }
 
     // ==================== CATÁLOGO OTROS ====================
@@ -306,6 +324,14 @@ public class AppModel {
 
     public LoteReporteService getLoteReporteService() {
         return loteReporteService;
+    }
+
+    public EquipoReporteService getEquipoReporteService() {
+        return equipoReporteService;
+    }
+
+    public EquipoOtrosReporteService getEquipoOtrosReporteService() {
+        return equipoOtrosReporteService;
     }
 }
 

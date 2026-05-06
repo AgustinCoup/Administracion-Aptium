@@ -5,6 +5,7 @@ import com.example.common.model.MaterialRegistrableInterface;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -42,6 +43,7 @@ public class EquipoOtros implements EquipoRegistrableInterface {
     private String           remitoObservaciones;
 
     private int              volumenEquipo       = 0; // litros acumulados en lotes exitosos
+    private LocalDateTime    fechaIngreso;
 
     private final List<MaterialOtros> materiales = new ArrayList<>();
 
@@ -233,4 +235,7 @@ public class EquipoOtros implements EquipoRegistrableInterface {
 
     public int     getVolumenEquipo()                       { return volumenEquipo; }
     public void    setVolumenEquipo(int volumen)            { this.volumenEquipo = volumen; }
+
+    public LocalDateTime getFechaIngreso()                  { return fechaIngreso; }
+    public void    setFechaIngreso(LocalDateTime v)         { this.fechaIngreso = v; }
 }

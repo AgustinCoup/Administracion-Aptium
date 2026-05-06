@@ -29,6 +29,7 @@ public final class Constantes {
         public static final String CORRECCIONES          = "CORRECCIONES";
         public static final String AUDITORIA             = "AUDITORIA";
         public static final String INGRESO_OTROS         = "INGRESO_OTROS";
+        public static final String VER_EQUIPOS           = "VER_EQUIPOS";
 
         private Pantallas() {}
     }
@@ -192,6 +193,8 @@ public final class Constantes {
         public static final String VER_LOTES              = "Ver Lotes";
         public static final String LIMPIAR_FILTROS        = "Limpiar filtros";
         public static final String IMPRIMIR               = "Imprimir";
+        public static final String VER_EQUIPOS            = "Ver equipos";
+        public static final String CERRAR                 = "Cerrar";
 
         private Botones() {}
     }

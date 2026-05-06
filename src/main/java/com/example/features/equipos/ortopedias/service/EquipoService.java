@@ -6,6 +6,7 @@ import com.example.features.equipos.ortopedias.model.Equipo;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -130,6 +131,10 @@ public class EquipoService {
      */
     public boolean existe(String id) {
         return equipoDAO.existe(id);
+    }
+
+    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta) {
+        return equipoDAO.obtenerEntreFechas(desde, hasta);
     }
 }
 
