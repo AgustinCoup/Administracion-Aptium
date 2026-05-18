@@ -51,7 +51,7 @@ public class PantallaVerLotes extends JPanel {
             Constantes.Titulos.VER_LOTES,
             navegador,
             contenedor,
-            Constantes.Pantallas.VER_CDE_V2
+            Constantes.Pantallas.VER_EQUIPOS
         );
 
         JPanel panelNorte = new JPanel(new BorderLayout());

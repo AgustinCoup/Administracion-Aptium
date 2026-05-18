@@ -8,13 +8,8 @@ import com.example.common.constants.Constantes;
 import com.example.app.AppModel;
 import com.example.ui.common.Estilos;
 import com.example.ui.shell.PantallaPrincipal;
-import com.formdev.flatlaf.FlatDarculaLaf;
-import com.formdev.flatlaf.FlatDarkLaf;
-import com.formdev.flatlaf.FlatIntelliJLaf;
+import com.formdev.flatlaf.FlatLaf;
 import com.formdev.flatlaf.FlatLightLaf;
-import com.formdev.flatlaf.intellijthemes.FlatArcOrangeIJTheme;
-import com.formdev.flatlaf.intellijthemes.FlatDraculaIJTheme;
-import com.formdev.flatlaf.intellijthemes.FlatOneDarkIJTheme;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,7 +49,8 @@ public class AppController {
 
     private void configurarLookAndFeel() {
         try {
-            FlatArcOrangeIJTheme.setup();
+            FlatLaf.registerCustomDefaultsSource("com.example.app");
+            FlatLightLaf.setup();
             configurarFuentesDialogos();
         } catch (Exception e) {
             log.warn("No se pudo aplicar el Look and Feel", e);

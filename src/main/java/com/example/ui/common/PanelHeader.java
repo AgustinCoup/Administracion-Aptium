@@ -1,7 +1,6 @@
 package com.example.ui.common;
 
 
-import com.example.ui.common.Estilos;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionListener;
@@ -46,17 +45,19 @@ public class PanelHeader extends JPanel {
         JPanel panelBotonVolver = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         btnVolver = new JButton(Constantes.Botones.VOLVER);
         panelBotonVolver.add(btnVolver);
-        
+
         // Panel del título (centrado)
         JPanel panelTitulo = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 0));
         lblTitulo = new JLabel(titulo);
         lblTitulo.setFont(Estilos.Fuentes.TITULO);
         panelTitulo.add(lblTitulo);
-        
+
+        aplicarEstiloCorporativo(panelBotonVolver, panelTitulo);
+
         // Agregar componentes al panel principal
         add(panelBotonVolver);
         add(panelTitulo);
-        
+
         // Configurar acción del botón volver
         btnVolver.addActionListener(e -> navegador.show(contenedor, pantallaDestino));
     }
@@ -73,14 +74,28 @@ public class PanelHeader extends JPanel {
         JPanel panelBotonVolver = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         btnVolver = new JButton(Constantes.Botones.VOLVER);
         panelBotonVolver.add(btnVolver);
-        
+
         JPanel panelTitulo = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 0));
         lblTitulo = new JLabel(titulo);
         lblTitulo.setFont(new Font(Constantes.Defaults.FUENTE_PRINCIPAL, Font.BOLD, Constantes.Defaults.FUENTE_TAMANO_TITULO));
         panelTitulo.add(lblTitulo);
-        
+
+        aplicarEstiloCorporativo(panelBotonVolver, panelTitulo);
+
         add(panelBotonVolver);
         add(panelTitulo);
+    }
+
+    private void aplicarEstiloCorporativo(JPanel panelBoton, JPanel panelTitulo) {
+        setBackground(Estilos.Colores.PRIMARIO);
+        panelBoton.setBackground(Estilos.Colores.PRIMARIO);
+        panelTitulo.setBackground(Estilos.Colores.PRIMARIO);
+        lblTitulo.setForeground(Color.WHITE);
+        btnVolver.setContentAreaFilled(false);
+        btnVolver.setBorderPainted(false);
+        btnVolver.setOpaque(false);
+        btnVolver.setForeground(Color.WHITE);
+        btnVolver.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     }
     
     /**

@@ -74,7 +74,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="cc112233-4455-6677-8899-ccdd11223303" x="180" y="0" width="115" height="20" fontName="Arial" fontSize="10.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="cc112233-4455-6677-8899-ccdd11223303" stretchType="ContainerHeight" x="180" y="0" width="115" height="20" fontName="Arial" fontSize="10.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{tipoIngreso}]]></expression>
 				<box topPadding="3" leftPadding="2" bottomPadding="3" rightPadding="2">
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -83,7 +83,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="cc112233-4455-6677-8899-ccdd11223304" x="295" y="0" width="260" height="20" fontName="Arial" fontSize="10.0" textAdjust="StretchHeight">
+			<element kind="textField" uuid="cc112233-4455-6677-8899-ccdd11223304" stretchType="ContainerHeight" x="295" y="0" width="260" height="20" fontName="Arial" fontSize="10.0" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{materiales}]]></expression>
 				<box topPadding="3" leftPadding="4" bottomPadding="3" rightPadding="4">
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>

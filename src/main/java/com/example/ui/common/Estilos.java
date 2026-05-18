@@ -4,6 +4,9 @@ import javax.swing.*;
 import javax.swing.border.Border;
 
 import java.awt.*;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Clase centralizada de estilos visuales para toda la aplicación.
@@ -23,8 +26,17 @@ public final class Estilos {
      * FUENTES - Predefinidas para mantener consistencia visual
      */
     public static final class Fuentes {
-        private static final String FUENTE_PRINCIPAL = "Arial";
-        
+        private static final String FUENTE_PRINCIPAL = resolverFuente();
+
+        private static String resolverFuente() {
+            Set<String> disponibles = new HashSet<>(Arrays.asList(
+                GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames()
+            ));
+            if (disponibles.contains("Helvetica Neue")) return "Helvetica Neue";
+            if (disponibles.contains("Helvetica"))      return "Helvetica";
+            return "Arial";
+        }
+
         // Títulos de pantallas (grande y bold)
         public static final Font TITULO = new Font(FUENTE_PRINCIPAL, Font.BOLD, 26);
         
@@ -116,16 +128,17 @@ public final class Estilos {
      * COLORES - Colores reutilizables de la aplicación
      */
     public static final class Colores {
-        
-        // Color de texto normal
-        public static final Color TEXTO_NORMAL = Color.BLACK;
-        
-        // Color de texto ayuda/hint
-        public static final Color TEXTO_AYUDA = Color.GRAY;
-        
-        // Fondo por defecto
+
+        // Paleta corporativa Aptium (aproximaciones — verificar con diseñador)
+        public static final Color PRIMARIO  = new Color(0x2575C4); // Azul principal
+        public static final Color CELESTE   = new Color(0x44BFEE); // Azul claro
+        public static final Color NAVY      = new Color(0x1A3A6E); // Azul marino
+        public static final Color GRIS      = new Color(0xC8C8C8); // Gris
+
+        public static final Color TEXTO_NORMAL  = Color.BLACK;
+        public static final Color TEXTO_AYUDA   = Color.GRAY;
         public static final Color FONDO_DEFECTO = Color.WHITE;
-        
+
         private Colores() {}
     }
 }

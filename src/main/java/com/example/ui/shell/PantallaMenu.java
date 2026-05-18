@@ -14,6 +14,7 @@ public class PantallaMenu extends JPanel {
         // Título de bienvenida
         JLabel lblBienvenida = new JLabel(Constantes.Titulos.MENU_PRINCIPAL, SwingConstants.CENTER);
         lblBienvenida.setFont(Estilos.Fuentes.TITULO_SECUNDARIO);
+        lblBienvenida.setForeground(Estilos.Colores.NAVY);
         lblBienvenida.setBorder(Estilos.Espaciados.BORDE_TITULO);
         add(lblBienvenida, BorderLayout.NORTH);
 
