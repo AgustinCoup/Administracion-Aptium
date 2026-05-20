@@ -36,9 +36,9 @@ public class EquipoOtrosReporteService {
         this.model = model;
     }
 
-    public void generarYMostrarReporte(LocalDate desde, LocalDate hasta) {
+    public void generarYMostrarReporte(LocalDate desde, LocalDate hasta, Integer clienteId) {
         try {
-            List<EquipoOtrosReporteDTO> datos = construirDatos(desde, hasta);
+            List<EquipoOtrosReporteDTO> datos = construirDatos(desde, hasta, clienteId);
 
             InputStream jrxmlStream = getClass().getResourceAsStream(JRXML_PATH);
             if (jrxmlStream == null) {
@@ -63,8 +63,8 @@ public class EquipoOtrosReporteService {
         }
     }
 
-    private List<EquipoOtrosReporteDTO> construirDatos(LocalDate desde, LocalDate hasta) {
-        List<EquipoOtros> equipos = model.obtenerEquiposOtrosEntreFechas(desde, hasta);
+    private List<EquipoOtrosReporteDTO> construirDatos(LocalDate desde, LocalDate hasta, Integer clienteId) {
+        List<EquipoOtros> equipos = model.obtenerEquiposOtrosEntreFechas(desde, hasta, clienteId);
         List<EquipoOtrosReporteDTO> dtos = new ArrayList<>(equipos.size());
 
         for (EquipoOtros eq : equipos) {

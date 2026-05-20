@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,6 +15,79 @@ import java.util.List;
 public final class EquipoOtrosMaterialHelper {
 
     private EquipoOtrosMaterialHelper() { }
+
+    /**
+     * Materializa el split de un REMITO en {@code equipo_otros_materiales}.
+     *
+     * <p>Si {@code cantidadMover < remitoCantidad}, inserta una fila extra para los
+     * elementos que no avanzan, manteniéndolos en {@code estadoActual} sin lote.
+     * Siempre inserta la fila para los elementos que avanzan a {@code estadoDestino}
+     * (con {@code loteId} y {@code volumenLote} opcionales) y registra el movimiento.
+     *
+     * @return ID de la fila avanzada en {@code equipo_otros_materiales}
+     */
+    public static int materializarRemitoSplit(
+            Connection conn,
+            int equipoOtrosId,
+            int catalogoId,
+            int remitoCantidad,
+            String estadoActual,
+            int cantidadMover,
+            String estadoDestino,
+            Integer loteId,
+            Integer volumenLote) throws SQLException {
+
+        int cantidadEfectiva = Math.min(cantidadMover, remitoCantidad);
+
+        // Fila para los elementos que no avanzan (sin lote)
+        if (cantidadEfectiva < remitoCantidad) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO equipo_otros_materiales " +
+                    "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
+                    "VALUES (?, ?, 'Elementos', ?, ?)")) {
+                ps.setInt(1, equipoOtrosId);
+                ps.setInt(2, catalogoId);
+                ps.setInt(3, remitoCantidad - cantidadEfectiva);
+                ps.setString(4, estadoActual);
+                ps.executeUpdate();
+            }
+        }
+
+        // Fila para los elementos que avanzan de estado
+        int movedId;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO equipo_otros_materiales " +
+                "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado, lote_id, volumen_lote) " +
+                "VALUES (?, ?, 'Elementos', ?, ?, ?, ?)",
+                PreparedStatement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, equipoOtrosId);
+            ps.setInt(2, catalogoId);
+            ps.setInt(3, cantidadEfectiva);
+            ps.setString(4, estadoDestino);
+            if (loteId != null) ps.setInt(5, loteId);     else ps.setNull(5, Types.INTEGER);
+            if (volumenLote != null) ps.setInt(6, volumenLote); else ps.setNull(6, Types.INTEGER);
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (!rs.next()) throw new SQLException("No se generó ID al materializar REMITO split");
+                movedId = rs.getInt(1);
+            }
+        }
+
+        // Registrar movimiento para los elementos avanzados
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO otros_material_movimientos " +
+                "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
+                "VALUES (?, ?, ?, ?, ?)")) {
+            ps.setInt(1, movedId);
+            ps.setInt(2, equipoOtrosId);
+            ps.setInt(3, cantidadEfectiva);
+            if (estadoActual != null) ps.setString(4, estadoActual); else ps.setNull(4, Types.VARCHAR);
+            ps.setString(5, estadoDestino);
+            ps.executeUpdate();
+        }
+
+        return movedId;
+    }
 
     /**
      * Unifica filas de {@code equipo_otros_materiales} con la misma

@@ -398,7 +398,6 @@ public class EquipoOtrosDAO {
 
                 // REMITO (matId==0): crear filas reales en equipo_otros_materiales
                 if (matId == 0) {
-                    // Leer estado y cantidad actuales del equipo
                     String estadoActual;
                     int remitoCant;
                     try (PreparedStatement ps = conn.prepareStatement(
@@ -420,28 +419,10 @@ public class EquipoOtrosDAO {
                     if (dest == null) throw new SQLException("Estado final para REMITO: " + equipoId);
 
                     int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, "Elementos");
-                    String sqlIns =
-                        "INSERT INTO equipo_otros_materiales " +
-                        "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
-                        "VALUES (?, ?, 'Elementos', ?, ?)";
-                    String sqlMov2 =
-                        "INSERT INTO otros_material_movimientos " +
-                        "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
-                        "VALUES (?, ?, ?, ?, ?)";
-
-                    if (cantidadMover >= remitoCant) {
-                        // Avanza todo: una sola fila en el nuevo estado
-                        int nuevoId = insertarMaterialOtros(conn, sqlIns, equipoId, catalogoId, remitoCant, dest.getNombre());
-                        registrarMovimiento(conn, sqlMov2, nuevoId, equipoId, remitoCant, estadoActual, dest);
-                    } else {
-                        // Split: fila restante (no necesita movimiento) + fila avanzada
-                        insertarMaterialOtros(conn, sqlIns, equipoId, catalogoId,
-                                remitoCant - cantidadMover, estadoActual);
-                        int idAvanzado = insertarMaterialOtros(conn, sqlIns, equipoId, catalogoId,
-                                cantidadMover, dest.getNombre());
-                        registrarMovimiento(conn, sqlMov2, idAvanzado, equipoId, cantidadMover, estadoActual, dest);
-                    }
-                    anyDetalles = true; // hay filas reales → recalcular
+                    EquipoOtrosMaterialHelper.materializarRemitoSplit(
+                            conn, equipoId, catalogoId, remitoCant,
+                            estadoActual, cantidadMover, dest.getNombre(), null, null);
+                    anyDetalles = true;
                     continue;
                 }
 
@@ -614,21 +595,6 @@ public class EquipoOtrosDAO {
         EquipoOtrosMaterialHelper.unificarMaterialesDuplicados(conn, equipoId);
     }
 
-    private int insertarMaterialOtros(Connection conn, String sql, int equipoId,
-                                      int catalogoId, int cantidad, String estado) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setInt(1, equipoId);
-            ps.setInt(2, catalogoId);
-            ps.setInt(3, cantidad);
-            ps.setString(4, estado);
-            ps.executeUpdate();
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (rs.next()) return rs.getInt(1);
-                throw new SQLException("No se generó ID para equipo_otros_materiales");
-            }
-        }
-    }
-
     private void registrarMovimiento(Connection conn, String sql, int materialId, int equipoId,
                                      int cantidad, String estadoOrigen, EstadoEquipo destino)
             throws SQLException {
@@ -652,8 +618,10 @@ public class EquipoOtrosDAO {
     }
 
     /** Retorna todos los equipos "otros" con fecha_ingreso dentro del rango [desde, hasta], todos los estados. */
-    public List<EquipoOtros> obtenerEntreFechas(LocalDate desde, LocalDate hasta) {
+    public List<EquipoOtros> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
         List<EquipoOtros> lista = new ArrayList<>();
+        String where = "WHERE eo.fecha_ingreso >= ? AND eo.fecha_ingreso <= ?";
+        if (clienteId != null) where += " AND eo.nro_cliente = ?";
         String sql =
             "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
             "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
@@ -661,13 +629,13 @@ public class EquipoOtrosDAO {
             "eo.volumen_equipo, eo.fecha_ingreso " +
             "FROM equipo_otros eo " +
             "JOIN clientes c ON eo.nro_cliente = c.id " +
-            "WHERE eo.fecha_ingreso >= ? AND eo.fecha_ingreso <= ? " +
-            "ORDER BY eo.fecha_ingreso, eo.id";
+            where + " ORDER BY eo.fecha_ingreso, eo.id";
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.valueOf(desde.atStartOfDay()));
             ps.setTimestamp(2, Timestamp.valueOf(hasta.atTime(23, 59, 59)));
+            if (clienteId != null) ps.setInt(3, clienteId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     EquipoOtros eq = mapearEquipo(rs);

@@ -133,8 +133,8 @@ public class EquipoService {
         return equipoDAO.existe(id);
     }
 
-    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta) {
-        return equipoDAO.obtenerEntreFechas(desde, hasta);
+    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
+        return equipoDAO.obtenerEntreFechas(desde, hasta, clienteId);
     }
 }
 

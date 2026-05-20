@@ -180,41 +180,45 @@ public class VerEquiposController {
 
     private void abrirDialogoOrtopedias() {
         Frame ventana = (Frame) SwingUtilities.getWindowAncestor(panel);
-        new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Ortopedias", (desde, hasta) ->
-            new SwingWorker<Void, Void>() {
-                @Override protected Void doInBackground() {
-                    equipoReporteService.generarYMostrarReporte(desde, hasta);
-                    return null;
-                }
-                @Override protected void done() {
-                    try { get(); } catch (InterruptedException | ExecutionException ex) {
-                        log.error("Error al generar reporte de ortopedias", ex);
-                        JOptionPane.showMessageDialog(panel,
-                            "Error al generar el reporte:\n" + ex.getCause().getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
+        new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Ortopedias",
+            model::buscarClientes,
+            (desde, hasta, clienteId) ->
+                new SwingWorker<Void, Void>() {
+                    @Override protected Void doInBackground() {
+                        equipoReporteService.generarYMostrarReporte(desde, hasta, clienteId);
+                        return null;
                     }
-                }
-            }.execute()
+                    @Override protected void done() {
+                        try { get(); } catch (InterruptedException | ExecutionException ex) {
+                            log.error("Error al generar reporte de ortopedias", ex);
+                            JOptionPane.showMessageDialog(panel,
+                                "Error al generar el reporte:\n" + ex.getCause().getMessage(),
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                }.execute()
         ).setVisible(true);
     }
 
     private void abrirDialogoOtros() {
         Frame ventana = (Frame) SwingUtilities.getWindowAncestor(panel);
-        new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Otros", (desde, hasta) ->
-            new SwingWorker<Void, Void>() {
-                @Override protected Void doInBackground() {
-                    equipoOtrosReporteService.generarYMostrarReporte(desde, hasta);
-                    return null;
-                }
-                @Override protected void done() {
-                    try { get(); } catch (InterruptedException | ExecutionException ex) {
-                        log.error("Error al generar reporte de otros", ex);
-                        JOptionPane.showMessageDialog(panel,
-                            "Error al generar el reporte:\n" + ex.getCause().getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
+        new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Otros",
+            model::buscarClientes,
+            (desde, hasta, clienteId) ->
+                new SwingWorker<Void, Void>() {
+                    @Override protected Void doInBackground() {
+                        equipoOtrosReporteService.generarYMostrarReporte(desde, hasta, clienteId);
+                        return null;
                     }
-                }
-            }.execute()
+                    @Override protected void done() {
+                        try { get(); } catch (InterruptedException | ExecutionException ex) {
+                            log.error("Error al generar reporte de otros", ex);
+                            JOptionPane.showMessageDialog(panel,
+                                "Error al generar el reporte:\n" + ex.getCause().getMessage(),
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                }.execute()
         ).setVisible(true);
     }
 }

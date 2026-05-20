@@ -1,9 +1,9 @@
 package com.example;
 
 import com.example.infrastructure.db.ConnectionPool;
-import com.example.infrastructure.db.DatabaseInitializer;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -35,7 +35,44 @@ public abstract class AbstractDAOTest {
         h2DataSource = new HikariDataSource(config);
 
         ConnectionPool.setDataSourceForTesting(h2DataSource);
-        DatabaseInitializer.inicializar();
+
+        // Fase 1: V1–V3 con sintaxis estándar compatible con H2.
+        // validateOnMigrate=false porque en ejecuciones subsiguientes (múltiples clases de test
+        // comparten la misma instancia H2) el registro sintético de V4 tiene checksum -1.
+        Flyway.configure()
+            .dataSource(h2DataSource)
+            .locations("classpath:db/migration")
+            .baselineOnMigrate(true)
+            .baselineVersion("1")
+            .validateOnMigrate(false)
+            .target("3")
+            .load()
+            .migrate();
+
+        // Fase 2: V4 usa DELETE alias FROM … JOIN (MySQL-específico, falla en H2).
+        // En tests la DB empieza vacía, así que los UPDATEs/DELETE son no-ops;
+        // solo se aplica el ALTER TABLE que es el único cambio estructural.
+        try (Connection conn = h2DataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE clientes ADD CONSTRAINT IF NOT EXISTS uq_clientes_nombre UNIQUE (nombre)");
+            // Registrar V4 como aplicado para que Flyway no intente ejecutarlo.
+            // validateOnMigrate=false en la fase 3 evita la validación del checksum sintético.
+            stmt.execute(
+                "INSERT IGNORE INTO \"flyway_schema_history\" " +
+                "(\"installed_rank\", \"version\", \"description\", \"type\", \"script\", " +
+                "\"checksum\", \"installed_by\", \"execution_time\", \"success\") " +
+                "VALUES (4, '4', 'clientes unique nombre', 'SQL', 'V4__clientes_unique_nombre.sql', -1, 'test', 0, TRUE)"
+            );
+        }
+
+        // Fase 3: V5+ (no-op hoy; corre automáticamente cuando se agreguen migraciones futuras).
+        // validateOnMigrate=false evita el error de checksum en la fila sintética de V4.
+        Flyway.configure()
+            .dataSource(h2DataSource)
+            .locations("classpath:db/migration")
+            .validateOnMigrate(false)
+            .load()
+            .migrate();
     }
 
     @AfterAll

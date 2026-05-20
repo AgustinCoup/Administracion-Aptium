@@ -87,7 +87,7 @@ public class EquipoOtrosService {
         return dao.aplicarMovimientos(equipoId, movimientos);
     }
 
-    public List<EquipoOtros> obtenerEntreFechas(LocalDate desde, LocalDate hasta) {
-        return dao.obtenerEntreFechas(desde, hasta);
+    public List<EquipoOtros> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
+        return dao.obtenerEntreFechas(desde, hasta, clienteId);
     }
 }

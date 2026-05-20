@@ -75,7 +75,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e002" stretchType="ContainerHeight" x="65" y="0" width="105" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e002" stretchType="ContainerHeight" x="65" y="0" width="105" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{profesional}]]></expression>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -84,7 +84,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e003" stretchType="ContainerHeight" x="170" y="0" width="105" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e003" stretchType="ContainerHeight" x="170" y="0" width="105" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{paciente}]]></expression>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -93,7 +93,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e004" stretchType="ContainerHeight" x="275" y="0" width="105" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e004" stretchType="ContainerHeight" x="275" y="0" width="105" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{institucion}]]></expression>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>

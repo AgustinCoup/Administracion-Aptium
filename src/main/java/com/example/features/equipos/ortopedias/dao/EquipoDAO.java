@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.time.LocalDate;
@@ -32,22 +33,26 @@ public class EquipoDAO implements DAO<Equipo, String> {
     private static final Logger log = LoggerFactory.getLogger(EquipoDAO.class);
 
     private static final String SQL_CABECERA_EQUIPO =
-        "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, " +
+        "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, " +
+        "       p.nombre AS profesional_nombre, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
         "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso " +
         "FROM equipos e " +
         "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
+        "LEFT JOIN profesionales p ON e.nro_profesional = p.id " +
         "LEFT JOIN instituciones i ON e.nro_institucion = i.id ";
 
     // Query con materiales incluidos — resuelve el N+1 para listados masivos
     private static final String SQL_EQUIPOS_CON_MATERIALES =
-        "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, e.paciente, " +
+        "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, " +
+        "       p.nombre AS profesional_nombre, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
         "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, " +
         "       em.id AS mat_id, em.codigo_catalogo, cd.descripcion AS mat_descripcion, " +
         "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, mm.ultimo_movimiento " +
         "FROM equipos e " +
         "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
+        "LEFT JOIN profesionales p ON e.nro_profesional = p.id " +
         "LEFT JOIN instituciones i ON e.nro_institucion = i.id " +
         "LEFT JOIN equipo_materiales em ON em.equipo_id = e.id " +
         "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
@@ -208,6 +213,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         eq.setNroCliente(rs.getInt("nro_cliente"));
         eq.setClienteNombre(rs.getString("cliente_nombre"));
         eq.setNroProfesional(rs.getObject("nro_profesional", Integer.class));
+        eq.setProfesionalNombre(rs.getString("profesional_nombre"));
         eq.setPacienteNombre(rs.getString("paciente"));
         eq.setNroInstitucion(rs.getObject("nro_institucion", Integer.class));
         eq.setInstitucionNombre(rs.getString("institucion_nombre"));
@@ -395,12 +401,17 @@ public class EquipoDAO implements DAO<Equipo, String> {
         );
     }
 
-    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta) {
-        return obtenerEquiposConJoin(
-            "WHERE e.fecha_ingreso >= ? AND e.fecha_ingreso <= ? ORDER BY e.fecha_ingreso, em.id",
+    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
+        String where = "WHERE e.fecha_ingreso >= ? AND e.fecha_ingreso <= ?";
+        List<Object> params = new ArrayList<>(Arrays.asList(
             Timestamp.valueOf(desde.atStartOfDay()),
             Timestamp.valueOf(hasta.atTime(23, 59, 59))
-        );
+        ));
+        if (clienteId != null) {
+            where += " AND e.nro_cliente = ?";
+            params.add(clienteId);
+        }
+        return obtenerEquiposConJoin(where + " ORDER BY e.fecha_ingreso, em.id", params.toArray());
     }
 
 

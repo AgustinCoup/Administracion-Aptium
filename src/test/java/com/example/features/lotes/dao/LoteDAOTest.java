@@ -129,19 +129,147 @@ class LoteDAOTest extends AbstractDAOTest {
         assertEquals(1, materialesLote.get(0).getCantidad());
     }
 
-    // ── lanzarLote — equipo_otros, REMITO (materialId < 0) ───────────────────
+    // ── lanzarLote — equipo_otros, REMITO total (materialId < 0) ────────────
 
     @Test
-    void lanzarLote_otrosRemito_creaFilaEnEquipoOtrosMateriales() throws SQLException {
-        int equipoOtrosId = insertarEquipoOtros();
-        List<LoteMovimiento> movs = List.of(
-            new LoteMovimiento(-1, equipoOtrosId, 5, true, 20)
-        );
-        Lote lote = dao.lanzarLote("E01", 120, 60, movs);
+    void lanzarLote_otrosRemitoTotal_unaFilaEnLoteConCantidadCompleta() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(5);
+        Lote lote = dao.lanzarLote("E01", 120, 60,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 5, true, 20)));
 
         List<LoteMaterialInfo> mats = dao.obtenerMaterialesPorLote(lote.getId());
-        assertFalse(mats.isEmpty());
+        assertEquals(1, mats.size());
         assertEquals(5, mats.get(0).getCantidad());
+    }
+
+    @Test
+    void lanzarLote_otrosRemitoTotal_unaFilaEnEquipoOtrosMateriales() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(5);
+        dao.lanzarLote("E01", 120, 60,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 5, true, 20)));
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM equipo_otros_materiales WHERE equipo_otros_id = ?")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(1, rs.getInt(1));
+            }
+        }
+    }
+
+    // ── lanzarLote — equipo_otros, REMITO PARCIAL (split) ────────────────────
+
+    @Test
+    void lanzarLote_otrosRemitoParcial_creaDosFilas() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(50);
+        dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, 10)));
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM equipo_otros_materiales WHERE equipo_otros_id = ?")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(2, rs.getInt(1), "Debe haber 2 filas: avanzada + restante");
+            }
+        }
+    }
+
+    @Test
+    void lanzarLote_otrosRemitoParcial_sumaCantidadesConservaTotalOriginal() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(50);
+        dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, 10)));
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT SUM(cantidad) FROM equipo_otros_materiales WHERE equipo_otros_id = ?")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(50, rs.getInt(1), "SUM(cantidad) debe ser siempre remito_cantidad");
+            }
+        }
+    }
+
+    @Test
+    void lanzarLote_otrosRemitoParcial_elementosRestantesNoEsterilizando() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(50);
+        dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, 10)));
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT cantidad FROM equipo_otros_materiales " +
+                 "WHERE equipo_otros_id = ? AND estado <> 'Esterilizando'")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(), "Debe existir fila con elementos aún no esterilizando");
+                assertEquals(30, rs.getInt("cantidad"));
+            }
+        }
+    }
+
+    @Test
+    void lanzarLote_otrosRemitoParcial_equipoNoAvanzaAEsterilizando() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(50);
+        dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, 10)));
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT estado FROM equipo_otros WHERE id = ?")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertNotEquals("Esterilizando", rs.getString("estado"),
+                    "El equipo no debe pasar a Esterilizando mientras quedan elementos sin procesar");
+            }
+        }
+    }
+
+    @Test
+    void cicloCompleto_dosLotesParcialesEsterilizanTodosLosElementos() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(50);
+
+        // Primer lote: 20 de 50
+        Lote lote1 = dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, 10)));
+        dao.finalizarLote(lote1.getId());
+
+        // Los 30 restantes deben ser una fila real en estado anterior al lote
+        int materialIdRestante;
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT id FROM equipo_otros_materiales " +
+                 "WHERE equipo_otros_id = ? AND lote_id IS NULL")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(), "Los 30 restantes deben existir como fila real sin lote");
+                materialIdRestante = rs.getInt("id");
+            }
+        }
+
+        // Segundo lote: los 30 restantes (ya son fila real, usa path DETALLES)
+        Lote lote2 = dao.lanzarLote("E01", 120, 15,
+            List.of(new LoteMovimiento(materialIdRestante, equipoOtrosId, 30, true, 15)));
+        dao.finalizarLote(lote2.getId());
+
+        // Invariante final: todos los 50 deben estar en Esterilizado
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT SUM(cantidad) FROM equipo_otros_materiales " +
+                 "WHERE equipo_otros_id = ? AND estado = 'Esterilizado'")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(50, rs.getInt(1),
+                    "Todos los 50 elementos deben quedar en estado Esterilizado");
+            }
+        }
     }
 
     // ── consultas — estado vacío ──────────────────────────────────────────────
@@ -306,12 +434,14 @@ class LoteDAOTest extends AbstractDAOTest {
 
     // ── helper ────────────────────────────────────────────────────────────────
 
-    /** Inserta un equipo_otros de tipo REMITO y devuelve su id generado. */
-    private int insertarEquipoOtros() throws SQLException {
+    /** Inserta un equipo_otros de tipo REMITO con la cantidad dada y devuelve su id generado. */
+    private int insertarEquipoOtros(int remitoCantidad) throws SQLException {
         String sql = "INSERT INTO equipo_otros (nro_cliente, estado, requiere_lavado, " +
-                     "requiere_empaque, tipo_ingreso) VALUES (1, 'Nuevo', 1, 1, 'REMITO')";
+                     "requiere_empaque, tipo_ingreso, remito_cantidad) " +
+                     "VALUES (1, 'Nuevo', 0, 0, 'REMITO', ?)";
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, remitoCantidad);
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) {
                 if (rs.next()) return rs.getInt(1);

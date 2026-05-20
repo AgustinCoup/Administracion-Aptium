@@ -135,8 +135,8 @@ public class AppModel {
         return equipoService.contar();
     }
 
-    public List<Equipo> obtenerEquiposEntreFechas(LocalDate desde, LocalDate hasta) {
-        return equipoService.obtenerEntreFechas(desde, hasta);
+    public List<Equipo> obtenerEquiposEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
+        return equipoService.obtenerEntreFechas(desde, hasta, clienteId);
     }
 
     // ==================== MATERIALES ====================
@@ -294,8 +294,8 @@ public class AppModel {
         return equipoOtrosService.entregarClienteCompleto(nroCliente);
     }
 
-    public List<EquipoOtros> obtenerEquiposOtrosEntreFechas(LocalDate desde, LocalDate hasta) {
-        return equipoOtrosService.obtenerEntreFechas(desde, hasta);
+    public List<EquipoOtros> obtenerEquiposOtrosEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
+        return equipoOtrosService.obtenerEntreFechas(desde, hasta, clienteId);
     }
 
     // ==================== CATÁLOGO OTROS ====================

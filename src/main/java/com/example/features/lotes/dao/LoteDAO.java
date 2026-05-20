@@ -651,36 +651,24 @@ public class LoteDAO {
         Integer volumenLote = movimiento.getVolumenOtros();
 
         if (materialId < 0) {
-            // REMITO: crear fila sintética en equipo_otros_materiales
-            int catalogoId = obtenerOCrearCatalogoOtros(conn, "Elementos");
-            int nuevoMatId;
+            // REMITO: leer estado actual y cantidad total, luego delegar en el helper
+            String estadoActual;
+            int remitoCantidad;
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO equipo_otros_materiales " +
-                    "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado, lote_id, volumen_lote) " +
-                    "VALUES (?, ?, 'Elementos', ?, ?, ?, ?)",
-                    Statement.RETURN_GENERATED_KEYS)) {
+                    "SELECT estado, remito_cantidad FROM equipo_otros WHERE id = ?")) {
                 ps.setInt(1, equipoOtrosId);
-                ps.setInt(2, catalogoId);
-                ps.setInt(3, cantidadMover);
-                ps.setString(4, EstadoEquipo.ESTERILIZANDO.getNombre());
-                ps.setInt(5, loteId);
-                if (volumenLote != null) ps.setInt(6, volumenLote);
-                else                     ps.setNull(6, Types.INTEGER);
-                ps.executeUpdate();
-                try (ResultSet rs = ps.getGeneratedKeys()) {
-                    if (!rs.next()) throw new SQLException("No se generó ID para material remito en lote");
-                    nuevoMatId = rs.getInt(1);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) throw new SQLException("equipo_otros no encontrado: " + equipoOtrosId);
+                    estadoActual   = rs.getString("estado");
+                    remitoCantidad = rs.getInt("remito_cantidad");
                 }
             }
-            // Actualizar estado del equipo_otros a ESTERILIZANDO
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE equipo_otros SET estado = ? WHERE id = ?")) {
-                ps.setString(1, EstadoEquipo.ESTERILIZANDO.getNombre());
-                ps.setInt(2, equipoOtrosId);
-                ps.executeUpdate();
-            }
-            registrarMovimientoOtros(conn, nuevoMatId, equipoOtrosId, cantidadMover,
-                null, EstadoEquipo.ESTERILIZANDO.getNombre());
+            int catalogoId = obtenerOCrearCatalogoOtros(conn, "Elementos");
+            // El estado del equipo lo recalcula procesarEquiposOtrosAfectados
+            EquipoOtrosMaterialHelper.materializarRemitoSplit(
+                    conn, equipoOtrosId, catalogoId, remitoCantidad,
+                    estadoActual, cantidadMover,
+                    EstadoEquipo.ESTERILIZANDO.getNombre(), loteId, volumenLote);
             return;
         }
 
