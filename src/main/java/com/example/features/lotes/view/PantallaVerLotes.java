@@ -87,33 +87,24 @@ public class PantallaVerLotes extends JPanel {
     // ── Construcción del panel de filtros ─────────────────────────────────────
 
     private JPanel crearPanelFiltros() {
-        JPanel panelFiltros = new JPanel(new BorderLayout(10, 0));
-        panelFiltros.setBorder(BorderFactory.createTitledBorder("Filtros"));
-
-        // ── Panel de controles (izquierda) ───────────────────────────────────
-        JPanel panelControles = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 5));
-
-        // ID
+        // ── Componentes ──────────────────────────────────────────────────────
         JLabel lblId = new JLabel(Constantes.Textos.FILTRO_ID);
         lblId.setFont(Estilos.Fuentes.LABEL);
         txtFiltroId = new JTextField(6);
         txtFiltroId.setFont(Estilos.Fuentes.INPUT);
 
-        // Autoclave (antes "Equipo")
         JLabel lblAutoclave = new JLabel(Constantes.Textos.FILTRO_EQUIPO);
         lblAutoclave.setFont(Estilos.Fuentes.LABEL);
         cmbFiltroAutoclave = new CheckableComboBox<>(new String[0]);
         cmbFiltroAutoclave.setFont(Estilos.Fuentes.INPUT);
         cmbFiltroAutoclave.setPreferredSize(new Dimension(150, 25));
 
-        // Estado
         JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
         lblEstado.setFont(Estilos.Fuentes.LABEL);
         cmbFiltroEstado = new CheckableComboBox<>(new String[]{"ACTIVO", "EXITOSO", "FALLIDO"});
         cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
         cmbFiltroEstado.setPreferredSize(new Dimension(130, 25));
 
-        // Fecha Desde / Hasta
         JLabel lblDesde = new JLabel("Desde:");
         lblDesde.setFont(Estilos.Fuentes.LABEL);
         dateChooserDesde = new JDateChooser();
@@ -126,30 +117,32 @@ public class PantallaVerLotes extends JPanel {
         dateChooserHasta.setPreferredSize(new Dimension(110, 25));
         dateChooserHasta.setDateFormatString("dd/MM/yyyy");
 
-        panelControles.add(lblId);
-        panelControles.add(txtFiltroId);
-        panelControles.add(lblAutoclave);
-        panelControles.add(cmbFiltroAutoclave);
-        panelControles.add(lblEstado);
-        panelControles.add(cmbFiltroEstado);
-        panelControles.add(lblDesde);
-        panelControles.add(dateChooserDesde);
-        panelControles.add(lblHasta);
-        panelControles.add(dateChooserHasta);
-
-        // ── Botón Limpiar (derecha, siempre visible) ─────────────────────────
-        JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         btnLimpiarFiltros = new JButton(Constantes.Botones.LIMPIAR_FILTROS);
         btnLimpiarFiltros.setFont(Estilos.Fuentes.INPUT);
         btnLimpiarFiltros.addActionListener(e -> limpiarFiltros());
-        panelBoton.add(btnLimpiarFiltros);
 
         btnImprimir = new JButton(Constantes.Botones.IMPRIMIR);
         btnImprimir.setFont(Estilos.Fuentes.INPUT);
-        panelBoton.add(btnImprimir);
 
-        panelFiltros.add(panelControles, BorderLayout.CENTER);
-        panelFiltros.add(panelBoton,     BorderLayout.EAST);
+        // ── Dos filas para que no se corten en pantallas pequeñas ────────────
+        JPanel fila1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        fila1.add(lblId);       fila1.add(txtFiltroId);
+        fila1.add(lblAutoclave); fila1.add(cmbFiltroAutoclave);
+        fila1.add(lblEstado);   fila1.add(cmbFiltroEstado);
+
+        JPanel fila2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        fila2.add(lblDesde); fila2.add(dateChooserDesde);
+        fila2.add(lblHasta); fila2.add(dateChooserHasta);
+        fila2.add(btnLimpiarFiltros);
+        fila2.add(btnImprimir);
+
+        JPanel panelFiltros = new JPanel(new BorderLayout());
+        panelFiltros.setBorder(BorderFactory.createTitledBorder("Filtros"));
+        JPanel filas = new JPanel();
+        filas.setLayout(new BoxLayout(filas, BoxLayout.Y_AXIS));
+        filas.add(fila1);
+        filas.add(fila2);
+        panelFiltros.add(filas, BorderLayout.CENTER);
 
         // ── Vínculos de cambio ───────────────────────────────────────────────
         FilterUiHelper.bindOnTextChange(this::notificarCambioFiltros, txtFiltroId);

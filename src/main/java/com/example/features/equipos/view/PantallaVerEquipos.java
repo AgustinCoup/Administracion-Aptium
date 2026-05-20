@@ -108,15 +108,22 @@ public class PantallaVerEquipos extends JPanel {
         panelFiltrosOtro = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         panelFiltrosOtro.add(label("Tipo Ingreso:")); panelFiltrosOtro.add(cmbTipoIngreso);
 
-        // ── Panel de filtros completo ────────────────────────────────────────
-        panelFiltros = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
-        panelFiltros.add(label("Estado:"));  panelFiltros.add(cmbEstados);
-        panelFiltros.add(label("Cliente:")); panelFiltros.add(txtCliente);
-        panelFiltros.add(panelFiltrosOrt);
-        panelFiltros.add(panelFiltrosOtro);
-        panelFiltros.add(label("Desde:")); panelFiltros.add(dateDesde);
-        panelFiltros.add(label("Hasta:")); panelFiltros.add(dateHasta);
-        panelFiltros.add(btnLimpiar);
+        // ── Panel de filtros completo (dos filas para que no se corten en pantallas pequeñas) ──
+        JPanel fila1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        fila1.add(label("Estado:"));  fila1.add(cmbEstados);
+        fila1.add(label("Cliente:")); fila1.add(txtCliente);
+        fila1.add(label("Desde:"));   fila1.add(dateDesde);
+        fila1.add(label("Hasta:"));   fila1.add(dateHasta);
+        fila1.add(btnLimpiar);
+
+        JPanel fila2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        fila2.add(panelFiltrosOrt);
+        fila2.add(panelFiltrosOtro);
+
+        panelFiltros = new JPanel();
+        panelFiltros.setLayout(new BoxLayout(panelFiltros, BoxLayout.Y_AXIS));
+        panelFiltros.add(fila1);
+        panelFiltros.add(fila2);
 
         JPanel norte = new JPanel(new BorderLayout());
         norte.add(header,       BorderLayout.NORTH);
