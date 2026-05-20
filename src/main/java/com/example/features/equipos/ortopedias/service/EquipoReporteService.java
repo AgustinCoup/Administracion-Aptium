@@ -70,6 +70,7 @@ public class EquipoReporteService {
             String fecha = eq.getFechaIngreso() != null
                 ? eq.getFechaIngreso().toLocalDate().format(FMT) : "";
 
+            String cliente     = eq.getClienteNombre()     != null ? eq.getClienteNombre()     : "—";
             String profesional = eq.getProfesionalNombre() != null ? eq.getProfesionalNombre() : "—";
             String paciente    = eq.getPacienteNombre()    != null ? eq.getPacienteNombre()    : "—";
             String institucion = eq.getInstitucionNombre() != null ? eq.getInstitucionNombre() : "—";
@@ -82,7 +83,7 @@ public class EquipoReporteService {
             }
             String materiales = sb.length() > 0 ? sb.toString().stripTrailing() : "(sin materiales)";
 
-            dtos.add(new EquipoReporteDTO(fecha, profesional, paciente, institucion, materiales));
+            dtos.add(new EquipoReporteDTO(fecha, cliente, profesional, paciente, institucion, materiales));
         }
         return dtos;
     }

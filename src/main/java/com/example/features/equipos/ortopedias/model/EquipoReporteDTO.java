@@ -7,14 +7,16 @@ package com.example.features.equipos.ortopedias.model;
 public class EquipoReporteDTO {
 
     private final String fechaIngreso;
+    private final String cliente;
     private final String profesional;
     private final String paciente;
     private final String institucion;
     private final String materiales;
 
-    public EquipoReporteDTO(String fechaIngreso, String profesional,
+    public EquipoReporteDTO(String fechaIngreso, String cliente, String profesional,
                             String paciente, String institucion, String materiales) {
         this.fechaIngreso = fechaIngreso;
+        this.cliente      = cliente;
         this.profesional  = profesional;
         this.paciente     = paciente;
         this.institucion  = institucion;
@@ -22,6 +24,7 @@ public class EquipoReporteDTO {
     }
 
     public String getFechaIngreso() { return fechaIngreso; }
+    public String getCliente()      { return cliente; }
     public String getProfesional()  { return profesional; }
     public String getPaciente()     { return paciente; }
     public String getInstitucion()  { return institucion; }
