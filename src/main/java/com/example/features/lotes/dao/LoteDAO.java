@@ -651,7 +651,7 @@ public class LoteDAO {
         Integer volumenLote = movimiento.getVolumenOtros();
 
         if (materialId < 0) {
-            // REMITO: leer estado actual y cantidad total, luego delegar en el helper
+            // REMITO: leer estado actual y cantidad total original
             String estadoActual;
             int remitoCantidad;
             try (PreparedStatement ps = conn.prepareStatement(
@@ -664,11 +664,42 @@ public class LoteDAO {
                 }
             }
             int catalogoId = obtenerOCrearCatalogoOtros(conn, "Elementos");
-            // El estado del equipo lo recalcula procesarEquiposOtrosAfectados
-            EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                    conn, equipoOtrosId, catalogoId, remitoCantidad,
-                    estadoActual, cantidadMover,
-                    EstadoEquipo.ESTERILIZANDO.getNombre(), loteId, volumenLote);
+
+            // Tras el primer split existen filas reales en equipo_otros_materiales.
+            // La cantidad disponible real es la suma de esas filas (no remito_cantidad).
+            // Si no hay filas todavía, es el primer split y se usa remito_cantidad.
+            int disponibleMaterializado;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT COALESCE(SUM(cantidad), 0) FROM equipo_otros_materiales " +
+                    "WHERE equipo_otros_id = ? AND estado = ? AND lote_id IS NULL")) {
+                ps.setInt(1, equipoOtrosId);
+                ps.setString(2, estadoActual);
+                try (ResultSet rs = ps.executeQuery()) {
+                    disponibleMaterializado = rs.next() ? rs.getInt(1) : 0;
+                }
+            }
+
+            if (disponibleMaterializado > 0) {
+                // Split posterior: eliminar filas "disponibles" sin lote (sin movimientos asociados)
+                // y recrearlas con las cantidades correctas vía materializarRemitoSplit.
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "DELETE FROM equipo_otros_materiales " +
+                        "WHERE equipo_otros_id = ? AND estado = ? AND lote_id IS NULL")) {
+                    ps.setInt(1, equipoOtrosId);
+                    ps.setString(2, estadoActual);
+                    ps.executeUpdate();
+                }
+                EquipoOtrosMaterialHelper.materializarRemitoSplit(
+                        conn, equipoOtrosId, catalogoId, disponibleMaterializado,
+                        estadoActual, cantidadMover,
+                        EstadoEquipo.ESTERILIZANDO.getNombre(), loteId, volumenLote);
+            } else {
+                // Primer split: no existen filas reales aún
+                EquipoOtrosMaterialHelper.materializarRemitoSplit(
+                        conn, equipoOtrosId, catalogoId, remitoCantidad,
+                        estadoActual, cantidadMover,
+                        EstadoEquipo.ESTERILIZANDO.getNombre(), loteId, volumenLote);
+            }
             return;
         }
 

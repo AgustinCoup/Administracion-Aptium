@@ -88,36 +88,46 @@ public final class EquipoMaterialHelper {
      * @param equipoId  ID del equipo a procesar
      */
     public static void unificarMaterialesDuplicados(Connection conn, int equipoId) throws SQLException {
+        // lote_id MUST be part of the grouping key: rows belonging to different lotes must never be merged.
         String sqlGrupos =
-            "SELECT codigo_catalogo, estado, SUM(cantidad) AS cantidad_total " +
+            "SELECT codigo_catalogo, estado, lote_id, SUM(cantidad) AS cantidad_total " +
             "FROM equipo_materiales " +
             "WHERE equipo_id = ? " +
-            "GROUP BY codigo_catalogo, estado " +
+            "GROUP BY codigo_catalogo, estado, lote_id " +
             "HAVING COUNT(*) > 1";
 
-        List<int[]>  grupos        = new ArrayList<>();
-        List<String> estadosGrupos = new ArrayList<>();
+        List<Object[]> grupos = new ArrayList<>();
 
         try (PreparedStatement pstmt = conn.prepareStatement(sqlGrupos)) {
             pstmt.setInt(1, equipoId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
-                    grupos.add(new int[]{ rs.getInt("codigo_catalogo"), rs.getInt("cantidad_total") });
-                    estadosGrupos.add(rs.getString("estado"));
+                    int loteIdVal = rs.getInt("lote_id");
+                    Integer loteIdObj = rs.wasNull() ? null : loteIdVal;
+                    grupos.add(new Object[]{
+                        rs.getInt("codigo_catalogo"),
+                        rs.getString("estado"),
+                        loteIdObj,
+                        rs.getInt("cantidad_total")
+                    });
                 }
             }
         }
 
-        for (int i = 0; i < grupos.size(); i++) {
+        for (Object[] g : grupos) {
             unificarGrupo(conn, equipoId,
-                          grupos.get(i)[0], estadosGrupos.get(i), grupos.get(i)[1]);
+                (int) g[0], (String) g[1], (Integer) g[2], (int) g[3]);
         }
     }
 
     // ── unificarGrupo (privado) ───────────────────────────────────────────────
 
     private static void unificarGrupo(Connection conn, int equipoId, int codigo,
-                                      String estado, int cantidadTotal) throws SQLException {
+                                      String estado, Integer loteId, int cantidadTotal)
+            throws SQLException {
+        String loteFilterSup  = loteId == null ? "em.lote_id IS NULL"  : "em.lote_id = ?";
+        String loteFilterElim = loteId == null ? "lote_id IS NULL"      : "lote_id = ?";
+
         String sqlSuperviviente =
             "SELECT em.id " +
             "FROM equipo_materiales em " +
@@ -126,6 +136,7 @@ public final class EquipoMaterialHelper {
             "  FROM material_movimientos GROUP BY material_id" +
             ") mm ON em.id = mm.material_id " +
             "WHERE em.equipo_id = ? AND em.codigo_catalogo = ? AND em.estado = ? " +
+            "AND " + loteFilterSup + " " +
             "ORDER BY mm.ultima_fecha DESC, em.id DESC " +
             "LIMIT 1";
 
@@ -134,6 +145,7 @@ public final class EquipoMaterialHelper {
             pstmt.setInt(1, equipoId);
             pstmt.setInt(2, codigo);
             pstmt.setString(3, estado);
+            if (loteId != null) pstmt.setInt(4, loteId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (!rs.next()) return;
                 supervivienteId = rs.getInt("id");
@@ -148,13 +160,20 @@ public final class EquipoMaterialHelper {
         }
 
         List<Integer> idsAEliminar = new ArrayList<>();
-        try (PreparedStatement pstmt = conn.prepareStatement(
-                "SELECT id FROM equipo_materiales " +
-                "WHERE equipo_id = ? AND codigo_catalogo = ? AND estado = ? AND id <> ?")) {
+        String sqlElim =
+            "SELECT id FROM equipo_materiales " +
+            "WHERE equipo_id = ? AND codigo_catalogo = ? AND estado = ? " +
+            "AND " + loteFilterElim + " AND id <> ?";
+        try (PreparedStatement pstmt = conn.prepareStatement(sqlElim)) {
             pstmt.setInt(1, equipoId);
             pstmt.setInt(2, codigo);
             pstmt.setString(3, estado);
-            pstmt.setInt(4, supervivienteId);
+            if (loteId != null) {
+                pstmt.setInt(4, loteId);
+                pstmt.setInt(5, supervivienteId);
+            } else {
+                pstmt.setInt(4, supervivienteId);
+            }
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) idsAEliminar.add(rs.getInt("id"));
             }
@@ -181,7 +200,7 @@ public final class EquipoMaterialHelper {
             pstmt.executeBatch();
         }
 
-        log.debug("Unificados {} registros: código={} estado={} equipo={} → superviviente={}",
-            idsAEliminar.size() + 1, codigo, estado, equipoId, supervivienteId);
+        log.debug("Unificados {} registros: código={} estado={} lote={} equipo={} → superviviente={}",
+            idsAEliminar.size() + 1, codigo, estado, loteId, equipoId, supervivienteId);
     }
 }

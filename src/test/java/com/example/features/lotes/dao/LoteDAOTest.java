@@ -231,6 +231,163 @@ class LoteDAOTest extends AbstractDAOTest {
         }
     }
 
+    // ── Escenario del bug: dos lotes simultáneos sobre el mismo REMITO ──────────
+    // La UI siempre envía materialId < 0 para REMITO, incluso en splits posteriores.
+
+    @Test
+    void dosLotesSimultaneos_remitoNegativoId_cadaLoteTieneSuPropiaCantidad() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(50);
+
+        // Lote1: 10 de 50, sin finalizar
+        Lote lote1 = dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, 5)));
+
+        // Lote2: 10 de los 40 restantes, lote1 todavía activo
+        Lote lote2 = dao.lanzarLote("E02", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, 5)));
+
+        List<LoteMaterialInfo> mats1 = dao.obtenerMaterialesPorLote(lote1.getId());
+        assertEquals(1, mats1.size(), "Lote1 debe tener exactamente una fila");
+        assertEquals(10, mats1.get(0).getCantidad(), "Lote1 debe tener 10 elementos");
+
+        List<LoteMaterialInfo> mats2 = dao.obtenerMaterialesPorLote(lote2.getId());
+        assertEquals(1, mats2.size(), "Lote2 debe tener exactamente una fila");
+        assertEquals(10, mats2.get(0).getCantidad(), "Lote2 debe tener 10 elementos");
+
+        // Los 30 restantes deben quedar sin lote
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT SUM(cantidad) FROM equipo_otros_materiales " +
+                 "WHERE equipo_otros_id = ? AND lote_id IS NULL")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(30, rs.getInt(1), "Deben quedar 30 sin lote");
+            }
+        }
+    }
+
+    @Test
+    void dosLotesSimultaneos_sumaTotal_conservadaEn50() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(50);
+
+        dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 15, true, 5)));
+        dao.lanzarLote("E02", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 15, true, 5)));
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT SUM(cantidad) FROM equipo_otros_materiales WHERE equipo_otros_id = ?")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(50, rs.getInt(1), "SUM(cantidad) siempre debe ser remito_cantidad");
+            }
+        }
+    }
+
+    @Test
+    void dosLotesSimultaneos_finalizarAmbos_50elementosEsterilizados() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(50);
+
+        Lote lote1 = dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, 5)));
+        Lote lote2 = dao.lanzarLote("E02", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 30, true, 5)));
+
+        dao.finalizarLote(lote1.getId());
+        dao.finalizarLote(lote2.getId());
+
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT SUM(cantidad) FROM equipo_otros_materiales " +
+                 "WHERE equipo_otros_id = ? AND estado = 'Esterilizado'")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(50, rs.getInt(1),
+                    "Los 50 elementos deben quedar en Esterilizado al finalizar ambos lotes");
+            }
+        }
+    }
+
+    @Test
+    void tresSplitsSimultaneos_totalConservado() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(30);
+
+        Lote lote1 = dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, 5)));
+        Lote lote2 = dao.lanzarLote("E02", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, 5)));
+        Lote lote3 = dao.lanzarLote("E03", 120, 10,
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, 5)));
+
+        assertEquals(10, dao.obtenerMaterialesPorLote(lote1.getId()).stream()
+            .mapToInt(LoteMaterialInfo::getCantidad).sum(), "Lote1 debe tener 10");
+        assertEquals(10, dao.obtenerMaterialesPorLote(lote2.getId()).stream()
+            .mapToInt(LoteMaterialInfo::getCantidad).sum(), "Lote2 debe tener 10");
+        assertEquals(10, dao.obtenerMaterialesPorLote(lote3.getId()).stream()
+            .mapToInt(LoteMaterialInfo::getCantidad).sum(), "Lote3 debe tener 10");
+
+        // Ningún elemento sin lote (se asignaron todos)
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COALESCE(SUM(cantidad), 0) FROM equipo_otros_materiales " +
+                 "WHERE equipo_otros_id = ? AND lote_id IS NULL")) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(0, rs.getInt(1), "No deben quedar elementos sin lote");
+            }
+        }
+    }
+
+    @Test
+    void lanzarLote_mezclaOrtopediaYOtrosRemito_ambosEnMismoLote() throws SQLException {
+        int equipoOtrosId = insertarEquipoOtros(10);
+
+        Lote lote = dao.lanzarLote("E01", 120, 45, List.of(
+            new LoteMovimiento(materialId, equipo.getId(), 3),
+            new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, 20)
+        ));
+
+        List<LoteMaterialInfo> mats = dao.obtenerMaterialesPorLote(lote.getId());
+        assertEquals(2, mats.size(), "Debe haber 1 material de ortopedia y 1 de otros");
+        int total = mats.stream().mapToInt(LoteMaterialInfo::getCantidad).sum();
+        assertEquals(13, total, "3 ortopedia + 10 otros = 13 elementos en el lote");
+    }
+
+    @Test
+    void dosEquiposOtrosRemito_enMismoLote_cadaUnoConSuCantidad() throws SQLException {
+        int equipoA = insertarEquipoOtros(20);
+        int equipoB = insertarEquipoOtros(15);
+
+        Lote lote = dao.lanzarLote("E01", 120, 50, List.of(
+            new LoteMovimiento(-equipoA, equipoA, 10, true, 10),
+            new LoteMovimiento(-equipoB, equipoB, 15, true, 10)
+        ));
+
+        try (Connection conn = ConnectionPool.getConnection()) {
+            int cantA;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT SUM(cantidad) FROM equipo_otros_materiales " +
+                    "WHERE equipo_otros_id = ? AND lote_id = ?")) {
+                ps.setInt(1, equipoA); ps.setInt(2, lote.getId());
+                try (ResultSet rs = ps.executeQuery()) { rs.next(); cantA = rs.getInt(1); }
+            }
+            int cantB;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT SUM(cantidad) FROM equipo_otros_materiales " +
+                    "WHERE equipo_otros_id = ? AND lote_id = ?")) {
+                ps.setInt(1, equipoB); ps.setInt(2, lote.getId());
+                try (ResultSet rs = ps.executeQuery()) { rs.next(); cantB = rs.getInt(1); }
+            }
+            assertEquals(10, cantA, "EquipoA debe tener 10 en el lote");
+            assertEquals(15, cantB, "EquipoB debe tener 15 en el lote");
+        }
+    }
+
     @Test
     void cicloCompleto_dosLotesParcialesEsterilizanTodosLosElementos() throws SQLException {
         int equipoOtrosId = insertarEquipoOtros(50);

@@ -419,9 +419,35 @@ public class EquipoOtrosDAO {
                     if (dest == null) throw new SQLException("Estado final para REMITO: " + equipoId);
 
                     int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, "Elementos");
-                    EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                            conn, equipoId, catalogoId, remitoCant,
-                            estadoActual, cantidadMover, dest.getNombre(), null, null);
+
+                    // Tras el primer split existen filas reales; usar su cantidad como fuente.
+                    int disponibleMaterializado;
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT COALESCE(SUM(cantidad), 0) FROM equipo_otros_materiales " +
+                            "WHERE equipo_otros_id = ? AND estado = ? AND lote_id IS NULL")) {
+                        ps.setInt(1, equipoId);
+                        ps.setString(2, estadoActual);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            disponibleMaterializado = rs.next() ? rs.getInt(1) : 0;
+                        }
+                    }
+
+                    if (disponibleMaterializado > 0) {
+                        try (PreparedStatement ps = conn.prepareStatement(
+                                "DELETE FROM equipo_otros_materiales " +
+                                "WHERE equipo_otros_id = ? AND estado = ? AND lote_id IS NULL")) {
+                            ps.setInt(1, equipoId);
+                            ps.setString(2, estadoActual);
+                            ps.executeUpdate();
+                        }
+                        EquipoOtrosMaterialHelper.materializarRemitoSplit(
+                                conn, equipoId, catalogoId, disponibleMaterializado,
+                                estadoActual, cantidadMover, dest.getNombre(), null, null);
+                    } else {
+                        EquipoOtrosMaterialHelper.materializarRemitoSplit(
+                                conn, equipoId, catalogoId, remitoCant,
+                                estadoActual, cantidadMover, dest.getNombre(), null, null);
+                    }
                     anyDetalles = true;
                     continue;
                 }

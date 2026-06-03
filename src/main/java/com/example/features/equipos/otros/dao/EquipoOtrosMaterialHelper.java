@@ -37,7 +37,13 @@ public final class EquipoOtrosMaterialHelper {
             Integer loteId,
             Integer volumenLote) throws SQLException {
 
-        int cantidadEfectiva = Math.min(cantidadMover, remitoCantidad);
+        if (cantidadMover <= 0)
+            throw new SQLException("cantidadMover debe ser mayor que cero: " + cantidadMover);
+        if (cantidadMover > remitoCantidad)
+            throw new SQLException("cantidadMover (" + cantidadMover +
+                ") supera remitoCantidad (" + remitoCantidad + ")");
+
+        int cantidadEfectiva = cantidadMover;
 
         // Fila para los elementos que no avanzan (sin lote)
         if (cantidadEfectiva < remitoCantidad) {
@@ -96,11 +102,12 @@ public final class EquipoOtrosMaterialHelper {
      * tras reasignar sus movimientos al superviviente.
      */
     public static void unificarMaterialesDuplicados(Connection conn, int equipoId) throws SQLException {
+        // lote_id MUST be part of the grouping key: rows belonging to different lotes must never be merged.
         String sqlGrupos =
-            "SELECT descripcion, estado, SUM(cantidad) AS cantidad_total " +
+            "SELECT descripcion, estado, lote_id, SUM(cantidad) AS cantidad_total " +
             "FROM equipo_otros_materiales " +
             "WHERE equipo_otros_id = ? " +
-            "GROUP BY descripcion, estado " +
+            "GROUP BY descripcion, estado, lote_id " +
             "HAVING COUNT(*) > 1";
 
         List<Object[]> grupos = new ArrayList<>();
@@ -108,9 +115,12 @@ public final class EquipoOtrosMaterialHelper {
             ps.setInt(1, equipoId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
+                    int loteIdVal = rs.getInt("lote_id");
+                    Integer loteIdObj = rs.wasNull() ? null : loteIdVal;
                     grupos.add(new Object[]{
                         rs.getString("descripcion"),
                         rs.getString("estado"),
+                        loteIdObj,
                         rs.getInt("cantidad_total")
                     });
                 }
@@ -118,9 +128,13 @@ public final class EquipoOtrosMaterialHelper {
         }
 
         for (Object[] g : grupos) {
-            String desc       = (String) g[0];
-            String estado     = (String) g[1];
-            int cantidadTotal = (int)    g[2];
+            String  desc          = (String)  g[0];
+            String  estado        = (String)  g[1];
+            Integer loteId        = (Integer) g[2]; // null for rows not yet assigned to a lote
+            int     cantidadTotal = (int)     g[3];
+
+            String loteFilterSup  = loteId == null ? "m.lote_id IS NULL"  : "m.lote_id = ?";
+            String loteFilterElim = loteId == null ? "lote_id IS NULL"     : "lote_id = ?";
 
             String sqlSup =
                 "SELECT m.id FROM equipo_otros_materiales m " +
@@ -129,6 +143,7 @@ public final class EquipoOtrosMaterialHelper {
                 "  FROM otros_material_movimientos GROUP BY material_id" +
                 ") mv ON m.id = mv.material_id " +
                 "WHERE m.equipo_otros_id = ? AND m.descripcion = ? AND m.estado = ? " +
+                "AND " + loteFilterSup + " " +
                 "ORDER BY mv.uf DESC, m.id DESC LIMIT 1";
 
             int supervivienteId;
@@ -136,6 +151,7 @@ public final class EquipoOtrosMaterialHelper {
                 ps.setInt(1, equipoId);
                 ps.setString(2, desc);
                 ps.setString(3, estado);
+                if (loteId != null) ps.setInt(4, loteId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) continue;
                     supervivienteId = rs.getInt("id");
@@ -150,13 +166,20 @@ public final class EquipoOtrosMaterialHelper {
             }
 
             List<Integer> idsEliminar = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT id FROM equipo_otros_materiales " +
-                    "WHERE equipo_otros_id = ? AND descripcion = ? AND estado = ? AND id <> ?")) {
+            String sqlElim =
+                "SELECT id FROM equipo_otros_materiales " +
+                "WHERE equipo_otros_id = ? AND descripcion = ? AND estado = ? " +
+                "AND " + loteFilterElim + " AND id <> ?";
+            try (PreparedStatement ps = conn.prepareStatement(sqlElim)) {
                 ps.setInt(1, equipoId);
                 ps.setString(2, desc);
                 ps.setString(3, estado);
-                ps.setInt(4, supervivienteId);
+                if (loteId != null) {
+                    ps.setInt(4, loteId);
+                    ps.setInt(5, supervivienteId);
+                } else {
+                    ps.setInt(4, supervivienteId);
+                }
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) idsEliminar.add(rs.getInt("id"));
                 }

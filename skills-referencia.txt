@@ -1,0 +1,73 @@
+SKILLS DE CLAUDE CODE - REFERENCIA RÁPIDA
+Proyecto: Administracion-Aptium
+=========================================
+
+INSTALADOS EN ~/.claude/skills/
+--------------------------------
+
+/blueprint
+  Cuándo: Antes de implementar cualquier feature nueva.
+  Para qué: Diseñar clases, interfaces y responsabilidades antes de escribir código.
+  Ejemplo: "Necesito agregar un módulo de reportes" → /blueprint → diseñá primero, implementá después.
+
+/hexagonal-architecture
+  Cuándo: Al revisar o extender capas de la arquitectura (DAO, Service, Controller).
+  Para qué: Verificar que los cambios respetan SOLID, separación de capas y bajo acoplamiento.
+  Ejemplo: Antes de agregar un Service nuevo, revisá que cumpla inversión de dependencias.
+
+/java-coding-standards
+  Cuándo: Ante dudas sobre convenciones Java (naming, Optional, streams, inmutabilidad).
+  Para qué: Guía de estilo y buenas prácticas específicas de Java.
+
+/tdd-workflow
+  Cuándo: Para arrancar a escribir tests (la suite está vacía actualmente).
+  Para qué: Guía TDD paso a paso: test rojo → implementación → test verde → refactor.
+
+/verification-loop
+  Cuándo: Después de cambios grandes o refactors.
+  Para qué: Checklist de calidad: compila, tests pasan, cobertura aceptable, sin warnings.
+
+/security-review
+  Cuándo: Antes de commitear features con inputs de usuario o interacción con la BD.
+  Para qué: Busca SQL injection, validaciones faltantes, secretos hardcodeados, problemas de auth.
+
+/postgres-patterns
+  Cuándo: Al trabajar en queries SQL, índices o diseño de schema.
+  Para qué: Patrones de optimización, índices correctos, transacciones, seguridad en BD.
+
+/database-migrations
+  Cuándo: Al modificar tablas o schema existente.
+  Para qué: Manejo seguro de migraciones sin romper datos ni entornos de producción.
+
+/error-handling
+  Cuándo: Al agregar nuevos flujos de error o revisar la jerarquía de excepciones.
+  Para qué: Refuerza el buen uso de AptiumException y sus subclases.
+
+/strategic-compact
+  Cuándo: Cuando la conversación con Claude se vuelve muy larga y pierde contexto.
+  Para qué: Compacta el contexto sin perder información relevante.
+
+
+DISPONIBLES SIN INSTALACIÓN EXTRA (via plugin ECC o built-in)
+--------------------------------------------------------------
+
+/code-review
+  Cuándo: Después de cualquier cambio — es el más importante del flujo diario.
+  Para qué: Revisa el diff actual buscando bugs, simplificaciones y oportunidades de refactor.
+  Niveles: /code-review low | medium | high | max | ultra
+
+/simplify  (equivalente a /ecc:refactor-clean)
+  Cuándo: Cuando el código funciona pero está sucio o es difícil de leer.
+  Para qué: Limpieza de código sin cambiar comportamiento: elimina duplicación, simplifica lógica.
+
+
+FLUJO RECOMENDADO PARA UNA FEATURE NUEVA
+-----------------------------------------
+
+1. /blueprint              → diseñar clases e interfaces
+2. /hexagonal-architecture → verificar que el diseño respeta la arquitectura
+3. /tdd-workflow           → escribir tests primero
+4. (implementar)
+5. /verification-loop      → compilar, tests, cobertura
+6. /security-review        → revisar inputs y BD
+7. /code-review            → revisión final del diff
