@@ -30,6 +30,8 @@ public final class Constantes {
         public static final String AUDITORIA             = "AUDITORIA";
         public static final String INGRESO_OTROS         = "INGRESO_OTROS";
         public static final String VER_EQUIPOS           = "VER_EQUIPOS";
+        public static final String LAVADERO              = "LAVADERO";
+        public static final String INGRESO_LAVADERO      = "INGRESO_LAVADERO";
 
         private Pantallas() {}
     }
@@ -45,6 +47,7 @@ public final class Constantes {
         public static final String FORMATO_PROFESIONAL_INVALIDO = "El Profesional debe seguir el formato: Apellido Nombre";
         public static final String FORMATO_PACIENTE_INVALIDO    = "El Paciente debe seguir el formato: Apellido Nombre";
         public static final String DEBE_AGREGAR_MATERIAL        = "Debe agregar al menos un material al equipo.";
+        public static final String DEBE_AGREGAR_BOLSA           = "Debe agregar al menos una bolsa.";
         public static final String CODIGO_MATERIAL_DESCONOCIDO  = "Los siguientes códigos de material no existen en el catálogo: %s";
 
         public static final String ERROR_CONEXION_BD   = "No se pudo conectar con el servidor de base de datos.\n" +
@@ -153,6 +156,8 @@ public final class Constantes {
         public static final String LOTES                 = "LOTES DE ESTERILIZACIÓN";
         public static final String VER_LOTES             = "LOTES FINALIZADOS";
         public static final String INGRESO_OTROS         = "INGRESO OTROS";
+        public static final String LAVADERO              = "LAVADERO";
+        public static final String INGRESO_LAVADERO      = "INGRESO LAVADERO";
 
         private Titulos() {}
     }

@@ -36,6 +36,7 @@ public class PantallaMenu extends JPanel {
 
         // Acción para cambiar a la pantalla de Esterilización
         btnEsterilizacion.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION));
+        btnLavadero.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.LAVADERO));
 
         panelBotones.add(btnEsterilizacion);
         panelBotones.add(btnLavadero);

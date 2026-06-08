@@ -35,6 +35,8 @@ import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
+import com.example.features.lavadero.model.IngresoLavadero;
+import com.example.features.lavadero.service.LavaderoService;
 
 /**
  * Fachada principal de la aplicación.
@@ -63,6 +65,7 @@ public class AppModel {
     private final EquipoCorreccionService equipoCorreccionService;
     private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
     private final IEstadoValidator        estadoValidator;
+    private final LavaderoService         lavaderoService;
     private final LoteReporteService         loteReporteService;
     private final EquipoReporteService       equipoReporteService;
     private final EquipoOtrosReporteService  equipoOtrosReporteService;
@@ -88,6 +91,7 @@ public class AppModel {
         this.equipoCorreccionService = context.getEquipoCorreccionService();
         this.equipoOtrosCorreccionService = context.getEquipoOtrosCorreccionService();
         this.estadoValidator           = context.getEstadoValidator();
+        this.lavaderoService           = context.getLavaderoService();
         this.loteReporteService        = new LoteReporteService(this);
         this.equipoReporteService      = new EquipoReporteService(this);
         this.equipoOtrosReporteService = new EquipoOtrosReporteService(this);
@@ -332,6 +336,16 @@ public class AppModel {
 
     public EquipoOtrosReporteService getEquipoOtrosReporteService() {
         return equipoOtrosReporteService;
+    }
+
+    // ==================== LAVADERO ====================
+
+    public boolean registrarIngresoLavadero(IngresoLavadero ingreso) {
+        return lavaderoService.registrarIngreso(ingreso);
+    }
+
+    public List<Cliente> buscarClientesLavadero(String texto) {
+        return clienteService.buscarClientes(texto);
     }
 }
 

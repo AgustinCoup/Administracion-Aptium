@@ -9,6 +9,7 @@ import com.example.features.equipos.ortopedias.controller.OrthopediaInputControl
 import com.example.features.equipos.ortopedias.controller.RegistrarEstadoController;
 import com.example.features.equipos.controller.VerEquiposController;
 import com.example.features.equipos.otros.controller.OtrosInputController;
+import com.example.features.lavadero.controller.LavaderoController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
 import com.example.ui.events.OnEquipoGuardadoListener;
@@ -96,6 +97,14 @@ public class UiCoordinator {
 
         new OtrosInputController(
             vista.getPanelIngresoOtros(),
+            model,
+            vista.getNavegador(),
+            vista.getContenedor(),
+            refrescarEquipos
+        );
+
+        new LavaderoController(
+            vista.getPantallaIngresoLavadero(),
             model,
             vista.getNavegador(),
             vista.getContenedor(),
