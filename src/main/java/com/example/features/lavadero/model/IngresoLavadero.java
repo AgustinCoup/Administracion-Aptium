@@ -1,5 +1,6 @@
 package com.example.features.lavadero.model;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,5 +26,11 @@ public class IngresoLavadero {
 
     public void agregarBolsa(BolsaLavadero bolsa) {
         bolsas.add(bolsa);
+    }
+
+    public BigDecimal getPesoTotal() {
+        return bolsas.stream()
+            .map(BolsaLavadero::getPesoKg)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

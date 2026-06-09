@@ -38,9 +38,10 @@ public class IngresoLavaderoDAO {
     }
 
     private int insertarIngreso(Connection conn, IngresoLavadero ingreso) throws SQLException {
-        String sql = "INSERT INTO ingresos_lavadero (cliente_id) VALUES (?)";
+        String sql = "INSERT INTO ingresos_lavadero (cliente_id, peso_total_kg) VALUES (?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, ingreso.getClienteId());
+            ps.setBigDecimal(2, ingreso.getPesoTotal());
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) {
                 if (rs.next()) {
