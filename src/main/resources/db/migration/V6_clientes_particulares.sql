@@ -1,0 +1,16 @@
+INSERT IGNORE INTO clientes (nombre) VALUES
+('Abdala, Victor Esteban'),
+('Vettorazzi, María Luz - RYCEA'),
+('Santa Juliana, Luis'),
+('Palacios, Santiado - Clinica del niño'),
+('Maffrand'),
+('Serra, María'),
+('Etcheverry, Sofía'),
+('Ballesté, Luciana'),
+('IMEB'),
+('Kremer, Mauricio'),
+('Aznar, Ivan - Civus'),
+('Oyola, Ricardo'),
+('Conti, Adriana'),
+('Imperio Dental'),
+('Roasio, Maximiliano');
