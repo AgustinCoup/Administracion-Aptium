@@ -9,6 +9,8 @@ import java.awt.*;
 
 public class PantallaLavadero extends JPanel {
 
+    private JButton btnClasificar;
+
     public PantallaLavadero(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
 
@@ -20,7 +22,7 @@ public class PantallaLavadero extends JPanel {
         );
         add(header, BorderLayout.NORTH);
 
-        JPanel panelBotones = new JPanel(new GridLayout(1, 1, 0, 0));
+        JPanel panelBotones = new JPanel(new GridLayout(1, 2, 15, 0));
         panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
 
         JButton btnIngresar = new JButton(Constantes.Botones.INGRESAR);
@@ -28,7 +30,13 @@ public class PantallaLavadero extends JPanel {
         btnIngresar.addActionListener(
             e -> navegador.show(contenedor, Constantes.Pantallas.INGRESO_LAVADERO));
 
+        btnClasificar = new JButton(Constantes.Botones.CLASIFICAR);
+        btnClasificar.setFont(Estilos.Fuentes.BOTON);
+
         panelBotones.add(btnIngresar);
+        panelBotones.add(btnClasificar);
         add(panelBotones, BorderLayout.CENTER);
     }
+
+    public JButton getBtnClasificar() { return btnClasificar; }
 }

@@ -35,7 +35,11 @@ import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
+import com.example.features.lavadero.model.ElementoCatalogo;
+import com.example.features.lavadero.model.ElementoClasificacion;
 import com.example.features.lavadero.model.IngresoLavadero;
+import com.example.features.lavadero.model.IngresoLavaderoResumen;
+import com.example.features.lavadero.service.ClasificacionLavaderoService;
 import com.example.features.lavadero.service.LavaderoService;
 
 /**
@@ -64,8 +68,9 @@ public class AppModel {
     private final EquipoOtrosService     equipoOtrosService;
     private final EquipoCorreccionService equipoCorreccionService;
     private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
-    private final IEstadoValidator        estadoValidator;
-    private final LavaderoService         lavaderoService;
+    private final IEstadoValidator             estadoValidator;
+    private final LavaderoService              lavaderoService;
+    private final ClasificacionLavaderoService clasificacionLavaderoService;
     private final LoteReporteService         loteReporteService;
     private final EquipoReporteService       equipoReporteService;
     private final EquipoOtrosReporteService  equipoOtrosReporteService;
@@ -91,8 +96,9 @@ public class AppModel {
         this.equipoCorreccionService = context.getEquipoCorreccionService();
         this.equipoOtrosCorreccionService = context.getEquipoOtrosCorreccionService();
         this.estadoValidator           = context.getEstadoValidator();
-        this.lavaderoService           = context.getLavaderoService();
-        this.loteReporteService        = new LoteReporteService(this);
+        this.lavaderoService                = context.getLavaderoService();
+        this.clasificacionLavaderoService   = context.getClasificacionLavaderoService();
+        this.loteReporteService             = new LoteReporteService(this);
         this.equipoReporteService      = new EquipoReporteService(this);
         this.equipoOtrosReporteService = new EquipoOtrosReporteService(this);
     }
@@ -346,6 +352,18 @@ public class AppModel {
 
     public List<Cliente> buscarClientesLavadero(String texto) {
         return clienteService.buscarClientes(texto);
+    }
+
+    public List<ElementoCatalogo> obtenerCatalogoElementosLavadero() {
+        return clasificacionLavaderoService.obtenerCatalogo();
+    }
+
+    public List<IngresoLavaderoResumen> obtenerIngresosSinClasificar() {
+        return lavaderoService.obtenerIngresosSinClasificar();
+    }
+
+    public boolean registrarClasificacion(int ingresoId, List<ElementoClasificacion> elementos) {
+        return clasificacionLavaderoService.guardar(ingresoId, elementos);
     }
 }
 

@@ -4,8 +4,10 @@ import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.dao.IngresoLavaderoDAO;
 import com.example.features.lavadero.model.BolsaLavadero;
 import com.example.features.lavadero.model.IngresoLavadero;
+import com.example.features.lavadero.model.IngresoLavaderoResumen;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public class LavaderoService {
 
@@ -32,5 +34,9 @@ public class LavaderoService {
         v.throwIfHasErrors();
 
         return dao.guardar(ingreso);
+    }
+
+    public List<IngresoLavaderoResumen> obtenerIngresosSinClasificar() {
+        return dao.findSinClasificar();
     }
 }

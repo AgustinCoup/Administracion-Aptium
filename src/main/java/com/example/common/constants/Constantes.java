@@ -30,8 +30,9 @@ public final class Constantes {
         public static final String AUDITORIA             = "AUDITORIA";
         public static final String INGRESO_OTROS         = "INGRESO_OTROS";
         public static final String VER_EQUIPOS           = "VER_EQUIPOS";
-        public static final String LAVADERO              = "LAVADERO";
-        public static final String INGRESO_LAVADERO      = "INGRESO_LAVADERO";
+        public static final String LAVADERO               = "LAVADERO";
+        public static final String INGRESO_LAVADERO       = "INGRESO_LAVADERO";
+        public static final String CLASIFICACION_LAVADERO = "CLASIFICACION_LAVADERO";
 
         private Pantallas() {}
     }
@@ -156,8 +157,9 @@ public final class Constantes {
         public static final String LOTES                 = "LOTES DE ESTERILIZACIÓN";
         public static final String VER_LOTES             = "LOTES FINALIZADOS";
         public static final String INGRESO_OTROS         = "INGRESO OTROS";
-        public static final String LAVADERO              = "LAVADERO";
-        public static final String INGRESO_LAVADERO      = "INGRESO LAVADERO";
+        public static final String LAVADERO               = "LAVADERO";
+        public static final String INGRESO_LAVADERO       = "INGRESO LAVADERO";
+        public static final String CLASIFICACION_LAVADERO = "CLASIFICACIÓN LAVADERO";
 
         private Titulos() {}
     }
@@ -175,6 +177,7 @@ public final class Constantes {
         public static final String VER                    = "Ver";
         public static final String REGISTRAR              = "Registrar";
         public static final String INGRESAR               = "Ingresar";
+        public static final String CLASIFICAR             = "Clasificar";
         public static final String PARA_ENTREGAR          = "Para entregar";
         public static final String LOTES                  = "Lotes";
         public static final String AGREGAR                = "+";

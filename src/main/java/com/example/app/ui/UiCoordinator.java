@@ -9,6 +9,7 @@ import com.example.features.equipos.ortopedias.controller.OrthopediaInputControl
 import com.example.features.equipos.ortopedias.controller.RegistrarEstadoController;
 import com.example.features.equipos.controller.VerEquiposController;
 import com.example.features.equipos.otros.controller.OtrosInputController;
+import com.example.features.lavadero.controller.ClasificacionController;
 import com.example.features.lavadero.controller.LavaderoController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
@@ -110,6 +111,19 @@ public class UiCoordinator {
             vista.getContenedor(),
             refrescarEquipos
         );
+
+        ClasificacionController clasificacionController = new ClasificacionController(
+            vista.getPantallaClasificacionLavadero(),
+            model,
+            vista.getNavegador(),
+            vista.getContenedor(),
+            refrescarEquipos
+        );
+
+        vista.getPantallaLavadero().getBtnClasificar().addActionListener(e -> {
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.CLASIFICACION_LAVADERO);
+            clasificacionController.cargarIngresosSinClasificar();
+        });
     }
 
     private Runnable crearRefrescador(
