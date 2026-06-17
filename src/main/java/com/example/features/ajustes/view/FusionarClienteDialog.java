@@ -28,7 +28,7 @@ public class FusionarClienteDialog extends JDialog {
         panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
         JLabel lblInfo = new JLabel(
-            "<html>Se eliminará: <b>" + origen.getNombre() + "</b><br>"
+            "<html>Se eliminará: <b>" + escapeHtml(origen.getNombre()) + "</b><br>"
             + "Sus equipos e ingresos pasarán al cliente destino seleccionado.</html>");
         panel.add(lblInfo, BorderLayout.NORTH);
 
@@ -56,6 +56,10 @@ public class FusionarClienteDialog extends JDialog {
         panel.add(barraInferior, BorderLayout.SOUTH);
 
         add(panel);
+    }
+
+    private static String escapeHtml(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private void confirmar() {

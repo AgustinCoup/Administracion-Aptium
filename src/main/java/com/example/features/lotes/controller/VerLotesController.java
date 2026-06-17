@@ -13,6 +13,8 @@ import com.example.features.lotes.view.PantallaVerLotes;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -34,6 +36,9 @@ public class VerLotesController extends AbstractFilterController<Lote> {
         this.panel.setOnImprimir(this::abrirDialogoImprimir);
 
         cargarDatos();
+        this.panel.addComponentListener(new ComponentAdapter() {
+            @Override public void componentShown(ComponentEvent e) { cargarDatos(); }
+        });
     }
 
     public void cargarDatos() {

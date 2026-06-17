@@ -103,7 +103,8 @@ public class UiCoordinator {
             refrescarEquipos
         );
 
-        new AjustesController(vista.getPantallaAjustes(), model);
+        AjustesController ajustesController = new AjustesController(vista.getPantallaAjustes(), model);
+        ajustesController.setOnMutacion(() -> { if (refrescarRef[0] != null) refrescarRef[0].run(); });
     }
 
     private Runnable crearRefrescador(

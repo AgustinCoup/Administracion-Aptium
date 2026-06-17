@@ -19,6 +19,7 @@ public class AjustesController {
     private final PantallaAjustes      vista;
     private final PanelGestionClientes panel;
     private final AppModel             model;
+    private       Runnable             onMutacion;
 
     public AjustesController(PantallaAjustes vista, AppModel model) {
         this.vista  = vista;
@@ -32,24 +33,50 @@ public class AjustesController {
         vista.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentShown(ComponentEvent e) {
+                panel.limpiarBusqueda();
                 cargarDatos();
             }
         });
     }
 
+    public void setOnMutacion(Runnable r) { this.onMutacion = r; }
+
     private void cargarDatos() {
-        List<Cliente> clientes = model.obtenerTodosLosClientes();
-        SwingUtilities.invokeLater(() -> panel.setDatos(clientes));
+        new Thread(() -> {
+            try {
+                List<Cliente> clientes = model.obtenerTodosLosClientes();
+                SwingUtilities.invokeLater(() -> panel.setDatos(clientes));
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(vista, "Error al cargar clientes.",
+                        "Error", JOptionPane.ERROR_MESSAGE));
+            }
+        }, "ajustes-loader").start();
+    }
+
+    private void notificarMutacion() {
+        if (onMutacion != null) onMutacion.run();
     }
 
     private void agregarCliente() {
         NuevoClienteDialog dialog = new NuevoClienteDialog(SwingUtilities.getWindowAncestor(vista));
         dialog.setVisible(true);
         String nombre = dialog.obtenerNombre();
-        if (nombre != null) {
-            model.guardarCliente(new Cliente(0, nombre));
-            cargarDatos();
-        }
+        if (nombre == null) return;
+
+        new Thread(() -> {
+            try {
+                model.guardarCliente(new Cliente(0, nombre));
+                SwingUtilities.invokeLater(() -> {
+                    cargarDatos();
+                    notificarMutacion();
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(vista, "Error al guardar el cliente: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE));
+            }
+        }, "ajustes-guardar").start();
     }
 
     private void eliminarCliente() {
@@ -64,13 +91,19 @@ public class AjustesController {
             "Confirmar eliminación", JOptionPane.YES_NO_OPTION);
         if (resp != JOptionPane.YES_OPTION) return;
 
-        try {
-            model.eliminarCliente(cliente.getId());
-            cargarDatos();
-        } catch (ApplicationException ex) {
-            JOptionPane.showMessageDialog(vista, ex.getMessage(),
-                "No se puede eliminar", JOptionPane.ERROR_MESSAGE);
-        }
+        new Thread(() -> {
+            try {
+                model.eliminarCliente(cliente.getId());
+                SwingUtilities.invokeLater(() -> {
+                    cargarDatos();
+                    notificarMutacion();
+                });
+            } catch (ApplicationException ex) {
+                SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(vista, ex.getMessage(),
+                        "No se puede eliminar", JOptionPane.ERROR_MESSAGE));
+            }
+        }, "ajustes-eliminar").start();
     }
 
     private void fusionarCliente() {
@@ -80,11 +113,23 @@ public class AjustesController {
                 "Aviso", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        List<Cliente> todos = model.obtenerTodosLosClientes();
-        List<Cliente> candidatos = todos.stream()
-            .filter(c -> c.getId() != origen.getId())
-            .collect(Collectors.toList());
 
+        new Thread(() -> {
+            try {
+                List<Cliente> todos = model.obtenerTodosLosClientes();
+                List<Cliente> candidatos = todos.stream()
+                    .filter(c -> c.getId() != origen.getId())
+                    .collect(Collectors.toList());
+                SwingUtilities.invokeLater(() -> mostrarDialogoFusion(origen, candidatos));
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(vista, "Error al cargar clientes: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE));
+            }
+        }, "ajustes-fusion-load").start();
+    }
+
+    private void mostrarDialogoFusion(Cliente origen, List<Cliente> candidatos) {
         if (candidatos.isEmpty()) {
             JOptionPane.showMessageDialog(vista, "No hay otros clientes disponibles para fusionar.",
                 "Aviso", JOptionPane.WARNING_MESSAGE);
@@ -103,7 +148,18 @@ public class AjustesController {
             "Confirmar fusión", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (resp != JOptionPane.YES_OPTION) return;
 
-        model.fusionarClientes(origen.getId(), destino.getId());
-        cargarDatos();
+        new Thread(() -> {
+            try {
+                model.fusionarClientes(origen.getId(), destino.getId());
+                SwingUtilities.invokeLater(() -> {
+                    cargarDatos();
+                    notificarMutacion();
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(vista, "Error al fusionar clientes: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE));
+            }
+        }, "ajustes-fusion").start();
     }
 }

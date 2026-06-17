@@ -10,6 +10,8 @@ import com.example.features.equipos.ortopedias.view.PantallaRegistrarEstado;
 import com.example.app.AppModel;
 import com.example.ui.events.OnEstadosActualizadosListener;
 
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +46,9 @@ public class RegistrarEstadoController {
 
         inicializarEventos();
         cargarEquipos();
+        panel.addComponentListener(new ComponentAdapter() {
+            @Override public void componentShown(ComponentEvent e) { cargarEquipos(); }
+        });
     }
 
     public void setOnEstadosActualizados(OnEstadosActualizadosListener listener) {

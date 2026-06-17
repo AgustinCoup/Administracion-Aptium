@@ -2,6 +2,7 @@ package com.example.features.clientes.service;
 
 import com.example.common.exception.ApplicationException;
 import com.example.common.exception.DatabaseException;
+import java.sql.SQLException;
 import com.example.common.exception.ResourceNotFoundException;
 import com.example.common.exception.ValidationException;
 import com.example.features.clientes.dao.ClienteDAO;
@@ -98,7 +99,12 @@ public class ClienteService {
         try {
             clienteDAO.eliminar(id);
         } catch (DatabaseException e) {
-            throw new ApplicationException("El cliente tiene equipos o ingresos registrados y no puede eliminarse", e);
+            boolean esFK = e.getCause() instanceof SQLException
+                && ((SQLException) e.getCause()).getErrorCode() == 1451;
+            String msg = esFK
+                ? "El cliente tiene equipos o ingresos registrados y no puede eliminarse."
+                : "Error de base de datos al eliminar el cliente.";
+            throw new ApplicationException(msg, e);
         }
     }
 

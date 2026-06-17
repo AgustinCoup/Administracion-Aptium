@@ -81,6 +81,8 @@ public class PanelGestionClientes extends JPanel {
 
     public JTable getTabla() { return tabla; }
 
+    public void limpiarBusqueda() { txtBuscar.setText(""); }
+
     public void setOnAgregar(Runnable r)  { onAgregar  = r; }
     public void setOnEliminar(Runnable r) { onEliminar = r; }
     public void setOnFusionar(Runnable r) { onFusionar = r; }
