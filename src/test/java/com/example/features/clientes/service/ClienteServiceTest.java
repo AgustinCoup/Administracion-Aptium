@@ -1,6 +1,11 @@
 package com.example.features.clientes.service;
 
+import com.example.common.exception.ApplicationException;
+import com.example.common.exception.DatabaseException;
+import com.example.common.exception.ResourceNotFoundException;
+import com.example.common.exception.ValidationException;
 import com.example.features.clientes.dao.ClienteDAO;
+import com.example.features.clientes.dao.FusionClientesDAO;
 import com.example.features.clientes.model.Cliente;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,18 +25,26 @@ class ClienteServiceTest {
     @Mock
     private ClienteDAO clienteDAO;
 
+    @Mock
+    private FusionClientesDAO fusionClientesDAO;
+
     private ClienteService service;
 
     @BeforeEach
     void setUp() {
-        service = new ClienteService(clienteDAO);
+        service = new ClienteService(clienteDAO, fusionClientesDAO);
     }
 
     // ── Constructor ──────────────────────────────────────────────────────────
 
     @Test
-    void constructor_daoNull_lanzaIllegalArgument() {
-        assertThrows(IllegalArgumentException.class, () -> new ClienteService(null));
+    void constructor_clienteDaoNull_lanzaIllegalArgument() {
+        assertThrows(IllegalArgumentException.class, () -> new ClienteService(null, fusionClientesDAO));
+    }
+
+    @Test
+    void constructor_fusionDaoNull_lanzaIllegalArgument() {
+        assertThrows(IllegalArgumentException.class, () -> new ClienteService(clienteDAO, null));
     }
 
     // ── buscarClientes ───────────────────────────────────────────────────────
@@ -137,5 +150,68 @@ class ClienteServiceTest {
 
         assertTrue(service.guardarCliente(c));
         verify(clienteDAO).guardar(c);
+    }
+
+    // ── eliminarCliente ───────────────────────────────────────────────────────
+
+    @Test
+    void eliminarCliente_existente_delegaADAO() {
+        when(clienteDAO.existe(7)).thenReturn(true);
+        when(clienteDAO.eliminar(7)).thenReturn(true);
+
+        service.eliminarCliente(7);
+
+        verify(clienteDAO).eliminar(7);
+    }
+
+    @Test
+    void eliminarCliente_noExiste_lanzaResourceNotFoundException() {
+        when(clienteDAO.existe(99)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.eliminarCliente(99));
+        verify(clienteDAO, never()).eliminar(anyInt());
+    }
+
+    @Test
+    void eliminarCliente_conReferencias_lanzaApplicationException() {
+        when(clienteDAO.existe(3)).thenReturn(true);
+        when(clienteDAO.eliminar(3)).thenThrow(new DatabaseException("FK violation"));
+
+        assertThrows(ApplicationException.class, () -> service.eliminarCliente(3));
+    }
+
+    // ── fusionarClientes ──────────────────────────────────────────────────────
+
+    @Test
+    void fusionarClientes_casoFeliz_delegaAFusionDAO() {
+        when(clienteDAO.existe(1)).thenReturn(true);
+        when(clienteDAO.existe(2)).thenReturn(true);
+
+        service.fusionarClientes(1, 2);
+
+        verify(fusionClientesDAO).fusionar(1, 2);
+    }
+
+    @Test
+    void fusionarClientes_mismoId_lanzaValidationException() {
+        assertThrows(ValidationException.class, () -> service.fusionarClientes(5, 5));
+        verifyNoInteractions(fusionClientesDAO);
+    }
+
+    @Test
+    void fusionarClientes_origenNoExiste_lanzaResourceNotFoundException() {
+        when(clienteDAO.existe(99)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.fusionarClientes(99, 2));
+        verifyNoInteractions(fusionClientesDAO);
+    }
+
+    @Test
+    void fusionarClientes_destinoNoExiste_lanzaResourceNotFoundException() {
+        when(clienteDAO.existe(1)).thenReturn(true);
+        when(clienteDAO.existe(99)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.fusionarClientes(1, 99));
+        verifyNoInteractions(fusionClientesDAO);
     }
 }

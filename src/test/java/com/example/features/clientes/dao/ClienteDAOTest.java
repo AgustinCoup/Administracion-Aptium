@@ -1,6 +1,7 @@
 package com.example.features.clientes.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ResourceNotFoundException;
 import com.example.features.clientes.model.Cliente;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,8 @@ class ClienteDAOTest extends AbstractDAOTest {
 
     @Override
     protected void limpiarTablas() throws SQLException {
+        ejecutarSQL("DELETE FROM equipo_materiales WHERE equipo_id IN (SELECT id FROM equipos WHERE nro_cliente IN (SELECT id FROM clientes WHERE nombre LIKE 'TestCliente%'))");
+        ejecutarSQL("DELETE FROM equipos WHERE nro_cliente IN (SELECT id FROM clientes WHERE nombre LIKE 'TestCliente%')");
         ejecutarSQL("DELETE FROM clientes WHERE nombre LIKE 'TestCliente%'");
     }
 
@@ -103,7 +106,7 @@ class ClienteDAOTest extends AbstractDAOTest {
         assertFalse(dao.existe(999999));
     }
 
-    // ── actualizar / eliminar no soportados ───────────────────────────────────
+    // ── actualizar no soportado ───────────────────────────────────────────────
 
     @Test
     void actualizar_lanzaUnsupportedOperation() {
@@ -111,9 +114,23 @@ class ClienteDAOTest extends AbstractDAOTest {
             () -> dao.actualizar(new Cliente(1, "nombre")));
     }
 
+    // ── eliminar ──────────────────────────────────────────────────────────────
+
     @Test
-    void eliminar_lanzaUnsupportedOperation() {
-        assertThrows(UnsupportedOperationException.class,
-            () -> dao.eliminar(1));
+    void eliminar_sinReferencias_eliminaCliente() {
+        Cliente c = new Cliente(0, "TestCliente Eliminar");
+        dao.guardar(c);
+
+        assertTrue(dao.eliminar(c.getId()));
+        assertFalse(dao.existe(c.getId()));
+    }
+
+    @Test
+    void eliminar_conReferencias_lanzaDatabaseException() throws SQLException {
+        Cliente c = new Cliente(0, "TestCliente ConFK");
+        dao.guardar(c);
+        ejecutarSQL("INSERT INTO equipos (nro_cliente, nro_institucion, estado, requiere_lavado, requiere_empaque) VALUES (" + c.getId() + ", 1, 'Nuevo', 1, 1)");
+
+        assertThrows(DatabaseException.class, () -> dao.eliminar(c.getId()));
     }
 }

@@ -85,6 +85,17 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-maven-plugin</artifactId>
+        <version>8.5.13</version>
+        <configuration>
+          <cleanDisabled>false</cleanDisabled>
+          <url>jdbc:mysql://localhost:3306/sistema_empresa</url>
+          <user>root</user>
+          <password>root</password>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
   <dependencies>

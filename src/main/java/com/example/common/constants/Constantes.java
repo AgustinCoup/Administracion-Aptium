@@ -30,6 +30,7 @@ public final class Constantes {
         public static final String AUDITORIA             = "AUDITORIA";
         public static final String INGRESO_OTROS         = "INGRESO_OTROS";
         public static final String VER_EQUIPOS           = "VER_EQUIPOS";
+        public static final String AJUSTES              = "AJUSTES";
 
         private Pantallas() {}
     }
@@ -153,6 +154,7 @@ public final class Constantes {
         public static final String LOTES                 = "LOTES DE ESTERILIZACIÓN";
         public static final String VER_LOTES             = "LOTES FINALIZADOS";
         public static final String INGRESO_OTROS         = "INGRESO OTROS";
+        public static final String AJUSTES              = "Ajustes";
 
         private Titulos() {}
     }
@@ -195,6 +197,7 @@ public final class Constantes {
         public static final String IMPRIMIR               = "Imprimir";
         public static final String VER_EQUIPOS            = "Ver equipos";
         public static final String CERRAR                 = "Cerrar";
+        public static final String AJUSTES               = "Ajustes";
 
         private Botones() {}
     }
