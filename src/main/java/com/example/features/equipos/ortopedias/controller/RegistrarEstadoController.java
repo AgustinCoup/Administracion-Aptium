@@ -47,7 +47,10 @@ public class RegistrarEstadoController {
         inicializarEventos();
         cargarEquipos();
         panel.addComponentListener(new ComponentAdapter() {
-            @Override public void componentShown(ComponentEvent e) { cargarEquipos(); }
+            @Override public void componentShown(ComponentEvent e) {
+                if (!cambiosPendientes.isEmpty()) resetearCambios();
+                else cargarEquipos();
+            }
         });
     }
 
@@ -64,8 +67,8 @@ public class RegistrarEstadoController {
         panel.setOnAvanzar(e -> avanzarMaterialSeleccionado());
         panel.setOnCancelar(e -> cancelarCambios());
         panel.setOnConfirmar(e -> confirmarCambios());
-        panel.setOnGestionarLotes(e -> panel.navegarALotes());
-        panel.setOnCorrecciones(e -> panel.navegarACorrecciones());
+        panel.setOnGestionarLotes(e -> navegarConGuard(panel::navegarALotes));
+        panel.setOnCorrecciones(e -> navegarConGuard(panel::navegarACorrecciones));
 
         panel.setGuardVolver(
             () -> !cambiosPendientes.isEmpty(),
@@ -224,6 +227,17 @@ public class RegistrarEstadoController {
         actualizarContadorCambios();
         panel.setConfirmarEnabled(false);
         panel.setCancelarEnabled(false);
+    }
+
+    private void navegarConGuard(Runnable navegar) {
+        if (!cambiosPendientes.isEmpty()) {
+            boolean descartar = panel.confirmar(
+                Constantes.Mensajes.GUARD_REGISTRAR_ESTADO_CAMBIOS,
+                Constantes.Mensajes.TITULO_ADVERTENCIA);
+            if (!descartar) return;
+            descartarCambiosPendientes();
+        }
+        navegar.run();
     }
 
     private void confirmarCambios() {
