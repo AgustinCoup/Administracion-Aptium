@@ -23,6 +23,8 @@ import com.example.features.equipos.ortopedias.view.PantallaEquiposParaEntregar;
 import com.example.features.equipos.ortopedias.view.helpers.InstitucionEntregaItem;
 import com.example.features.equipos.ortopedias.view.helpers.MaterialEntregaItem;
 
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +44,9 @@ public class EquiposParaEntregarController {
         this.onEstadosActualizadosListener = onEstadosActualizadosListener;
         inicializarEventos();
         cargarDatos();
+        panel.addComponentListener(new ComponentAdapter() {
+            @Override public void componentShown(ComponentEvent e) { cargarDatos(); }
+        });
     }
 
     /**

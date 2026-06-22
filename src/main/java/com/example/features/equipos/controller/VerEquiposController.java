@@ -55,6 +55,7 @@ public class VerEquiposController {
 
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
+                panel.limpiarFiltros();
                 cargarDatos();
             }
         });

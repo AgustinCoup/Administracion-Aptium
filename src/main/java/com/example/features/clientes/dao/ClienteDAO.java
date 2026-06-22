@@ -22,9 +22,4 @@ public class ClienteDAO extends SimpleEntityDAO<Cliente> {
     public boolean actualizar(Cliente entity) {
         throw new UnsupportedOperationException("Actualizar cliente no implementado");
     }
-
-    @Override
-    public boolean eliminar(Integer id) {
-        throw new UnsupportedOperationException("Eliminar cliente no implementado");
-    }
 }

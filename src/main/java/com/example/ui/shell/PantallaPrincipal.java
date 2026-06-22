@@ -12,6 +12,7 @@ import com.example.features.equipos.otros.view.PantallaIngresoOtros;
 import com.example.features.equipos.view.PantallaVerEquipos;
 import com.example.features.equipos.ortopedias.view.PantallaVerCDEv1;
 import com.example.features.equipos.ortopedias.view.PantallaVerCDEv2;
+import com.example.features.ajustes.view.PantallaAjustes;
 import com.example.features.lotes.view.PantallaLotes;
 import com.example.features.lotes.view.PantallaVerLotes;
 
@@ -38,6 +39,7 @@ public class PantallaPrincipal extends JFrame {
     private final PantallaAuditoria             pantallaAuditoria;
     private final PantallaIngresoOtros          ingresoOtros;
     private final PantallaVerEquipos            verEquipos;
+    private final PantallaAjustes               pantallaAjustes;
 
     public PantallaPrincipal() {
         setTitle(Constantes.Titulos.APP);
@@ -62,6 +64,7 @@ public class PantallaPrincipal extends JFrame {
         pantallaAuditoria   = new PantallaAuditoria(navegador, contenedor);
         ingresoOtros        = new PantallaIngresoOtros(navegador, contenedor);
         verEquipos          = new PantallaVerEquipos(navegador, contenedor);
+        pantallaAjustes     = new PantallaAjustes(navegador, contenedor);
         // ── Registrar en el CardLayout ────────────────────────────────────────
         contenedor.add(menu,                Constantes.Pantallas.MENU_PRINCIPAL);
         contenedor.add(esterilizacion,      Constantes.Pantallas.ESTERILIZACION);
@@ -77,6 +80,7 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(pantallaAuditoria,   Constantes.Pantallas.AUDITORIA);
         contenedor.add(ingresoOtros,        Constantes.Pantallas.INGRESO_OTROS);
         contenedor.add(verEquipos,          Constantes.Pantallas.VER_EQUIPOS);
+        contenedor.add(pantallaAjustes,     Constantes.Pantallas.AJUSTES);
         add(contenedor);
     }
 
@@ -92,6 +96,7 @@ public class PantallaPrincipal extends JFrame {
     public PantallaVerLotes            getPantallaVerLotes()           { return pantallaVerLotes; }
     public PantallaAuditoria           getPantallaAuditoria()          { return pantallaAuditoria; }
     public PantallaVerEquipos          getPantallaVerEquipos()         { return verEquipos; }
+    public PantallaAjustes             getPantallaAjustes()            { return pantallaAjustes; }
     public CardLayout                  getNavegador()                  { return navegador; }
     public JPanel                      getContenedor()                 { return contenedor; }
 }
