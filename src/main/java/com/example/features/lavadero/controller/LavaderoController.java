@@ -63,16 +63,7 @@ public class LavaderoController {
         ingreso.setClienteId(panel.getSelectedClienteId());
 
         for (PanelBolsas.BolsaRow fila : filas) {
-            String texto = fila.txtPeso.getText().trim().replace(",", ".");
-            if (texto.isEmpty()) continue;
-            BigDecimal peso;
-            try {
-                peso = new BigDecimal(texto);
-            } catch (NumberFormatException ex) {
-                panel.mostrarAdvertencia("El peso '" + fila.txtPeso.getText().trim() +
-                    "' no es un número válido.");
-                return;
-            }
+            BigDecimal peso = new BigDecimal(fila.spnPeso.getValue().toString());
             ingreso.agregarBolsa(new BolsaLavadero(peso));
         }
 

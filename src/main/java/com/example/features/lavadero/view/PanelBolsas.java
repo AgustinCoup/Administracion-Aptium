@@ -85,16 +85,12 @@ public class PanelBolsas extends JPanel {
         JLabel lblNum = new JLabel("Bolsa " + (rowIdx + 1) + ":");
         lblNum.setFont(inputFont);
 
-        JTextField txtPeso = new JTextField();
-        txtPeso.setFont(inputFont);
-        txtPeso.setColumns(10);
-        txtPeso.setMargin(Estilos.Espaciados.INSETS_INPUT);
-        txtPeso.setPreferredSize(new Dimension(100, inputHeight));
-        txtPeso.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            public void insertUpdate(javax.swing.event.DocumentEvent e)  { actualizarTotal(); }
-            public void removeUpdate(javax.swing.event.DocumentEvent e)  { actualizarTotal(); }
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { actualizarTotal(); }
-        });
+        SpinnerNumberModel spinModel = new SpinnerNumberModel(1.0, 1.0, null, 1.0);
+        JSpinner spnPeso = new JSpinner(spinModel);
+        spnPeso.setFont(inputFont);
+        spnPeso.setPreferredSize(new Dimension(100, inputHeight));
+        ((JSpinner.DefaultEditor) spnPeso.getEditor()).getTextField().setColumns(6);
+        spnPeso.addChangeListener(e -> actualizarTotal());
 
         JLabel lblKg = new JLabel("kg");
         lblKg.setFont(inputFont);
@@ -105,7 +101,7 @@ public class PanelBolsas extends JPanel {
         btnDel.setMargin(new Insets(0, 0, 0, 0));
         btnDel.setToolTipText(Constantes.Textos.TOOLTIP_ELIMINAR_FILA);
 
-        BolsaRow fila = new BolsaRow(lblNum, txtPeso, lblKg, btnDel);
+        BolsaRow fila = new BolsaRow(lblNum, spnPeso, lblKg, btnDel);
         btnDel.addActionListener(e -> eliminarFila(fila));
 
         gbc.gridx = 0; gbc.gridy = rowIdx; gbc.weightx = 0;
@@ -114,7 +110,7 @@ public class PanelBolsas extends JPanel {
 
         gbc.gridx = 1; gbc.weightx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
-        listPanel.add(txtPeso, gbc);
+        listPanel.add(spnPeso, gbc);
 
         gbc.gridx = 2; gbc.weightx = 0;
         gbc.fill = GridBagConstraints.NONE;
@@ -136,7 +132,7 @@ public class PanelBolsas extends JPanel {
     private void eliminarFila(BolsaRow fila) {
         if (filas.remove(fila)) {
             listPanel.remove(fila.lblNumero);
-            listPanel.remove(fila.txtPeso);
+            listPanel.remove(fila.spnPeso);
             listPanel.remove(fila.lblKg);
             listPanel.remove(fila.btnEliminar);
             listPanel.revalidate();
@@ -147,26 +143,20 @@ public class PanelBolsas extends JPanel {
 
     private void actualizarTotal() {
         BigDecimal total = filas.stream()
-            .map(f -> {
-                try {
-                    return new BigDecimal(f.txtPeso.getText().trim().replace(",", "."));
-                } catch (NumberFormatException e) {
-                    return BigDecimal.ZERO;
-                }
-            })
+            .map(f -> new BigDecimal(f.spnPeso.getValue().toString()))
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         lblTotal.setText(String.format("Total: %s kg", total.toPlainString()));
     }
 
     public static class BolsaRow {
-        public final JLabel     lblNumero;
-        public final JTextField txtPeso;
-        public final JLabel     lblKg;
-        public final JButton    btnEliminar;
+        public final JLabel   lblNumero;
+        public final JSpinner spnPeso;
+        public final JLabel   lblKg;
+        public final JButton  btnEliminar;
 
-        public BolsaRow(JLabel lblNumero, JTextField txtPeso, JLabel lblKg, JButton btnEliminar) {
+        public BolsaRow(JLabel lblNumero, JSpinner spnPeso, JLabel lblKg, JButton btnEliminar) {
             this.lblNumero   = lblNumero;
-            this.txtPeso     = txtPeso;
+            this.spnPeso     = spnPeso;
             this.lblKg       = lblKg;
             this.btnEliminar = btnEliminar;
         }
