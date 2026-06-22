@@ -18,7 +18,7 @@ public class PantallaMenu extends JPanel {
         lblBienvenida.setBorder(Estilos.Espaciados.BORDE_TITULO);
         add(lblBienvenida, BorderLayout.NORTH);
 
-        // Contenedor para los 4 botones
+        // Contenedor para los 4 botones principales
         JPanel panelBotones = new JPanel(new GridLayout(2, 2, 15, 15));
         panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
 
@@ -34,7 +34,6 @@ public class PantallaMenu extends JPanel {
         JButton btnDistribuidora = new JButton(Constantes.Botones.DISTRIBUIDORA);
         btnDistribuidora.setFont(Estilos.Fuentes.BOTON);
 
-        // Acción para cambiar a la pantalla de Esterilización
         btnEsterilizacion.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION));
         btnLavadero.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.LAVADERO));
 
@@ -44,6 +43,13 @@ public class PantallaMenu extends JPanel {
         panelBotones.add(btnDistribuidora);
 
         add(panelBotones, BorderLayout.CENTER);
+
+        // Botón Ajustes pequeño, abajo a la derecha
+        JButton btnAjustes = new JButton(Constantes.Botones.AJUSTES);
+        btnAjustes.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.AJUSTES));
+        JPanel panelInferior = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        panelInferior.add(btnAjustes);
+        add(panelInferior, BorderLayout.SOUTH);
     }
 }
 

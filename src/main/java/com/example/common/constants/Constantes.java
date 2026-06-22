@@ -33,6 +33,7 @@ public final class Constantes {
         public static final String LAVADERO               = "LAVADERO";
         public static final String INGRESO_LAVADERO       = "INGRESO_LAVADERO";
         public static final String CLASIFICACION_LAVADERO = "CLASIFICACION_LAVADERO";
+        public static final String AJUSTES              = "AJUSTES";
 
         private Pantallas() {}
     }
@@ -160,6 +161,7 @@ public final class Constantes {
         public static final String LAVADERO               = "LAVADERO";
         public static final String INGRESO_LAVADERO       = "INGRESO LAVADERO";
         public static final String CLASIFICACION_LAVADERO = "CLASIFICACIÓN LAVADERO";
+        public static final String AJUSTES              = "Ajustes";
 
         private Titulos() {}
     }
@@ -203,6 +205,7 @@ public final class Constantes {
         public static final String IMPRIMIR               = "Imprimir";
         public static final String VER_EQUIPOS            = "Ver equipos";
         public static final String CERRAR                 = "Cerrar";
+        public static final String AJUSTES               = "Ajustes";
 
         private Botones() {}
     }

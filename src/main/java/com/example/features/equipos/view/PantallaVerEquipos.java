@@ -36,6 +36,7 @@ public class PantallaVerEquipos extends JPanel {
     private final JTextField                 txtPaciente;
     private final JTextField                 txtInstitucion;
     private final CheckableComboBox<String>  cmbTipoIngreso;
+    private       Runnable                   onCambioRef;
     private final JPanel                     panelFiltrosOrt;   // Prof + Pac + Inst
     private final JPanel                     panelFiltrosOtro;  // Tipo Ingreso
     private final JPanel                     panelFiltros;
@@ -233,6 +234,7 @@ public class PantallaVerEquipos extends JPanel {
 
     /** Registra los callbacks de filtro con el Runnable provisto por el controller. */
     public void configurarFiltros(Runnable onCambio) {
+        this.onCambioRef = onCambio;
         cmbEstados.setOnSelectionChange(onCambio);
         FilterUiHelper.bindOnTextChange(onCambio, txtCliente, txtProfesional, txtPaciente, txtInstitucion);
         FilterUiHelper.bindOnDateChange(onCambio, dateDesde, dateHasta);
@@ -260,6 +262,8 @@ public class PantallaVerEquipos extends JPanel {
     public int                        getTabActivo()      { return tabs.getSelectedIndex(); }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    public void limpiarFiltros() { if (onCambioRef != null) limpiarFiltros(onCambioRef); }
 
     private void limpiarFiltros(Runnable onCambio) {
         cmbEstados.clearSelection();

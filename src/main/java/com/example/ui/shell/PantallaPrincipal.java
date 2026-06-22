@@ -15,6 +15,7 @@ import com.example.features.equipos.ortopedias.view.PantallaVerCDEv2;
 import com.example.features.lavadero.view.PantallaClasificacionLavadero;
 import com.example.features.lavadero.view.PantallaIngresoLavadero;
 import com.example.features.lavadero.view.PantallaLavadero;
+import com.example.features.ajustes.view.PantallaAjustes;
 import com.example.features.lotes.view.PantallaLotes;
 import com.example.features.lotes.view.PantallaVerLotes;
 
@@ -44,6 +45,7 @@ public class PantallaPrincipal extends JFrame {
     private final PantallaLavadero              lavadero;
     private final PantallaIngresoLavadero       ingresoLavadero;
     private final PantallaClasificacionLavadero clasificacionLavadero;
+    private final PantallaAjustes               pantallaAjustes;
 
     public PantallaPrincipal() {
         setTitle(Constantes.Titulos.APP);
@@ -68,9 +70,10 @@ public class PantallaPrincipal extends JFrame {
         pantallaAuditoria   = new PantallaAuditoria(navegador, contenedor);
         ingresoOtros        = new PantallaIngresoOtros(navegador, contenedor);
         verEquipos          = new PantallaVerEquipos(navegador, contenedor);
-        lavadero              = new PantallaLavadero(navegador, contenedor);
-        ingresoLavadero       = new PantallaIngresoLavadero(navegador, contenedor);
+        lavadero            = new PantallaLavadero(navegador, contenedor);
+        ingresoLavadero     = new PantallaIngresoLavadero(navegador, contenedor);
         clasificacionLavadero = new PantallaClasificacionLavadero(navegador, contenedor);
+        pantallaAjustes     = new PantallaAjustes(navegador, contenedor);
         // ── Registrar en el CardLayout ────────────────────────────────────────
         contenedor.add(menu,                Constantes.Pantallas.MENU_PRINCIPAL);
         contenedor.add(esterilizacion,      Constantes.Pantallas.ESTERILIZACION);
@@ -89,6 +92,7 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(lavadero,              Constantes.Pantallas.LAVADERO);
         contenedor.add(ingresoLavadero,       Constantes.Pantallas.INGRESO_LAVADERO);
         contenedor.add(clasificacionLavadero, Constantes.Pantallas.CLASIFICACION_LAVADERO);
+        contenedor.add(pantallaAjustes,     Constantes.Pantallas.AJUSTES);
         add(contenedor);
     }
 
@@ -107,6 +111,7 @@ public class PantallaPrincipal extends JFrame {
     public PantallaLavadero              getPantallaLavadero()              { return lavadero; }
     public PantallaIngresoLavadero       getPantallaIngresoLavadero()       { return ingresoLavadero; }
     public PantallaClasificacionLavadero getPantallaClasificacionLavadero() { return clasificacionLavadero; }
-    public CardLayout                    getNavegador()                     { return navegador; }
-    public JPanel                        getContenedor()                    { return contenedor; }
+    public PantallaAjustes             getPantallaAjustes()            { return pantallaAjustes; }
+    public CardLayout                  getNavegador()                  { return navegador; }
+    public JPanel                      getContenedor()                 { return contenedor; }
 }

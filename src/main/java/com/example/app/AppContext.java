@@ -3,6 +3,7 @@ package com.example.app;
 import com.example.features.autoclaves.dao.AutoclaveDAO;
 import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.clientes.dao.ClienteDAO;
+import com.example.features.clientes.dao.FusionClientesDAO;
 import com.example.features.instituciones.dao.InstitucionDAO;
 import com.example.features.lotes.dao.LoteDAO;
 import com.example.features.profesionales.dao.ProfesionalDAO;
@@ -126,7 +127,8 @@ public class AppContext {
         EquipoOtrosService equipoOtrosService = new EquipoOtrosService(equipoOtrosDAO);
         CatalogoService catalogoService = new CatalogoService(catalogoDAO);
         CatalogoOtrosService catalogoOtrosService = new CatalogoOtrosService(catalogoOtrosDAO);
-        ClienteService clienteService = new ClienteService(clienteDAO);
+        FusionClientesDAO fusionClientesDAO = new FusionClientesDAO();
+        ClienteService clienteService = new ClienteService(clienteDAO, fusionClientesDAO);
         ProfesionalService profesionalService = new ProfesionalService(profesionalDAO);
         InstitucionService institucionService = new InstitucionService(institucionDAO);
         MaterialService materialService = new MaterialService(materialDAO);

@@ -1,5 +1,7 @@
 package com.example.features.equipos.ortopedias.controller;
 
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +33,9 @@ public class CDEViewController extends AbstractFilterController<EquipoRegistrabl
 
         this.panel.setOnFiltrosChanged(this::aplicarFiltros);
         cargarDatos();
+        this.panel.addComponentListener(new ComponentAdapter() {
+            @Override public void componentShown(ComponentEvent e) { cargarDatos(); }
+        });
     }
 
     /** Carga todos los equipos activos (ortopedia + otros) y recarga el cache. */

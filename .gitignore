@@ -5,6 +5,7 @@ target/
 
 # CONFIGURACIÓN - NUNCA COMMITELAR CON DATOS REALES
 config.properties
+flyway.conf
 *.properties~
 *.properties.bak
 .env

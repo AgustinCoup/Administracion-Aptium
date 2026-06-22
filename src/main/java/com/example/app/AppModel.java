@@ -254,6 +254,18 @@ public class AppModel {
         return clienteService.guardarCliente(cliente);
     }
 
+    public List<Cliente> obtenerTodosLosClientes() {
+        return clienteService.obtenerTodosLosClientes();
+    }
+
+    public void eliminarCliente(int id) {
+        clienteService.eliminarCliente(id);
+    }
+
+    public void fusionarClientes(int idOrigen, int idDestino) {
+        clienteService.fusionarClientes(idOrigen, idDestino);
+    }
+
     // ==================== PROFESIONALES ====================
 
     public List<Profesional> buscarProfesionales(String nombre) {

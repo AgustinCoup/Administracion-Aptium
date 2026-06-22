@@ -89,7 +89,7 @@ public class PantallaCorrecciones extends JPanel {
 
         PanelHeader header = new PanelHeader(
             "Correcciones de Equipos", navegador, contenedor,
-            Constantes.Pantallas.ESTERILIZACION);
+            Constantes.Pantallas.REGISTRAR_ESTADO);
         add(header, BorderLayout.NORTH);
 
         panelTablas = new PanelEquipoMaterial(
