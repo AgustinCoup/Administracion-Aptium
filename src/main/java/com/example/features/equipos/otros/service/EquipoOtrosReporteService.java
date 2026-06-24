@@ -20,8 +20,10 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class EquipoOtrosReporteService {
 
@@ -80,17 +82,22 @@ public class EquipoOtrosReporteService {
             }
 
             StringBuilder sb = new StringBuilder();
+            Set<String> lotesUnicos = new LinkedHashSet<>();
             for (MaterialOtros mat : eq.getMateriales()) {
                 sb.append(mat.getDescripcion())
                   .append("  x").append(mat.getCantidad()).append("\n");
+                if (mat.getLoteIdNegocio() != null) {
+                    lotesUnicos.add(mat.getLoteIdNegocio());
+                }
             }
             if (sb.length() == 0 && eq.getTipoIngreso() == TipoIngresoOtros.REMITO
                     && eq.getRemitoCantidad() != null) {
                 sb.append("Cantidad: ").append(eq.getRemitoCantidad());
             }
             String materiales = sb.length() > 0 ? sb.toString().stripTrailing() : "(sin materiales)";
+            String lotes = lotesUnicos.isEmpty() ? "" : String.join("\n", lotesUnicos);
 
-            dtos.add(new EquipoOtrosReporteDTO(fecha, cliente, tipoIngreso, materiales));
+            dtos.add(new EquipoOtrosReporteDTO(fecha, cliente, tipoIngreso, materiales, lotes));
         }
         return dtos;
     }

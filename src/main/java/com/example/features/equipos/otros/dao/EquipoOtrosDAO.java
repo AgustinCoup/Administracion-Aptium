@@ -550,12 +550,13 @@ public class EquipoOtrosDAO {
     private void cargarMateriales(Connection conn, EquipoOtros equipo) throws SQLException {
         String sql =
             "SELECT m.id, m.catalogo_otros_id, m.descripcion, m.cantidad, m.estado, " +
-            "       mv.fecha AS ultimo_movimiento " +
+            "       mv.fecha AS ultimo_movimiento, l.id_negocio AS lote_id_negocio " +
             "FROM equipo_otros_materiales m " +
             "LEFT JOIN ( " +
             "    SELECT material_id, MAX(fecha) AS fecha " +
             "    FROM otros_material_movimientos GROUP BY material_id " +
             ") mv ON mv.material_id = m.id " +
+            "LEFT JOIN lotes l ON m.lote_id = l.id " +
             "WHERE m.equipo_otros_id = ? " +
             "ORDER BY m.id";
 
@@ -572,6 +573,7 @@ public class EquipoOtrosDAO {
                         EstadoEquipo.desdeBD(rs.getString("estado")),
                         ts != null ? ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime() : null
                     );
+                    mat.setLoteIdNegocio(rs.getString("lote_id_negocio"));
                     equipo.agregarMaterial(mat);
                 }
             }

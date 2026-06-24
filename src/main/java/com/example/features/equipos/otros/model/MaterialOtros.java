@@ -21,6 +21,7 @@ public class MaterialOtros implements MaterialRegistrableInterface {
     private int     cantidad;
     private EstadoEquipo estado;
     private LocalDateTime ultimoMovimiento;
+    private String loteIdNegocio;
 
     // ── Constructores ──────────────────────────────────────────────────────────
 
@@ -65,4 +66,6 @@ public class MaterialOtros implements MaterialRegistrableInterface {
     public Integer getCatalogoOtrosId()                  { return catalogoOtrosId; }
     public void    setCatalogoOtrosId(Integer catalogoOtrosId) { this.catalogoOtrosId = catalogoOtrosId; }
     public void    setDescripcion(String descripcion)   { this.descripcion = descripcion; }
+    public String  getLoteIdNegocio()                   { return loteIdNegocio; }
+    public void    setLoteIdNegocio(String lote)        { this.loteIdNegocio = lote; }
 }
