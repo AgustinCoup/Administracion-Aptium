@@ -49,7 +49,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
         "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, " +
         "       em.id AS mat_id, em.codigo_catalogo, cd.descripcion AS mat_descripcion, " +
-        "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, mm.ultimo_movimiento " +
+        "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, mm.ultimo_movimiento, " +
+        "       l.id_negocio AS lote_id_negocio " +
         "FROM equipos e " +
         "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
         "LEFT JOIN profesionales p ON e.nro_profesional = p.id " +
@@ -59,7 +60,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "LEFT JOIN (" +
         "  SELECT material_id, MAX(fecha) AS ultimo_movimiento " +
         "  FROM material_movimientos GROUP BY material_id" +
-        ") mm ON em.id = mm.material_id ";
+        ") mm ON em.id = mm.material_id " +
+        "LEFT JOIN lotes l ON em.lote_id = l.id ";
 
     /**
      * Guarda un equipo completo y su lista de materiales en una sola transacción.
@@ -227,7 +229,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
 
     private Material mapearMaterial(ResultSet rs) throws SQLException {
         Timestamp ts = rs.getTimestamp("ultimo_movimiento");
-        return new Material(
+        Material mat = new Material(
             rs.getInt("mat_id"),
             rs.getInt("codigo_catalogo"),
             rs.getString("mat_descripcion"),
@@ -235,6 +237,8 @@ public class EquipoDAO implements DAO<Equipo, String> {
             EstadoEquipo.desdeBD(rs.getString("mat_estado")),
             ts != null ? java.time.LocalDateTime.ofInstant(ts.toInstant(), ZoneId.systemDefault()) : null
         );
+        mat.setLoteIdNegocio(rs.getString("lote_id_negocio"));
+        return mat;
     }
 
     private List<Equipo> obtenerEquiposConJoin(String extraWhere, Object... params) {

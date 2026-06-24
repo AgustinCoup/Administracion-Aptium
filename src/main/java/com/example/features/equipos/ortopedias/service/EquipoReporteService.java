@@ -19,8 +19,10 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class EquipoReporteService {
 
@@ -76,14 +78,19 @@ public class EquipoReporteService {
             String institucion = eq.getInstitucionNombre() != null ? eq.getInstitucionNombre() : "—";
 
             StringBuilder sb = new StringBuilder();
+            Set<String> lotesUnicos = new LinkedHashSet<>();
             for (Material mat : eq.getMateriales()) {
                 sb.append(mat.getCodigo())
                   .append(" - ").append(mat.getDescripcion())
                   .append("  x").append(mat.getCantidad()).append("\n");
+                if (mat.getLoteIdNegocio() != null) {
+                    lotesUnicos.add(mat.getLoteIdNegocio());
+                }
             }
             String materiales = sb.length() > 0 ? sb.toString().stripTrailing() : "(sin materiales)";
+            String lotes = lotesUnicos.isEmpty() ? "" : String.join("\n", lotesUnicos);
 
-            dtos.add(new EquipoReporteDTO(fecha, cliente, profesional, paciente, institucion, materiales));
+            dtos.add(new EquipoReporteDTO(fecha, cliente, profesional, paciente, institucion, materiales, lotes));
         }
         return dtos;
     }

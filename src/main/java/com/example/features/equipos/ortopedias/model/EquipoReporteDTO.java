@@ -12,21 +12,25 @@ public class EquipoReporteDTO {
     private final String paciente;
     private final String institucion;
     private final String materiales;
+    private final String lotesEsterilizacion;
 
     public EquipoReporteDTO(String fechaIngreso, String cliente, String profesional,
-                            String paciente, String institucion, String materiales) {
-        this.fechaIngreso = fechaIngreso;
-        this.cliente      = cliente;
-        this.profesional  = profesional;
-        this.paciente     = paciente;
-        this.institucion  = institucion;
-        this.materiales   = materiales;
+                            String paciente, String institucion, String materiales,
+                            String lotesEsterilizacion) {
+        this.fechaIngreso        = fechaIngreso;
+        this.cliente             = cliente;
+        this.profesional         = profesional;
+        this.paciente            = paciente;
+        this.institucion         = institucion;
+        this.materiales          = materiales;
+        this.lotesEsterilizacion = lotesEsterilizacion;
     }
 
-    public String getFechaIngreso() { return fechaIngreso; }
-    public String getCliente()      { return cliente; }
-    public String getProfesional()  { return profesional; }
-    public String getPaciente()     { return paciente; }
-    public String getInstitucion()  { return institucion; }
-    public String getMateriales()   { return materiales; }
+    public String getFechaIngreso()        { return fechaIngreso; }
+    public String getCliente()             { return cliente; }
+    public String getProfesional()         { return profesional; }
+    public String getPaciente()            { return paciente; }
+    public String getInstitucion()         { return institucion; }
+    public String getMateriales()          { return materiales; }
+    public String getLotesEsterilizacion() { return lotesEsterilizacion; }
 }

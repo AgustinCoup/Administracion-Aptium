@@ -10,6 +10,7 @@ public class Material implements MaterialRegistrableInterface {
     private int cantidad;
     private EstadoEquipo estado;  // Estado del material individual
     private LocalDateTime ultimoMovimiento;
+    private String loteIdNegocio;
 
     public Material(int codigo, String descripcion, int cantidad) {
         this(null, codigo, descripcion, cantidad, EstadoEquipo.NUEVO, null);
@@ -51,4 +52,6 @@ public class Material implements MaterialRegistrableInterface {
 
     public void setId(Integer id)   { this.id = id; }
     public int  getCodigo()         { return codigo; }
+    public String getLoteIdNegocio()              { return loteIdNegocio; }
+    public void   setLoteIdNegocio(String lote)   { this.loteIdNegocio = lote; }
 }

@@ -2,12 +2,13 @@
 <jasperReport name="ReporteOrtopedias" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="a1b2c3d4-e5f6-7890-abcd-ef1234567890">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="One Empty Record"/>
 	<query language="sql"><![CDATA[]]></query>
-	<field name="fechaIngreso" class="java.lang.String"/>
-	<field name="cliente"      class="java.lang.String"/>
-	<field name="profesional"  class="java.lang.String"/>
-	<field name="paciente"     class="java.lang.String"/>
-	<field name="institucion"  class="java.lang.String"/>
-	<field name="materiales"   class="java.lang.String"/>
+	<field name="fechaIngreso"        class="java.lang.String"/>
+	<field name="cliente"             class="java.lang.String"/>
+	<field name="profesional"         class="java.lang.String"/>
+	<field name="paciente"            class="java.lang.String"/>
+	<field name="institucion"         class="java.lang.String"/>
+	<field name="materiales"          class="java.lang.String"/>
+	<field name="lotesEsterilizacion" class="java.lang.String"/>
 	<background height="701" splitType="Stretch">
 		<element kind="image" uuid="b1b2b3b4-b5b6-b7b8-b9ba-bbbc1234b567" x="0" y="70" width="555" height="590">
 			<expression><![CDATA["aptium_watermark-removebg-preview.png"]]></expression>
@@ -19,7 +20,7 @@
 		</element>
 	</pageHeader>
 	<columnHeader height="27" splitType="Stretch">
-		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d001" x="0" y="0" width="65" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d001" x="0" y="0" width="55" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Fecha]]></text>
 			<box>
 				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -28,7 +29,7 @@
 				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d006" x="65" y="0" width="90" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d006" x="55" y="0" width="80" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Cliente]]></text>
 			<box>
 				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -37,7 +38,7 @@
 				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d002" x="155" y="0" width="85" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d002" x="135" y="0" width="75" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Profesional]]></text>
 			<box>
 				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -46,7 +47,7 @@
 				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d003" x="240" y="0" width="85" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d003" x="210" y="0" width="75" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Paciente]]></text>
 			<box>
 				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -55,7 +56,7 @@
 				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d004" x="325" y="0" width="85" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d004" x="285" y="0" width="75" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Institución]]></text>
 			<box>
 				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -64,8 +65,17 @@
 				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d005" x="410" y="0" width="145" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d005" x="360" y="0" width="125" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Materiales]]></text>
+			<box>
+				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="d1d2d3d4-d5d6-d7d8-d9da-dbdc1234d007" x="485" y="0" width="70" height="27" fontName="Arial" fontSize="12.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[N° Lote]]></text>
 			<box>
 				<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -76,7 +86,7 @@
 	</columnHeader>
 	<detail>
 		<band height="20" splitType="Stretch">
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e001" stretchType="ContainerHeight" x="0" y="0" width="65" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e001" stretchType="ContainerHeight" x="0" y="0" width="55" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{fechaIngreso}]]></expression>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -85,7 +95,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e006" stretchType="ContainerHeight" x="65" y="0" width="90" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e006" stretchType="ContainerHeight" x="55" y="0" width="80" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{cliente}]]></expression>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -94,7 +104,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e002" stretchType="ContainerHeight" x="155" y="0" width="85" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e002" stretchType="ContainerHeight" x="135" y="0" width="75" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{profesional}]]></expression>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -103,7 +113,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e003" stretchType="ContainerHeight" x="240" y="0" width="85" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e003" stretchType="ContainerHeight" x="210" y="0" width="75" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{paciente}]]></expression>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -112,7 +122,7 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e004" stretchType="ContainerHeight" x="325" y="0" width="85" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e004" stretchType="ContainerHeight" x="285" y="0" width="75" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{institucion}]]></expression>
 				<box>
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
@@ -121,9 +131,18 @@
 					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e005" stretchType="ContainerHeight" x="410" y="0" width="145" height="20" fontName="Arial" fontSize="10.0" textAdjust="StretchHeight">
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e005" stretchType="ContainerHeight" x="360" y="0" width="125" height="20" fontName="Arial" fontSize="10.0" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{materiales}]]></expression>
 				<box topPadding="3" leftPadding="4" bottomPadding="3" rightPadding="4">
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="e1e2e3e4-e5e6-e7e8-e9ea-ebec1234e007" stretchType="ContainerHeight" x="485" y="0" width="70" height="20" fontName="Arial" fontSize="10.0" hTextAlign="Center" vTextAlign="Middle" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{lotesEsterilizacion}]]></expression>
+				<box topPadding="3" leftPadding="3" bottomPadding="3" rightPadding="3">
 					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
 					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
