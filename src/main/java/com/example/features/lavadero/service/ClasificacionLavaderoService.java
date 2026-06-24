@@ -6,7 +6,9 @@ import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
 import com.example.features.lavadero.model.ElementoCatalogo;
 import com.example.features.lavadero.model.ElementoClasificacion;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class ClasificacionLavaderoService {
 
@@ -26,6 +28,14 @@ public class ClasificacionLavaderoService {
         return catalogoDAO.findAll();
     }
 
+    private boolean hasDuplicates(List<ElementoClasificacion> elementos) {
+        Set<Integer> vistos = new HashSet<>();
+        for (ElementoClasificacion e : elementos) {
+            if (!vistos.add(e.getElementoId())) return true;
+        }
+        return false;
+    }
+
     public boolean guardar(int ingresoId, List<ElementoClasificacion> elementos) {
         ValidationException.Builder builder = ValidationException.builder()
             .addErrorIf(ingresoId <= 0, "Debe seleccionar un ingreso.")
@@ -33,6 +43,10 @@ public class ClasificacionLavaderoService {
             .addErrorIf(
                 elementos != null && elementos.stream().anyMatch(e -> e.getCantidad() <= 0),
                 "La cantidad de cada elemento debe ser mayor a cero."
+            )
+            .addErrorIf(
+                elementos != null && hasDuplicates(elementos),
+                "No puede haber elementos repetidos. Usá la cantidad para indicar más de uno."
             );
         builder.throwIfHasErrors();
 
