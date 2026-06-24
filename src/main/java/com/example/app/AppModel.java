@@ -1,6 +1,7 @@
 package com.example.app;
 
 import com.example.infrastructure.db.ConnectionPool;
+import java.math.BigDecimal;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
@@ -35,11 +36,18 @@ import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
+import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ElementoCatalogo;
 import com.example.features.lavadero.model.ElementoClasificacion;
+import com.example.features.lavadero.model.ElementoCicloItem;
+import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.IngresoLavadero;
 import com.example.features.lavadero.model.IngresoLavaderoResumen;
+import com.example.features.lavadero.model.Lavarropas;
+import com.example.features.lavadero.model.TipoJabon;
+import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.ClasificacionLavaderoService;
+import com.example.features.lavadero.service.LavarropasService;
 import com.example.features.lavadero.service.LavaderoService;
 
 /**
@@ -71,6 +79,8 @@ public class AppModel {
     private final IEstadoValidator             estadoValidator;
     private final LavaderoService              lavaderoService;
     private final ClasificacionLavaderoService clasificacionLavaderoService;
+    private final LavarropasService            lavarropasService;
+    private final CicloLavaderoService         cicloLavaderoService;
     private final LoteReporteService         loteReporteService;
     private final EquipoReporteService       equipoReporteService;
     private final EquipoOtrosReporteService  equipoOtrosReporteService;
@@ -98,6 +108,8 @@ public class AppModel {
         this.estadoValidator           = context.getEstadoValidator();
         this.lavaderoService                = context.getLavaderoService();
         this.clasificacionLavaderoService   = context.getClasificacionLavaderoService();
+        this.lavarropasService              = context.getLavarropasService();
+        this.cicloLavaderoService           = context.getCicloLavaderoService();
         this.loteReporteService             = new LoteReporteService(this);
         this.equipoReporteService      = new EquipoReporteService(this);
         this.equipoOtrosReporteService = new EquipoOtrosReporteService(this);
@@ -376,6 +388,35 @@ public class AppModel {
 
     public boolean registrarClasificacion(int ingresoId, List<ElementoClasificacion> elementos) {
         return clasificacionLavaderoService.guardar(ingresoId, elementos);
+    }
+
+    // ==================== CICLOS DE LAVADO ====================
+
+    public List<Lavarropas> obtenerLavarropas() {
+        return lavarropasService.obtenerTodos();
+    }
+
+    public Map<Integer, CicloLavadero> obtenerCiclosActivosPorLavarropas() {
+        return cicloLavaderoService.obtenerCiclosActivosPorLavarropas();
+    }
+
+    public List<ElementoCicloItem> obtenerElementosDisponiblesParaCiclo() {
+        return cicloLavaderoService.obtenerElementosDisponiblesParaCiclo();
+    }
+
+    public void lanzarCiclo(int lavarropasNumero, TipoJabon tipoJabon, BigDecimal litrosJabon,
+                             boolean suavizante, BigDecimal litrosTotales,
+                             List<ElementoCicloMovimiento> movimientos) {
+        cicloLavaderoService.lanzarCiclo(lavarropasNumero, tipoJabon, litrosJabon,
+                                          suavizante, litrosTotales, movimientos);
+    }
+
+    public List<ElementoCicloItem> obtenerElementosDeCiclo(int cicloId) {
+        return cicloLavaderoService.obtenerElementosDeCiclo(cicloId);
+    }
+
+    public void finalizarCiclo(int cicloId) {
+        cicloLavaderoService.finalizarCiclo(cicloId);
     }
 }
 

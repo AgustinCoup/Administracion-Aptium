@@ -33,6 +33,7 @@ public final class Constantes {
         public static final String LAVADERO               = "LAVADERO";
         public static final String INGRESO_LAVADERO       = "INGRESO_LAVADERO";
         public static final String CLASIFICACION_LAVADERO = "CLASIFICACION_LAVADERO";
+        public static final String CICLOS_LAVADERO       = "CICLOS_LAVADERO";
         public static final String AJUSTES              = "AJUSTES";
 
         private Pantallas() {}
@@ -140,6 +141,12 @@ public final class Constantes {
         /** Mensaje de éxito al guardar un remito; incluye el ID generado. */
         public static final String REMITO_GUARDADO_OK = "Remito guardado correctamente.\nIdentificador: %s";
 
+        public static final String GUARD_CICLOS_CAMBIOS      = "Tenés elementos cargados en un lavarropas sin lanzar.\nSi volvés ahora, esos cambios se perderán.\n¿Querés salir de todas formas?";
+        public static final String CONFIRMAR_LANZAR_CICLO    = "¿Lanzar el ciclo de lavado?";
+        public static final String CONFIRMAR_FINALIZAR_CICLO = "¿Marcar este ciclo como finalizado?";
+        public static final String ERROR_LANZAR_CICLO        = "Error al lanzar el ciclo. Intente nuevamente.";
+        public static final String ERROR_FINALIZAR_CICLO     = "Error al finalizar el ciclo. Intente nuevamente.";
+
         private Mensajes() {}
     }
 
@@ -161,6 +168,7 @@ public final class Constantes {
         public static final String LAVADERO               = "LAVADERO";
         public static final String INGRESO_LAVADERO       = "INGRESO LAVADERO";
         public static final String CLASIFICACION_LAVADERO = "CLASIFICACIÓN LAVADERO";
+        public static final String CICLOS_LAVADERO       = "CICLOS DE LAVADO";
         public static final String AJUSTES              = "Ajustes";
 
         private Titulos() {}
@@ -205,6 +213,9 @@ public final class Constantes {
         public static final String IMPRIMIR               = "Imprimir";
         public static final String VER_EQUIPOS            = "Ver equipos";
         public static final String CERRAR                 = "Cerrar";
+        public static final String CICLOS          = "Ciclos";
+        public static final String LANZAR_CICLO    = "Lanzar Ciclo";
+        public static final String FINALIZAR_CICLO = "Finalizar Ciclo";
         public static final String AJUSTES               = "Ajustes";
 
         private Botones() {}

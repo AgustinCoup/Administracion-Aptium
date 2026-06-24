@@ -27,6 +27,11 @@ public class ClasificacionLavaderoDAO {
                 }
                 ps.executeBatch();
             }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE ingresos_lavadero SET estado = 'CLASIFICADO' WHERE id = ?")) {
+                ps.setInt(1, ingresoId);
+                ps.executeUpdate();
+            }
             tx.commit();
             return true;
         } catch (SQLException e) {

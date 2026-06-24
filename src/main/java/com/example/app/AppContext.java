@@ -34,7 +34,11 @@ import com.example.features.lavadero.dao.BolsaLavaderoDAO;
 import com.example.features.lavadero.dao.CatalogoElementosLavaderoDAO;
 import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
 import com.example.features.lavadero.dao.IngresoLavaderoDAO;
+import com.example.features.lavadero.dao.CicloLavaderoDAO;
+import com.example.features.lavadero.dao.LavarropasDAO;
+import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.ClasificacionLavaderoService;
+import com.example.features.lavadero.service.LavarropasService;
 import com.example.features.lavadero.service.LavaderoService;
 
 public class AppContext {
@@ -56,6 +60,8 @@ public class AppContext {
     private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
     private final LavaderoService lavaderoService;
     private final ClasificacionLavaderoService clasificacionLavaderoService;
+    private final LavarropasService lavarropasService;
+    private final CicloLavaderoService cicloLavaderoService;
 
     public AppContext(
         EquipoService equipoService,
@@ -74,7 +80,9 @@ public class AppContext {
         EquipoCorreccionService equipoCorreccionService,
         EquipoOtrosCorreccionService equipoOtrosCorreccionService,
         LavaderoService lavaderoService,
-        ClasificacionLavaderoService clasificacionLavaderoService
+        ClasificacionLavaderoService clasificacionLavaderoService,
+        LavarropasService lavarropasService,
+        CicloLavaderoService cicloLavaderoService
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
             || profesionalService == null || institucionService == null || materialService == null
@@ -82,7 +90,8 @@ public class AppContext {
             || materialFilter == null || capacidadCalculator == null || catalogoOtrosService == null
             || equipoOtrosService == null || equipoCorreccionService == null
             || equipoOtrosCorreccionService == null || lavaderoService == null
-            || clasificacionLavaderoService == null) {
+            || clasificacionLavaderoService == null
+            || lavarropasService == null || cicloLavaderoService == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -103,6 +112,8 @@ public class AppContext {
         this.equipoOtrosCorreccionService = equipoOtrosCorreccionService;
         this.lavaderoService = lavaderoService;
         this.clasificacionLavaderoService = clasificacionLavaderoService;
+        this.lavarropasService = lavarropasService;
+        this.cicloLavaderoService = cicloLavaderoService;
     }
 
     public static AppContext createDefault() {
@@ -148,6 +159,11 @@ public class AppContext {
         ClasificacionLavaderoService clasificacionLavaderoService = new ClasificacionLavaderoService(
             clasificacionLavaderoDAO, catalogoElementosLavaderoDAO);
 
+        LavarropasDAO lavarropasDAO = new LavarropasDAO();
+        LavarropasService lavarropasService = new LavarropasService(lavarropasDAO);
+        CicloLavaderoDAO cicloLavaderoDAO = new CicloLavaderoDAO();
+        CicloLavaderoService cicloLavaderoService = new CicloLavaderoService(cicloLavaderoDAO);
+
         return new AppContext(
             equipoService,
             catalogoService,
@@ -165,7 +181,9 @@ public class AppContext {
             equipoCorreccionService,
             equipoOtrosCorreccionService,
             lavaderoService,
-            clasificacionLavaderoService
+            clasificacionLavaderoService,
+            lavarropasService,
+            cicloLavaderoService
         );
     }
 
@@ -235,6 +253,14 @@ public class AppContext {
 
     public ClasificacionLavaderoService getClasificacionLavaderoService() {
         return clasificacionLavaderoService;
+    }
+
+    public LavarropasService getLavarropasService() {
+        return lavarropasService;
+    }
+
+    public CicloLavaderoService getCicloLavaderoService() {
+        return cicloLavaderoService;
     }
 }
 

@@ -9,6 +9,7 @@ import com.example.features.equipos.ortopedias.controller.OrthopediaInputControl
 import com.example.features.equipos.ortopedias.controller.RegistrarEstadoController;
 import com.example.features.equipos.controller.VerEquiposController;
 import com.example.features.equipos.otros.controller.OtrosInputController;
+import com.example.features.lavadero.controller.CiclosController;
 import com.example.features.lavadero.controller.ClasificacionController;
 import com.example.features.lavadero.controller.LavaderoController;
 import com.example.features.ajustes.controller.AjustesController;
@@ -124,6 +125,14 @@ public class UiCoordinator {
         vista.getPantallaLavadero().getBtnClasificar().addActionListener(e -> {
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.CLASIFICACION_LAVADERO);
             clasificacionController.cargarIngresosSinClasificar();
+        });
+
+        CiclosController ciclosController = new CiclosController(
+            vista.getPantallaCiclos(), model);
+
+        vista.getPantallaLavadero().getBtnCiclos().addActionListener(e -> {
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.CICLOS_LAVADERO);
+            ciclosController.cargarDatos();
         });
         AjustesController ajustesController = new AjustesController(vista.getPantallaAjustes(), model);
         ajustesController.setOnMutacion(() -> { if (refrescarRef[0] != null) refrescarRef[0].run(); });
