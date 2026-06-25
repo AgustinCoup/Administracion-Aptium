@@ -2,51 +2,31 @@ package com.example.features.lavadero.view;
 
 import com.example.common.constants.Constantes;
 import com.example.features.lavadero.model.ElementoCicloItem;
-import com.example.features.lavadero.model.TipoJabon;
-import com.example.features.lavadero.view.helpers.ElementoCargadoTableModel;
 import com.example.features.lavadero.view.helpers.ElementoDisponibleTableModel;
-import com.example.features.lavadero.view.helpers.LavarropasItem;
-import com.example.features.lavadero.view.helpers.LavarropasTableModel;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.LabelFactory;
 import com.example.ui.common.PanelHeader;
 import com.example.ui.common.TableStyler;
 
 import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import java.awt.*;
-import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.function.Consumer;
+import java.util.Map;
 import java.util.function.Supplier;
 
 public class PantallaCiclos extends JPanel {
 
     private final PanelHeader header;
 
-    private final LavarropasTableModel        modeloLavarropas  = new LavarropasTableModel();
     private final ElementoDisponibleTableModel modeloDisponibles = new ElementoDisponibleTableModel();
-    private final ElementoCargadoTableModel    modeloCiclo       = new ElementoCargadoTableModel();
-
-    private final JTable tablaLavarropas;
     private final JTable tablaDisponibles;
-    private final JTable tablaCiclo;
 
-    private final JComboBox<TipoJabon> cmbTipoJabon     = new JComboBox<>(TipoJabon.values());
-    private final JTextField           txtLitrosJabon   = new JTextField(6);
-    private final JCheckBox            chkSuavizante    = new JCheckBox("Suavizante");
-    private final JTextField           txtLitrosTotales = new JTextField(6);
+    private final Map<Integer, LavarropasCard> cards = new LinkedHashMap<>();
 
-    private final JButton btnQuitar         = new JButton(Constantes.Botones.QUITAR);
-    private final JButton btnFinalizarCiclo = new JButton(Constantes.Botones.FINALIZAR_CICLO);
-    private final JButton btnLanzarCiclo    = new JButton(Constantes.Botones.LANZAR_CICLO);
-
-    private Consumer<LavarropasItem> onLavarropasSeleccionado;
-    private Runnable onLitrosJabonChanged;
-
-    private static final int ANCHO_LATERAL = 260;
+    private final JButton btnLanzarTodos    = new JButton(Constantes.Botones.LANZAR_TODOS);
+    private final JButton btnDescartarTodos = new JButton(Constantes.Botones.DESCARTAR_TODOS);
 
     public PantallaCiclos(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
@@ -59,65 +39,54 @@ public class PantallaCiclos extends JPanel {
         );
         add(header, BorderLayout.NORTH);
 
-        tablaLavarropas  = buildTable(modeloLavarropas, 0, 1, 2);
         tablaDisponibles = buildTable(modeloDisponibles, 1, 2);
-        tablaCiclo       = buildTable(modeloCiclo, 1, 2);
 
-        // ── Centro: disponibles arriba, ciclo abajo ─────────────────────────────
-        JPanel centro = new JPanel(new GridBagLayout());
+        JPanel panelTop = new JPanel(new BorderLayout());
+        panelTop.add(LabelFactory.createSectionLabel("Elementos disponibles para lavar"),
+            BorderLayout.NORTH);
+        panelTop.add(scroll(tablaDisponibles), BorderLayout.CENTER);
+
+        // GridBagLayout con fill=HORIZONTAL y weighty=0: cada card conserva su propio
+        // preferred height (no se estira verticalmente) y se alinea al tope de su celda.
+        // Cuando todos los cards de una fila están contraídos la fila mide ~28px.
+        JPanel panelCards = new JPanel(new GridBagLayout());
+        panelCards.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets  = new Insets(5, 5, 5, 5);
-        gbc.fill    = GridBagConstraints.BOTH;
-        gbc.weightx = 1.0;
+        gbc.fill    = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 0.2;
+        gbc.weighty = 0.0;
+        gbc.anchor  = GridBagConstraints.NORTH;
+        gbc.insets  = new Insets(4, 4, 4, 4);
 
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weighty = 0;
-        centro.add(LabelFactory.createSectionLabel("Elementos disponibles para lavar"), gbc);
+        for (int i = 1; i <= 13; i++) {
+            gbc.gridx = (i - 1) % 5;
+            gbc.gridy = (i - 1) / 5;
+            LavarropasCard card = new LavarropasCard(i);
+            cards.put(i, card);
+            panelCards.add(card, gbc);
+        }
+        // Relleno para las dos posiciones vacías de la última fila
+        gbc.gridx = 3; gbc.gridy = 2; panelCards.add(new JPanel(), gbc);
+        gbc.gridx = 4; gbc.gridy = 2; panelCards.add(new JPanel(), gbc);
 
-        gbc.gridy = 1; gbc.weighty = 0.5;
-        centro.add(scroll(tablaDisponibles), gbc);
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+            panelTop,
+            new JScrollPane(panelCards,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER));
+        split.setResizeWeight(0.35);
+        add(split, BorderLayout.CENTER);
 
-        gbc.gridy = 2; gbc.weighty = 0;
-        centro.add(LabelFactory.createSectionLabel("Elementos cargados en el ciclo"), gbc);
-
-        gbc.gridy = 3; gbc.weighty = 0.5;
-        centro.add(scroll(tablaCiclo), gbc);
-
-        add(centro, BorderLayout.CENTER);
-
-        // ── Lateral: lavarropas + config ────────────────────────────────────────
-        JPanel lateral = new JPanel(new BorderLayout());
-        lateral.setPreferredSize(new Dimension(ANCHO_LATERAL, 0));
-        lateral.setMinimumSize(new Dimension(ANCHO_LATERAL, 0));
-
-        lateral.add(LabelFactory.createSectionLabel("Lavarropas"), BorderLayout.NORTH);
-        lateral.add(new JScrollPane(tablaLavarropas,
-            JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-            JScrollPane.HORIZONTAL_SCROLLBAR_NEVER), BorderLayout.CENTER);
-        lateral.add(buildConfigPanel(), BorderLayout.SOUTH);
-
-        add(lateral, BorderLayout.EAST);
-
-        // ── Botones ────────────────────────────────────────────────────────────
-        for (JButton btn : new JButton[]{btnQuitar, btnFinalizarCiclo, btnLanzarCiclo}) {
+        for (JButton btn : new JButton[]{btnDescartarTodos, btnLanzarTodos}) {
             btn.setFont(Estilos.Fuentes.BOTON);
             btn.setEnabled(false);
         }
-
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
-        panelBotones.add(btnQuitar);
-        panelBotones.add(btnFinalizarCiclo);
-        panelBotones.add(btnLanzarCiclo);
+        panelBotones.add(btnDescartarTodos);
+        panelBotones.add(btnLanzarTodos);
         add(panelBotones, BorderLayout.SOUTH);
-
-        // ── Listener de selección de lavarropas ─────────────────────────────────
-        tablaLavarropas.getSelectionModel().addListSelectionListener(e -> {
-            if (e.getValueIsAdjusting()) return;
-            int row = tablaLavarropas.getSelectedRow();
-            if (row >= 0 && onLavarropasSeleccionado != null) {
-                onLavarropasSeleccionado.accept(modeloLavarropas.getItemAt(row));
-            }
-        });
     }
 
     private JTable buildTable(javax.swing.table.AbstractTableModel model, int... centeredCols) {
@@ -129,156 +98,56 @@ public class PantallaCiclos extends JPanel {
         return t;
     }
 
-    private static JScrollPane scroll(JTable t) {
-        return new JScrollPane(t,
+    private static JScrollPane scroll(JComponent c) {
+        return new JScrollPane(c,
             JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
             JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
     }
 
-    private JPanel buildConfigPanel() {
-        txtLitrosJabon.setFont(Estilos.Fuentes.LABEL);
-        txtLitrosTotales.setFont(Estilos.Fuentes.LABEL);
-        chkSuavizante.setFont(Estilos.Fuentes.LABEL);
-        setConfigEnabled(false);
+    // ── Disponibles ───────────────────────────────────────────────────────────
 
-        JPanel config = new JPanel(new GridBagLayout());
-        config.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(3, 2, 3, 2);
-        c.anchor = GridBagConstraints.WEST;
-        c.fill   = GridBagConstraints.HORIZONTAL;
-
-        c.gridx = 0; c.gridy = 0; c.weightx = 0;
-        config.add(lbl("Tipo de Jabón:"), c);
-        c.gridx = 1; c.weightx = 1.0;
-        config.add(cmbTipoJabon, c);
-
-        c.gridx = 0; c.gridy = 1; c.weightx = 0;
-        config.add(lbl("Litros de Jabón:"), c);
-        c.gridx = 1; c.weightx = 1.0;
-        config.add(txtLitrosJabon, c);
-
-        c.gridx = 0; c.gridy = 2; c.gridwidth = 2; c.weightx = 1.0;
-        config.add(chkSuavizante, c);
-
-        c.gridx = 0; c.gridy = 3; c.gridwidth = 1; c.weightx = 0;
-        config.add(lbl("Litros Totales:"), c);
-        c.gridx = 1; c.weightx = 1.0;
-        config.add(txtLitrosTotales, c);
-
-        txtLitrosJabon.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e)  { notificar(); }
-            @Override public void removeUpdate(DocumentEvent e)  { notificar(); }
-            @Override public void changedUpdate(DocumentEvent e) { notificar(); }
-            private void notificar() {
-                if (onLitrosJabonChanged != null) SwingUtilities.invokeLater(onLitrosJabonChanged);
-            }
-        });
-
-        return config;
+    public void setElementosDisponibles(List<ElementoCicloItem> items) {
+        modeloDisponibles.setItems(items != null ? items : Collections.emptyList());
     }
 
-    private static JLabel lbl(String text) {
-        JLabel l = new JLabel(text);
-        l.setFont(Estilos.Fuentes.LABEL);
-        return l;
-    }
-
-    // ── API pública ────────────────────────────────────────────────────────────
-
-    public void setLavarropas(List<LavarropasItem> items) {
-        modeloLavarropas.setItems(items != null ? items : Collections.emptyList());
-        if (items != null && !items.isEmpty()) tablaLavarropas.setRowSelectionInterval(0, 0);
-    }
-
-    public void seleccionarLavarropas(int numero) {
-        for (int i = 0; i < modeloLavarropas.getRowCount(); i++) {
-            LavarropasItem item = modeloLavarropas.getItemAt(i);
-            if (item != null && item.getNumero() == numero) {
-                tablaLavarropas.setRowSelectionInterval(i, i);
-                return;
-            }
-        }
-    }
-
-    public LavarropasItem getLavarropasSeleccionado() {
-        int row = tablaLavarropas.getSelectedRow();
-        return row >= 0 ? modeloLavarropas.getItemAt(row) : null;
-    }
-
-    public void setOnLavarropasSeleccionado(Consumer<LavarropasItem> listener) {
-        this.onLavarropasSeleccionado = listener;
-    }
-
-    public void setElementosDisponibles(List<ElementoCicloItem> items) { modeloDisponibles.setItems(items); }
-    public void setElementosCiclo(List<ElementoCicloItem> items)       { modeloCiclo.setItems(items); }
+    public JTable getTablaDisponibles() { return tablaDisponibles; }
 
     public ElementoCicloItem getElementoDisponibleSeleccionado() {
         int row = tablaDisponibles.getSelectedRow();
         return row >= 0 ? modeloDisponibles.getItemAt(row) : null;
     }
 
-    public ElementoCicloItem getElementoCicloSeleccionado() {
-        int row = tablaCiclo.getSelectedRow();
-        return row >= 0 ? modeloCiclo.getItemAt(row) : null;
+    // ── Cards ─────────────────────────────────────────────────────────────────
+
+    public LavarropasCard getCard(int lavarropasNumero) { return cards.get(lavarropasNumero); }
+
+    public Map<Integer, LavarropasCard> getAllCards() {
+        return Collections.unmodifiableMap(cards);
     }
 
-    public JTable getTablaDisponibles() { return tablaDisponibles; }
-    public JTable getTablaCiclo()       { return tablaCiclo; }
+    // ── Botones globales ──────────────────────────────────────────────────────
 
-    public TipoJabon getTipoJabonSeleccionado() { return (TipoJabon) cmbTipoJabon.getSelectedItem(); }
+    public JButton getBtnLanzarTodos()    { return btnLanzarTodos; }
+    public JButton getBtnDescartarTodos() { return btnDescartarTodos; }
 
-    public BigDecimal getLitrosJabon() {
-        try {
-            String t = txtLitrosJabon.getText().trim().replace(",", ".");
-            if (t.isEmpty()) return null;
-            BigDecimal v = new BigDecimal(t);
-            return v.compareTo(BigDecimal.ZERO) > 0 ? v : null;
-        } catch (NumberFormatException e) { return null; }
-    }
-
-    public boolean isSuavizante() { return chkSuavizante.isSelected(); }
-
-    public BigDecimal getLitrosTotales() {
-        try {
-            String t = txtLitrosTotales.getText().trim().replace(",", ".");
-            if (t.isEmpty()) return null;
-            BigDecimal v = new BigDecimal(t);
-            return v.compareTo(BigDecimal.ZERO) > 0 ? v : null;
-        } catch (NumberFormatException e) { return null; }
-    }
-
-    public void setConfigEnabled(boolean enabled) {
-        cmbTipoJabon.setEnabled(enabled);
-        txtLitrosJabon.setEnabled(enabled);
-        chkSuavizante.setEnabled(enabled);
-        txtLitrosTotales.setEnabled(enabled);
-    }
-
-    public void setOnLitrosJabonChanged(Runnable listener) { this.onLitrosJabonChanged = listener; }
-
-    public void setOnLanzar(java.awt.event.ActionListener l)    { btnLanzarCiclo.addActionListener(l); }
-    public void setOnFinalizar(java.awt.event.ActionListener l) { btnFinalizarCiclo.addActionListener(l); }
-    public void setOnQuitar(java.awt.event.ActionListener l)    { btnQuitar.addActionListener(l); }
-
-    public void setLanzarEnabled(boolean enabled)    { btnLanzarCiclo.setEnabled(enabled); }
-    public void setFinalizarEnabled(boolean enabled) { btnFinalizarCiclo.setEnabled(enabled); }
-    public void setQuitarEnabled(boolean enabled)    { btnQuitar.setEnabled(enabled); }
+    // ── Guard y diálogos ─────────────────────────────────────────────────────
 
     public void setGuardVolver(Supplier<Boolean> hayPendientes, String mensaje, Runnable onDescartar) {
         header.setGuardNavegacion(hayPendientes, mensaje, onDescartar);
     }
 
-    public void mostrarAdvertencia(String msg) {
-        JOptionPane.showMessageDialog(this, msg, Constantes.Mensajes.TITULO_ADVERTENCIA, JOptionPane.WARNING_MESSAGE);
-    }
-
-    public void mostrarError(String msg) {
-        JOptionPane.showMessageDialog(this, msg, Constantes.Mensajes.TITULO_ERROR, JOptionPane.ERROR_MESSAGE);
-    }
-
     public boolean confirmar(String msg, String titulo) {
         return JOptionPane.showConfirmDialog(this, msg, titulo,
             JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION;
+    }
+
+    public void mostrarAdvertencia(String msg) {
+        JOptionPane.showMessageDialog(this, msg,
+            Constantes.Mensajes.TITULO_ADVERTENCIA, JOptionPane.WARNING_MESSAGE);
+    }
+
+    public void mostrarError(String msg) {
+        JOptionPane.showMessageDialog(this, msg,
+            Constantes.Mensajes.TITULO_ERROR, JOptionPane.ERROR_MESSAGE);
     }
 }

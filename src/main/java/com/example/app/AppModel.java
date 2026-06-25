@@ -411,6 +411,10 @@ public class AppModel {
                                           suavizante, litrosTotales, movimientos);
     }
 
+    public List<CicloLavadero> obtenerCiclosFinalizados() {
+        return cicloLavaderoService.obtenerCiclosFinalizados();
+    }
+
     public List<ElementoCicloItem> obtenerElementosDeCiclo(int cicloId) {
         return cicloLavaderoService.obtenerElementosDeCiclo(cicloId);
     }

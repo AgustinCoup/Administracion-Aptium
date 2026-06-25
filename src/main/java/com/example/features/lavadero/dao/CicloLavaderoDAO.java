@@ -29,17 +29,32 @@ public class CicloLavaderoDAO {
         "SELECT id, lavarropas_numero, tipo_jabon, litros_jabon, suavizante, litros_totales, fecha_inicio " +
         "FROM ciclos_lavadero WHERE fecha_fin IS NULL";
 
+    private static final String SQL_FINALIZADOS =
+        "SELECT id, lavarropas_numero, tipo_jabon, litros_jabon, suavizante, " +
+        "       litros_totales, fecha_inicio, fecha_fin " +
+        "FROM ciclos_lavadero WHERE fecha_fin IS NOT NULL ORDER BY fecha_fin DESC";
+
+    private static final String SQL_ELEMENTOS_DE_CICLO =
+        "SELECT ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, " +
+        "       eci.cantidad AS en_ciclo, c.nombre AS cliente, cel.categoria " +
+        "FROM elementos_ciclo_lavadero eci " +
+        "JOIN elementos_clasificacion_lavadero ecl ON ecl.id = eci.elemento_clasificacion_id " +
+        "JOIN catalogo_elementos_lavadero cel       ON cel.id = ecl.elemento_id " +
+        "JOIN ingresos_lavadero il                  ON il.id  = ecl.ingreso_id " +
+        "JOIN clientes c                            ON c.id   = il.cliente_id " +
+        "WHERE eci.ciclo_id = ? ORDER BY cel.nombre";
+
     private static final String SQL_DISPONIBLES =
         "SELECT ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, " +
         "       COALESCE(SUM(eci.cantidad), 0) AS ya_procesada, " +
-        "       c.nombre AS cliente " +
+        "       c.nombre AS cliente, cel.categoria " +
         "FROM elementos_clasificacion_lavadero ecl " +
         "JOIN catalogo_elementos_lavadero cel ON cel.id = ecl.elemento_id " +
         "JOIN ingresos_lavadero il            ON il.id  = ecl.ingreso_id " +
         "JOIN clientes c                      ON c.id   = il.cliente_id " +
         "LEFT JOIN elementos_ciclo_lavadero eci ON eci.elemento_clasificacion_id = ecl.id " +
         "WHERE il.estado = 'CLASIFICADO' " +
-        "GROUP BY ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, c.nombre " +
+        "GROUP BY ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, c.nombre, cel.categoria " +
         "HAVING ya_procesada < ecl.cantidad " +
         "ORDER BY il.id, cel.nombre";
 
@@ -58,6 +73,30 @@ public class CicloLavaderoDAO {
         return mapa;
     }
 
+    public List<CicloLavadero> obtenerCiclosFinalizados() {
+        List<CicloLavadero> lista = new ArrayList<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SQL_FINALIZADOS);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                lista.add(new CicloLavadero(
+                    rs.getInt("id"),
+                    rs.getInt("lavarropas_numero"),
+                    TipoJabon.valueOf(rs.getString("tipo_jabon")),
+                    rs.getBigDecimal("litros_jabon"),
+                    rs.getBoolean("suavizante"),
+                    rs.getBigDecimal("litros_totales"),
+                    rs.getObject("fecha_inicio", LocalDateTime.class),
+                    rs.getObject("fecha_fin",    LocalDateTime.class),
+                    "FINALIZADO"
+                ));
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener ciclos finalizados", e);
+        }
+        return lista;
+    }
+
     public List<ElementoCicloItem> obtenerElementosDisponiblesParaCiclo() {
         List<ElementoCicloItem> lista = new ArrayList<>();
         try (Connection conn = ConnectionPool.getConnection();
@@ -70,7 +109,8 @@ public class CicloLavaderoDAO {
                     rs.getString("nombre"),
                     rs.getInt("cantidad"),
                     rs.getInt("ya_procesada"),
-                    rs.getString("cliente")
+                    rs.getString("cliente"),
+                    rs.getString("categoria")
                 ));
             }
         } catch (SQLException e) {
@@ -189,18 +229,9 @@ public class CicloLavaderoDAO {
     }
 
     public List<ElementoCicloItem> obtenerElementosDeCiclo(int cicloId) {
-        String sql =
-            "SELECT ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, " +
-            "       eci.cantidad AS en_ciclo, c.nombre AS cliente " +
-            "FROM elementos_ciclo_lavadero eci " +
-            "JOIN elementos_clasificacion_lavadero ecl ON ecl.id = eci.elemento_clasificacion_id " +
-            "JOIN catalogo_elementos_lavadero cel       ON cel.id = ecl.elemento_id " +
-            "JOIN ingresos_lavadero il                  ON il.id  = ecl.ingreso_id " +
-            "JOIN clientes c                            ON c.id   = il.cliente_id " +
-            "WHERE eci.ciclo_id = ? ORDER BY cel.nombre";
         List<ElementoCicloItem> lista = new ArrayList<>();
         try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+             PreparedStatement ps = conn.prepareStatement(SQL_ELEMENTOS_DE_CICLO)) {
             ps.setInt(1, cicloId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -210,7 +241,8 @@ public class CicloLavaderoDAO {
                         rs.getString("nombre"),
                         rs.getInt("cantidad"),
                         0,
-                        rs.getString("cliente")
+                        rs.getString("cliente"),
+                        rs.getString("categoria")
                     );
                     item.setCantidadEnCiclo(rs.getInt("en_ciclo"));
                     lista.add(item);

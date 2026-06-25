@@ -47,4 +47,16 @@ class ElementoCicloItemTest {
         assertEquals(2, item.getCantidadYaProcesada());
         assertEquals("Hospital X", item.getClienteNombre());
     }
+
+    @Test
+    void isEquipo_conCategoriaEquipo_retornaTrue() {
+        ElementoCicloItem item = new ElementoCicloItem(1, 1, "Equipo Trauma", 1, 0, "Cliente", "EQUIPO");
+        assertTrue(item.isEquipo());
+    }
+
+    @Test
+    void isEquipo_conCategoriaRegular_retornaFalse() {
+        ElementoCicloItem item = new ElementoCicloItem(1, 1, "Bolsa", 3, 0, "Cliente", "REGULAR");
+        assertFalse(item.isEquipo());
+    }
 }

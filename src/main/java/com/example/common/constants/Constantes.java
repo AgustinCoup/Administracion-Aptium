@@ -34,6 +34,7 @@ public final class Constantes {
         public static final String INGRESO_LAVADERO       = "INGRESO_LAVADERO";
         public static final String CLASIFICACION_LAVADERO = "CLASIFICACION_LAVADERO";
         public static final String CICLOS_LAVADERO       = "CICLOS_LAVADERO";
+        public static final String VER_CICLOS_LAVADERO  = "VER_CICLOS_LAVADERO";
         public static final String AJUSTES              = "AJUSTES";
 
         private Pantallas() {}
@@ -169,6 +170,7 @@ public final class Constantes {
         public static final String INGRESO_LAVADERO       = "INGRESO LAVADERO";
         public static final String CLASIFICACION_LAVADERO = "CLASIFICACIÓN LAVADERO";
         public static final String CICLOS_LAVADERO       = "CICLOS DE LAVADO";
+        public static final String VER_CICLOS_LAVADERO  = "CICLOS FINALIZADOS";
         public static final String AJUSTES              = "Ajustes";
 
         private Titulos() {}
@@ -214,8 +216,11 @@ public final class Constantes {
         public static final String VER_EQUIPOS            = "Ver equipos";
         public static final String CERRAR                 = "Cerrar";
         public static final String CICLOS          = "Ciclos";
+        public static final String VER_CICLOS      = "Ver Ciclos";
         public static final String LANZAR_CICLO    = "Lanzar Ciclo";
         public static final String FINALIZAR_CICLO = "Finalizar Ciclo";
+        public static final String LANZAR_TODOS    = "Lanzar Todo";
+        public static final String DESCARTAR_TODOS = "Descartar";
         public static final String AJUSTES               = "Ajustes";
 
         private Botones() {}

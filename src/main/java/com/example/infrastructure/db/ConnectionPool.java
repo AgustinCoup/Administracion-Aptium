@@ -216,12 +216,17 @@ public class ConnectionPool {
         String dbUser = PROPS.getProperty("db.user", "root");
         String dbPass = PROPS.getProperty("db.pass", "root");
         
+        if (!dbName.matches("[a-zA-Z0-9_]+")) {
+            throw new RuntimeException(
+                "Nombre de base de datos inválido: '" + dbName + "'. Solo se permiten letras, números y guiones bajos.");
+        }
+
         // Conectar a MySQL SIN especificar base de datos
         String urlSinBD = "jdbc:mysql://" + dbIp + ":" + dbPort + "/?serverTimezone=UTC&connectionTimeZone=LOCAL";
-        
+
         try (Connection conn = java.sql.DriverManager.getConnection(urlSinBD, dbUser, dbPass);
              java.sql.Statement stmt = conn.createStatement()) {
-            
+
             // Crear base de datos si no existe
             String createDB = "CREATE DATABASE IF NOT EXISTS " + dbName;
             stmt.execute(createDB);

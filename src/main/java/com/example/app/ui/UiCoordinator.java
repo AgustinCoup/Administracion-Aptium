@@ -12,6 +12,7 @@ import com.example.features.equipos.otros.controller.OtrosInputController;
 import com.example.features.lavadero.controller.CiclosController;
 import com.example.features.lavadero.controller.ClasificacionController;
 import com.example.features.lavadero.controller.LavaderoController;
+import com.example.features.lavadero.controller.VerCiclosController;
 import com.example.features.ajustes.controller.AjustesController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
@@ -133,6 +134,14 @@ public class UiCoordinator {
         vista.getPantallaLavadero().getBtnCiclos().addActionListener(e -> {
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.CICLOS_LAVADERO);
             ciclosController.cargarDatos();
+        });
+
+        VerCiclosController verCiclosController = new VerCiclosController(
+            vista.getPantallaVerCiclos(), model);
+
+        vista.getPantallaLavadero().getBtnVerCiclos().addActionListener(e -> {
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.VER_CICLOS_LAVADERO);
+            verCiclosController.cargarDatos();
         });
         AjustesController ajustesController = new AjustesController(vista.getPantallaAjustes(), model);
         ajustesController.setOnMutacion(() -> { if (refrescarRef[0] != null) refrescarRef[0].run(); });

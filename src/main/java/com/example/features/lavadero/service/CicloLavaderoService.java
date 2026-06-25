@@ -54,6 +54,10 @@ public class CicloLavaderoService {
         dao.lanzarCiclo(lavarropasNumero, tipoJabon, litrosJabon, suavizante, litrosTotales, movimientos);
     }
 
+    public List<CicloLavadero> obtenerCiclosFinalizados() {
+        return dao.obtenerCiclosFinalizados();
+    }
+
     public List<ElementoCicloItem> obtenerElementosDeCiclo(int cicloId) {
         return dao.obtenerElementosDeCiclo(cicloId);
     }
