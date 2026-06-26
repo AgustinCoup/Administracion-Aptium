@@ -34,6 +34,12 @@ public class CicloLavaderoDAO {
         "       litros_totales, fecha_inicio, fecha_fin " +
         "FROM ciclos_lavadero WHERE fecha_fin IS NOT NULL ORDER BY fecha_fin DESC";
 
+    private static final String SQL_TODOS =
+        "SELECT id, lavarropas_numero, tipo_jabon, litros_jabon, suavizante, " +
+        "       litros_totales, fecha_inicio, fecha_fin " +
+        "FROM ciclos_lavadero " +
+        "ORDER BY CASE WHEN fecha_fin IS NULL THEN 0 ELSE 1 END, fecha_fin DESC";
+
     private static final String SQL_ELEMENTOS_DE_CICLO =
         "SELECT ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, " +
         "       eci.cantidad AS en_ciclo, c.nombre AS cliente, cel.categoria " +
@@ -93,6 +99,20 @@ public class CicloLavaderoDAO {
             }
         } catch (SQLException e) {
             log.error("Error al obtener ciclos finalizados", e);
+        }
+        return lista;
+    }
+
+    public List<CicloLavadero> obtenerTodosLosCiclos() {
+        List<CicloLavadero> lista = new ArrayList<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SQL_TODOS);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                lista.add(mapearCicloCompleto(rs));
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener todos los ciclos", e);
         }
         return lista;
     }
@@ -265,6 +285,21 @@ public class CicloLavaderoDAO {
             rs.getObject("fecha_inicio", LocalDateTime.class),
             null,
             "ACTIVO"
+        );
+    }
+
+    private CicloLavadero mapearCicloCompleto(ResultSet rs) throws SQLException {
+        LocalDateTime fechaFin = rs.getObject("fecha_fin", LocalDateTime.class);
+        return new CicloLavadero(
+            rs.getInt("id"),
+            rs.getInt("lavarropas_numero"),
+            TipoJabon.valueOf(rs.getString("tipo_jabon")),
+            rs.getBigDecimal("litros_jabon"),
+            rs.getBoolean("suavizante"),
+            rs.getBigDecimal("litros_totales"),
+            rs.getObject("fecha_inicio", LocalDateTime.class),
+            fechaFin,
+            fechaFin == null ? "ACTIVO" : "FINALIZADO"
         );
     }
 }

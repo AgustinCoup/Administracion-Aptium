@@ -61,11 +61,48 @@ public class VerCiclosControllerFiltrosTest {
         assertEquals(3, resultado.get(0).getId());
     }
 
+    @Test
+    public void cicloActivoSiempreAparece_sinFiltros() {
+        List<CicloLavadero> conActivo = List.of(ciclos.get(0), cicloActivo(4, 3));
+        assertEquals(2, VerCiclosController.filtrar(conActivo, null, null, null).size());
+    }
+
+    @Test
+    public void cicloActivoSiempreAparece_conFiltroDesde() {
+        CicloLavadero activo = cicloActivo(4, 3);
+        LocalDate fechaFutura = BASE.plusDays(10).toLocalDate();
+        List<CicloLavadero> resultado = VerCiclosController.filtrar(List.of(activo), null, fechaFutura, null);
+        assertEquals(1, resultado.size());
+    }
+
+    @Test
+    public void cicloActivoSiempreAparece_conFiltroHasta() {
+        CicloLavadero activo = cicloActivo(4, 3);
+        LocalDate fechaPasada = BASE.minusDays(100).toLocalDate();
+        List<CicloLavadero> resultado = VerCiclosController.filtrar(List.of(activo), null, null, fechaPasada);
+        assertEquals(1, resultado.size());
+    }
+
+    @Test
+    public void cicloActivoFiltradoPorNumeroLavarropas() {
+        CicloLavadero activo = cicloActivo(4, 3);
+        List<CicloLavadero> resultado = VerCiclosController.filtrar(List.of(activo), 1, null, null);
+        assertEquals(0, resultado.size());
+    }
+
     private CicloLavadero ciclo(int id, int lavarropas, LocalDateTime fechaFin) {
         return new CicloLavadero(
             id, lavarropas, TipoJabon.JABON_LIQUIDO,
             new BigDecimal("1.5"), false, null,
             BASE.minusDays(7), fechaFin, "FINALIZADO"
+        );
+    }
+
+    private CicloLavadero cicloActivo(int id, int lavarropas) {
+        return new CicloLavadero(
+            id, lavarropas, TipoJabon.JABON_LIQUIDO,
+            new BigDecimal("1.5"), false, null,
+            BASE.minusDays(1), null, "ACTIVO"
         );
     }
 }

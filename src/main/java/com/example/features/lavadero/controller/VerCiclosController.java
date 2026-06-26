@@ -32,7 +32,7 @@ public class VerCiclosController {
     }
 
     public void cargarDatos() {
-        cache = model.obtenerCiclosFinalizados();
+        cache = model.obtenerTodosLosCiclos();
         aplicarFiltros();
     }
 
@@ -51,9 +51,9 @@ public class VerCiclosController {
         return todos.stream()
             .filter(c -> numeroLavarropas == null
                 || c.getLavarropasNumero() == numeroLavarropas)
-            .filter(c -> desde == null
+            .filter(c -> desde == null || c.estaActivo()
                 || !c.getFechaFin().toLocalDate().isBefore(desde))
-            .filter(c -> hasta == null
+            .filter(c -> hasta == null || c.estaActivo()
                 || !c.getFechaFin().toLocalDate().isAfter(hasta))
             .collect(Collectors.toList());
     }

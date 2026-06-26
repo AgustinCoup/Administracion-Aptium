@@ -415,6 +415,10 @@ public class AppModel {
         return cicloLavaderoService.obtenerCiclosFinalizados();
     }
 
+    public List<CicloLavadero> obtenerTodosLosCiclos() {
+        return cicloLavaderoService.obtenerTodosLosCiclos();
+    }
+
     public List<ElementoCicloItem> obtenerElementosDeCiclo(int cicloId) {
         return cicloLavaderoService.obtenerElementosDeCiclo(cicloId);
     }

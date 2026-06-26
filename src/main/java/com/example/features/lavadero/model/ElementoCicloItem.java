@@ -17,7 +17,8 @@ public class ElementoCicloItem implements Serializable {
     private final String clienteNombre;
     private final String categoria;
 
-    private int cantidadEnCiclo;
+    private int     cantidadEnCiclo;
+    private Integer instanciaId;   // solo para equipos en staging; null para regulares y para ítems cargados de DB
 
     public ElementoCicloItem(int elementoClasificacionId, int ingresoId, String elementoNombre,
                               int cantidadTotal, int cantidadYaProcesada, String clienteNombre) {
@@ -51,4 +52,7 @@ public class ElementoCicloItem implements Serializable {
 
     public int getCantidadEnCiclo()         { return cantidadEnCiclo; }
     public void setCantidadEnCiclo(int cantidadEnCiclo) { this.cantidadEnCiclo = cantidadEnCiclo; }
+
+    public Integer getInstanciaId()                    { return instanciaId; }
+    public void    setInstanciaId(Integer instanciaId) { this.instanciaId = instanciaId; }
 }

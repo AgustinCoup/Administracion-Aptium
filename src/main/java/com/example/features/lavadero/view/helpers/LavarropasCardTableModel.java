@@ -32,8 +32,8 @@ public class LavarropasCardTableModel extends AbstractTableModel {
         switch (col) {
             case 0: return item.getElementoNombre();
             case 1: return item.getCantidadEnCiclo();
-            case 2: return item.isEquipo()
-                        ? "1/" + fracciones.getOrDefault(item.getElementoClasificacionId(), 1)
+            case 2: return item.isEquipo() && item.getInstanciaId() != null
+                        ? "1/" + fracciones.getOrDefault(item.getInstanciaId(), 1)
                         : "—";
             case 3: return item.getIngresoId();
             case 4: return item.getClienteNombre();

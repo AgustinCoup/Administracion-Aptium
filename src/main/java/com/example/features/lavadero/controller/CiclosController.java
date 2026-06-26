@@ -24,6 +24,7 @@ import java.awt.event.ComponentEvent;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class CiclosController {
@@ -35,6 +36,7 @@ public class CiclosController {
     private final Map<Integer, LavarropasCard> cards;
 
     private final Map<Integer, List<ElementoCicloItem>> pendientesPorLavarropas = new HashMap<>();
+    private final AtomicInteger nextInstanciaId = new AtomicInteger(1);
     private Map<Integer, CicloLavadero> ciclosActivos        = new HashMap<>();
     private List<ElementoCicloItem>     elementosDisponibles  = new ArrayList<>();
     private List<LavarropasItem>        lavarropasItems       = new ArrayList<>();
@@ -76,6 +78,7 @@ public class CiclosController {
         }
 
         pantalla.getBtnLanzarTodos().addActionListener(e -> lanzarTodos());
+        pantalla.getBtnFinalizarTodos().addActionListener(e -> finalizarTodos());
         pantalla.getBtnDescartarTodos().addActionListener(e -> {
             if (tienePendientes() && pantalla.confirmar(
                     Constantes.Mensajes.GUARD_CICLOS_CAMBIOS,
@@ -105,6 +108,7 @@ public class CiclosController {
                 if (!dndConfigurado) {
                     SwingUtilities.invokeLater(() -> { configurarDnD(); dndConfigurado = true; });
                 }
+                cards.values().forEach(LavarropasCard::colapsarSiPuede);
             }
         });
     }
@@ -149,14 +153,15 @@ public class CiclosController {
         boolean hayPendientes = tienePendientes();
         pantalla.getBtnLanzarTodos().setEnabled(hayPendientes);
         pantalla.getBtnDescartarTodos().setEnabled(hayPendientes);
+        pantalla.getBtnFinalizarTodos().setEnabled(!ciclosActivos.isEmpty());
     }
 
     private Map<Integer, Integer> computarFracciones() {
         Map<Integer, Integer> count = new HashMap<>();
         for (List<ElementoCicloItem> items : pendientesPorLavarropas.values()) {
             for (ElementoCicloItem item : items) {
-                if (item.isEquipo()) {
-                    count.merge(item.getElementoClasificacionId(), 1, Integer::sum);
+                if (item.isEquipo() && item.getInstanciaId() != null) {
+                    count.merge(item.getInstanciaId(), 1, Integer::sum);
                 }
             }
         }
@@ -168,17 +173,36 @@ public class CiclosController {
         for (ElementoCicloItem item : dbDisponibles) {
             mapa.put(item.getElementoClasificacionId(), item);
         }
+
+        Map<Integer, Integer>      regularStaged    = new HashMap<>();
+        Map<Integer, Set<Integer>> equipoInstancias = new HashMap<>();
+
         for (List<ElementoCicloItem> pendientes : pendientesPorLavarropas.values()) {
-            for (ElementoCicloItem pendiente : pendientes) {
-                ElementoCicloItem disponible = mapa.get(pendiente.getElementoClasificacionId());
-                if (disponible == null) continue;
-                int totalStaged = disponible.getCantidadEnCiclo() + pendiente.getCantidadEnCiclo();
-                disponible.setCantidadEnCiclo(totalStaged);
-                if (totalStaged >= disponible.getCantidadDisponible()) {
-                    mapa.remove(pendiente.getElementoClasificacionId());
+            for (ElementoCicloItem p : pendientes) {
+                int id = p.getElementoClasificacionId();
+                if (p.isEquipo() && p.getInstanciaId() != null) {
+                    equipoInstancias.computeIfAbsent(id, k -> new HashSet<>()).add(p.getInstanciaId());
+                } else {
+                    regularStaged.merge(id, p.getCantidadEnCiclo(), Integer::sum);
                 }
             }
         }
+
+        regularStaged.forEach((id, staged) -> {
+            ElementoCicloItem d = mapa.get(id);
+            if (d == null) return;
+            d.setCantidadEnCiclo(staged);
+            if (staged >= d.getCantidadDisponible()) mapa.remove(id);
+        });
+
+        equipoInstancias.forEach((id, instancias) -> {
+            int staged = instancias.size();
+            ElementoCicloItem d = mapa.get(id);
+            if (d == null) return;
+            d.setCantidadEnCiclo(staged);
+            if (staged >= d.getCantidadDisponible()) mapa.remove(id);
+        });
+
         return new ArrayList<>(mapa.values());
     }
 
@@ -231,9 +255,9 @@ public class CiclosController {
                 ElementoCicloItem item = (ElementoCicloItem) support.getTransferable()
                     .getTransferData(ELEMENTO_CICLO_FLAVOR);
                 if (item.isEquipo()) {
-                    SwingUtilities.invokeLater(() -> abrirDialogoSubdivision(item, lavarropasNum));
+                    SwingUtilities.invokeLater(() -> procesarDropEquipo(item, lavarropasNum));
                 } else {
-                    SwingUtilities.invokeLater(() -> agregarElementoACard(lavarropasNum, item));
+                    SwingUtilities.invokeLater(() -> procesarDropRegular(item, lavarropasNum));
                 }
                 return true;
             } catch (Exception e) {
@@ -247,34 +271,48 @@ public class CiclosController {
 
     // ── Agregar elementos ─────────────────────────────────────────────────────
 
-    private void agregarElementoACard(int lavarropasNum, ElementoCicloItem item) {
-        int maxDisponible = item.getCantidadDisponible() - item.getCantidadEnCiclo();
-        if (maxDisponible <= 0) return;
+    private void procesarDropRegular(ElementoCicloItem item, int lavarropasNum) {
+        int max = item.getCantidadDisponible() - item.getCantidadEnCiclo();
+        if (max <= 0) return;
+        int k = (max == 1) ? 1 : seleccionarSubcantidad(item);
+        if (k <= 0) return;
+        agregarPendiente(lavarropasNum, item, k);
+        refrescarDisponiblesYCards();
+    }
 
-        JSpinner spCantidad = new JSpinner(new SpinnerNumberModel(maxDisponible, 1, maxDisponible, 1));
-        spCantidad.setEditor(new JSpinner.NumberEditor(spCantidad, "0"));
+    private void procesarDropEquipo(ElementoCicloItem item, int lavarropasNum) {
+        int max = item.getCantidadDisponible() - item.getCantidadEnCiclo();
+        if (max <= 0) return;
+        int k = (max == 1) ? 1 : seleccionarSubcantidad(item);
+        if (k <= 0) return;
+        for (int unidad = 1; unidad <= k; unidad++) {
+            abrirDialogoSubdivisionUnidad(item, lavarropasNum, unidad, k);
+        }
+        refrescarDisponiblesYCards();
+    }
 
-        JPanel dlgPanel = new JPanel(new GridBagLayout());
+    private int seleccionarSubcantidad(ElementoCicloItem item) {
+        int max = item.getCantidadDisponible() - item.getCantidadEnCiclo();
+        JSpinner sp = new JSpinner(new SpinnerNumberModel(1, 1, max, 1));
+        sp.setEditor(new JSpinner.NumberEditor(sp, "0"));
+        JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(4, 5, 4, 5);
         gbc.anchor = GridBagConstraints.WEST;
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
-        dlgPanel.add(new JLabel("<html><b>" + item.getElementoNombre()
-            + "</b> — " + item.getClienteNombre() + "</html>"), gbc);
+        panel.add(new JLabel("<html><b>" + item.getElementoNombre()
+            + "</b> — " + item.getClienteNombre() + " (disponibles: " + max + ")</html>"), gbc);
         gbc.gridy = 1; gbc.gridwidth = 1;
-        dlgPanel.add(new JLabel("Cantidad:"), gbc);
+        panel.add(new JLabel("Unidades:"), gbc);
         gbc.gridx = 1;
-        dlgPanel.add(spCantidad, gbc);
-
-        int res = JOptionPane.showConfirmDialog(pantalla, dlgPanel,
-            "Agregar al ciclo", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
-        if (res != JOptionPane.OK_OPTION) return;
-
-        agregarPendiente(lavarropasNum, item, (Integer) spCantidad.getValue());
-        refrescarDisponiblesYCards();
+        panel.add(sp, gbc);
+        int res = JOptionPane.showConfirmDialog(pantalla, panel,
+            "¿Cuántas unidades distribuís ahora?", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+        return res == JOptionPane.OK_OPTION ? (Integer) sp.getValue() : 0;
     }
 
-    private void abrirDialogoSubdivision(ElementoCicloItem equipo, Integer preSelected) {
+    private void abrirDialogoSubdivisionUnidad(ElementoCicloItem equipo, int preSelected,
+                                                int unidad, int totalUnidades) {
         List<LavarropasItem> candidatos = lavarropasItems.stream()
             .filter(lv -> !ciclosActivos.containsKey(lv.getNumero()))
             .collect(Collectors.toList());
@@ -284,31 +322,36 @@ public class CiclosController {
         }
         Frame frame = (Frame) SwingUtilities.getWindowAncestor(pantalla);
         EquipoSubdivisionDialog dlg =
-            new EquipoSubdivisionDialog(frame, equipo, candidatos, preSelected);
+            new EquipoSubdivisionDialog(frame, equipo, candidatos, preSelected, unidad, totalUnidades);
         dlg.setVisible(true);
         List<Integer> seleccionados = dlg.getSeleccionados();
         if (seleccionados.isEmpty()) return;
+        int instanciaId = nextInstanciaId.getAndIncrement();
         for (int num : seleccionados) {
             ElementoCicloItem copia = new ElementoCicloItem(
-                equipo.getElementoClasificacionId(),
-                equipo.getIngresoId(),
-                equipo.getElementoNombre(),
-                equipo.getCantidadTotal(),
-                equipo.getCantidadYaProcesada(),
-                equipo.getClienteNombre(),
+                equipo.getElementoClasificacionId(), equipo.getIngresoId(),
+                equipo.getElementoNombre(), equipo.getCantidadTotal(),
+                equipo.getCantidadYaProcesada(), equipo.getClienteNombre(),
                 ElementoCicloItem.CATEGORIA_EQUIPO
             );
+            copia.setInstanciaId(instanciaId);
             copia.setCantidadEnCiclo(1);
-            agregarPendiente(num, copia, 1);
+            agregarPendienteEquipo(num, copia);
         }
-        refrescarDisponiblesYCards();
+    }
+
+    private void agregarPendienteEquipo(int lavarropasNumero, ElementoCicloItem item) {
+        pendientesPorLavarropas
+            .computeIfAbsent(lavarropasNumero, k -> new ArrayList<>())
+            .add(item);
     }
 
     private void agregarPendiente(int lavarropasNumero, ElementoCicloItem origen, int cantidad) {
         List<ElementoCicloItem> pendientes = pendientesPorLavarropas
             .computeIfAbsent(lavarropasNumero, k -> new ArrayList<>());
         for (ElementoCicloItem existente : pendientes) {
-            if (existente.getElementoClasificacionId() == origen.getElementoClasificacionId()) {
+            if (existente.getElementoClasificacionId() == origen.getElementoClasificacionId()
+                    && !existente.isEquipo()) {
                 existente.setCantidadEnCiclo(existente.getCantidadEnCiclo() + cantidad);
                 return;
             }
@@ -388,18 +431,35 @@ public class CiclosController {
     }
 
     private void finalizarCiclo(int num) {
-        CicloLavadero ciclo = ciclosActivos.get(num);
-        if (ciclo == null) return;
+        if (ciclosActivos.get(num) == null) return;
         if (!pantalla.confirmar(Constantes.Mensajes.CONFIRMAR_FINALIZAR_CICLO,
                 Constantes.Mensajes.TITULO_FINALIZAR_LOTE)) return;
+        ejecutarFinalizacion(num);
+        cargarDatos();
+    }
+
+    private void finalizarTodos() {
+        List<Integer> conActivos = ciclosActivos.keySet().stream()
+            .sorted().collect(Collectors.toList());
+        if (conActivos.isEmpty()) return;
+        if (!pantalla.confirmar(
+                "¿Finalizar " + conActivos.size() + " ciclo(s) activo(s)?",
+                Constantes.Mensajes.TITULO_FINALIZAR_LOTE)) return;
+        for (int num : conActivos) {
+            ejecutarFinalizacion(num);
+        }
+        cargarDatos();
+    }
+
+    private void ejecutarFinalizacion(int num) {
+        CicloLavadero ciclo = ciclosActivos.get(num);
+        if (ciclo == null) return;
         try {
             model.finalizarCiclo(ciclo.getId());
         } catch (Exception e) {
             log.error("Error al finalizar ciclo {}", ciclo.getId(), e);
             pantalla.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_CICLO);
-            return;
         }
-        cargarDatos();
     }
 
     // ── Pendientes ────────────────────────────────────────────────────────────

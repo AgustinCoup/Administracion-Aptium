@@ -26,6 +26,7 @@ public class PantallaCiclos extends JPanel {
     private final Map<Integer, LavarropasCard> cards = new LinkedHashMap<>();
 
     private final JButton btnLanzarTodos    = new JButton(Constantes.Botones.LANZAR_TODOS);
+    private final JButton btnFinalizarTodos = new JButton(Constantes.Botones.FINALIZAR_TODOS);
     private final JButton btnDescartarTodos = new JButton(Constantes.Botones.DESCARTAR_TODOS);
 
     public PantallaCiclos(CardLayout navegador, JPanel contenedor) {
@@ -54,21 +55,22 @@ public class PantallaCiclos extends JPanel {
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill    = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 0.2;
+        gbc.weightx = 0.25;
         gbc.weighty = 0.0;
         gbc.anchor  = GridBagConstraints.NORTH;
         gbc.insets  = new Insets(4, 4, 4, 4);
 
         for (int i = 1; i <= 13; i++) {
-            gbc.gridx = (i - 1) % 5;
-            gbc.gridy = (i - 1) / 5;
+            gbc.gridx = (i - 1) % 4;
+            gbc.gridy = (i - 1) / 4;
             LavarropasCard card = new LavarropasCard(i);
             cards.put(i, card);
             panelCards.add(card, gbc);
         }
-        // Relleno para las dos posiciones vacías de la última fila
-        gbc.gridx = 3; gbc.gridy = 2; panelCards.add(new JPanel(), gbc);
-        gbc.gridx = 4; gbc.gridy = 2; panelCards.add(new JPanel(), gbc);
+        // Relleno para las tres posiciones vacías de la última fila (13 en col 0, rest vacío)
+        gbc.gridx = 1; gbc.gridy = 3; panelCards.add(new JPanel(), gbc);
+        gbc.gridx = 2; gbc.gridy = 3; panelCards.add(new JPanel(), gbc);
+        gbc.gridx = 3; gbc.gridy = 3; panelCards.add(new JPanel(), gbc);
 
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
             panelTop,
@@ -78,7 +80,7 @@ public class PantallaCiclos extends JPanel {
         split.setResizeWeight(0.35);
         add(split, BorderLayout.CENTER);
 
-        for (JButton btn : new JButton[]{btnDescartarTodos, btnLanzarTodos}) {
+        for (JButton btn : new JButton[]{btnDescartarTodos, btnLanzarTodos, btnFinalizarTodos}) {
             btn.setFont(Estilos.Fuentes.BOTON);
             btn.setEnabled(false);
         }
@@ -86,6 +88,7 @@ public class PantallaCiclos extends JPanel {
         panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
         panelBotones.add(btnDescartarTodos);
         panelBotones.add(btnLanzarTodos);
+        panelBotones.add(btnFinalizarTodos);
         add(panelBotones, BorderLayout.SOUTH);
     }
 
@@ -128,6 +131,7 @@ public class PantallaCiclos extends JPanel {
     // ── Botones globales ──────────────────────────────────────────────────────
 
     public JButton getBtnLanzarTodos()    { return btnLanzarTodos; }
+    public JButton getBtnFinalizarTodos() { return btnFinalizarTodos; }
     public JButton getBtnDescartarTodos() { return btnDescartarTodos; }
 
     // ── Guard y diálogos ─────────────────────────────────────────────────────

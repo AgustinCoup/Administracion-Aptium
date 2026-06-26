@@ -58,6 +58,10 @@ public class CicloLavaderoService {
         return dao.obtenerCiclosFinalizados();
     }
 
+    public List<CicloLavadero> obtenerTodosLosCiclos() {
+        return dao.obtenerTodosLosCiclos();
+    }
+
     public List<ElementoCicloItem> obtenerElementosDeCiclo(int cicloId) {
         return dao.obtenerElementosDeCiclo(cicloId);
     }

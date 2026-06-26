@@ -18,8 +18,12 @@ public class EquipoSubdivisionDialog extends JDialog {
 
     public EquipoSubdivisionDialog(Frame parent, ElementoCicloItem equipo,
                                    List<LavarropasItem> candidatos,
-                                   Integer lavarropasPreSelected) {
-        super(parent, "Subdividir: " + equipo.getElementoNombre(), true);
+                                   Integer lavarropasPreSelected,
+                                   int unidad, int totalUnidades) {
+        super(parent, totalUnidades == 1
+            ? "Subdividir: " + equipo.getElementoNombre()
+            : "Unidad " + unidad + " de " + totalUnidades + " — " + equipo.getElementoNombre(),
+            true);
         setLayout(new BorderLayout(5, 5));
 
         add(new JLabel("<html><b>Subdividir:</b> " + equipo.getElementoNombre()

@@ -95,6 +95,10 @@ public class LavarropasCard extends JPanel {
         add(panelSouth, BorderLayout.SOUTH);
 
         actualizarToggle();
+
+        // Colapsar por defecto: todos los cards arrancan libres y vacíos
+        collapsed = true;
+        aplicarColapso();
     }
 
     private JPanel buildConfigPanel() {
@@ -144,6 +148,13 @@ public class LavarropasCard extends JPanel {
         if (!puedeContraerse()) return;
         collapsed = !collapsed;
         aplicarColapso();
+    }
+
+    public void colapsarSiPuede() {
+        if (puedeContraerse() && !collapsed) {
+            collapsed = true;
+            aplicarColapso();
+        }
     }
 
     private void aplicarColapso() {

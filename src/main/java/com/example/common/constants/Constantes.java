@@ -219,8 +219,9 @@ public final class Constantes {
         public static final String VER_CICLOS      = "Ver Ciclos";
         public static final String LANZAR_CICLO    = "Lanzar Ciclo";
         public static final String FINALIZAR_CICLO = "Finalizar Ciclo";
-        public static final String LANZAR_TODOS    = "Lanzar Todo";
-        public static final String DESCARTAR_TODOS = "Descartar";
+        public static final String LANZAR_TODOS     = "Lanzar Todo";
+        public static final String FINALIZAR_TODOS  = "Finalizar Todo";
+        public static final String DESCARTAR_TODOS  = "Descartar";
         public static final String AJUSTES               = "Ajustes";
 
         private Botones() {}
