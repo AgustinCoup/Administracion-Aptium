@@ -44,8 +44,8 @@ public class PantallaVerCiclos extends JPanel {
         add(panelNorte, BorderLayout.NORTH);
 
         modeloTabla = new DefaultTableModel(
-            new Object[]{"ID", "Lavarropas", "Tipo Jabón", "L. Jabón",
-                         "Suavizante", "L. Totales", "Inicio", "Fin"},
+            new Object[]{"ID", "Lavarropas", "Jabón", "mL Jabón",
+                         "Suavizante", "Potenciador", "mL Totales", "Inicio", "Fin"},
             0
         ) {
             @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -53,7 +53,7 @@ public class PantallaVerCiclos extends JPanel {
 
         tablaCiclos = new JTable(modeloTabla);
         TableStyler.applyStandard(tablaCiclos);
-        TableStyler.centerColumns(tablaCiclos, 0, 1, 3, 4, 5);
+        TableStyler.centerColumns(tablaCiclos, 0, 1, 3, 4, 5, 6);
         tablaCiclos.setRowSelectionAllowed(false);
         tablaCiclos.setFillsViewportHeight(true);
 
@@ -106,9 +106,10 @@ public class PantallaVerCiclos extends JPanel {
             modeloTabla.addRow(new Object[]{
                 c.getId(),
                 c.getLavarropasNumero(),
-                c.getTipoJabon().getDisplayName(),
+                c.getJabon().getNombre(),
                 c.getLitrosJabon(),
-                c.isSuavizante() ? "Sí" : "No",
+                c.isSuavizante()   ? "Sí" : "No",
+                c.isPotenciador()  ? "Sí" : "No",
                 c.getLitrosTotales() != null ? c.getLitrosTotales() : "—",
                 DateTimeDisplayUtils.formatForUi(c.getFechaInicio()),
                 DateTimeDisplayUtils.formatForUi(c.getFechaFin())

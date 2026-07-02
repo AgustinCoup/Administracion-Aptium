@@ -44,7 +44,8 @@ import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.IngresoLavadero;
 import com.example.features.lavadero.model.IngresoLavaderoResumen;
 import com.example.features.lavadero.model.Lavarropas;
-import com.example.features.lavadero.model.TipoJabon;
+import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.ClasificacionLavaderoService;
 import com.example.features.lavadero.service.LavarropasService;
@@ -81,6 +82,7 @@ public class AppModel {
     private final ClasificacionLavaderoService clasificacionLavaderoService;
     private final LavarropasService            lavarropasService;
     private final CicloLavaderoService         cicloLavaderoService;
+    private final CatalogoJabonesService       catalogoJabonesService;
     private final LoteReporteService         loteReporteService;
     private final EquipoReporteService       equipoReporteService;
     private final EquipoOtrosReporteService  equipoOtrosReporteService;
@@ -110,6 +112,7 @@ public class AppModel {
         this.clasificacionLavaderoService   = context.getClasificacionLavaderoService();
         this.lavarropasService              = context.getLavarropasService();
         this.cicloLavaderoService           = context.getCicloLavaderoService();
+        this.catalogoJabonesService         = context.getCatalogoJabonesService();
         this.loteReporteService             = new LoteReporteService(this);
         this.equipoReporteService      = new EquipoReporteService(this);
         this.equipoOtrosReporteService = new EquipoOtrosReporteService(this);
@@ -404,11 +407,15 @@ public class AppModel {
         return cicloLavaderoService.obtenerElementosDisponiblesParaCiclo();
     }
 
-    public void lanzarCiclo(int lavarropasNumero, TipoJabon tipoJabon, BigDecimal litrosJabon,
-                             boolean suavizante, BigDecimal litrosTotales,
+    public void lanzarCiclo(int lavarropasNumero, JabonCatalogo jabon, BigDecimal litrosJabon,
+                             boolean suavizante, boolean potenciador, BigDecimal litrosTotales,
                              List<ElementoCicloMovimiento> movimientos) {
-        cicloLavaderoService.lanzarCiclo(lavarropasNumero, tipoJabon, litrosJabon,
-                                          suavizante, litrosTotales, movimientos);
+        cicloLavaderoService.lanzarCiclo(lavarropasNumero, jabon, litrosJabon,
+                                          suavizante, potenciador, litrosTotales, movimientos);
+    }
+
+    public List<JabonCatalogo> obtenerJabones() {
+        return catalogoJabonesService.obtenerTodos();
     }
 
     public List<CicloLavadero> obtenerCiclosFinalizados() {

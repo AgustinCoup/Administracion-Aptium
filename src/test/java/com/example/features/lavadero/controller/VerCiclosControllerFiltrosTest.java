@@ -1,7 +1,7 @@
 package com.example.features.lavadero.controller;
 
 import com.example.features.lavadero.model.CicloLavadero;
-import com.example.features.lavadero.model.TipoJabon;
+import com.example.features.lavadero.model.JabonCatalogo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -90,18 +90,20 @@ public class VerCiclosControllerFiltrosTest {
         assertEquals(0, resultado.size());
     }
 
+    private static final JabonCatalogo SKIP = new JabonCatalogo(1, "Skip");
+
     private CicloLavadero ciclo(int id, int lavarropas, LocalDateTime fechaFin) {
         return new CicloLavadero(
-            id, lavarropas, TipoJabon.JABON_LIQUIDO,
-            new BigDecimal("1.5"), false, null,
+            id, lavarropas, SKIP,
+            new BigDecimal("1.5"), false, false, null,
             BASE.minusDays(7), fechaFin, "FINALIZADO"
         );
     }
 
     private CicloLavadero cicloActivo(int id, int lavarropas) {
         return new CicloLavadero(
-            id, lavarropas, TipoJabon.JABON_LIQUIDO,
-            new BigDecimal("1.5"), false, null,
+            id, lavarropas, SKIP,
+            new BigDecimal("1.5"), false, false, null,
             BASE.minusDays(1), null, "ACTIVO"
         );
     }

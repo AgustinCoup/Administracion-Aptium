@@ -9,31 +9,35 @@ public class CicloLavadero {
 
     private final int id;
     private final int lavarropasNumero;
-    private final TipoJabon tipoJabon;
+    private final JabonCatalogo jabon;
     private final BigDecimal litrosJabon;
     private final boolean suavizante;
+    private final boolean potenciador;
     private final BigDecimal litrosTotales;
     private final LocalDateTime fechaInicio;
     private final LocalDateTime fechaFin;
     private final String estado;
     private final List<ElementoCicloItem> materiales;
 
-    public CicloLavadero(int id, int lavarropasNumero, TipoJabon tipoJabon,
-                         BigDecimal litrosJabon, boolean suavizante, BigDecimal litrosTotales,
+    public CicloLavadero(int id, int lavarropasNumero, JabonCatalogo jabon,
+                         BigDecimal litrosJabon, boolean suavizante, boolean potenciador,
+                         BigDecimal litrosTotales,
                          LocalDateTime fechaInicio, LocalDateTime fechaFin, String estado) {
-        this(id, lavarropasNumero, tipoJabon, litrosJabon, suavizante, litrosTotales,
+        this(id, lavarropasNumero, jabon, litrosJabon, suavizante, potenciador, litrosTotales,
              fechaInicio, fechaFin, estado, new ArrayList<>());
     }
 
-    public CicloLavadero(int id, int lavarropasNumero, TipoJabon tipoJabon,
-                         BigDecimal litrosJabon, boolean suavizante, BigDecimal litrosTotales,
+    public CicloLavadero(int id, int lavarropasNumero, JabonCatalogo jabon,
+                         BigDecimal litrosJabon, boolean suavizante, boolean potenciador,
+                         BigDecimal litrosTotales,
                          LocalDateTime fechaInicio, LocalDateTime fechaFin, String estado,
                          List<ElementoCicloItem> materiales) {
         this.id               = id;
         this.lavarropasNumero = lavarropasNumero;
-        this.tipoJabon        = tipoJabon;
+        this.jabon            = jabon;
         this.litrosJabon      = litrosJabon;
         this.suavizante       = suavizante;
+        this.potenciador      = potenciador;
         this.litrosTotales    = litrosTotales;
         this.fechaInicio      = fechaInicio;
         this.fechaFin         = fechaFin;
@@ -43,9 +47,10 @@ public class CicloLavadero {
 
     public int getId()                     { return id; }
     public int getLavarropasNumero()       { return lavarropasNumero; }
-    public TipoJabon getTipoJabon()        { return tipoJabon; }
+    public JabonCatalogo getJabon()        { return jabon; }
     public BigDecimal getLitrosJabon()     { return litrosJabon; }
     public boolean isSuavizante()          { return suavizante; }
+    public boolean isPotenciador()         { return potenciador; }
     public BigDecimal getLitrosTotales()   { return litrosTotales; }
     public LocalDateTime getFechaInicio()  { return fechaInicio; }
     public LocalDateTime getFechaFin()     { return fechaFin; }

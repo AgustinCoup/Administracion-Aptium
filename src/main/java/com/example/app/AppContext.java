@@ -36,6 +36,8 @@ import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
 import com.example.features.lavadero.dao.IngresoLavaderoDAO;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.dao.LavarropasDAO;
+import com.example.features.lavadero.dao.CatalogoJabonesDAO;
+import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.ClasificacionLavaderoService;
 import com.example.features.lavadero.service.LavarropasService;
@@ -61,7 +63,8 @@ public class AppContext {
     private final LavaderoService lavaderoService;
     private final ClasificacionLavaderoService clasificacionLavaderoService;
     private final LavarropasService lavarropasService;
-    private final CicloLavaderoService cicloLavaderoService;
+    private final CicloLavaderoService   cicloLavaderoService;
+    private final CatalogoJabonesService catalogoJabonesService;
 
     public AppContext(
         EquipoService equipoService,
@@ -82,7 +85,8 @@ public class AppContext {
         LavaderoService lavaderoService,
         ClasificacionLavaderoService clasificacionLavaderoService,
         LavarropasService lavarropasService,
-        CicloLavaderoService cicloLavaderoService
+        CicloLavaderoService cicloLavaderoService,
+        CatalogoJabonesService catalogoJabonesService
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
             || profesionalService == null || institucionService == null || materialService == null
@@ -91,7 +95,8 @@ public class AppContext {
             || equipoOtrosService == null || equipoCorreccionService == null
             || equipoOtrosCorreccionService == null || lavaderoService == null
             || clasificacionLavaderoService == null
-            || lavarropasService == null || cicloLavaderoService == null) {
+            || lavarropasService == null || cicloLavaderoService == null
+            || catalogoJabonesService == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -112,8 +117,9 @@ public class AppContext {
         this.equipoOtrosCorreccionService = equipoOtrosCorreccionService;
         this.lavaderoService = lavaderoService;
         this.clasificacionLavaderoService = clasificacionLavaderoService;
-        this.lavarropasService = lavarropasService;
-        this.cicloLavaderoService = cicloLavaderoService;
+        this.lavarropasService       = lavarropasService;
+        this.cicloLavaderoService    = cicloLavaderoService;
+        this.catalogoJabonesService  = catalogoJabonesService;
     }
 
     public static AppContext createDefault() {
@@ -163,6 +169,8 @@ public class AppContext {
         LavarropasService lavarropasService = new LavarropasService(lavarropasDAO);
         CicloLavaderoDAO cicloLavaderoDAO = new CicloLavaderoDAO();
         CicloLavaderoService cicloLavaderoService = new CicloLavaderoService(cicloLavaderoDAO);
+        CatalogoJabonesDAO catalogoJabonesDAO = new CatalogoJabonesDAO();
+        CatalogoJabonesService catalogoJabonesService = new CatalogoJabonesService(catalogoJabonesDAO);
 
         return new AppContext(
             equipoService,
@@ -183,7 +191,8 @@ public class AppContext {
             lavaderoService,
             clasificacionLavaderoService,
             lavarropasService,
-            cicloLavaderoService
+            cicloLavaderoService,
+            catalogoJabonesService
         );
     }
 
@@ -261,6 +270,10 @@ public class AppContext {
 
     public CicloLavaderoService getCicloLavaderoService() {
         return cicloLavaderoService;
+    }
+
+    public CatalogoJabonesService getCatalogoJabonesService() {
+        return catalogoJabonesService;
     }
 }
 

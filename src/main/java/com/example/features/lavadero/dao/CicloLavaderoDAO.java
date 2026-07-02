@@ -3,7 +3,7 @@ package com.example.features.lavadero.dao;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
-import com.example.features.lavadero.model.TipoJabon;
+import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.infrastructure.db.TransactionalConnection;
 import org.slf4j.Logger;
@@ -19,26 +19,34 @@ public class CicloLavaderoDAO {
     private static final Logger log = LoggerFactory.getLogger(CicloLavaderoDAO.class);
 
     private static final String SQL_INSERTAR_CICLO =
-        "INSERT INTO ciclos_lavadero (lavarropas_numero, tipo_jabon, litros_jabon, suavizante, litros_totales, fecha_inicio, estado) " +
-        "VALUES (?, ?, ?, ?, ?, NOW(), 'ACTIVO')";
+        "INSERT INTO ciclos_lavadero (lavarropas_numero, jabon_id, litros_jabon, suavizante, potenciador, litros_totales, fecha_inicio, estado) " +
+        "VALUES (?, ?, ?, ?, ?, ?, NOW(), 'ACTIVO')";
 
     private static final String SQL_INSERTAR_ELEMENTO =
         "INSERT INTO elementos_ciclo_lavadero (ciclo_id, elemento_clasificacion_id, cantidad) VALUES (?, ?, ?)";
 
     private static final String SQL_ACTIVOS =
-        "SELECT id, lavarropas_numero, tipo_jabon, litros_jabon, suavizante, litros_totales, fecha_inicio " +
-        "FROM ciclos_lavadero WHERE fecha_fin IS NULL";
+        "SELECT cl.id, cl.lavarropas_numero, cl.jabon_id, cj.nombre AS jabon_nombre, " +
+        "       cl.litros_jabon, cl.suavizante, cl.potenciador, cl.litros_totales, cl.fecha_inicio " +
+        "FROM ciclos_lavadero cl " +
+        "JOIN catalogo_jabones cj ON cj.id = cl.jabon_id " +
+        "WHERE cl.fecha_fin IS NULL";
 
     private static final String SQL_FINALIZADOS =
-        "SELECT id, lavarropas_numero, tipo_jabon, litros_jabon, suavizante, " +
-        "       litros_totales, fecha_inicio, fecha_fin " +
-        "FROM ciclos_lavadero WHERE fecha_fin IS NOT NULL ORDER BY fecha_fin DESC";
+        "SELECT cl.id, cl.lavarropas_numero, cl.jabon_id, cj.nombre AS jabon_nombre, " +
+        "       cl.litros_jabon, cl.suavizante, cl.potenciador, cl.litros_totales, " +
+        "       cl.fecha_inicio, cl.fecha_fin " +
+        "FROM ciclos_lavadero cl " +
+        "JOIN catalogo_jabones cj ON cj.id = cl.jabon_id " +
+        "WHERE cl.fecha_fin IS NOT NULL ORDER BY cl.fecha_fin DESC";
 
     private static final String SQL_TODOS =
-        "SELECT id, lavarropas_numero, tipo_jabon, litros_jabon, suavizante, " +
-        "       litros_totales, fecha_inicio, fecha_fin " +
-        "FROM ciclos_lavadero " +
-        "ORDER BY CASE WHEN fecha_fin IS NULL THEN 0 ELSE 1 END, fecha_fin DESC";
+        "SELECT cl.id, cl.lavarropas_numero, cl.jabon_id, cj.nombre AS jabon_nombre, " +
+        "       cl.litros_jabon, cl.suavizante, cl.potenciador, cl.litros_totales, " +
+        "       cl.fecha_inicio, cl.fecha_fin " +
+        "FROM ciclos_lavadero cl " +
+        "JOIN catalogo_jabones cj ON cj.id = cl.jabon_id " +
+        "ORDER BY CASE WHEN cl.fecha_fin IS NULL THEN 0 ELSE 1 END, cl.fecha_fin DESC";
 
     private static final String SQL_ELEMENTOS_DE_CICLO =
         "SELECT ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, " +
@@ -88,9 +96,10 @@ public class CicloLavaderoDAO {
                 lista.add(new CicloLavadero(
                     rs.getInt("id"),
                     rs.getInt("lavarropas_numero"),
-                    TipoJabon.valueOf(rs.getString("tipo_jabon")),
+                    new JabonCatalogo(rs.getInt("jabon_id"), rs.getString("jabon_nombre")),
                     rs.getBigDecimal("litros_jabon"),
                     rs.getBoolean("suavizante"),
+                    rs.getBoolean("potenciador"),
                     rs.getBigDecimal("litros_totales"),
                     rs.getObject("fecha_inicio", LocalDateTime.class),
                     rs.getObject("fecha_fin",    LocalDateTime.class),
@@ -111,6 +120,7 @@ public class CicloLavaderoDAO {
             while (rs.next()) {
                 lista.add(mapearCicloCompleto(rs));
             }
+
         } catch (SQLException e) {
             log.error("Error al obtener todos los ciclos", e);
         }
@@ -139,12 +149,12 @@ public class CicloLavaderoDAO {
         return lista;
     }
 
-    public void lanzarCiclo(int lavarropasNumero, TipoJabon tipoJabon, BigDecimal litrosJabon,
-                             boolean suavizante, BigDecimal litrosTotales,
+    public void lanzarCiclo(int lavarropasNumero, JabonCatalogo jabon, BigDecimal litrosJabon,
+                             boolean suavizante, boolean potenciador, BigDecimal litrosTotales,
                              List<ElementoCicloMovimiento> movimientos) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
-            int cicloId = insertarCiclo(conn, lavarropasNumero, tipoJabon, litrosJabon, suavizante, litrosTotales);
+            int cicloId = insertarCiclo(conn, lavarropasNumero, jabon, litrosJabon, suavizante, potenciador, litrosTotales);
             insertarMovimientos(conn, cicloId, movimientos);
             tx.commit();
         } catch (SQLException e) {
@@ -168,16 +178,17 @@ public class CicloLavaderoDAO {
 
     // ── privados ─────────────────────────────────────────────────────────────
 
-    private int insertarCiclo(Connection conn, int lavarropasNumero, TipoJabon tipoJabon,
-                               BigDecimal litrosJabon, boolean suavizante,
+    private int insertarCiclo(Connection conn, int lavarropasNumero, JabonCatalogo jabon,
+                               BigDecimal litrosJabon, boolean suavizante, boolean potenciador,
                                BigDecimal litrosTotales) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(SQL_INSERTAR_CICLO, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, lavarropasNumero);
-            ps.setString(2, tipoJabon.name());
+            ps.setInt(2, jabon.getId());
             ps.setBigDecimal(3, litrosJabon);
             ps.setBoolean(4, suavizante);
-            if (litrosTotales != null) ps.setBigDecimal(5, litrosTotales);
-            else ps.setNull(5, Types.DECIMAL);
+            ps.setBoolean(5, potenciador);
+            if (litrosTotales != null) ps.setBigDecimal(6, litrosTotales);
+            else ps.setNull(6, Types.DECIMAL);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 keys.next();
@@ -278,9 +289,10 @@ public class CicloLavaderoDAO {
         return new CicloLavadero(
             rs.getInt("id"),
             rs.getInt("lavarropas_numero"),
-            TipoJabon.valueOf(rs.getString("tipo_jabon")),
+            new JabonCatalogo(rs.getInt("jabon_id"), rs.getString("jabon_nombre")),
             rs.getBigDecimal("litros_jabon"),
             rs.getBoolean("suavizante"),
+            rs.getBoolean("potenciador"),
             rs.getBigDecimal("litros_totales"),
             rs.getObject("fecha_inicio", LocalDateTime.class),
             null,
@@ -293,9 +305,10 @@ public class CicloLavaderoDAO {
         return new CicloLavadero(
             rs.getInt("id"),
             rs.getInt("lavarropas_numero"),
-            TipoJabon.valueOf(rs.getString("tipo_jabon")),
+            new JabonCatalogo(rs.getInt("jabon_id"), rs.getString("jabon_nombre")),
             rs.getBigDecimal("litros_jabon"),
             rs.getBoolean("suavizante"),
+            rs.getBoolean("potenciador"),
             rs.getBigDecimal("litros_totales"),
             rs.getObject("fecha_inicio", LocalDateTime.class),
             fechaFin,

@@ -5,7 +5,7 @@ import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
-import com.example.features.lavadero.model.TipoJabon;
+import com.example.features.lavadero.model.JabonCatalogo;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -28,17 +28,17 @@ public class CicloLavaderoService {
         return dao.obtenerElementosDisponiblesParaCiclo();
     }
 
-    public void lanzarCiclo(int lavarropasNumero, TipoJabon tipoJabon, BigDecimal litrosJabon,
-                             boolean suavizante, BigDecimal litrosTotales,
+    public void lanzarCiclo(int lavarropasNumero, JabonCatalogo jabon, BigDecimal litrosJabon,
+                             boolean suavizante, boolean potenciador, BigDecimal litrosTotales,
                              List<ElementoCicloMovimiento> movimientos) {
         ValidationException.Builder v = ValidationException.builder();
 
         v.addErrorIf(lavarropasNumero < 1 || lavarropasNumero > 13,
             "El número de lavarropas debe estar entre 1 y 13.");
-        v.addErrorIf(tipoJabon == null,
-            "Debe seleccionar un tipo de jabón.");
+        v.addErrorIf(jabon == null,
+            "Debe seleccionar un jabón.");
         v.addErrorIf(litrosJabon == null || litrosJabon.compareTo(BigDecimal.ZERO) <= 0,
-            "Los litros de jabón deben ser mayores a cero.");
+            "Los mililitros de jabón deben ser mayores a cero.");
         v.addErrorIf(movimientos == null || movimientos.isEmpty(),
             "Debe agregar al menos un elemento al ciclo.");
 
@@ -51,7 +51,7 @@ public class CicloLavaderoService {
 
         v.throwIfHasErrors();
 
-        dao.lanzarCiclo(lavarropasNumero, tipoJabon, litrosJabon, suavizante, litrosTotales, movimientos);
+        dao.lanzarCiclo(lavarropasNumero, jabon, litrosJabon, suavizante, potenciador, litrosTotales, movimientos);
     }
 
     public List<CicloLavadero> obtenerCiclosFinalizados() {

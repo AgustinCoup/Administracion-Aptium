@@ -1,7 +1,7 @@
 package com.example.features.lavadero.view;
 
 import com.example.features.lavadero.model.ElementoCicloItem;
-import com.example.features.lavadero.model.TipoJabon;
+import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.view.helpers.LavarropasCardTableModel;
 import com.example.ui.common.TableStyler;
 
@@ -31,9 +31,10 @@ public class LavarropasCard extends JPanel {
     private final JLabel lblTitulo;
     private final JLabel lblEstado  = new JLabel("[LIBRE]");
 
-    private final JComboBox<TipoJabon> cmbJabon         = new JComboBox<>(TipoJabon.values());
-    private final JTextField           txtLitrosJabon   = new JTextField(4);
-    private final JCheckBox            chkSuavizante    = new JCheckBox("Suavizante");
+    private final JComboBox<JabonCatalogo> cmbJabon         = new JComboBox<>();
+    private final JTextField              txtLitrosJabon   = new JTextField(4);
+    private final JCheckBox               chkSuavizante    = new JCheckBox("Suavizante");
+    private final JCheckBox               chkPotenciador   = new JCheckBox("Potenciador");
     private final JTextField           txtLitrosTotales = new JTextField(4);
     private final JButton              btnAccion        = new JButton("Lanzar");
     private final JPanel               panelConfig;
@@ -106,16 +107,17 @@ public class LavarropasCard extends JPanel {
         config.setLayout(new BoxLayout(config, BoxLayout.Y_AXIS));
         config.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
-        for (JComponent c : new JComponent[]{cmbJabon, txtLitrosJabon, chkSuavizante, txtLitrosTotales}) {
+        for (JComponent c : new JComponent[]{cmbJabon, txtLitrosJabon, chkSuavizante, chkPotenciador, txtLitrosTotales}) {
             c.setFont(FONT_CONFIG);
         }
 
         config.add(rowPanel("Jabón:", cmbJabon));
-        config.add(rowPanel("L.Jabón:", txtLitrosJabon));
+        config.add(rowPanel("mL Jabón:", txtLitrosJabon));
         JPanel chkRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 1));
         chkRow.add(chkSuavizante);
+        chkRow.add(chkPotenciador);
         config.add(chkRow);
-        config.add(rowPanel("L.Tot.:", txtLitrosTotales));
+        config.add(rowPanel("mL Tot.:", txtLitrosTotales));
 
         txtLitrosJabon.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e)  { notificar(); }
@@ -226,7 +228,12 @@ public class LavarropasCard extends JPanel {
 
     // ── Config getters ────────────────────────────────────────────────────────
 
-    public TipoJabon getTipoJabon() { return (TipoJabon) cmbJabon.getSelectedItem(); }
+    public JabonCatalogo getJabon()  { return (JabonCatalogo) cmbJabon.getSelectedItem(); }
+
+    public void setJabones(java.util.List<JabonCatalogo> jabones) {
+        cmbJabon.removeAllItems();
+        for (JabonCatalogo j : jabones) cmbJabon.addItem(j);
+    }
 
     public BigDecimal getLitrosJabon() {
         try {
@@ -237,7 +244,8 @@ public class LavarropasCard extends JPanel {
         } catch (NumberFormatException e) { return null; }
     }
 
-    public boolean isSuavizante() { return chkSuavizante.isSelected(); }
+    public boolean isSuavizante()   { return chkSuavizante.isSelected(); }
+    public boolean isPotenciador()  { return chkPotenciador.isSelected(); }
 
     public BigDecimal getLitrosTotales() {
         try {

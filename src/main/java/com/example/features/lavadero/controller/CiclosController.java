@@ -6,8 +6,8 @@ import com.example.features.lavadero.controller.helpers.ElementoCicloTransferabl
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
+import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.Lavarropas;
-import com.example.features.lavadero.model.TipoJabon;
 import com.example.features.lavadero.view.EquipoSubdivisionDialog;
 import com.example.features.lavadero.view.LavarropasCard;
 import com.example.features.lavadero.view.PantallaCiclos;
@@ -64,9 +64,13 @@ public class CiclosController {
     }
 
     private void inicializarEventos() {
+        // El catálogo de jabones no cambia en runtime: se puebla una sola vez
+        // para no resetear la selección del usuario en cada refresh.
+        List<JabonCatalogo> jabones = model.obtenerJabones();
         for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
             int num = entry.getKey();
             LavarropasCard card = entry.getValue();
+            card.setJabones(jabones);
             card.getTabla().setDropMode(DropMode.ON);
             card.getTabla().setFillsViewportHeight(true);
             card.getTabla().setTransferHandler(new CicloTransferHandler(num));
@@ -263,7 +267,7 @@ public class CiclosController {
             } catch (Exception e) {
                 log.error("Error al procesar drop en lavarropas {}", lavarropasNum, e);
                 SwingUtilities.invokeLater(() ->
-                    pantalla.mostrarAdvertencia("Error al procesar el elemento: " + e.getMessage()));
+                    pantalla.mostrarAdvertencia(Constantes.Mensajes.ERROR_GUARDAR_DATOS));
                 return false;
             }
         }
@@ -391,13 +395,14 @@ public class CiclosController {
             pendientesPorLavarropas.getOrDefault(num, Collections.emptyList());
         if (pendientes.isEmpty()) return;
 
-        TipoJabon  tipoJabon    = card.getTipoJabon();
-        BigDecimal litrosJabon  = card.getLitrosJabon();
+        JabonCatalogo jabon       = card.getJabon();
+        BigDecimal litrosJabon    = card.getLitrosJabon();
         if (litrosJabon == null) {
-            pantalla.mostrarError("Lavarropas #" + num + ": ingrese los litros de jabón.");
+            pantalla.mostrarError("Lavarropas #" + num + ": ingrese los mililitros de jabón.");
             return;
         }
         boolean    suavizante    = card.isSuavizante();
+        boolean    potenciador   = card.isPotenciador();
         BigDecimal litrosTotales = card.getLitrosTotales();
 
         List<ElementoCicloMovimiento> movimientos = new ArrayList<>();
@@ -406,7 +411,7 @@ public class CiclosController {
                 item.getElementoClasificacionId(), item.getCantidadEnCiclo()));
         }
         try {
-            model.lanzarCiclo(num, tipoJabon, litrosJabon, suavizante, litrosTotales, movimientos);
+            model.lanzarCiclo(num, jabon, litrosJabon, suavizante, potenciador, litrosTotales, movimientos);
             pendientesPorLavarropas.remove(num);
         } catch (Exception e) {
             log.error("Error al lanzar ciclo en lavarropas {}", num, e);
