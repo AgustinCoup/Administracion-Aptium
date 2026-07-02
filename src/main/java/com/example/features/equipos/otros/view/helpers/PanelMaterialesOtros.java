@@ -1,12 +1,12 @@
 package com.example.features.equipos.otros.view.helpers;
 
 import com.example.common.constants.Constantes;
+import com.example.ui.common.Hotkeys;
 import com.example.ui.common.AutocompleteListener;
 import com.example.ui.common.Estilos;
 import com.example.ui.dialogs.NuevoElementoDialog;
 
 import java.awt.*;
-import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
@@ -77,11 +77,12 @@ public class PanelMaterialesOtros extends JPanel {
             listPanel.revalidate();
             listPanel.repaint();
         });
-        btnEliminar.addActionListener(e -> {
-            eliminarUltimaFila();
-            listPanel.revalidate();
-            listPanel.repaint();
-        });
+        btnEliminar.addActionListener(e -> eliminarUltimaFila());
+
+        Hotkeys.registrarMateriales(this,
+            () -> { agregarFila(); listPanel.revalidate(); listPanel.repaint(); },
+            () -> eliminarUltimaFila()
+        );
     }
 
     // ── API pública ───────────────────────────────────────────────────────────

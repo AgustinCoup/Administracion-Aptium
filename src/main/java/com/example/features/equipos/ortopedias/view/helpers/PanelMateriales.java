@@ -1,6 +1,7 @@
 package com.example.features.equipos.ortopedias.view.helpers;
 
 import com.example.ui.common.Estilos;
+import com.example.ui.common.Hotkeys;
 
 import java.awt.*;
 import java.awt.event.*;
@@ -86,11 +87,12 @@ public class PanelMateriales extends JPanel {
             listaMaterialesPanel.repaint();
         });
 
-        btnEliminarMaterial.addActionListener(e -> {
-            eliminarUltimaFilaMaterial();
-            listaMaterialesPanel.revalidate();
-            listaMaterialesPanel.repaint();
-        });
+        btnEliminarMaterial.addActionListener(e -> eliminarUltimaFilaMaterial());
+
+        Hotkeys.registrarMateriales(this,
+            () -> { agregarFilaMaterial(); listaMaterialesPanel.revalidate(); listaMaterialesPanel.repaint(); },
+            () -> eliminarUltimaFilaMaterial()
+        );
     }
 
     /**

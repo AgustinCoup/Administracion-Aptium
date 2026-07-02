@@ -209,80 +209,77 @@ public class EquiposParaEntregarController {
     }
 
     private void entregarInstitucion() {
-        InstitucionEntregaItem institucionSeleccionada = panel.getInstitucionSeleccionada();
-        
-        if (institucionSeleccionada == null) {
-            panel.mostrarAdvertencia("Debe seleccionar una institución antes de entregar.");
+        List<InstitucionEntregaItem> seleccionadas = panel.getInstitucionesSeleccionadas();
+
+        if (seleccionadas.isEmpty()) {
+            panel.mostrarAdvertencia("Debe seleccionar al menos una institución antes de entregar.");
             return;
         }
 
-        List<MaterialEntregaItem> todosMateriales =
-            materialesPorDestino.getOrDefault(institucionSeleccionada.getKey(), List.of());
+        Map<InstitucionEntregaItem, List<MaterialEntregaItem>> materialesPorInstitucion = new LinkedHashMap<>();
+        for (InstitucionEntregaItem institucion : seleccionadas) {
+            List<MaterialEntregaItem> pendientes = materialesPorDestino
+                .getOrDefault(institucion.getKey(), List.of())
+                .stream()
+                .filter(m -> !m.isEntregado())
+                .toList();
+            if (!pendientes.isEmpty()) {
+                materialesPorInstitucion.put(institucion, pendientes);
+            }
+        }
 
-        List<MaterialEntregaItem> materialesPendientes = todosMateriales.stream()
-            .filter(m -> !m.isEntregado())
-            .toList();
-
-        if (materialesPendientes.isEmpty()) {
-            panel.mostrarAdvertencia(
-                "La institución \"" + institucionSeleccionada.getNombre() + 
-                "\" no tiene materiales pendientes de entrega.");
+        if (materialesPorInstitucion.isEmpty()) {
+            panel.mostrarAdvertencia("Las instituciones seleccionadas no tienen materiales pendientes de entrega.");
             return;
         }
 
-        String mensaje = construirMensajeConfirmacion(institucionSeleccionada.getNombre(), materialesPendientes);
-        
-        boolean confirmado = panel.confirmar(
-            mensaje, 
-            "Confirmar Entrega de Institución"
-        );
+        if (!panel.confirmar(construirMensajeConfirmacion(materialesPorInstitucion), "Confirmar Entrega")) return;
 
-        if (!confirmado) {
-            return;
+        List<String> exitosas = new ArrayList<>();
+        List<String> errores = new ArrayList<>();
+
+        for (Map.Entry<InstitucionEntregaItem, List<MaterialEntregaItem>> entry : materialesPorInstitucion.entrySet()) {
+            InstitucionEntregaItem institucion = entry.getKey();
+            EntregaDestinoKey key = institucion.getKey();
+            boolean exitoso = key.getTipo() == TipoDestino.CLIENTE
+                ? model.entregarClienteOtrosCompleto(key.getId())
+                : model.entregarInstitucionCompleta(key.getId());
+            if (exitoso) exitosas.add(institucion.getNombre());
+            else errores.add(institucion.getNombre());
         }
 
-        EntregaDestinoKey key = institucionSeleccionada.getKey();
-        boolean exitoso = key.getTipo() == TipoDestino.CLIENTE
-            ? model.entregarClienteOtrosCompleto(key.getId())
-            : model.entregarInstitucionCompleta(key.getId());
-
-        if (exitoso) {
-            log.info("Institución {} entregada exitosamente, refrescando pantallas...", institucionSeleccionada.getNombre());
-            panel.mostrarInfo(
-                "Institución \"" + institucionSeleccionada.getNombre() + 
-                "\" entregada correctamente."
-            );
+        if (!exitosas.isEmpty()) {
+            log.info("{} institución(es) entregada(s) exitosamente", exitosas.size());
             cargarDatos();
-            
-            // Notificar a otras pantallas para que se actualicen
             if (onEstadosActualizadosListener != null) {
-                log.info("Ejecutando listener para refrescar otras pantallas");
                 onEstadosActualizadosListener.onEstadosActualizados();
             } else {
                 log.warn("onEstadosActualizadosListener es null, otras pantallas NO se refrescarán");
             }
-        } else {
-            panel.mostrarError(
-                "Error al entregar la institución \"" + institucionSeleccionada.getNombre() + 
-                "\". Por favor intente nuevamente."
-            );
+            String texto = exitosas.size() == 1
+                ? "\"" + exitosas.get(0) + "\" entregada correctamente."
+                : exitosas.size() + " instituciones entregadas correctamente.";
+            panel.mostrarInfo(texto);
+        }
+        if (!errores.isEmpty()) {
+            panel.mostrarError("No se pudieron entregar: " + String.join(", ", errores));
         }
     }
 
-    private String construirMensajeConfirmacion(String nombreInstitucion, List<MaterialEntregaItem> materiales) {
+    private String construirMensajeConfirmacion(Map<InstitucionEntregaItem, List<MaterialEntregaItem>> materialesPorInstitucion) {
         StringBuilder sb = new StringBuilder();
         sb.append("¿Confirmar entrega de los siguientes materiales?\n\n");
-        sb.append("Institución: ").append(nombreInstitucion).append("\n\n");
-        
-        Map<String, Integer> resumen = new LinkedHashMap<>();
-        for (MaterialEntregaItem item : materiales) {
-            resumen.merge(item.getMaterial(), item.getCantidad(), Integer::sum);
+        for (Map.Entry<InstitucionEntregaItem, List<MaterialEntregaItem>> entry : materialesPorInstitucion.entrySet()) {
+            sb.append("Institución: ").append(entry.getKey().getNombre()).append("\n");
+            Map<String, Integer> resumen = new LinkedHashMap<>();
+            for (MaterialEntregaItem item : entry.getValue()) {
+                resumen.merge(item.getMaterial(), item.getCantidad(), Integer::sum);
+            }
+            for (Map.Entry<String, Integer> mat : resumen.entrySet()) {
+                sb.append("  • ").append(mat.getKey()).append(" x ").append(mat.getValue()).append("\n");
+            }
+            sb.append("\n");
         }
-
-        for (Map.Entry<String, Integer> entry : resumen.entrySet()) {
-            sb.append("  • ").append(entry.getKey()).append(" x ").append(entry.getValue()).append("\n");
-        }
-
         return sb.toString();
     }
 
