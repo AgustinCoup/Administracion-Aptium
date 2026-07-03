@@ -122,6 +122,11 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         assertEquals(1, contarMovimientos(equipoId));
     }
 
+    // PASO 2 del plan refactor-volumenes-por-ingreso: la columna volumen_lote
+    // desaparece del esquema. Este test se reduce a assertar solo lote_id y el
+    // parámetro volumenLote se elimina de materializarRemitoSplit. El
+    // comportamiento de negocio (litros por ingreso) queda cubierto por
+    // LoteVolumenesCaracterizacionTest.
     @Test
     void avanceTotal_conLoteId_filaGuardaLoteYVolumen() throws Exception {
         int equipoId   = insertarEquipoRemito(5);
