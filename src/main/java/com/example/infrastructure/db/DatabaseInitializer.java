@@ -16,6 +16,9 @@ public class DatabaseInitializer {
             .locations("classpath:db/migration")
             .baselineOnMigrate(true)
             .baselineVersion("1")
+            // La rama Lavadero ocupa V7-V12; si V13 (refactor volúmenes) llega antes
+            // a producción, esto permite aplicar después las versiones "atrasadas".
+            .outOfOrder(true)
             .load()
             .migrate();
         log.info("Migraciones Flyway aplicadas (schema + seeds)");

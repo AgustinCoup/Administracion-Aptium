@@ -442,11 +442,11 @@ public class EquipoOtrosDAO {
                         }
                         EquipoOtrosMaterialHelper.materializarRemitoSplit(
                                 conn, equipoId, catalogoId, disponibleMaterializado,
-                                estadoActual, cantidadMover, dest.getNombre(), null, null);
+                                estadoActual, cantidadMover, dest.getNombre(), null);
                     } else {
                         EquipoOtrosMaterialHelper.materializarRemitoSplit(
                                 conn, equipoId, catalogoId, remitoCant,
-                                estadoActual, cantidadMover, dest.getNombre(), null, null);
+                                estadoActual, cantidadMover, dest.getNombre(), null);
                     }
                     anyDetalles = true;
                     continue;

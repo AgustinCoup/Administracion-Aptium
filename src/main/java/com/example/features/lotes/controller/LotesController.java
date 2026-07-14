@@ -318,7 +318,8 @@ public class LotesController {
                     nuevoItem = new MaterialLoteItem(
                             info.getMaterialId(), info.getEquipoId(), info.getDescripcion(),
                             info.getCantidad(), 1, clienteNombre, true);
-                    nuevoItem.setVolumenOtros(info.getVolumen());
+                    // Sin setVolumenOtros: el volumen pertenece al ingreso
+                    // (lote_otros_volumenes); la columna muestra "-".
                 } else {
                     nuevoItem = new MaterialLoteItem(
                             info.getMaterialId(), info.getEquipoId(), info.getDescripcion(),
@@ -693,15 +694,21 @@ public class LotesController {
 
         if (!panel.confirmar(mensaje.toString(), "Confirmar Lanzamiento de Lote")) return;
 
+        // PUENTE TEMPORAL (se elimina en el paso 3 del plan): los litros siguen
+        // llegando por material desde el diálogo viejo; acá se agrupan por ingreso.
+        Map<Integer, Integer> volumenesPorIngreso = new HashMap<>();
         List<LoteMovimiento> movimientos = new ArrayList<>();
         for (MaterialLoteItem item : pendientes) {
             movimientos.add(new LoteMovimiento(
                     item.getMaterialId(), item.getEquipoId(), item.getCantidad(),
-                    item.isEsOtros(), item.getVolumenOtros()));
+                    item.isEsOtros()));
+            if (item.isEsOtros() && item.getVolumenOtros() != null) {
+                volumenesPorIngreso.merge(item.getEquipoId(), item.getVolumenOtros(), Integer::sum);
+            }
         }
 
         Lote lote = model.lanzarLote(autoclaveSeleccionado.getNombre(),
-                capacidadTotal, volumenManual, movimientos);
+                capacidadTotal, volumenManual, movimientos, volumenesPorIngreso);
 
         if (lote == null) {
             panel.mostrarError("Error al lanzar el lote.");

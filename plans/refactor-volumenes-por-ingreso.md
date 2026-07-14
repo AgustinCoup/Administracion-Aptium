@@ -12,7 +12,7 @@ Eliminar la fricción del diálogo actual que pide litros **por cada material "o
 1. **Captura:** diálogo único al presionar Lanzar; tabla con una fila por (cliente, ingreso), campo litros obligatorio (min 1). Sin completar, no se lanza.
 2. **Persistencia:** tabla nueva `lote_otros_volumenes (lote_id, equipo_otros_id, volumen)`. La columna `equipo_otros_materiales.volumen_lote` desaparece.
 3. **Capacidad durante armado:** los materiales "otros" aportan **0** al volumen calculado hasta que se asignan litros en el diálogo (ahí se recalcula en vivo). El campo "Volumen final" manual sigue siendo la palabra final.
-4. **Históricos:** migración V7 puebla la tabla nueva con `SUM(volumen_lote)` por `(lote_id, equipo_otros_id)` y luego elimina la columna. `equipo_otros.volumen_equipo` (agua acumulada por ingreso) no se toca.
+4. **Históricos:** migración V13 puebla la tabla nueva con `SUM(volumen_lote)` por `(lote_id, equipo_otros_id)` y luego elimina la columna. `equipo_otros.volumen_equipo` (agua acumulada por ingreso) no se toca.
 5. **Metodología (v2):** TDD estricto. El paso 1 es un PR **solo de tests** que blinda el comportamiento actual antes de tocar producción; los pasos siguientes arrancan en RED.
 
 ## Metodología TDD de este plan
@@ -27,7 +27,7 @@ Eliminar la fricción del diálogo actual que pide litros **por cada material "o
 
 App Swing Java 11, sin DI (todo se cablea en `AppContext`/`AppModel`). Migraciones **Flyway** en `src/main/resources/db/migration/` (MySQL en producción; tests con H2 2.2 en `MODE=MySQL`). Build: `mvn clean package`, tests: `mvn verify` (JaCoCo incluido).
 
-**Infra de tests (leer antes de escribir tests DAO o V7):** `src/test/java/com/example/AbstractDAOTest.java` aplica las migraciones Flyway sobre H2 en 3 fases (target V3 / V4 sintético / V5+) con `ConnectionPool.setDataSourceForTesting`. Una futura V7 correrá automáticamente en la fase 3 para **todas** las clases DAO de test: un error de sintaxis en V7 tumba la suite completa. Smoke test: correr cualquier subclase de `AbstractDAOTest`.
+**Infra de tests (leer antes de escribir tests DAO o V13):** `src/test/java/com/example/AbstractDAOTest.java` aplica las migraciones Flyway sobre H2 en 3 fases (target V3 / V4 sintético / V5+) con `ConnectionPool.setDataSourceForTesting`. Una futura V13 correrá automáticamente en la fase 3 para **todas** las clases DAO de test: un error de sintaxis en V13 tumba la suite completa. Smoke test: correr cualquier subclase de `AbstractDAOTest`.
 
 **Bug preexistente conocido (NO es regresión de este refactor):** `LotesController.quitarMaterialDePendientes` (~L635-642) re-crea items otros con el constructor sin `esOtros`. Si aparece durante el E2E manual del paso 3, anotarlo aparte; no mezclarlo en estos PRs.
 
@@ -90,7 +90,7 @@ Trivial: revert del PR de tests.
 
 ---
 
-## Paso 2 — Persistencia por ingreso (V7 + DAO/Service/Model), UX intacta
+## Paso 2 — Persistencia por ingreso (V13 + DAO/Service/Model), UX intacta
 
 **Rama:** `refactor/volumen-ingreso-2-persistencia` · **Riesgo:** medio (era alto; la red del paso 1 y el ciclo RED→GREEN lo bajan) · **Depende de:** Paso 1
 
@@ -100,12 +100,12 @@ La UI sigue pidiendo litros por material, pero el controller los agrupa por ingr
 
 1. **`LoteServiceTest`:** tests de la firma nueva `lanzarLote(..., Map<Integer,Integer> volumenesPorIngreso)`: mapa null/faltante para un ingreso con movimientos `esOtros` → `ValidationException`; volumen 0 o negativo → `ValidationException`; clave huérfana (ingreso que no está en los movimientos) → `ValidationException`; mapa vacío con lote solo-ortopedia → OK.
 2. **`LoteDAOTest` (tests nuevos):** `lanzarLote` con mapa inserta una fila por ingreso en `lote_otros_volumenes`; `obtenerVolumenesPorLote(loteId)` devuelve el mapa; `finalizarLote` acumula en `volumen_equipo` leyendo de la tabla nueva; lote fallido no acumula.
-3. **Test de backfill de V7** (mejor esfuerzo): test standalone con Flyway API — migrar H2 hasta `target=V6`, sembrar `equipo_otros_materiales` con `volumen_lote` en varios (lote, ingreso) incluyendo filas NULL, migrar a V7, assertar filas agregadas en `lote_otros_volumenes` y ausencia de la columna vieja. Si el arnés de fases de `AbstractDAOTest` hace esto frágil, degradar a: verificación manual documentada del backfill sobre una copia de la BD real antes del deploy (dejar constancia en el PR).
+3. **Test de backfill de V13** (mejor esfuerzo): test standalone con Flyway API — migrar H2 hasta `target=V6`, sembrar `equipo_otros_materiales` con `volumen_lote` en varios (lote, ingreso) incluyendo filas NULL, migrar a V13, assertar filas agregadas en `lote_otros_volumenes` y ausencia de la columna vieja. Si el arnés de fases de `AbstractDAOTest` hace esto frágil, degradar a: verificación manual documentada del backfill sobre una copia de la BD real antes del deploy (dejar constancia en el PR).
 4. Correr: los tests nuevos fallan (no compilan o assertan en rojo). Los de caracterización del paso 1 siguen verdes.
 
 ### Fase GREEN — implementación mínima
 
-5. **`V7__lote_otros_volumenes.sql`** en `src/main/resources/db/migration/`:
+5. **`V13__lote_otros_volumenes.sql`** en `src/main/resources/db/migration/`:
    ```sql
    CREATE TABLE lote_otros_volumenes (
        id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -124,6 +124,7 @@ La UI sigue pidiendo litros por material, pero el controller los agrupa por ingr
    ALTER TABLE equipo_otros_materiales DROP COLUMN volumen_lote;
    ```
    Usar `CONSTRAINT ... UNIQUE` (portable MySQL/H2), **no** `UNIQUE KEY nombre (cols)` — ninguna migración existente usa esa forma y el parser H2 puede rechazarla.
+   **Numeración V13 (decisión 2026-07-13):** la rama `Lavadero` ya ocupa V7-V12. En esta misma tarea agregar `.outOfOrder(true)` a la config Flyway de `DatabaseInitializer`: permite que las V7-V12 de Lavadero se apliquen en producción aunque V13 ya esté aplicada (escenario hotfix-antes-que-feature). Ver sección "Coordinación con rama Lavadero".
 6. **`LoteMovimiento`:** eliminar campo `volumenOtros` y el constructor de 5 args; dejar `(materialId, equipoId, cantidad, esOtros)`.
 7. **`LoteDAO.lanzarLote(...)`:** nuevo parámetro `Map<Integer,Integer> volumenesPorIngreso`; dentro de la misma transacción, tras aplicar movimientos, insertar una fila por entrada del mapa. Quitar todo manejo de `volumen_lote` en `aplicarMovimientoLoteOtros()` (UPDATE e INSERT).
 8. **`EquipoOtrosMaterialHelper.materializarRemitoSplit`:** eliminar parámetro `volumenLote` y la columna del INSERT; actualizar los dos call-sites en `LoteDAO`.
@@ -149,11 +150,11 @@ Manual: lanzar lote con material otros (DETALLES y REMITO), finalizarlo, verific
 
 ### Criterios de salida
 - Tests de caracterización del paso 1 verdes **sin haber tocado sus asserts** (solo el wrapper).
-- `grep -r volumen_lote --include='*.java' src/` → 0 resultados (la columna sigue nombrada en V2/V7, que son inmutables — eso es correcto).
+- `grep -r volumen_lote --include='*.java' src/` → 0 resultados (la columna sigue nombrada en V2/V13, que son inmutables — eso es correcto).
 - Comportamiento visible idéntico al actual, con una excepción documentada: la columna Volumen de materiales otros en autoclave ocupado pasa a mostrar `"-"` (display definitivo en paso 3).
 
 ### Rollback
-`git revert` del PR **antes** de aplicar V7 en producción. La migración es destructiva (DROP COLUMN): **hacer backup/dump de `equipo_otros_materiales` antes del primer arranque con V7 en la BD real**. Si ya corrió, restaurar desde backup.
+`git revert` del PR **antes** de aplicar V13 en producción. La migración es destructiva (DROP COLUMN): **hacer backup/dump de `equipo_otros_materiales` antes del primer arranque con V13 en la BD real**. Si ya corrió, restaurar desde backup.
 
 ---
 
@@ -216,6 +217,16 @@ Build verde, cobertura ≥ 80% en la lógica nueva, docs al día.
 - El flujo de ortopedias no cambia en ningún paso.
 - `equipo_otros.volumen_equipo` se acumula solo al finalizar lote EXITOSO (paridad con hoy).
 - Formato de salida de reportes (`obtenerOtrosPorClientePorLote`) sin cambios para consumidores.
+
+## Coordinación con rama Lavadero (decisión 2026-07-13)
+
+`Lavadero` (en desarrollo) ocupa V7-V12, ya aplicadas en la BD de la PC de desarrollo. Por eso la migración de este refactor es **V13** y el paso 2 habilita `.outOfOrder(true)` en `DatabaseInitializer`.
+
+**Procedimiento de merge main → Lavadero** (cuando el refactor esté en main):
+1. `git checkout Lavadero && git merge main`. Conflictos esperables si Lavadero tocó `LotesController`/`LoteDAO`/`LoteService`: resolver y validar con la suite.
+2. `mvn verify`: los 12 tests de `LoteVolumenesCaracterizacionTest` deben quedar verdes sin tocar sus asserts — esa es la prueba de que el merge no rompió el flujo de volúmenes. (H2 arranca de cero y aplica V1..V13 en orden; los tests no dependen del estado de la BD de dev.)
+3. BD de desarrollo (está en V12): **backup de `equipo_otros_materiales` antes del primer arranque post-merge** (V13 es destructiva). Al arrancar la app, Flyway aplica V13 (backfill + drop) automáticamente.
+4. Producción: puede recibir el refactor antes que Lavadero (queda en 1-6 + 13). Cuando Lavadero se deploye, `outOfOrder(true)` hace que V7-V12 se apliquen igual. Backup completo de la BD antes de ese deploy, como con cualquier tanda grande de migraciones.
 
 ## Anti-patrones a evitar
 

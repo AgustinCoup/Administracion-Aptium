@@ -202,8 +202,15 @@ public class AppModel {
     }
 
     public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
-                           List<LoteMovimiento> movimientos) {
-        return loteService.lanzarLote(autoclaveNombre, capacidadTotal, capacidadUsada, movimientos);
+                           List<LoteMovimiento> movimientos,
+                           Map<Integer, Integer> volumenesPorIngreso) {
+        return loteService.lanzarLote(autoclaveNombre, capacidadTotal, capacidadUsada,
+            movimientos, volumenesPorIngreso);
+    }
+
+    /** Litros declarados por ingreso (equipo_otros) para un lote. */
+    public Map<Integer, Integer> obtenerVolumenesPorLote(int loteId) {
+        return loteService.obtenerVolumenesPorLote(loteId);
     }
 
     public boolean finalizarLote(int loteId) {

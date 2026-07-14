@@ -14,11 +14,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -267,33 +264,14 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
     // ── Wrapper (único punto de churn del paso 2) ────────────────────────────
 
     /**
-     * Lanza un lote recibiendo los litros como mapa {@code equipoOtrosId → litros}
-     * (el modelo destino del refactor).
-     *
-     * <p>Adaptación al API actual: los litros se reparten por movimiento
-     * ({@code LoteMovimiento.volumenOtros}); se asigna el total del ingreso al
-     * PRIMER movimiento de ese ingreso y {@code null} al resto, de modo que la
-     * suma por ingreso coincida con el valor del mapa.
-     *
-     * <p>PASO 2: reemplazar el cuerpo por
-     * {@code return dao.lanzarLote(autoclave, capacidadTotal, capacidadUsada, movimientos, litrosPorIngreso);}
-     * sin tocar ningún test.
+     * Lanza un lote recibiendo los litros como mapa {@code equipoOtrosId → litros}.
+     * Desde el paso 2 delega directo en la firma nueva del DAO; los tests y sus
+     * asserts no cambiaron respecto del paso 1 (esa es la prueba de paridad).
      */
     private Lote lanzarLoteConOtros(String autoclave, int capacidadTotal, int capacidadUsada,
                                     List<LoteMovimiento> movimientos,
                                     Map<Integer, Integer> litrosPorIngreso) {
-        List<LoteMovimiento> conVolumen = new ArrayList<>();
-        Set<Integer> ingresosAsignados = new HashSet<>();
-        for (LoteMovimiento mov : movimientos) {
-            Integer litros = null;
-            if (mov.isEsOtros() && !ingresosAsignados.contains(mov.getEquipoId())) {
-                litros = litrosPorIngreso.get(mov.getEquipoId());
-                ingresosAsignados.add(mov.getEquipoId());
-            }
-            conVolumen.add(new LoteMovimiento(
-                mov.getMaterialId(), mov.getEquipoId(), mov.getCantidad(), mov.isEsOtros(), litros));
-        }
-        return dao.lanzarLote(autoclave, capacidadTotal, capacidadUsada, conVolumen);
+        return dao.lanzarLote(autoclave, capacidadTotal, capacidadUsada, movimientos, litrosPorIngreso);
     }
 
     // ── Helpers de fixture y lectura ─────────────────────────────────────────
