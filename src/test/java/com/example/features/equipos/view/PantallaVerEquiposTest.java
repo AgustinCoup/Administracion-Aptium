@@ -34,6 +34,18 @@ class PantallaVerEquiposTest {
     }
 
     @Test
+    void aplicarFiltroInicial_sinConfigurarFiltrosPrevio_igualAplicaLaSeleccion() {
+        // Regresión: el guard de onCambioRef == null se saltaba también el
+        // setSelectedItems, mostrando ENTREGADO si se llamaba antes de configurarFiltros().
+        PantallaVerEquipos panelSinConfigurar = new PantallaVerEquipos(new CardLayout(), new JPanel());
+
+        panelSinConfigurar.aplicarFiltroInicial();
+
+        assertFalse(panelSinConfigurar.getCmbEstados().getSelectedItems()
+            .contains(EstadoEquipo.ENTREGADO.getNombre()));
+    }
+
+    @Test
     void limpiarFiltros_muestraTodosLosEstadosSinExcepcion() {
         panel.aplicarFiltroInicial();
         panel.limpiarFiltros();

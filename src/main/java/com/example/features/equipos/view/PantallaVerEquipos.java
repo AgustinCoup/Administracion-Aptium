@@ -280,10 +280,9 @@ public class PantallaVerEquipos extends JPanel {
      * {@link #limpiarFiltros()}, que muestra todos los estados sin excepción.
      */
     public void aplicarFiltroInicial() {
-        if (onCambioRef == null) return;
         cmbEstados.setSelectedItems(estadosVisiblesPorDefecto());
         limpiarCamposFiltro();
-        onCambioRef.run();
+        if (onCambioRef != null) onCambioRef.run();
     }
 
     private void limpiarCamposFiltro() {
