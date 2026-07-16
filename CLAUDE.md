@@ -96,4 +96,11 @@ builder.throwIfHasErrors();
 
 ## Tests
 
-La infraestructura está configurada (JUnit 4, Mockito 5, H2 en memoria) pero `src/test/` está vacío actualmente.
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. Más de 500 tests en `src/test/java`,
+reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
+DAO/Service/Controller/helper relevante).
+
+Para lógica de negocio embebida en clases de Swing (diálogos, paneles), el
+patrón del repo es extraerla a una clase plana sin dependencias de Swing y
+testearla en aislamiento — ver `AgrupadorIngresosLote`, `DuplicadoHighlighter`
+y `SincronizadorVolumenFinal` como ejemplos.
