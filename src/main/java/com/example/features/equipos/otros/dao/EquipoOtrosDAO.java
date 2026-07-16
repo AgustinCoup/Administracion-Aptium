@@ -195,7 +195,7 @@ public class EquipoOtrosDAO {
             "eo.volumen_equipo, eo.fecha_ingreso " +
             "FROM equipo_otros eo " +
             "JOIN clientes c ON eo.nro_cliente = c.id " +
-            "ORDER BY eo.estado, eo.id DESC";
+            "ORDER BY eo.fecha_ingreso DESC, eo.id DESC";
 
         try (Connection conn = ConnectionPool.getConnection();
              Statement stmt  = conn.createStatement();

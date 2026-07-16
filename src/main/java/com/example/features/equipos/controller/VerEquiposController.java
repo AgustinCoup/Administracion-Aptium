@@ -55,7 +55,7 @@ public class VerEquiposController {
 
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
-                panel.limpiarFiltros();
+                panel.aplicarFiltroInicial();
                 cargarDatos();
             }
         });
@@ -183,10 +183,11 @@ public class VerEquiposController {
         Frame ventana = (Frame) SwingUtilities.getWindowAncestor(panel);
         new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Ortopedias",
             model::buscarClientes,
-            (desde, hasta, clienteId) ->
+            model::buscarInstituciones,
+            (desde, hasta, clienteId, institucionId) ->
                 new SwingWorker<Void, Void>() {
                     @Override protected Void doInBackground() {
-                        equipoReporteService.generarYMostrarReporte(desde, hasta, clienteId);
+                        equipoReporteService.generarYMostrarReporte(desde, hasta, clienteId, institucionId);
                         return null;
                     }
                     @Override protected void done() {
@@ -205,7 +206,7 @@ public class VerEquiposController {
         Frame ventana = (Frame) SwingUtilities.getWindowAncestor(panel);
         new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Otros",
             model::buscarClientes,
-            (desde, hasta, clienteId) ->
+            (desde, hasta, clienteId, institucionId) ->
                 new SwingWorker<Void, Void>() {
                     @Override protected Void doInBackground() {
                         equipoOtrosReporteService.generarYMostrarReporte(desde, hasta, clienteId);

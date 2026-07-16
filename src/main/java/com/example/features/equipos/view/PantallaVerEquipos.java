@@ -18,7 +18,9 @@ import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class PantallaVerEquipos extends JPanel {
 
@@ -267,6 +269,24 @@ public class PantallaVerEquipos extends JPanel {
 
     private void limpiarFiltros(Runnable onCambio) {
         cmbEstados.clearSelection();
+        limpiarCamposFiltro();
+        onCambio.run();
+    }
+
+    /**
+     * Aplica el filtro por defecto de la pantalla: oculta los equipos ya
+     * entregados (se ven en el historial a demanda, no en la vista principal).
+     * Se invoca cada vez que se navega a esta pantalla; distinto de
+     * {@link #limpiarFiltros()}, que muestra todos los estados sin excepción.
+     */
+    public void aplicarFiltroInicial() {
+        if (onCambioRef == null) return;
+        cmbEstados.setSelectedItems(estadosVisiblesPorDefecto());
+        limpiarCamposFiltro();
+        onCambioRef.run();
+    }
+
+    private void limpiarCamposFiltro() {
         txtCliente.setText("");
         txtProfesional.setText("");
         txtPaciente.setText("");
@@ -274,7 +294,13 @@ public class PantallaVerEquipos extends JPanel {
         cmbTipoIngreso.clearSelection();
         dateDesde.setDate(null);
         dateHasta.setDate(null);
-        onCambio.run();
+    }
+
+    private List<String> estadosVisiblesPorDefecto() {
+        return Arrays.stream(EstadoEquipo.values())
+            .filter(estado -> estado != EstadoEquipo.ENTREGADO)
+            .map(EstadoEquipo::getNombre)
+            .collect(Collectors.toList());
     }
 
     private JPanel crearPanelSurTab(JLabel lblConteo, JButton btnImprimir) {

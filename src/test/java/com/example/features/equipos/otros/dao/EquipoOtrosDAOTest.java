@@ -101,6 +101,21 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
         assertEquals(equipoDetalles.getId(), lista.get(0).getId());
     }
 
+    @Test
+    void obtenerTodos_ordenaPorFechaIngresoDescendente_masAllaDelOrdenDeInsercion() throws SQLException {
+        // equipoDetalles (id menor) ya existe por @BeforeEach; se agrega uno con id mayor.
+        EquipoOtros remito = nuevoRemito(5);
+        dao.guardar(remito);
+
+        // El de id menor tiene fecha_ingreso más reciente: debe listarse primero.
+        ejecutarSQL("UPDATE equipo_otros SET fecha_ingreso = '2030-01-01 00:00:00' WHERE id = " + equipoDetalles.getId());
+        ejecutarSQL("UPDATE equipo_otros SET fecha_ingreso = '2020-01-01 00:00:00' WHERE id = " + remito.getId());
+
+        List<EquipoOtros> todos = dao.obtenerTodos();
+        assertEquals(equipoDetalles.getId(), todos.get(0).getId());
+        assertEquals(remito.getId(), todos.get(1).getId());
+    }
+
     // ── entregarClienteCompleto ───────────────────────────────────────────────
 
     @Test

@@ -8,6 +8,7 @@ import com.example.features.equipos.ortopedias.model.Material;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -89,6 +90,59 @@ class EquipoDAOTest extends AbstractDAOTest {
     void obtenerTodos_despuesDeGuardar_retornaEquipo() {
         dao.guardarEquipo(equipoBase());
         assertEquals(1, dao.obtenerTodos().size());
+    }
+
+    @Test
+    void obtenerTodos_ordenaPorFechaIngresoDescendente_masAllaDelOrdenDeInsercion() throws SQLException {
+        Equipo primero = equipoBase();
+        dao.guardarEquipo(primero); // id menor, insertado antes
+        Equipo segundo = equipoBase();
+        dao.guardarEquipo(segundo); // id mayor, insertado después
+
+        // El de id menor tiene fecha_ingreso más reciente: debe listarse primero.
+        ejecutarSQL("UPDATE equipos SET fecha_ingreso = '2030-01-01 00:00:00' WHERE id = " + primero.getId());
+        ejecutarSQL("UPDATE equipos SET fecha_ingreso = '2020-01-01 00:00:00' WHERE id = " + segundo.getId());
+
+        List<Equipo> todos = dao.obtenerTodos();
+        assertEquals(primero.getId(), todos.get(0).getId());
+        assertEquals(segundo.getId(), todos.get(1).getId());
+    }
+
+    @Test
+    void obtenerEntreFechas_filtraPorInstitucionCuandoSeEspecifica() {
+        Equipo institucion1 = equipoBase();
+        institucion1.setNroInstitucion(1);
+        dao.guardarEquipo(institucion1);
+
+        Equipo institucion2 = equipoBase();
+        institucion2.setNroInstitucion(2);
+        dao.guardarEquipo(institucion2);
+
+        LocalDate desde = LocalDate.now().minusDays(1);
+        LocalDate hasta = LocalDate.now().plusDays(1);
+
+        List<Equipo> filtrados = dao.obtenerEntreFechas(desde, hasta, null, 1);
+
+        assertEquals(1, filtrados.size());
+        assertEquals(institucion1.getId(), filtrados.get(0).getId());
+    }
+
+    @Test
+    void obtenerEntreFechas_sinInstitucion_retornaTodos() {
+        Equipo institucion1 = equipoBase();
+        institucion1.setNroInstitucion(1);
+        dao.guardarEquipo(institucion1);
+
+        Equipo institucion2 = equipoBase();
+        institucion2.setNroInstitucion(2);
+        dao.guardarEquipo(institucion2);
+
+        LocalDate desde = LocalDate.now().minusDays(1);
+        LocalDate hasta = LocalDate.now().plusDays(1);
+
+        List<Equipo> todos = dao.obtenerEntreFechas(desde, hasta, null, null);
+
+        assertEquals(2, todos.size());
     }
 
     // ── actualizar ────────────────────────────────────────────────────────────

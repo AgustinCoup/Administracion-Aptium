@@ -1,6 +1,7 @@
 package com.example.features.equipos.view.helpers;
 
 import com.example.features.clientes.model.Cliente;
+import com.example.features.instituciones.model.Institucion;
 import com.example.ui.common.AutocompleteListener;
 import com.example.ui.common.Estilos;
 import com.toedter.calendar.JDateChooser;
@@ -16,16 +17,25 @@ public class ImprimirEquiposDialog extends JDialog {
 
     @FunctionalInterface
     public interface Callback {
-        void onConfirmar(LocalDate desde, LocalDate hasta, Integer clienteId);
+        void onConfirmar(LocalDate desde, LocalDate hasta, Integer clienteId, Integer institucionId);
     }
 
     private final JDateChooser dateDesde;
     private final JDateChooser dateHasta;
     private final JTextField   txtCliente;
     private Integer selectedClienteId = null;
+    private Integer selectedInstitucionId = null;
+
+    /** Sin filtro de institución (usado por el reporte de "Otros", que no tiene ese dato). */
+    public ImprimirEquiposDialog(Frame parent, String titulo,
+                                 Function<String, List<Cliente>> buscarClientes,
+                                 Callback onConfirmar) {
+        this(parent, titulo, buscarClientes, null, onConfirmar);
+    }
 
     public ImprimirEquiposDialog(Frame parent, String titulo,
                                  Function<String, List<Cliente>> buscarClientes,
+                                 Function<String, List<Institucion>> buscarInstituciones,
                                  Callback onConfirmar) {
         super(parent, titulo, true);
 
@@ -66,6 +76,38 @@ public class ImprimirEquiposDialog extends JDialog {
         gbc.gridx = 1;
         panelCliente.add(txtCliente, gbc);
 
+        // ── Panel institución (opcional; solo si el reporte la soporta) ────────
+        JTextField txtInstitucion = null;
+        JPanel panelInstitucion = null;
+        if (buscarInstituciones != null) {
+            txtInstitucion = new JTextField();
+            txtInstitucion.setPreferredSize(new Dimension(220, 26));
+            txtInstitucion.setFont(Estilos.Fuentes.INPUT);
+
+            new AutocompleteListener<>(
+                txtInstitucion,
+                buscarInstituciones,
+                i   -> selectedInstitucionId = i.getId(),
+                txt -> selectedInstitucionId = null
+            );
+
+            panelInstitucion = new JPanel(new GridBagLayout());
+            panelInstitucion.setBorder(BorderFactory.createTitledBorder("Filtrar por institución (opcional)"));
+            panelInstitucion.setBackground(Color.WHITE);
+
+            GridBagConstraints gbcInst = new GridBagConstraints();
+            gbcInst.insets = new Insets(10, 12, 10, 12);
+            gbcInst.anchor = GridBagConstraints.WEST;
+
+            JLabel lblInstitucion = new JLabel("Institución:");
+            lblInstitucion.setFont(Estilos.Fuentes.LABEL);
+            gbcInst.gridx = 0; gbcInst.gridy = 0;
+            panelInstitucion.add(lblInstitucion, gbcInst);
+            gbcInst.gridx = 1;
+            panelInstitucion.add(txtInstitucion, gbcInst);
+        }
+        final JTextField txtInstitucionRef = txtInstitucion;
+
         // ── Panel fechas ──────────────────────────────────────────────────────
         JPanel panelFechas = new JPanel(new GridBagLayout());
         panelFechas.setBorder(BorderFactory.createTitledBorder("Filtrar por fecha de ingreso"));
@@ -89,11 +131,12 @@ public class ImprimirEquiposDialog extends JDialog {
         gbc.gridx = 1;
         panelFechas.add(dateHasta, gbc);
 
-        // ── Panel central (cliente + fechas apilados) ─────────────────────────
+        // ── Panel central (cliente + institución + fechas apilados) ────────────
         JPanel panelCentral = new JPanel();
         panelCentral.setLayout(new BoxLayout(panelCentral, BoxLayout.Y_AXIS));
         panelCentral.setBackground(Color.WHITE);
         panelCentral.add(panelCliente);
+        if (panelInstitucion != null) panelCentral.add(panelInstitucion);
         panelCentral.add(panelFechas);
 
         // ── Botones ───────────────────────────────────────────────────────────
@@ -115,8 +158,11 @@ public class ImprimirEquiposDialog extends JDialog {
                 return;
             }
             if (txtCliente.getText().trim().isEmpty()) selectedClienteId = null;
+            if (txtInstitucionRef != null && txtInstitucionRef.getText().trim().isEmpty()) {
+                selectedInstitucionId = null;
+            }
             dispose();
-            onConfirmar.onConfirmar(desde, hasta, selectedClienteId);
+            onConfirmar.onConfirmar(desde, hasta, selectedClienteId, selectedInstitucionId);
         });
 
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));

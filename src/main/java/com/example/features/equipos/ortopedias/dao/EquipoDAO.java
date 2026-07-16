@@ -314,7 +314,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * Método público para compatibilidad con código existente.
      */
     public List<Equipo> obtenerTodosLosEquipos() {
-        return obtenerEquiposConJoin("ORDER BY e.estado, e.id DESC, em.id");
+        return obtenerEquiposConJoin("ORDER BY e.fecha_ingreso DESC, e.id DESC, em.id");
     }
 
     /**
@@ -405,7 +405,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         );
     }
 
-    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
+    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId, Integer institucionId) {
         String where = "WHERE e.fecha_ingreso >= ? AND e.fecha_ingreso <= ?";
         List<Object> params = new ArrayList<>(Arrays.asList(
             Timestamp.valueOf(desde.atStartOfDay()),
@@ -414,6 +414,10 @@ public class EquipoDAO implements DAO<Equipo, String> {
         if (clienteId != null) {
             where += " AND e.nro_cliente = ?";
             params.add(clienteId);
+        }
+        if (institucionId != null) {
+            where += " AND e.nro_institucion = ?";
+            params.add(institucionId);
         }
         return obtenerEquiposConJoin(where + " ORDER BY e.fecha_ingreso, em.id", params.toArray());
     }

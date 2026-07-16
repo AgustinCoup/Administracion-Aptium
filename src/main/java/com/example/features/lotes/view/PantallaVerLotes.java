@@ -82,6 +82,13 @@ public class PantallaVerLotes extends JPanel {
         tablaLotes.getColumnModel().getColumn(5).setCellRenderer(new EstadoCellRenderer());
 
         add(new JScrollPane(tablaLotes), BorderLayout.CENTER);
+        add(crearPanelSur(), BorderLayout.SOUTH);
+    }
+
+    private JPanel crearPanelSur() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        panel.add(btnImprimir);
+        return panel;
     }
 
     // ── Construcción del panel de filtros ─────────────────────────────────────
@@ -134,7 +141,6 @@ public class PantallaVerLotes extends JPanel {
         fila2.add(lblDesde); fila2.add(dateChooserDesde);
         fila2.add(lblHasta); fila2.add(dateChooserHasta);
         fila2.add(btnLimpiarFiltros);
-        fila2.add(btnImprimir);
 
         JPanel panelFiltros = new JPanel(new BorderLayout());
         panelFiltros.setBorder(BorderFactory.createTitledBorder("Filtros"));

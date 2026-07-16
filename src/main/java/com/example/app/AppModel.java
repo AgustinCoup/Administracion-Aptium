@@ -135,8 +135,8 @@ public class AppModel {
         return equipoService.contar();
     }
 
-    public List<Equipo> obtenerEquiposEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
-        return equipoService.obtenerEntreFechas(desde, hasta, clienteId);
+    public List<Equipo> obtenerEquiposEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId, Integer institucionId) {
+        return equipoService.obtenerEntreFechas(desde, hasta, clienteId, institucionId);
     }
 
     // ==================== MATERIALES ====================
