@@ -52,4 +52,39 @@ class PantallaVerEquiposTest {
 
         assertTrue(panel.getCmbEstados().getSelectedItems().isEmpty());
     }
+
+    @Test
+    void aplicarFiltroInicial_noDisparaElCallback() {
+        // Evita el flash de datos viejos: quien navega a la pantalla recarga
+        // datos frescos aparte y es quien debe disparar el repintado.
+        int[] llamadas = {0};
+        panel.configurarFiltros(() -> llamadas[0]++);
+
+        panel.aplicarFiltroInicial();
+
+        assertEquals(0, llamadas[0]);
+    }
+
+    @Test
+    void aplicarFiltroInicialYNotificar_disparaElCallback() {
+        int[] llamadas = {0};
+        panel.configurarFiltros(() -> llamadas[0]++);
+
+        panel.aplicarFiltroInicialYNotificar();
+
+        assertEquals(1, llamadas[0]);
+    }
+
+    @Test
+    void limpiarFiltros_disparaElCallbackUnaSolaVez() {
+        // Regresión: JDateChooser.setDate(null) avisa aunque ya fuera null, así
+        // que limpiar los dos date choosers sumaba 2 disparos extra del callback
+        // antes de la notificación explícita al final de limpiarFiltros().
+        int[] llamadas = {0};
+        panel.configurarFiltros(() -> llamadas[0]++);
+
+        panel.limpiarFiltros();
+
+        assertEquals(1, llamadas[0]);
+    }
 }

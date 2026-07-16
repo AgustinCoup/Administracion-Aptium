@@ -55,6 +55,8 @@ public class VerEquiposController {
 
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
+                // Sin notificar: cargarDatos() recarga la lista y es el único que
+                // filtra y repinta, para no mostrar un flash con datos viejos.
                 panel.aplicarFiltroInicial();
                 cargarDatos();
             }
