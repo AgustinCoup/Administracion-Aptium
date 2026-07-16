@@ -151,18 +151,22 @@ public class LotesController {
         //       nombre en tu modelo (ej. getCliente()), cambiá solo esa línea.
         clientesPorEquipo.clear();
         equiposOtrosPorId.clear();
+        List<Equipo> equipos = List.of();
+        List<EquipoOtros> equiposOtros = List.of();
         if (equipoContexto != null) {
             clientesPorEquipo.put(equipoContexto.getId(), equipoContexto.getClienteNombre());
         } else {
-            for (Equipo eq : model.obtenerTodosLosEquipos()) {
+            equipos = model.obtenerTodosLosEquipos();
+            equiposOtros = model.obtenerTodosLosEquiposOtros();
+            for (Equipo eq : equipos) {
                 clientesPorEquipo.put(eq.getId(), eq.getClienteNombre());
             }
-            for (EquipoOtros eq : model.obtenerTodosLosEquiposOtros()) {
+            for (EquipoOtros eq : equiposOtros) {
                 equiposOtrosPorId.put(eq.getId(), eq);
             }
         }
 
-        materialesDisponibles = construirMaterialesDisponibles();
+        materialesDisponibles = construirMaterialesDisponibles(equipos, equiposOtros);
         aplicarPendientesEnDisponibles();
 
         List<AutoclaveItem> items = new ArrayList<>();
@@ -194,7 +198,8 @@ public class LotesController {
         panel.setMaterialesDisponibles(materialesDisponibles);
     }
 
-    private List<MaterialLoteItem> construirMaterialesDisponibles() {
+    private List<MaterialLoteItem> construirMaterialesDisponibles(
+            List<Equipo> equipos, List<EquipoOtros> equiposOtros) {
         List<MaterialLoteItem> disponibles = new ArrayList<>();
 
         if (equipoContexto != null) {
@@ -217,7 +222,6 @@ public class LotesController {
             return disponibles;
         }
 
-        List<Equipo> equipos = model.obtenerTodosLosEquipos();
         for (Equipo equipo : equipos) {
             if (equipo.getMateriales() == null) continue;
             String clienteNombre = clientesPorEquipo.getOrDefault(equipo.getId(), "");
@@ -238,7 +242,7 @@ public class LotesController {
         }
 
         // EquipoOtros: REMITO y DETALLES
-        for (EquipoOtros equipo : model.obtenerTodosLosEquiposOtros()) {
+        for (EquipoOtros equipo : equiposOtros) {
             String clienteNombre = equipo.getClienteNombre() != null ? equipo.getClienteNombre() : "";
             List<MaterialOtros> mats = equipo.getMateriales();
             boolean remitoSinFilas = equipo.getTipoIngreso() == TipoIngresoOtros.REMITO
