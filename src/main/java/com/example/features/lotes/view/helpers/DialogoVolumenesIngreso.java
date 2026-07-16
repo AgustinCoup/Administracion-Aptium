@@ -1,0 +1,180 @@
+package com.example.features.lotes.view.helpers;
+
+import com.example.features.lotes.controller.helpers.IngresoPendienteInfo;
+
+import javax.swing.*;
+import java.awt.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Diálogo de lanzamiento de lote cuando hay materiales "otros": pide los litros
+ * por ingreso (cliente + ingreso con elementos en el lote), recalcula el
+ * volumen en vivo y confirma el volumen final. Reemplaza, para este caso, a la
+ * confirmación de texto y al campo "Volumen final" del panel.
+ *
+ * <p>Solo presentación: la agrupación viene resuelta (AgrupadorIngresosLote) y
+ * la validación de negocio vive en LoteService.
+ */
+public final class DialogoVolumenesIngreso {
+
+    private static final int LITROS_MIN = 1;
+    private static final int LITROS_MAX = 10000;
+
+    /** Resultado confirmado: litros por ingreso + volumen final del lote. */
+    public static final class ResultadoLanzamiento {
+        private final Map<Integer, Integer> litrosPorIngreso;
+        private final int volumenFinal;
+
+        private ResultadoLanzamiento(Map<Integer, Integer> litrosPorIngreso, int volumenFinal) {
+            this.litrosPorIngreso = litrosPorIngreso;
+            this.volumenFinal     = volumenFinal;
+        }
+
+        public Map<Integer, Integer> getLitrosPorIngreso() { return litrosPorIngreso; }
+        public int getVolumenFinal()                       { return volumenFinal; }
+    }
+
+    private DialogoVolumenesIngreso() { }
+
+    /**
+     * @param parent            componente padre para el modal
+     * @param ingresos          filas (cliente, ingreso, cantidad) a completar
+     * @param resumenMateriales líneas "descripcion (xN)" de todos los materiales del lote
+     * @param volumenOrtopedias volumen calculado de los materiales de ortopedia
+     * @param capacidadTotal    capacidad del autoclave (tope duro del volumen final)
+     * @return litros por ingreso + volumen final, o vacío si el usuario cancela
+     */
+    public static Optional<ResultadoLanzamiento> mostrar(Component parent,
+                                                         List<IngresoPendienteInfo> ingresos,
+                                                         List<String> resumenMateriales,
+                                                         int volumenOrtopedias,
+                                                         int capacidadTotal) {
+        Map<Integer, JSpinner> spinnersPorIngreso = new LinkedHashMap<>();
+        JSpinner spVolumenFinal = new JSpinner(new SpinnerNumberModel(1, 1, LITROS_MAX, 1));
+        spVolumenFinal.setEditor(new JSpinner.NumberEditor(spVolumenFinal, "0"));
+        JLabel lblCalculado  = new JLabel();
+        JLabel lblAdvertencia = new JLabel(" ");
+        lblAdvertencia.setForeground(new Color(178, 88, 0));
+
+        // El volumen final sigue al calculado hasta que el usuario lo edite a mano.
+        final boolean[] finalEditadoAMano = {false};
+        final boolean[] sincronizando     = {false};
+
+        Runnable recalcular = () -> {
+            int total = volumenOrtopedias;
+            for (JSpinner sp : spinnersPorIngreso.values()) total += (Integer) sp.getValue();
+            lblCalculado.setText(String.format("Volumen calculado: %d / %d", total, capacidadTotal));
+            if (!finalEditadoAMano[0]) {
+                sincronizando[0] = true;
+                spVolumenFinal.setValue(Math.max(1, total));
+                sincronizando[0] = false;
+            }
+            actualizarAdvertencia(lblAdvertencia, (Integer) spVolumenFinal.getValue(), total, capacidadTotal);
+        };
+
+        JPanel contenido = construirPanel(ingresos, resumenMateriales, spinnersPorIngreso,
+                spVolumenFinal, lblCalculado, lblAdvertencia);
+
+        for (JSpinner sp : spinnersPorIngreso.values()) sp.addChangeListener(e -> recalcular.run());
+        spVolumenFinal.addChangeListener(e -> {
+            if (!sincronizando[0]) finalEditadoAMano[0] = true;
+            int total = volumenOrtopedias;
+            for (JSpinner sp : spinnersPorIngreso.values()) total += (Integer) sp.getValue();
+            actualizarAdvertencia(lblAdvertencia, (Integer) spVolumenFinal.getValue(), total, capacidadTotal);
+        });
+        recalcular.run();
+
+        Object[] botones = {"Lanzar", "Cancelar"};
+        while (true) {
+            int opcion = JOptionPane.showOptionDialog(parent, contenido,
+                    "Confirmar Lanzamiento de Lote", JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.QUESTION_MESSAGE, null, botones, botones[0]);
+            if (opcion != JOptionPane.OK_OPTION) return Optional.empty();
+
+            int volumenFinal = (Integer) spVolumenFinal.getValue();
+            if (volumenFinal > capacidadTotal) {
+                JOptionPane.showMessageDialog(parent, String.format(
+                        "El volumen final (%d) supera la capacidad del autoclave (%d).\n" +
+                        "Ajuste el valor antes de lanzar.", volumenFinal, capacidadTotal),
+                        "Volumen inválido", JOptionPane.ERROR_MESSAGE);
+                continue;
+            }
+
+            Map<Integer, Integer> litros = new LinkedHashMap<>();
+            for (Map.Entry<Integer, JSpinner> entry : spinnersPorIngreso.entrySet()) {
+                litros.put(entry.getKey(), (Integer) entry.getValue().getValue());
+            }
+            return Optional.of(new ResultadoLanzamiento(litros, volumenFinal));
+        }
+    }
+
+    // ── Construcción del panel ───────────────────────────────────────────────
+
+    private static JPanel construirPanel(List<IngresoPendienteInfo> ingresos,
+                                         List<String> resumenMateriales,
+                                         Map<Integer, JSpinner> spinnersPorIngreso,
+                                         JSpinner spVolumenFinal,
+                                         JLabel lblCalculado,
+                                         JLabel lblAdvertencia) {
+        JPanel panel = new JPanel(new BorderLayout(0, 10));
+
+        StringBuilder resumen = new StringBuilder("Se lanzará el lote con los siguientes materiales:\n\n");
+        for (String linea : resumenMateriales) resumen.append("• ").append(linea).append("\n");
+        JTextArea areaResumen = new JTextArea(resumen.toString());
+        areaResumen.setEditable(false);
+        areaResumen.setOpaque(false);
+        panel.add(areaResumen, BorderLayout.NORTH);
+
+        JPanel tabla = new JPanel(new GridBagLayout());
+        tabla.setBorder(BorderFactory.createTitledBorder("Litros por ingreso"));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(3, 6, 3, 6);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        gbc.gridy = 0;
+        gbc.gridx = 0; tabla.add(new JLabel("<html><b>Cliente</b></html>"), gbc);
+        gbc.gridx = 1; tabla.add(new JLabel("<html><b>Ingreso</b></html>"), gbc);
+        gbc.gridx = 2; tabla.add(new JLabel("<html><b>Cantidad</b></html>"), gbc);
+        gbc.gridx = 3; tabla.add(new JLabel("<html><b>Litros</b></html>"), gbc);
+
+        for (IngresoPendienteInfo ingreso : ingresos) {
+            gbc.gridy++;
+            gbc.gridx = 0; tabla.add(new JLabel(ingreso.getClienteNombre()), gbc);
+            gbc.gridx = 1; tabla.add(new JLabel(ingreso.getEtiquetaIngreso()), gbc);
+            gbc.gridx = 2; tabla.add(new JLabel(String.valueOf(ingreso.getCantidadTotal())), gbc);
+            JSpinner sp = new JSpinner(new SpinnerNumberModel(LITROS_MIN, LITROS_MIN, LITROS_MAX, 1));
+            sp.setEditor(new JSpinner.NumberEditor(sp, "0"));
+            gbc.gridx = 3; tabla.add(sp, gbc);
+            spinnersPorIngreso.put(ingreso.getEquipoOtrosId(), sp);
+        }
+        panel.add(new JScrollPane(tabla), BorderLayout.CENTER);
+
+        JPanel pie = new JPanel(new GridBagLayout());
+        GridBagConstraints g2 = new GridBagConstraints();
+        g2.insets = new Insets(2, 6, 2, 6);
+        g2.anchor = GridBagConstraints.WEST;
+        g2.gridx = 0; g2.gridy = 0; g2.gridwidth = 2;
+        pie.add(lblCalculado, g2);
+        g2.gridy = 1; g2.gridwidth = 1;
+        pie.add(new JLabel("Volumen final:"), g2);
+        g2.gridx = 1;
+        pie.add(spVolumenFinal, g2);
+        g2.gridx = 0; g2.gridy = 2; g2.gridwidth = 2;
+        pie.add(lblAdvertencia, g2);
+        panel.add(pie, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private static void actualizarAdvertencia(JLabel label, int volumenFinal,
+                                              int volumenCalculado, int capacidadTotal) {
+        StringBuilder sb = new StringBuilder();
+        if (volumenFinal != volumenCalculado) sb.append("⚠ Volumen ajustado manualmente. ");
+        double porcentaje = capacidadTotal == 0 ? 0 : (double) volumenFinal / capacidadTotal;
+        if (porcentaje < 0.8) sb.append("⚠ Menos del 80% de capacidad.");
+        label.setText(sb.length() == 0 ? " " : sb.toString());
+    }
+}

@@ -75,6 +75,13 @@ public class OtrosInputController extends EquipoInputControllerBase<PantallaIngr
             return false;
         }
 
+        if (panel.getPanelMateriales().tieneDuplicados()) {
+            panel.mostrarAdvertencia(
+                "Hay materiales duplicados.\n" +
+                "Unifique las filas marcadas en rojo antes de guardar.");
+            return false;
+        }
+
         for (PanelMaterialesOtros.OtrosMaterialRow fila : filas) {
             String desc = fila.txtDescripcion.getText().trim();
             if (desc.isEmpty()) continue;

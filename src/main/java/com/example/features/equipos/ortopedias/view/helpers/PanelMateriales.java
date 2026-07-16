@@ -7,7 +7,6 @@ import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -15,6 +14,7 @@ import javax.swing.event.DocumentListener;
 
 import com.example.common.constants.Constantes;
 import com.example.common.util.Validador;
+import com.example.ui.common.DuplicadoHighlighter;
 
 import java.util.function.BiConsumer;
 
@@ -44,7 +44,6 @@ public class PanelMateriales extends JPanel {
 
     // Color de fondo normal de los JTextField (se captura la primera vez que se crea uno)
     private Color colorNormal = null;
-    private static final Color COLOR_DUPLICADO = new Color(255, 200, 200);
 
     public PanelMateriales(Font inputFont, int inputHeight) {
         this.inputFont   = inputFont;
@@ -116,30 +115,19 @@ public class PanelMateriales extends JPanel {
      * @return true si hay al menos un código duplicado (debe bloquearse el guardado)
      */
     public boolean tieneDuplicados() {
-        List<String> codigos = new ArrayList<>();
-        for (MaterialRow row : materialRows) {
-            String cod = row.numero.getText().trim();
-            if (!cod.isEmpty() && Validador.soloNumeros(cod)) codigos.add(cod);
-        }
+        List<JTextField> campos = new ArrayList<>();
+        for (MaterialRow row : materialRows) campos.add(row.numero);
 
-        Set<String> duplicados = Validador.detectarDuplicados(codigos);
-
-        for (MaterialRow row : materialRows) {
-            String cod = row.numero.getText().trim();
-            if (duplicados.contains(cod)) {
-                row.numero.setBackground(COLOR_DUPLICADO);
-                row.numero.setToolTipText("Código duplicado: unifique estas filas antes de guardar");
-            } else {
-                row.numero.setBackground(colorNormal);
-                row.numero.setToolTipText(null);
-            }
-        }
-        return !duplicados.isEmpty();
+        return DuplicadoHighlighter.marcar(
+            campos,
+            cod -> Validador.soloNumeros(cod.trim()) ? cod.trim() : "",
+            colorNormal,
+            "Código duplicado: unifique estas filas antes de guardar");
     }
 
     // ── Construcción de filas ────────────────────────────────────────────────
 
-    private void agregarFilaMaterial() {
+    void agregarFilaMaterial() {
         GridBagConstraints gbcRow = new GridBagConstraints();
         gbcRow.insets = new Insets(5, 0, 5, 10);
         gbcRow.fill   = GridBagConstraints.HORIZONTAL;

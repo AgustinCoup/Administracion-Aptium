@@ -3,7 +3,9 @@ package com.example.features.equipos.otros.view.helpers;
 import com.example.common.constants.Constantes;
 import com.example.ui.common.Hotkeys;
 import com.example.ui.common.AutocompleteListener;
+import com.example.ui.common.DuplicadoHighlighter;
 import com.example.ui.common.Estilos;
+import com.example.ui.common.FilterUiHelper;
 import com.example.ui.dialogs.NuevoElementoDialog;
 
 import java.awt.*;
@@ -16,11 +18,13 @@ import javax.swing.*;
 /**
  * Panel de materiales para el ingreso de tipo "Otros".
  *
- * Diferencias respecto a {@link com.example.features.equipos.view.helpers.PanelMateriales}:
+ * Diferencias respecto a {@link com.example.features.equipos.ortopedias.view.helpers.PanelMateriales}:
  * - El primer campo de cada fila es un {@link JTextField} de texto libre (descripción).
  * - Al escribir dispara autocompletado contra {@code catalogo_otros} desde 1 carácter.
  * - Al perder el foco con texto no presente en el catálogo abre {@link NuevoElementoDialog}.
- * - No hay campo de código numérico ni lógica de duplicados.
+ * - No hay código numérico: la identidad de la fila es la descripción normalizada
+ *   (trim + minúsculas). Igual que en ortopedias, {@link #tieneDuplicados()} resalta
+ *   en rojo las filas en conflicto y permite al Controller bloquear el guardado.
  */
 public class PanelMaterialesOtros extends JPanel {
 
@@ -30,6 +34,9 @@ public class PanelMaterialesOtros extends JPanel {
     private final Font  inputFont;
     private final int   inputHeight;
     private JPanel listPanel;
+
+    // Color de fondo normal de los JTextField (se captura la primera vez que se crea uno)
+    private Color colorNormal = null;
 
     private Function<String, List<String>> buscarFn;
     private Function<String, Boolean>      verificarFn;
@@ -97,6 +104,28 @@ public class PanelMaterialesOtros extends JPanel {
         return filas;
     }
 
+    // ── Validación de duplicados ─────────────────────────────────────────────
+
+    /**
+     * Verifica si existe alguna descripción repetida (normalizada: trim +
+     * minúsculas) entre las filas actuales. Actualiza el color de fondo y
+     * tooltip de cada campo descripción igual que {@code PanelMateriales}.
+     *
+     * Llamar desde el Controller antes de intentar guardar el equipo.
+     *
+     * @return true si hay al menos una descripción duplicada
+     */
+    public boolean tieneDuplicados() {
+        List<JTextField> campos = new ArrayList<>();
+        for (OtrosMaterialRow fila : filas) campos.add(fila.txtDescripcion);
+
+        return DuplicadoHighlighter.marcar(
+            campos,
+            desc -> desc.trim().toLowerCase(),
+            colorNormal,
+            "Material duplicado: unifique estas filas antes de guardar");
+    }
+
     /** Resetea el panel a una sola fila vacía. */
     public void limpiar() {
         while (!filas.isEmpty()) eliminarFila(filas.get(filas.size() - 1));
@@ -108,7 +137,7 @@ public class PanelMaterialesOtros extends JPanel {
 
     // ── Construcción de filas ─────────────────────────────────────────────────
 
-    private void agregarFila() {
+    void agregarFila() {
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5, 0, 5, 10);
         gbc.fill   = GridBagConstraints.HORIZONTAL;
@@ -120,6 +149,12 @@ public class PanelMaterialesOtros extends JPanel {
         txtDesc.setMargin(Estilos.Espaciados.INSETS_INPUT);
         txtDesc.setPreferredSize(new Dimension(250, inputHeight));
         txtDesc.setMinimumSize(new Dimension(120, inputHeight));
+
+        // Capturar el color normal la primera vez
+        if (colorNormal == null) {
+            colorNormal = txtDesc.getBackground();
+        }
+        FilterUiHelper.bindOnTextChange(this::tieneDuplicados, txtDesc);
 
         // confirmedText rastrea el último valor aceptado para evitar re-preguntar
         // si el usuario mueve el foco sin haber cambiado el texto.
@@ -159,7 +194,11 @@ public class PanelMaterialesOtros extends JPanel {
         btnDel.setToolTipText(Constantes.Textos.TOOLTIP_ELIMINAR_FILA);
 
         OtrosMaterialRow fila = new OtrosMaterialRow(txtDesc, spCantidad, btnDel);
-        btnDel.addActionListener(e -> eliminarFila(fila));
+        btnDel.addActionListener(e -> {
+            eliminarFila(fila);
+            // Re-evaluar duplicados por si la fila eliminada resolvía un conflicto
+            tieneDuplicados();
+        });
 
         gbc.gridx = 0; gbc.gridy = rowIdx; gbc.weightx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;

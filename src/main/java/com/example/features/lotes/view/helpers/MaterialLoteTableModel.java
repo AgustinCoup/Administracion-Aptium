@@ -28,11 +28,8 @@ public class MaterialLoteTableModel extends AbstractTableModel {
             case 0: return item.getDescripcion();
             case 1: return item.getCantidad();
             case 2:
-                if (item.isEsOtros()) {
-                    // Antes de añadir al autoclave: sin volumen aún → guión
-                    // Después (en autoclave): mostrar el volumen declarado
-                    return item.getVolumenOtros() != null ? item.getVolumenOtros() : "-";
-                }
+                // El volumen de los "otros" pertenece al ingreso, no a la fila
+                if (item.isEsOtros()) return "-";
                 return item.getVolumenTotal();
             case 3: return item.getClienteNombre();
             default: return "";

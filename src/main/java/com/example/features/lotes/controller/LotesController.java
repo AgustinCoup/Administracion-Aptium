@@ -1,6 +1,7 @@
 package com.example.features.lotes.controller;
 
 import com.example.common.constants.Constantes;
+import com.example.features.lotes.controller.helpers.AgrupadorIngresosLote;
 import com.example.features.lotes.controller.helpers.MaterialLoteTransferable;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.app.AppModel;
@@ -17,6 +18,7 @@ import com.example.features.lotes.model.LoteMovimiento;
 import com.example.features.lotes.view.PantallaLotes;
 import com.example.ui.dialogs.CantidadDialogHelper;
 import com.example.features.lotes.view.helpers.AutoclaveItem;
+import com.example.features.lotes.view.helpers.DialogoVolumenesIngreso;
 import com.example.features.lotes.view.helpers.MaterialLoteItem;
 import com.example.features.lotes.view.helpers.PanelLotesContenido;
 
@@ -30,6 +32,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class LotesController {
 
@@ -46,12 +49,13 @@ public class LotesController {
     private Map<Integer, Integer> volumenesCatalogo = new HashMap<>();
     private AutoclaveItem autoclaveSeleccionado;
 
+    /** Mapa equipoId → clienteNombre para ortopedias. */
+    private Map<Integer, String> clientesPorEquipo = new HashMap<>();
     /**
-     * Mapa equipoId → clienteNombre para ortopedia y otros respectivamente.
-     * Se usan mapas separados para evitar colisiones de ID entre tablas distintas.
+     * Equipos "otros" por id (tabla distinta a ortopedias, sin colisión de IDs):
+     * aporta el nombre de cliente y los datos del ingreso para el diálogo de volúmenes.
      */
-    private Map<Integer, String> clientesPorEquipo      = new HashMap<>();
-    private Map<Integer, String> clientesPorEquipoOtros = new HashMap<>();
+    private Map<Integer, EquipoOtros> equiposOtrosPorId = new HashMap<>();
 
     // DataFlavor personalizado para transferir MaterialLoteItem en la misma JVM
     public static final DataFlavor MATERIAL_LOTE_FLAVOR;
@@ -146,7 +150,7 @@ public class LotesController {
         // NOTA: se asume que Equipo expone getClienteNombre(). Si el método tiene otro
         //       nombre en tu modelo (ej. getCliente()), cambiá solo esa línea.
         clientesPorEquipo.clear();
-        clientesPorEquipoOtros.clear();
+        equiposOtrosPorId.clear();
         if (equipoContexto != null) {
             clientesPorEquipo.put(equipoContexto.getId(), equipoContexto.getClienteNombre());
         } else {
@@ -154,7 +158,7 @@ public class LotesController {
                 clientesPorEquipo.put(eq.getId(), eq.getClienteNombre());
             }
             for (EquipoOtros eq : model.obtenerTodosLosEquiposOtros()) {
-                clientesPorEquipoOtros.put(eq.getId(), eq.getClienteNombre());
+                equiposOtrosPorId.put(eq.getId(), eq);
             }
         }
 
@@ -235,7 +239,7 @@ public class LotesController {
 
         // EquipoOtros: REMITO y DETALLES
         for (EquipoOtros equipo : model.obtenerTodosLosEquiposOtros()) {
-            String clienteNombre = clientesPorEquipoOtros.getOrDefault(equipo.getId(), "");
+            String clienteNombre = equipo.getClienteNombre() != null ? equipo.getClienteNombre() : "";
             List<MaterialOtros> mats = equipo.getMateriales();
             boolean remitoSinFilas = equipo.getTipoIngreso() == TipoIngresoOtros.REMITO
                                      && (mats == null || mats.isEmpty());
@@ -307,7 +311,7 @@ public class LotesController {
             for (LoteMaterialInfo info : materialesLote) {
                 // codigoCatalogo == 0 indica material de equipo_otros_materiales
                 String clienteNombre = info.getCodigoCatalogo() == 0
-                        ? clientesPorEquipoOtros.getOrDefault(info.getEquipoId(), "")
+                        ? nombreClienteOtros(info.getEquipoId())
                         : clientesPorEquipo.getOrDefault(info.getEquipoId(), "");
                 // codigoCatalogo == 0 discrimina materiales de equipo_otros_materiales.
                 // Para "otros": volumen en DB es el total declarado → setVolumenOtros.
@@ -341,10 +345,13 @@ public class LotesController {
             panel.setCapacidadTexto(String.format("Capacidad: %d/%d", usada, autoclave.getCapacidad()));
 
             panel.setVolumenCalculado(usada);
-            panel.setVolumenManualEnabled(!pendientes.isEmpty());
 
             boolean hayPendientes = !pendientes.isEmpty();
-            panel.setLanzarEnabled(hayPendientes && volumenManualDentroDeCapacidad(autoclave));
+            boolean hayOtros = contieneOtros(pendientes);
+            // Con materiales "otros" el volumen final se define en el diálogo de
+            // lanzamiento: el campo del panel no aplica y no debe bloquear el botón.
+            panel.setVolumenManualEnabled(hayPendientes && !hayOtros);
+            panel.setLanzarEnabled(hayPendientes && (hayOtros || volumenManualDentroDeCapacidad(autoclave)));
             panel.setFinalizarEnabled(false);
             panel.setMarcarFalloEnabled(false);
             panel.setQuitarEnabled(hayPendientes);
@@ -360,7 +367,8 @@ public class LotesController {
         List<MaterialLoteItem> pendientes = pendientesPorAutoclave.getOrDefault(
                 autoclaveSeleccionado.getNombre(), List.of());
         boolean hayPendientes = !pendientes.isEmpty();
-        panel.setLanzarEnabled(hayPendientes && volumenManualDentroDeCapacidad(autoclaveSeleccionado));
+        panel.setLanzarEnabled(hayPendientes &&
+                (contieneOtros(pendientes) || volumenManualDentroDeCapacidad(autoclaveSeleccionado)));
     }
 
     /**
@@ -482,34 +490,24 @@ public class LotesController {
     private void agregarMaterial(MaterialLoteItem item) {
         if (item == null || autoclaveSeleccionado == null) return;
 
-        Integer cantidadElegida;
-        Integer volumenOtros = null;
+        // Mismo diálogo para ortopedias y otros: solo la cantidad. Los litros de
+        // los "otros" se asignan por ingreso en el diálogo de lanzamiento.
+        Integer cantidadElegida = CantidadDialogHelper.pedirCantidad(
+                panel,
+                item.getDescripcion(),
+                item.getCantidad(),
+                (chkTodos, spinner) -> chkTodos.addActionListener(e -> {
+                    if (chkTodos.isSelected()) {
+                        spinner.setValue(item.getCantidad());
+                        spinner.setEnabled(false);
+                    } else {
+                        spinner.setEnabled(true);
+                    }
+                })
+        );
+        if (cantidadElegida == null) return;
 
-        if (item.isEsOtros()) {
-            int[] result = pedirCantidadYVolumen(item.getDescripcion(), item.getCantidad());
-            if (result == null) return;
-            cantidadElegida = result[0];
-            volumenOtros    = result[1];
-        } else {
-            cantidadElegida = CantidadDialogHelper.pedirCantidad(
-                    panel,
-                    item.getDescripcion(),
-                    item.getCantidad(),
-                    (chkTodos, spinner) -> chkTodos.addActionListener(e -> {
-                        if (chkTodos.isSelected()) {
-                            spinner.setValue(item.getCantidad());
-                            spinner.setEnabled(false);
-                        } else {
-                            spinner.setEnabled(true);
-                        }
-                    })
-            );
-            if (cantidadElegida == null) return;
-        }
-
-        int volumenNecesario = item.isEsOtros()
-                ? volumenOtros
-                : cantidadElegida * item.getVolumen();
+        int volumenNecesario = item.isEsOtros() ? 0 : cantidadElegida * item.getVolumen();
         int capacidadUsada = calcularCapacidadPendiente(autoclaveSeleccionado.getNombre());
         if (capacidadUsada + volumenNecesario > autoclaveSeleccionado.getCapacidad()) {
             panel.mostrarAdvertencia(
@@ -517,58 +515,9 @@ public class LotesController {
                     "Puede ajustar el volumen final en el campo \"Volumen final\" antes de lanzar.");
         }
 
-        item.setVolumenOtros(volumenOtros);
         ajustarDisponibles(item, cantidadElegida);
         agregarPendiente(autoclaveSeleccionado.getNombre(), item, cantidadElegida);
         cargarDatos();
-    }
-
-    /**
-     * Diálogo unificado para equipo_otros: pide cantidad y litros en un solo paso.
-     * Retorna int[]{cantidad, litros} o null si el usuario cancela.
-     */
-    private int[] pedirCantidadYVolumen(String descripcion, int cantidadMax) {
-        JSpinner spCantidad = new JSpinner(new SpinnerNumberModel(cantidadMax, 1, cantidadMax, 1));
-        spCantidad.setEditor(new JSpinner.NumberEditor(spCantidad, "0"));
-        JCheckBox chkTodos = new JCheckBox("Todos", true);
-        spCantidad.setEnabled(false);
-        chkTodos.addActionListener(e -> {
-            if (chkTodos.isSelected()) {
-                spCantidad.setValue(cantidadMax);
-                spCantidad.setEnabled(false);
-            } else {
-                spCantidad.setEnabled(true);
-            }
-        });
-
-        JSpinner spLitros = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
-        spLitros.setEditor(new JSpinner.NumberEditor(spLitros, "0"));
-
-        JPanel dlgPanel = new JPanel(new java.awt.GridBagLayout());
-        java.awt.GridBagConstraints gbc = new java.awt.GridBagConstraints();
-        gbc.insets = new java.awt.Insets(4, 5, 4, 5);
-        gbc.anchor = java.awt.GridBagConstraints.WEST;
-
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
-        dlgPanel.add(new JLabel("<html><b>" + descripcion + "</b></html>"), gbc);
-
-        gbc.gridy = 1; gbc.gridwidth = 1;
-        dlgPanel.add(new JLabel("Cantidad:"), gbc);
-        gbc.gridx = 1;
-        dlgPanel.add(spCantidad, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 2;
-        dlgPanel.add(chkTodos, gbc);
-
-        gbc.gridy = 3;
-        dlgPanel.add(new JLabel("Volumen (litros):"), gbc);
-        gbc.gridx = 1;
-        dlgPanel.add(spLitros, gbc);
-
-        int res = JOptionPane.showConfirmDialog(panel, dlgPanel,
-                "Agregar al autoclave", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
-        if (res != JOptionPane.OK_OPTION) return null;
-        return new int[]{ (Integer) spCantidad.getValue(), (Integer) spLitros.getValue() };
     }
 
     private void ajustarDisponibles(MaterialLoteItem item, int cantidad) {
@@ -602,7 +551,6 @@ public class LotesController {
                 item.getVolumen(),
                 item.getClienteNombre(),
                 item.isEsOtros());
-        nuevo.setVolumenOtros(item.getVolumenOtros());
         pendientes.add(nuevo);
     }
 
@@ -656,13 +604,55 @@ public class LotesController {
             return;
         }
 
-        int volumenManual   = panel.getVolumenManual();
-        int capacidadTotal  = autoclaveSeleccionado.getCapacidad();
+        int capacidadTotal = autoclaveSeleccionado.getCapacidad();
+        Map<Integer, Integer> volumenesPorIngreso;
+        int volumenFinal;
 
+        if (contieneOtros(pendientes)) {
+            // Los litros por ingreso y el volumen final se definen en el diálogo.
+            Optional<DialogoVolumenesIngreso.ResultadoLanzamiento> resultado =
+                    DialogoVolumenesIngreso.mostrar(
+                            panel,
+                            AgrupadorIngresosLote.agrupar(pendientes, equiposOtrosPorId),
+                            resumenMateriales(pendientes),
+                            calcularCapacidad(pendientes),
+                            capacidadTotal);
+            if (!resultado.isPresent()) return;
+            volumenesPorIngreso = resultado.get().getLitrosPorIngreso();
+            volumenFinal        = resultado.get().getVolumenFinal();
+        } else {
+            volumenesPorIngreso = Map.of();
+            volumenFinal        = panel.getVolumenManual();
+            if (!confirmarLanzamientoOrtopedia(pendientes, volumenFinal, capacidadTotal)) return;
+        }
+
+        List<LoteMovimiento> movimientos = new ArrayList<>();
+        for (MaterialLoteItem item : pendientes) {
+            movimientos.add(new LoteMovimiento(
+                    item.getMaterialId(), item.getEquipoId(), item.getCantidad(), item.isEsOtros()));
+        }
+
+        Lote lote = model.lanzarLote(autoclaveSeleccionado.getNombre(),
+                capacidadTotal, volumenFinal, movimientos, volumenesPorIngreso);
+
+        if (lote == null) {
+            panel.mostrarError("Error al lanzar el lote.");
+            return;
+        }
+
+        pendientesPorAutoclave.remove(autoclaveSeleccionado.getNombre());
+        cargarDatos();
+
+        if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
+    }
+
+    /** Confirmación previa al refactor, vigente para lotes sin materiales "otros". */
+    private boolean confirmarLanzamientoOrtopedia(List<MaterialLoteItem> pendientes,
+                                                  int volumenManual, int capacidadTotal) {
         if (volumenManual < 0) {
             panel.mostrarError("El campo \"Volumen final\" contiene un valor inválido.\n" +
                     "Ingrese un número entero mayor a 0.");
-            return;
+            return false;
         }
 
         if (volumenManual > capacidadTotal) {
@@ -670,7 +660,7 @@ public class LotesController {
                     "El volumen final (%d) supera la capacidad del autoclave (%d).\n" +
                     "Ajuste el valor en el campo \"Volumen final\" antes de lanzar.",
                     volumenManual, capacidadTotal));
-            return;
+            return false;
         }
 
         int volumenCalculado = calcularCapacidad(pendientes);
@@ -678,8 +668,8 @@ public class LotesController {
 
         StringBuilder mensaje = new StringBuilder();
         mensaje.append("Se lanzará el lote con los siguientes materiales:\n\n");
-        for (MaterialLoteItem item : pendientes) {
-            mensaje.append(String.format("• %s (x%d)\n", item.getDescripcion(), item.getCantidad()));
+        for (String linea : resumenMateriales(pendientes)) {
+            mensaje.append("• ").append(linea).append("\n");
         }
         mensaje.append(String.format("\nVolumen calculado (catálogo): %d\n", volumenCalculado));
         mensaje.append(String.format("Volumen final confirmado:     %d/%d (%.0f%%)\n",
@@ -692,33 +682,27 @@ public class LotesController {
 
         mensaje.append("\n\n¿Desea continuar?");
 
-        if (!panel.confirmar(mensaje.toString(), "Confirmar Lanzamiento de Lote")) return;
+        return panel.confirmar(mensaje.toString(), "Confirmar Lanzamiento de Lote");
+    }
 
-        // PUENTE TEMPORAL (se elimina en el paso 3 del plan): los litros siguen
-        // llegando por material desde el diálogo viejo; acá se agrupan por ingreso.
-        Map<Integer, Integer> volumenesPorIngreso = new HashMap<>();
-        List<LoteMovimiento> movimientos = new ArrayList<>();
+    private List<String> resumenMateriales(List<MaterialLoteItem> pendientes) {
+        List<String> lineas = new ArrayList<>();
         for (MaterialLoteItem item : pendientes) {
-            movimientos.add(new LoteMovimiento(
-                    item.getMaterialId(), item.getEquipoId(), item.getCantidad(),
-                    item.isEsOtros()));
-            if (item.isEsOtros() && item.getVolumenOtros() != null) {
-                volumenesPorIngreso.merge(item.getEquipoId(), item.getVolumenOtros(), Integer::sum);
-            }
+            lineas.add(String.format("%s (x%d)", item.getDescripcion(), item.getCantidad()));
         }
+        return lineas;
+    }
 
-        Lote lote = model.lanzarLote(autoclaveSeleccionado.getNombre(),
-                capacidadTotal, volumenManual, movimientos, volumenesPorIngreso);
-
-        if (lote == null) {
-            panel.mostrarError("Error al lanzar el lote.");
-            return;
+    private boolean contieneOtros(List<MaterialLoteItem> items) {
+        for (MaterialLoteItem item : items) {
+            if (item.isEsOtros()) return true;
         }
+        return false;
+    }
 
-        pendientesPorAutoclave.remove(autoclaveSeleccionado.getNombre());
-        cargarDatos();
-
-        if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
+    private String nombreClienteOtros(int equipoOtrosId) {
+        EquipoOtros equipo = equiposOtrosPorId.get(equipoOtrosId);
+        return equipo != null && equipo.getClienteNombre() != null ? equipo.getClienteNombre() : "";
     }
 
     private void finalizarLote() {
@@ -757,11 +741,8 @@ public class LotesController {
     private int calcularCapacidad(List<MaterialLoteItem> materiales) {
         int total = 0;
         for (MaterialLoteItem item : materiales) {
-            if (item.isEsOtros() && item.getVolumenOtros() != null) {
-                total += item.getVolumenOtros();
-            } else {
-                total += item.getVolumenTotal();
-            }
+            // Los "otros" no suman: sus litros se asignan por ingreso al lanzar.
+            if (!item.isEsOtros()) total += item.getVolumenTotal();
         }
         return total;
     }

@@ -12,8 +12,6 @@ public class MaterialLoteItem implements Serializable {
     private final int volumen;
     private final String clienteNombre;
     private final boolean esOtros;
-    /** Litros declarados por el usuario para materiales de equipo_otros. null = no aplica. */
-    private Integer volumenOtros;
 
     /** Constructor legacy — clienteNombre vacío, esOtros=false. */
     public MaterialLoteItem(int materialId, int equipoId, String descripcion, int cantidad, int volumen) {
@@ -43,9 +41,8 @@ public class MaterialLoteItem implements Serializable {
     public int getCantidad()             { return cantidad; }
     public void setCantidad(int c)       { this.cantidad = c; }
     public int getVolumen()              { return volumen; }
+    /** Solo significativo para ortopedias; el volumen de los "otros" se asigna por ingreso al lanzar. */
     public int getVolumenTotal()         { return cantidad * volumen; }
     public String getClienteNombre()     { return clienteNombre; }
     public boolean isEsOtros()           { return esOtros; }
-    public Integer getVolumenOtros()     { return volumenOtros; }
-    public void setVolumenOtros(Integer v){ this.volumenOtros = v; }
 }
