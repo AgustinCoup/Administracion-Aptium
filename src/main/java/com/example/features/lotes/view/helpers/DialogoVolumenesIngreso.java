@@ -53,26 +53,30 @@ public final class DialogoVolumenesIngreso {
                                                          int volumenOrtopedias,
                                                          int capacidadTotal) {
         Map<Integer, JSpinner> spinnersPorIngreso = new LinkedHashMap<>();
-        JSpinner spVolumenFinal = new JSpinner(new SpinnerNumberModel(1, 1, LITROS_MAX, 1));
+        JSpinner spVolumenFinal = new JSpinner(
+                new SpinnerNumberModel(1, 1, Math.max(LITROS_MIN, capacidadTotal), 1));
         spVolumenFinal.setEditor(new JSpinner.NumberEditor(spVolumenFinal, "0"));
         JLabel lblCalculado  = new JLabel();
         JLabel lblAdvertencia = new JLabel(" ");
         lblAdvertencia.setForeground(new Color(178, 88, 0));
 
-        // El volumen final sigue al calculado hasta que el usuario lo edite a mano.
-        final boolean[] finalEditadoAMano = {false};
-        final boolean[] sincronizando     = {false};
+        SincronizadorVolumenFinal sincronizador =
+                new SincronizadorVolumenFinal(volumenOrtopedias, capacidadTotal);
+        // true mientras el código (no el usuario) está seteando spVolumenFinal, para
+        // no confundir esa escritura programática con una edición manual.
+        final boolean[] sincronizando = {false};
 
         Runnable recalcular = () -> {
-            int total = volumenOrtopedias;
-            for (JSpinner sp : spinnersPorIngreso.values()) total += (Integer) sp.getValue();
-            lblCalculado.setText(String.format("Volumen calculado: %d / %d", total, capacidadTotal));
-            if (!finalEditadoAMano[0]) {
-                sincronizando[0] = true;
-                spVolumenFinal.setValue(Math.max(1, total));
-                sincronizando[0] = false;
-            }
-            actualizarAdvertencia(lblAdvertencia, (Integer) spVolumenFinal.getValue(), total, capacidadTotal);
+            int totalIngresos = 0;
+            for (JSpinner sp : spinnersPorIngreso.values()) totalIngresos += (Integer) sp.getValue();
+            int propuesto = sincronizador.onLitrosIngresoChange(totalIngresos);
+            lblCalculado.setText(sincronizador.textoCalculado());
+            // No-op si el usuario ya editó a mano: SpinnerNumberModel no dispara el
+            // listener cuando el valor no cambia, así que esto no reabre el latch.
+            sincronizando[0] = true;
+            spVolumenFinal.setValue(propuesto);
+            sincronizando[0] = false;
+            lblAdvertencia.setText(sincronizador.textoAdvertencia());
         };
 
         JPanel contenido = construirPanel(ingresos, resumenMateriales, spinnersPorIngreso,
@@ -80,10 +84,10 @@ public final class DialogoVolumenesIngreso {
 
         for (JSpinner sp : spinnersPorIngreso.values()) sp.addChangeListener(e -> recalcular.run());
         spVolumenFinal.addChangeListener(e -> {
-            if (!sincronizando[0]) finalEditadoAMano[0] = true;
-            int total = volumenOrtopedias;
-            for (JSpinner sp : spinnersPorIngreso.values()) total += (Integer) sp.getValue();
-            actualizarAdvertencia(lblAdvertencia, (Integer) spVolumenFinal.getValue(), total, capacidadTotal);
+            if (!sincronizando[0]) {
+                sincronizador.onVolumenFinalEditadoPorUsuario((Integer) spVolumenFinal.getValue());
+                lblAdvertencia.setText(sincronizador.textoAdvertencia());
+            }
         });
         recalcular.run();
 
@@ -93,27 +97,16 @@ public final class DialogoVolumenesIngreso {
         // el array no pueda dejar la comparación apuntando al botón equivocado.
         Object[] botones = {"Lanzar", "Cancelar"};
         final int indiceLanzar = 0;
-        while (true) {
-            int opcion = JOptionPane.showOptionDialog(parent, contenido,
-                    "Confirmar Lanzamiento de Lote", JOptionPane.OK_CANCEL_OPTION,
-                    JOptionPane.QUESTION_MESSAGE, null, botones, botones[indiceLanzar]);
-            if (opcion != indiceLanzar) return Optional.empty();
+        int opcion = JOptionPane.showOptionDialog(parent, contenido,
+                "Confirmar Lanzamiento de Lote", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.QUESTION_MESSAGE, null, botones, botones[indiceLanzar]);
+        if (opcion != indiceLanzar) return Optional.empty();
 
-            int volumenFinal = (Integer) spVolumenFinal.getValue();
-            if (volumenFinal > capacidadTotal) {
-                JOptionPane.showMessageDialog(parent, String.format(
-                        "El volumen final (%d) supera la capacidad del autoclave (%d).\n" +
-                        "Ajuste el valor antes de lanzar.", volumenFinal, capacidadTotal),
-                        "Volumen inválido", JOptionPane.ERROR_MESSAGE);
-                continue;
-            }
-
-            Map<Integer, Integer> litros = new LinkedHashMap<>();
-            for (Map.Entry<Integer, JSpinner> entry : spinnersPorIngreso.entrySet()) {
-                litros.put(entry.getKey(), (Integer) entry.getValue().getValue());
-            }
-            return Optional.of(new ResultadoLanzamiento(litros, volumenFinal));
+        Map<Integer, Integer> litros = new LinkedHashMap<>();
+        for (Map.Entry<Integer, JSpinner> entry : spinnersPorIngreso.entrySet()) {
+            litros.put(entry.getKey(), (Integer) entry.getValue().getValue());
         }
+        return Optional.of(new ResultadoLanzamiento(litros, (Integer) spVolumenFinal.getValue()));
     }
 
     // ── Construcción del panel ───────────────────────────────────────────────
@@ -172,14 +165,5 @@ public final class DialogoVolumenesIngreso {
         panel.add(pie, BorderLayout.SOUTH);
 
         return panel;
-    }
-
-    private static void actualizarAdvertencia(JLabel label, int volumenFinal,
-                                              int volumenCalculado, int capacidadTotal) {
-        StringBuilder sb = new StringBuilder();
-        if (volumenFinal != volumenCalculado) sb.append("⚠ Volumen ajustado manualmente. ");
-        double porcentaje = capacidadTotal == 0 ? 0 : (double) volumenFinal / capacidadTotal;
-        if (porcentaje < 0.8) sb.append("⚠ Menos del 80% de capacidad.");
-        label.setText(sb.length() == 0 ? " " : sb.toString());
     }
 }
