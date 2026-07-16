@@ -39,7 +39,11 @@ public class PantallaVerLotes extends JPanel {
     private JDateChooser                dateChooserDesde;
     private JDateChooser                dateChooserHasta;
     private JButton                     btnLimpiarFiltros;
-    private JButton                     btnImprimir;
+    /**
+     * Vive en el panel sur, no en el de filtros. Se inicializa en la declaración
+     * para no depender de que crearPanelFiltros() corra antes que crearPanelSur().
+     */
+    private final JButton               btnImprimir = new JButton(Constantes.Botones.IMPRIMIR);
 
     private Runnable onFiltrosChanged;
 
@@ -86,6 +90,7 @@ public class PantallaVerLotes extends JPanel {
     }
 
     private JPanel crearPanelSur() {
+        btnImprimir.setFont(Estilos.Fuentes.INPUT);
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         panel.add(btnImprimir);
         return panel;
@@ -127,9 +132,6 @@ public class PantallaVerLotes extends JPanel {
         btnLimpiarFiltros = new JButton(Constantes.Botones.LIMPIAR_FILTROS);
         btnLimpiarFiltros.setFont(Estilos.Fuentes.INPUT);
         btnLimpiarFiltros.addActionListener(e -> limpiarFiltros());
-
-        btnImprimir = new JButton(Constantes.Botones.IMPRIMIR);
-        btnImprimir.setFont(Estilos.Fuentes.INPUT);
 
         // ── Dos filas para que no se corten en pantallas pequeñas ────────────
         JPanel fila1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));

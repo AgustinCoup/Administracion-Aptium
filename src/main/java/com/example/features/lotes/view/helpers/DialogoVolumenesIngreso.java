@@ -87,12 +87,17 @@ public final class DialogoVolumenesIngreso {
         });
         recalcular.run();
 
+        // showOptionDialog con botones propios devuelve el ÍNDICE del elegido dentro
+        // del array, no OK_OPTION/CANCEL_OPTION: hay que comparar contra la posición
+        // de "Lanzar". El botón por defecto sale del mismo índice para que reordenar
+        // el array no pueda dejar la comparación apuntando al botón equivocado.
         Object[] botones = {"Lanzar", "Cancelar"};
+        final int indiceLanzar = 0;
         while (true) {
             int opcion = JOptionPane.showOptionDialog(parent, contenido,
                     "Confirmar Lanzamiento de Lote", JOptionPane.OK_CANCEL_OPTION,
-                    JOptionPane.QUESTION_MESSAGE, null, botones, botones[0]);
-            if (opcion != JOptionPane.OK_OPTION) return Optional.empty();
+                    JOptionPane.QUESTION_MESSAGE, null, botones, botones[indiceLanzar]);
+            if (opcion != indiceLanzar) return Optional.empty();
 
             int volumenFinal = (Integer) spVolumenFinal.getValue();
             if (volumenFinal > capacidadTotal) {

@@ -22,9 +22,10 @@ public class ImprimirEquiposDialog extends JDialog {
 
     private final JDateChooser dateDesde;
     private final JDateChooser dateHasta;
-    private final JTextField   txtCliente;
-    private Integer selectedClienteId = null;
-    private Integer selectedInstitucionId = null;
+
+    private final CampoFiltroEntidad<Cliente>     filtroCliente;
+    /** null cuando el reporte no admite filtro por institución (caso "Otros"). */
+    private final CampoFiltroEntidad<Institucion> filtroInstitucion;
 
     /** Sin filtro de institución (usado por el reporte de "Otros", que no tiene ese dato). */
     public ImprimirEquiposDialog(Frame parent, String titulo,
@@ -39,81 +40,20 @@ public class ImprimirEquiposDialog extends JDialog {
                                  Callback onConfirmar) {
         super(parent, titulo, true);
 
-        dateDesde = new JDateChooser();
-        dateDesde.setDateFormatString("dd/MM/yyyy");
-        dateDesde.setPreferredSize(new Dimension(140, 26));
-        dateDesde.setFont(Estilos.Fuentes.INPUT);
+        dateDesde = crearDateChooser();
+        dateHasta = crearDateChooser();
 
-        dateHasta = new JDateChooser();
-        dateHasta.setDateFormatString("dd/MM/yyyy");
-        dateHasta.setPreferredSize(new Dimension(140, 26));
-        dateHasta.setFont(Estilos.Fuentes.INPUT);
-
-        txtCliente = new JTextField();
-        txtCliente.setPreferredSize(new Dimension(220, 26));
-        txtCliente.setFont(Estilos.Fuentes.INPUT);
-
-        new AutocompleteListener<>(
-            txtCliente,
-            buscarClientes,
-            c  -> selectedClienteId = c.getId(),
-            txt -> selectedClienteId = null
-        );
-
-        // ── Panel cliente ─────────────────────────────────────────────────────
-        JPanel panelCliente = new JPanel(new GridBagLayout());
-        panelCliente.setBorder(BorderFactory.createTitledBorder("Filtrar por cliente (opcional)"));
-        panelCliente.setBackground(Color.WHITE);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(10, 12, 10, 12);
-        gbc.anchor = GridBagConstraints.WEST;
-
-        JLabel lblCliente = new JLabel("Cliente:");
-        lblCliente.setFont(Estilos.Fuentes.LABEL);
-        gbc.gridx = 0; gbc.gridy = 0;
-        panelCliente.add(lblCliente, gbc);
-        gbc.gridx = 1;
-        panelCliente.add(txtCliente, gbc);
-
-        // ── Panel institución (opcional; solo si el reporte la soporta) ────────
-        JTextField txtInstitucion = null;
-        JPanel panelInstitucion = null;
-        if (buscarInstituciones != null) {
-            txtInstitucion = new JTextField();
-            txtInstitucion.setPreferredSize(new Dimension(220, 26));
-            txtInstitucion.setFont(Estilos.Fuentes.INPUT);
-
-            new AutocompleteListener<>(
-                txtInstitucion,
-                buscarInstituciones,
-                i   -> selectedInstitucionId = i.getId(),
-                txt -> selectedInstitucionId = null
-            );
-
-            panelInstitucion = new JPanel(new GridBagLayout());
-            panelInstitucion.setBorder(BorderFactory.createTitledBorder("Filtrar por institución (opcional)"));
-            panelInstitucion.setBackground(Color.WHITE);
-
-            GridBagConstraints gbcInst = new GridBagConstraints();
-            gbcInst.insets = new Insets(10, 12, 10, 12);
-            gbcInst.anchor = GridBagConstraints.WEST;
-
-            JLabel lblInstitucion = new JLabel("Institución:");
-            lblInstitucion.setFont(Estilos.Fuentes.LABEL);
-            gbcInst.gridx = 0; gbcInst.gridy = 0;
-            panelInstitucion.add(lblInstitucion, gbcInst);
-            gbcInst.gridx = 1;
-            panelInstitucion.add(txtInstitucion, gbcInst);
-        }
-        final JTextField txtInstitucionRef = txtInstitucion;
+        filtroCliente = new CampoFiltroEntidad<>(
+            "Filtrar por cliente (opcional)", "Cliente:", buscarClientes, Cliente::getId);
+        filtroInstitucion = buscarInstituciones == null ? null : new CampoFiltroEntidad<>(
+            "Filtrar por institución (opcional)", "Institución:", buscarInstituciones, Institucion::getId);
 
         // ── Panel fechas ──────────────────────────────────────────────────────
         JPanel panelFechas = new JPanel(new GridBagLayout());
         panelFechas.setBorder(BorderFactory.createTitledBorder("Filtrar por fecha de ingreso"));
         panelFechas.setBackground(Color.WHITE);
 
-        gbc = new GridBagConstraints();
+        GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(10, 12, 10, 12);
         gbc.anchor = GridBagConstraints.WEST;
 
@@ -135,8 +75,8 @@ public class ImprimirEquiposDialog extends JDialog {
         JPanel panelCentral = new JPanel();
         panelCentral.setLayout(new BoxLayout(panelCentral, BoxLayout.Y_AXIS));
         panelCentral.setBackground(Color.WHITE);
-        panelCentral.add(panelCliente);
-        if (panelInstitucion != null) panelCentral.add(panelInstitucion);
+        panelCentral.add(filtroCliente.getPanel());
+        if (filtroInstitucion != null) panelCentral.add(filtroInstitucion.getPanel());
         panelCentral.add(panelFechas);
 
         // ── Botones ───────────────────────────────────────────────────────────
@@ -157,12 +97,10 @@ public class ImprimirEquiposDialog extends JDialog {
                     "Fechas inválidas", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-            if (txtCliente.getText().trim().isEmpty()) selectedClienteId = null;
-            if (txtInstitucionRef != null && txtInstitucionRef.getText().trim().isEmpty()) {
-                selectedInstitucionId = null;
-            }
             dispose();
-            onConfirmar.onConfirmar(desde, hasta, selectedClienteId, selectedInstitucionId);
+            onConfirmar.onConfirmar(desde, hasta,
+                filtroCliente.idConfirmado(),
+                filtroInstitucion != null ? filtroInstitucion.idConfirmado() : null);
         });
 
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
@@ -181,6 +119,14 @@ public class ImprimirEquiposDialog extends JDialog {
         setLocationRelativeTo(parent);
     }
 
+    private static JDateChooser crearDateChooser() {
+        JDateChooser chooser = new JDateChooser();
+        chooser.setDateFormatString("dd/MM/yyyy");
+        chooser.setPreferredSize(new Dimension(140, 26));
+        chooser.setFont(Estilos.Fuentes.INPUT);
+        return chooser;
+    }
+
     private LocalDate resolverFecha(JDateChooser chooser, String nombre) {
         if (chooser.getDate() == null) {
             JOptionPane.showMessageDialog(this,
@@ -189,5 +135,72 @@ public class ImprimirEquiposDialog extends JDialog {
             return null;
         }
         return chooser.getDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+    }
+
+    /**
+     * Devuelve el id de {@code seleccionada} solo si {@code textoVisible} sigue
+     * coincidiendo con ella; null en cualquier otro caso.
+     *
+     * <p>Es la regla que evita filtrar por una entidad que el usuario ya editó:
+     * {@code AutocompleteListener} solo avisa de un texto sin correspondencia al
+     * perder el foco y con al menos 3 caracteres, así que un residuo de 1-2
+     * ("Ho" tras borrar "Hospital A") dejaba viva la selección anterior.
+     * Derivar el id del texto visible al confirmar no depende de ningún evento.
+     */
+    static <T> Integer idSiCoincide(T seleccionada, String textoVisible, Function<T, Integer> extraerId) {
+        if (seleccionada == null || textoVisible == null) return null;
+        return seleccionada.toString().equals(textoVisible.trim())
+             ? extraerId.apply(seleccionada)
+             : null;
+    }
+
+    /**
+     * Campo de filtro por entidad con autocompletado: agrupa el panel con borde,
+     * la etiqueta, el campo de texto y el listener que rastrea la selección.
+     *
+     * <p>Comparte forma entre cliente e institución para que la regla de
+     * {@link #idSiCoincide} viva en un solo lugar.
+     */
+    static final class CampoFiltroEntidad<T> {
+
+        private final JPanel                  panel;
+        private final JTextField              campo;
+        private final AutocompleteListener<T> autocomplete;
+        private final Function<T, Integer>    extraerId;
+
+        CampoFiltroEntidad(String tituloBorde, String etiqueta,
+                           Function<String, List<T>> buscar,
+                           Function<T, Integer> extraerId) {
+            this.extraerId = extraerId;
+
+            campo = new JTextField();
+            campo.setPreferredSize(new Dimension(220, 26));
+            campo.setFont(Estilos.Fuentes.INPUT);
+            // El id se deriva del texto visible al confirmar, no de callbacks de selección.
+            autocomplete = new AutocompleteListener<>(campo, buscar, seleccionada -> { });
+
+            panel = new JPanel(new GridBagLayout());
+            panel.setBorder(BorderFactory.createTitledBorder(tituloBorde));
+            panel.setBackground(Color.WHITE);
+
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.insets = new Insets(10, 12, 10, 12);
+            gbc.anchor = GridBagConstraints.WEST;
+
+            JLabel label = new JLabel(etiqueta);
+            label.setFont(Estilos.Fuentes.LABEL);
+            gbc.gridx = 0; gbc.gridy = 0;
+            panel.add(label, gbc);
+            gbc.gridx = 1;
+            panel.add(campo, gbc);
+        }
+
+        JPanel     getPanel() { return panel; }
+        JTextField getCampo() { return campo; }
+
+        /** Id de la entidad elegida, o null si el texto del campo ya no coincide con ella. */
+        Integer idConfirmado() {
+            return idSiCoincide(autocomplete.getSelectedItem(), campo.getText(), extraerId);
+        }
     }
 }
