@@ -2,7 +2,9 @@ package com.example.features.lotes.controller;
 
 import com.example.common.constants.Constantes;
 import com.example.features.lotes.controller.helpers.AgrupadorIngresosLote;
-import com.example.features.lotes.controller.helpers.MaterialLoteTransferable;
+import com.example.features.lotes.controller.helpers.EstadoStaging;
+import com.example.features.lotes.controller.helpers.ReconciliadorPendientes;
+import com.example.ui.common.dnd.MultiRowTableTransferHandler;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.app.AppModel;
 import com.example.features.autoclaves.model.Autoclave;
@@ -26,7 +28,6 @@ import javax.swing.*;
 import java.awt.datatransfer.DataFlavor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.awt.datatransfer.Transferable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -57,14 +58,20 @@ public class LotesController {
      */
     private Map<Integer, EquipoOtros> equiposOtrosPorId = new HashMap<>();
 
-    // DataFlavor personalizado para transferir MaterialLoteItem en la misma JVM
+    /** Lógica pura de reconciliación disponibles ↔ pendientes (sin Swing). */
+    private final ReconciliadorPendientes reconciliador = new ReconciliadorPendientes();
+
+    /** true mientras se arrastra desde la tabla del autoclave (para rechazar el drop sobre sí misma). */
+    private boolean arrastrandoDesdeAutoclave = false;
+
+    // DataFlavor que transporta la List<MaterialLoteItem> arrastrada en la misma JVM
     public static final DataFlavor MATERIAL_LOTE_FLAVOR;
 
     static {
         DataFlavor flavor = null;
         try {
             flavor = new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType +
-                    ";class=\"" + MaterialLoteItem.class.getName() + "\"");
+                    ";class=\"" + java.util.List.class.getName() + "\"");
         } catch (ClassNotFoundException e) {
             log.error("No se pudo registrar el DataFlavor para drag-and-drop", e);
         }
@@ -270,20 +277,15 @@ public class LotesController {
         return disponibles;
     }
 
-    /** Clave compuesta para evitar colisiones entre IDs de ortopedias y otros (tablas distintas). */
-    private String claveItem(MaterialLoteItem item) {
-        return (item.isEsOtros() ? "O" : "E") + item.getMaterialId();
-    }
-
     private void aplicarPendientesEnDisponibles() {
         Map<String, MaterialLoteItem> disponiblesPorId = new LinkedHashMap<>();
         for (MaterialLoteItem item : materialesDisponibles) {
-            disponiblesPorId.put(claveItem(item), item);
+            disponiblesPorId.put(ReconciliadorPendientes.claveItem(item), item);
         }
 
         for (List<MaterialLoteItem> pendientes : pendientesPorAutoclave.values()) {
             for (MaterialLoteItem pendiente : pendientes) {
-                String clave = claveItem(pendiente);
+                String clave = ReconciliadorPendientes.claveItem(pendiente);
                 MaterialLoteItem disponible = disponiblesPorId.get(clave);
                 if (disponible == null) continue;
                 int restante = disponible.getCantidad() - pendiente.getCantidad();
@@ -345,7 +347,7 @@ public class LotesController {
         } else {
             List<MaterialLoteItem> pendientes = pendientesPorAutoclave.getOrDefault(autoclave.getNombre(), List.of());
             panel.setMaterialesAutoclave(pendientes);
-            int usada = calcularCapacidad(pendientes);
+            int usada = reconciliador.capacidadUsada(pendientes);
             panel.setCapacidadTexto(String.format("Capacidad: %d/%d", usada, autoclave.getCapacidad()));
 
             panel.setVolumenCalculado(usada);
@@ -393,110 +395,78 @@ public class LotesController {
         tablaDisponibles.setDragEnabled(true);
         tablaDisponibles.setDropMode(DropMode.ON);
         tablaDisponibles.setFillsViewportHeight(true);
-        tablaDisponibles.setTransferHandler(new DisponiblesTransferHandler());
+        tablaDisponibles.setTransferHandler(crearHandlerDisponibles());
 
         tablaAutoclave.setDragEnabled(true);
         tablaAutoclave.setDropMode(DropMode.ON);
         tablaAutoclave.setFillsViewportHeight(true);
-        tablaAutoclave.setTransferHandler(new AutoclaveTransferHandler());
+        tablaAutoclave.setTransferHandler(crearHandlerAutoclave());
     }
 
-    // ── Tabla Disponibles: ORIGEN para drag, DESTINO para devolver ────────────
+    // ── Tabla Disponibles: ORIGEN para drag (COPY), DESTINO para devolver ─────
 
-    private class DisponiblesTransferHandler extends TransferHandler {
-        @Override public int getSourceActions(JComponent c) { return COPY; }
-
-        @Override
-        protected Transferable createTransferable(JComponent c) {
-            MaterialLoteItem item = panel.getMaterialDisponibleSeleccionado();
-            return item == null ? null : new MaterialLoteTransferable(item, MATERIAL_LOTE_FLAVOR);
-        }
-
-        @Override
-        public boolean canImport(TransferSupport support) {
-            if (!support.isDrop()) return false;
-            boolean ok = support.isDataFlavorSupported(MATERIAL_LOTE_FLAVOR);
-            support.setShowDropLocation(ok);
-            return ok;
-        }
-
-        @Override
-        public boolean importData(TransferSupport support) {
-            if (!canImport(support)) return false;
-            try {
-                MaterialLoteItem item = (MaterialLoteItem) support.getTransferable()
-                        .getTransferData(MATERIAL_LOTE_FLAVOR);
-                quitarMaterialDePendientes(item);
-                cargarDatos();
-                return true;
-            } catch (Exception e) {
-                log.error("Error al procesar drop en tabla disponibles", e);
-                return false;
-            }
-        }
+    private MultiRowTableTransferHandler<MaterialLoteItem> crearHandlerDisponibles() {
+        return new MultiRowTableTransferHandler.Builder<MaterialLoteItem>(MATERIAL_LOTE_FLAVOR)
+                .sourceActions(TransferHandler.COPY)
+                .selectionSupplier(panel::getMaterialesDisponiblesSeleccionados)
+                .onImport(this::quitarMaterialesDePendientes) // ya refresca la vista
+                .build();
     }
 
-    // ── Tabla Autoclave: DESTINO para drop, ORIGEN para devolver ─────────────
+    // ── Tabla Autoclave: DESTINO para drop, ORIGEN para devolver (MOVE) ───────
 
-    private class AutoclaveTransferHandler extends TransferHandler {
-        private boolean draggingFromSelf = false;
-
-        @Override public int getSourceActions(JComponent c) { return MOVE; }
-
-        @Override
-        protected Transferable createTransferable(JComponent c) {
-            MaterialLoteItem item = panel.getMaterialAutoclaveSeleccionado();
-            if (item == null) return null;
-            draggingFromSelf = true;
-            return new MaterialLoteTransferable(item, MATERIAL_LOTE_FLAVOR);
-        }
-
-        @Override
-        protected void exportDone(JComponent source, Transferable data, int action) {
-            draggingFromSelf = false;
-            if (action == MOVE) SwingUtilities.invokeLater(() -> cargarDatos());
-        }
-
-        @Override
-        public boolean canImport(TransferSupport support) {
-            if (!support.isDrop()) return false;
-            if (!support.isDataFlavorSupported(MATERIAL_LOTE_FLAVOR)) return false;
-            if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()) return false;
-            if (draggingFromSelf) return false;
-            support.setShowDropLocation(true);
-            return true;
-        }
-
-        @Override
-        public boolean importData(TransferSupport support) {
-            if (!canImport(support)) return false;
-            if (autoclaveSeleccionado == null) {
-                SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Debe seleccionar un autoclave primero."));
-                return false;
-            }
-            if (autoclaveSeleccionado.isOcupado()) {
-                SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Este autoclave ya tiene un lote en progreso."));
-                return false;
-            }
-            try {
-                MaterialLoteItem item = (MaterialLoteItem) support.getTransferable()
-                        .getTransferData(MATERIAL_LOTE_FLAVOR);
-                SwingUtilities.invokeLater(() -> agregarMaterial(item));
-                return true;
-            } catch (Exception e) {
-                log.error("Error al procesar drop en tabla autoclave", e);
-                SwingUtilities.invokeLater(() -> panel.mostrarAdvertencia("Error: " + e.getMessage()));
-                return false;
-            }
-        }
+    private MultiRowTableTransferHandler<MaterialLoteItem> crearHandlerAutoclave() {
+        return new MultiRowTableTransferHandler.Builder<MaterialLoteItem>(MATERIAL_LOTE_FLAVOR)
+                .sourceActions(TransferHandler.MOVE)
+                .selectionSupplier(this::seleccionAutoclaveParaArrastre)
+                .canImportExtra(support -> autoclaveSeleccionado != null
+                        && !autoclaveSeleccionado.isOcupado()
+                        && !arrastrandoDesdeAutoclave)
+                // invokeLater: el diálogo de cantidad no debe bloquear el EDT del drop.
+                .onImport(items -> SwingUtilities.invokeLater(() -> agregarMateriales(items)))
+                .onExportDone(action -> {
+                    arrastrandoDesdeAutoclave = false; // reset incondicional (aunque se aborte)
+                    if (action == TransferHandler.MOVE) SwingUtilities.invokeLater(this::cargarDatos);
+                })
+                .build();
     }
 
-    private void agregarMaterial(MaterialLoteItem item) {
-        if (item == null || autoclaveSeleccionado == null) return;
+    private List<MaterialLoteItem> seleccionAutoclaveParaArrastre() {
+        List<MaterialLoteItem> seleccion = panel.getMaterialesAutoclaveSeleccionados();
+        if (!seleccion.isEmpty()) arrastrandoDesdeAutoclave = true;
+        return seleccion;
+    }
 
-        // Mismo diálogo para ortopedias y otros: solo la cantidad. Los litros de
-        // los "otros" se asignan por ingreso en el diálogo de lanzamiento.
-        Integer cantidadElegida = CantidadDialogHelper.pedirCantidad(
+    /**
+     * Alta de una tanda de materiales al autoclave seleccionado. Por cada ítem
+     * pide la cantidad (un diálogo secuencial); cancelar uno saltea solo ese ítem
+     * y continúa con el resto. La aritmética de reconciliación vive en
+     * {@link ReconciliadorPendientes}; aquí solo se orquesta la UI.
+     */
+    private void agregarMateriales(List<MaterialLoteItem> items) {
+        if (items == null || items.isEmpty() || autoclaveSeleccionado == null) return;
+        String nombre = autoclaveSeleccionado.getNombre();
+
+        for (MaterialLoteItem item : items) {
+            if (item == null) continue;
+            Integer cantidad = pedirCantidad(item);
+            if (cantidad == null) continue; // cancelado → saltear solo este ítem
+
+            EstadoStaging estado = reconciliador.alta(estadoStaging(nombre), item, cantidad);
+            aplicarEstado(nombre, estado);
+
+            if (reconciliador.capacidadUsada(estado.getPendientes()) > autoclaveSeleccionado.getCapacidad()) {
+                panel.mostrarAdvertencia(
+                        "El volumen calculado supera la capacidad del autoclave.\n" +
+                        "Puede ajustar el volumen final en el campo \"Volumen final\" antes de lanzar.");
+            }
+        }
+        cargarDatos();
+    }
+
+    /** Diálogo de cantidad (Swing) con checkbox "Todos"; null = cancelado. */
+    private Integer pedirCantidad(MaterialLoteItem item) {
+        return CantidadDialogHelper.pedirCantidad(
                 panel,
                 item.getDescripcion(),
                 item.getCantidad(),
@@ -509,93 +479,35 @@ public class LotesController {
                     }
                 })
         );
-        if (cantidadElegida == null) return;
-
-        int volumenNecesario = item.isEsOtros() ? 0 : cantidadElegida * item.getVolumen();
-        int capacidadUsada = calcularCapacidadPendiente(autoclaveSeleccionado.getNombre());
-        if (capacidadUsada + volumenNecesario > autoclaveSeleccionado.getCapacidad()) {
-            panel.mostrarAdvertencia(
-                    "El volumen calculado supera la capacidad del autoclave.\n" +
-                    "Puede ajustar el volumen final en el campo \"Volumen final\" antes de lanzar.");
-        }
-
-        ajustarDisponibles(item, cantidadElegida);
-        agregarPendiente(autoclaveSeleccionado.getNombre(), item, cantidadElegida);
-        cargarDatos();
-    }
-
-    private void ajustarDisponibles(MaterialLoteItem item, int cantidad) {
-        MaterialLoteItem encontrado = null;
-        for (MaterialLoteItem disponible : materialesDisponibles) {
-            if (claveItem(disponible).equals(claveItem(item))) {
-                encontrado = disponible;
-                break;
-            }
-        }
-        if (encontrado == null) return;
-        int restante = encontrado.getCantidad() - cantidad;
-        if (restante <= 0) materialesDisponibles.remove(encontrado);
-        else encontrado.setCantidad(restante);
-    }
-
-    private void agregarPendiente(String autoclaveNombre, MaterialLoteItem item, int cantidad) {
-        List<MaterialLoteItem> pendientes = pendientesPorAutoclave
-                .computeIfAbsent(autoclaveNombre, k -> new ArrayList<>());
-        for (MaterialLoteItem existente : pendientes) {
-            if (claveItem(existente).equals(claveItem(item))) {
-                existente.setCantidad(existente.getCantidad() + cantidad);
-                return;
-            }
-        }
-        MaterialLoteItem nuevo = new MaterialLoteItem(
-                item.getMaterialId(),
-                item.getEquipoId(),
-                item.getDescripcion(),
-                cantidad,
-                item.getVolumen(),
-                item.getClienteNombre(),
-                item.isEsOtros());
-        pendientes.add(nuevo);
     }
 
     private void quitarMaterial() {
         if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()) return;
-        MaterialLoteItem seleccionado = panel.getMaterialAutoclaveSeleccionado();
-        if (seleccionado == null) {
-            panel.mostrarAdvertencia("Seleccione un material para quitar.");
+        List<MaterialLoteItem> seleccionados = panel.getMaterialesAutoclaveSeleccionados();
+        if (seleccionados.isEmpty()) {
+            panel.mostrarAdvertencia("Seleccione al menos un material para quitar.");
             return;
         }
-        quitarMaterialDePendientes(seleccionado);
+        quitarMaterialesDePendientes(seleccionados);
     }
 
-    private void quitarMaterialDePendientes(MaterialLoteItem seleccionado) {
-        if (autoclaveSeleccionado == null) return;
-
-        List<MaterialLoteItem> pendientes = pendientesPorAutoclave
-                .getOrDefault(autoclaveSeleccionado.getNombre(), new ArrayList<>());
-        pendientes.removeIf(item -> claveItem(item).equals(claveItem(seleccionado)));
-        pendientesPorAutoclave.put(autoclaveSeleccionado.getNombre(), pendientes);
-
-        boolean encontrado = false;
-        for (MaterialLoteItem disponible : materialesDisponibles) {
-            if (claveItem(disponible).equals(claveItem(seleccionado))) {
-                disponible.setCantidad(disponible.getCantidad() + seleccionado.getCantidad());
-                encontrado = true;
-                break;
-            }
-        }
-        if (!encontrado) {
-            materialesDisponibles.add(new MaterialLoteItem(
-                    seleccionado.getMaterialId(),
-                    seleccionado.getEquipoId(),
-                    seleccionado.getDescripcion(),
-                    seleccionado.getCantidad(),
-                    seleccionado.getVolumen(),
-                    seleccionado.getClienteNombre()
-            ));
-        }
-
+    /** Baja de una tanda de pendientes: delega la aritmética y refresca una vez. */
+    private void quitarMaterialesDePendientes(List<MaterialLoteItem> seleccionados) {
+        if (autoclaveSeleccionado == null || seleccionados == null || seleccionados.isEmpty()) return;
+        String nombre = autoclaveSeleccionado.getNombre();
+        aplicarEstado(nombre, reconciliador.baja(estadoStaging(nombre), seleccionados));
         cargarDatos();
+    }
+
+    private EstadoStaging estadoStaging(String autoclaveNombre) {
+        return new EstadoStaging(
+                materialesDisponibles,
+                pendientesPorAutoclave.getOrDefault(autoclaveNombre, List.of()));
+    }
+
+    private void aplicarEstado(String autoclaveNombre, EstadoStaging estado) {
+        materialesDisponibles = new ArrayList<>(estado.getDisponibles());
+        pendientesPorAutoclave.put(autoclaveNombre, new ArrayList<>(estado.getPendientes()));
     }
 
     private void lanzarLote() {
@@ -619,7 +531,7 @@ public class LotesController {
                             panel,
                             AgrupadorIngresosLote.agrupar(pendientes, equiposOtrosPorId),
                             resumenMateriales(pendientes),
-                            calcularCapacidad(pendientes),
+                            reconciliador.capacidadUsada(pendientes),
                             capacidadTotal);
             if (!resultado.isPresent()) return;
             volumenesPorIngreso = resultado.get().getLitrosPorIngreso();
@@ -667,7 +579,7 @@ public class LotesController {
             return false;
         }
 
-        int volumenCalculado = calcularCapacidad(pendientes);
+        int volumenCalculado = reconciliador.capacidadUsada(pendientes);
         double porcentaje    = capacidadTotal == 0 ? 0 : (double) volumenManual / capacidadTotal;
 
         StringBuilder mensaje = new StringBuilder();
@@ -742,17 +654,8 @@ public class LotesController {
         if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
     }
 
-    private int calcularCapacidad(List<MaterialLoteItem> materiales) {
-        int total = 0;
-        for (MaterialLoteItem item : materiales) {
-            // Los "otros" no suman: sus litros se asignan por ingreso al lanzar.
-            if (!item.isEsOtros()) total += item.getVolumenTotal();
-        }
-        return total;
-    }
-
     private int calcularCapacidadPendiente(String autoclaveNombre) {
-        return calcularCapacidad(pendientesPorAutoclave.getOrDefault(autoclaveNombre, List.of()));
+        return reconciliador.capacidadUsada(pendientesPorAutoclave.getOrDefault(autoclaveNombre, List.of()));
     }
 
     /**

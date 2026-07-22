@@ -3,6 +3,7 @@ package com.example.features.lotes.view.helpers;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.TableStyler;
 import com.example.ui.common.LabelFactory;
+import com.example.ui.common.dnd.TableSelectionSupport;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -71,7 +72,7 @@ public class PanelLotesContenido extends JPanel {
         tablaDisponibles = new JTable(modeloDisponibles);
         TableStyler.applyStandard(tablaDisponibles);
         TableStyler.centerColumns(tablaDisponibles, 1, 2);
-        tablaDisponibles.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableSelectionSupport.enableMultiSelection(tablaDisponibles);
         tablaDisponibles.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
         ajustarColumnasMateriales(tablaDisponibles);
 
@@ -90,7 +91,7 @@ public class PanelLotesContenido extends JPanel {
         tablaAutoclave = new JTable(modeloAutoclave);
         TableStyler.applyStandard(tablaAutoclave);
         TableStyler.centerColumns(tablaAutoclave, 1, 2);
-        tablaAutoclave.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableSelectionSupport.enableMultiSelection(tablaAutoclave);
         tablaAutoclave.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
         ajustarColumnasMateriales(tablaAutoclave);
 
@@ -397,14 +398,12 @@ public class PanelLotesContenido extends JPanel {
     public void setMaterialesDisponibles(List<MaterialLoteItem> materiales) { modeloDisponibles.setItems(materiales); }
     public void setMaterialesAutoclave(List<MaterialLoteItem> materiales)   { modeloAutoclave.setItems(materiales); }
 
-    public MaterialLoteItem getMaterialDisponibleSeleccionado() {
-        int row = tablaDisponibles.getSelectedRow();
-        return row < 0 ? null : modeloDisponibles.getItemAt(row);
+    public List<MaterialLoteItem> getMaterialesDisponiblesSeleccionados() {
+        return TableSelectionSupport.selectedItems(tablaDisponibles, modeloDisponibles::getItemAt);
     }
 
-    public MaterialLoteItem getMaterialAutoclaveSeleccionado() {
-        int row = tablaAutoclave.getSelectedRow();
-        return row < 0 ? null : modeloAutoclave.getItemAt(row);
+    public List<MaterialLoteItem> getMaterialesAutoclaveSeleccionados() {
+        return TableSelectionSupport.selectedItems(tablaAutoclave, modeloAutoclave::getItemAt);
     }
 
     public void setOnAutoclaveSeleccionado(Consumer<AutoclaveItem> listener) { this.onAutoclaveSeleccionado = listener; }
