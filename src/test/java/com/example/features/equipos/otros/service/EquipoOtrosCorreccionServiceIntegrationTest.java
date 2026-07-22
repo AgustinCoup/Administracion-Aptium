@@ -25,7 +25,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
     private final EquipoOtrosDAO             equipoOtrosDAO   = new EquipoOtrosDAO(catalogoOtrosDAO);
     private final AuditoriaDAO               auditoriaDAO     = new AuditoriaDAO();
     private final EquipoOtrosCorreccionService service         =
-        new EquipoOtrosCorreccionService(equipoOtrosDAO, auditoriaDAO, catalogoOtrosDAO);
+        new EquipoOtrosCorreccionService(equipoOtrosDAO, auditoriaDAO);
 
     private EquipoOtros equipoDetalles;
     private EquipoOtros equipoRemito;

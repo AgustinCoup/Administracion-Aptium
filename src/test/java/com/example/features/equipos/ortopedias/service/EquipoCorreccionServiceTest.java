@@ -238,9 +238,23 @@ class EquipoCorreccionServiceTest {
             any(), any(), any(), anyString(), anyString())).thenReturn(true);
         when(auditoriaDAO.registrarMaterialEliminado(any(), any(), anyInt(), any(), any(),
             any(), anyString(), anyString())).thenReturn(true);
+        when(equipoDAO.eliminar("1")).thenReturn(true);
 
         assertTrue(service.eliminarEquipo(1, "baja por error"));
         verify(equipoDAO).eliminar("1");
+    }
+
+    @Test
+    void eliminarEquipo_borradoNoAfectaFilas_lanzaDatabaseException() {
+        Equipo e = equipoConEstado(EstadoEquipo.NUEVO);
+        when(equipoDAO.obtenerPorId("1")).thenReturn(e);
+        when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
+            any(), any(), any(), anyString(), anyString())).thenReturn(true);
+        // El DELETE no toca ninguna fila (o falla): el service no debe reportar éxito.
+        when(equipoDAO.eliminar("1")).thenReturn(false);
+
+        assertThrows(DatabaseException.class,
+            () -> service.eliminarEquipo(1, "motivo"));
     }
 
     // ── eliminarMaterial ──────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 package com.example.features.equipos.ortopedias.dao;
 
+import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.model.EquipoAuditoria;
 import com.example.infrastructure.db.ConnectionPool;
 import org.slf4j.Logger;
@@ -63,8 +64,7 @@ public class AuditoriaDAO {
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al registrar auditoría para equipo {}", equipoId, e);
-            return false;
+            throw new DatabaseException("Error al registrar auditoría para equipo " + equipoId, e);
         }
     }
 
@@ -107,8 +107,7 @@ public class AuditoriaDAO {
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al registrar equipo eliminado {}", equipoIdOriginal, e);
-            return false;
+            throw new DatabaseException("Error al registrar equipo eliminado " + equipoIdOriginal, e);
         }
     }
 
@@ -144,8 +143,7 @@ public class AuditoriaDAO {
             return true;
 
         } catch (SQLException e) {
-            log.error("Error al registrar material eliminado equipo={}", equipoIdOriginal, e);
-            return false;
+            throw new DatabaseException("Error al registrar material eliminado equipo=" + equipoIdOriginal, e);
         }
     }
 
@@ -178,7 +176,7 @@ public class AuditoriaDAO {
                 }
             }
         } catch (SQLException e) {
-            log.error("Error al obtener auditoría del equipo {}", equipoId, e);
+            throw new DatabaseException("Error al obtener auditoría del equipo " + equipoId, e);
         }
         return auditorias;
     }
@@ -208,7 +206,7 @@ public class AuditoriaDAO {
                 auditorias.add(mapAuditoria(rs, true));
             }
         } catch (SQLException e) {
-            log.error("Error al obtener todas las auditorías", e);
+            throw new DatabaseException("Error al obtener todas las auditorías", e);
         }
         return auditorias;
     }

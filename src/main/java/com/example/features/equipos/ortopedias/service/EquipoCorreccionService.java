@@ -168,7 +168,10 @@ public class EquipoCorreccionService {
                 if (!snapMat) throw new DatabaseException("No se pudo registrar el snapshot de materiales eliminados");
             }
 
-            equipoDAO.eliminar(equipoId.toString());
+            boolean eliminado = equipoDAO.eliminar(equipoId.toString());
+            if (!eliminado) {
+                throw new DatabaseException("No se pudo eliminar el equipo " + equipoId);
+            }
             log.info("Equipo {} eliminado exitosamente - Motivo: {}", equipoId, motivo);
             return true;
         } catch (ValidationException e) {

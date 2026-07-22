@@ -334,8 +334,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
             
             return filasActualizadas > 0;
         } catch (SQLException e) {
-            log.error("Error al actualizar equipo: {}", equipo.getId(), e);
-            return false;
+            throw new DatabaseException("Error al actualizar equipo con ID: " + equipo.getId(), e);
         }
     }
 
@@ -355,8 +354,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
             
             return filasEliminadas > 0;
         } catch (SQLException e) {
-            log.error("Error al eliminar equipo: {}", id, e);
-            return false;
+            throw new DatabaseException("Error al eliminar equipo con ID: " + id, e);
         }
     }
 

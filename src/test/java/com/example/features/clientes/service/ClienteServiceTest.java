@@ -2,6 +2,7 @@ package com.example.features.clientes.service;
 
 import com.example.common.exception.ApplicationException;
 import com.example.common.exception.DatabaseException;
+import com.example.common.exception.ReferentialIntegrityException;
 import com.example.common.exception.ResourceNotFoundException;
 import com.example.common.exception.ValidationException;
 import com.example.features.clientes.dao.ClienteDAO;
@@ -173,11 +174,26 @@ class ClienteServiceTest {
     }
 
     @Test
-    void eliminarCliente_conReferencias_lanzaApplicationException() {
+    void eliminarCliente_conReferencias_mensajeEspecificoDeNegocio() {
         when(clienteDAO.existe(3)).thenReturn(true);
-        when(clienteDAO.eliminar(3)).thenThrow(new DatabaseException("FK violation"));
+        when(clienteDAO.eliminar(3)).thenThrow(
+            new ReferentialIntegrityException("Cliente con ID 3 está referenciado", null));
 
-        assertThrows(ApplicationException.class, () -> service.eliminarCliente(3));
+        ApplicationException e = assertThrows(ApplicationException.class,
+            () -> service.eliminarCliente(3));
+
+        assertTrue(e.getMessage().contains("no puede eliminarse"));
+    }
+
+    @Test
+    void eliminarCliente_errorDeBDGenerico_mensajeGenerico() {
+        when(clienteDAO.existe(3)).thenReturn(true);
+        when(clienteDAO.eliminar(3)).thenThrow(new DatabaseException("conexión perdida"));
+
+        ApplicationException e = assertThrows(ApplicationException.class,
+            () -> service.eliminarCliente(3));
+
+        assertTrue(e.getMessage().contains("Error de base de datos"));
     }
 
     // ── fusionarClientes ──────────────────────────────────────────────────────

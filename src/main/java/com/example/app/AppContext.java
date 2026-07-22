@@ -123,7 +123,7 @@ public class AppContext {
         EquipoCorreccionService equipoCorreccionService = new EquipoCorreccionService(
             equipoDAO, materialDAO, auditoriaDAO, catalogoDAO);
         EquipoOtrosCorreccionService equipoOtrosCorreccionService = new EquipoOtrosCorreccionService(
-            equipoOtrosDAO, auditoriaDAO, catalogoOtrosDAO);
+            equipoOtrosDAO, auditoriaDAO);
         EquipoOtrosService equipoOtrosService = new EquipoOtrosService(equipoOtrosDAO);
         CatalogoService catalogoService = new CatalogoService(catalogoDAO);
         CatalogoOtrosService catalogoOtrosService = new CatalogoOtrosService(catalogoOtrosDAO);
