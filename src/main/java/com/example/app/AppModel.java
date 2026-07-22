@@ -88,9 +88,9 @@ public class AppModel {
         this.equipoCorreccionService = context.getEquipoCorreccionService();
         this.equipoOtrosCorreccionService = context.getEquipoOtrosCorreccionService();
         this.estadoValidator           = context.getEstadoValidator();
-        this.loteReporteService        = new LoteReporteService(this);
-        this.equipoReporteService      = new EquipoReporteService(this);
-        this.equipoOtrosReporteService = new EquipoOtrosReporteService(this);
+        this.loteReporteService        = context.getLoteReporteService();
+        this.equipoReporteService      = context.getEquipoReporteService();
+        this.equipoOtrosReporteService = context.getEquipoOtrosReporteService();
     }
 
     // ==================== INFRAESTRUCTURA ====================

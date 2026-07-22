@@ -1,8 +1,6 @@
 package com.example.features.lotes.service;
 
-import com.example.app.AppModel;
 import com.example.features.lotes.model.Lote;
-import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteReporteDTO;
 import net.sf.jasperreports.engine.JasperCompileManager;
 import net.sf.jasperreports.engine.JasperFillManager;
@@ -21,11 +19,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Servicio responsable de:
- * 1. Consultar los datos de lotes en el rango pedido (via AppModel).
+ * 1. Consultar los datos de lotes en el rango pedido (via LoteService).
  * 2. Armar la lista de {@link LoteReporteDTO} (una fila por lote,
  *    materiales y clientes concatenados).
  * 3. Compilar el .jrxml, llenarlo con los datos y abrir JasperViewer.
@@ -41,11 +38,11 @@ public class LoteReporteService {
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    private final AppModel model;
+    private final LoteService loteService;
 
-    public LoteReporteService(AppModel model) {
-        if (model == null) throw new IllegalArgumentException("AppModel no puede ser nulo");
-        this.model = model;
+    public LoteReporteService(LoteService loteService) {
+        if (loteService == null) throw new IllegalArgumentException("LoteService no puede ser nulo");
+        this.loteService = loteService;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -104,7 +101,7 @@ public class LoteReporteService {
      * Cada lote produce UNA fila; materiales y clientes van concatenados.
      */
     private List<LoteReporteDTO> construirDatos(LocalDate desde, LocalDate hasta) {
-        List<Lote> lotes = model.obtenerLotesEnRango(desde, hasta);
+        List<Lote> lotes = loteService.obtenerLotesEnRango(desde, hasta);
         List<LoteReporteDTO> dtos = new ArrayList<>(lotes.size());
 
         for (Lote lote : lotes) {
@@ -112,9 +109,9 @@ public class LoteReporteService {
                 ? lote.getFechaInicio().toLocalDate().format(FMT) : "";
 
             Map<String, List<String>> ortopedias =
-                model.obtenerMaterialesPorClientePorLote(lote.getId());
+                loteService.obtenerMaterialesPorClientePorLote(lote.getId());
             Map<String, List<String>> otros =
-                model.obtenerOtrosPorClientePorLote(lote.getId());
+                loteService.obtenerOtrosPorClientePorLote(lote.getId());
 
             String detalles;
             if (ortopedias.isEmpty() && otros.isEmpty()) {

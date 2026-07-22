@@ -1,6 +1,5 @@
 package com.example.features.equipos.otros.service;
 
-import com.example.app.AppModel;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.EquipoOtrosReporteDTO;
 import com.example.features.equipos.otros.model.MaterialOtros;
@@ -31,11 +30,11 @@ public class EquipoOtrosReporteService {
     private static final String JRXML_PATH = "/reports/ReporteOtros.jrxml";
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    private final AppModel model;
+    private final EquipoOtrosService equipoOtrosService;
 
-    public EquipoOtrosReporteService(AppModel model) {
-        if (model == null) throw new IllegalArgumentException("AppModel no puede ser nulo");
-        this.model = model;
+    public EquipoOtrosReporteService(EquipoOtrosService equipoOtrosService) {
+        if (equipoOtrosService == null) throw new IllegalArgumentException("EquipoOtrosService no puede ser nulo");
+        this.equipoOtrosService = equipoOtrosService;
     }
 
     public void generarYMostrarReporte(LocalDate desde, LocalDate hasta, Integer clienteId) {
@@ -66,7 +65,7 @@ public class EquipoOtrosReporteService {
     }
 
     private List<EquipoOtrosReporteDTO> construirDatos(LocalDate desde, LocalDate hasta, Integer clienteId) {
-        List<EquipoOtros> equipos = model.obtenerEquiposOtrosEntreFechas(desde, hasta, clienteId);
+        List<EquipoOtros> equipos = equipoOtrosService.obtenerEntreFechas(desde, hasta, clienteId);
         List<EquipoOtrosReporteDTO> dtos = new ArrayList<>(equipos.size());
 
         for (EquipoOtros eq : equipos) {
