@@ -21,6 +21,8 @@ import com.example.features.lotes.view.PantallaLotes;
 import com.example.ui.dialogs.CantidadDialogHelper;
 import com.example.features.lotes.view.helpers.AutoclaveItem;
 import com.example.features.lotes.view.helpers.DialogoVolumenesIngreso;
+import com.example.features.lotes.view.helpers.IngresoInfo;
+import com.example.features.lotes.view.helpers.IngresoTooltipFormatter;
 import com.example.features.lotes.view.helpers.MaterialLoteItem;
 import com.example.features.lotes.view.helpers.PanelLotesContenido;
 
@@ -57,6 +59,11 @@ public class LotesController {
      * aporta el nombre de cliente y los datos del ingreso para el diálogo de volúmenes.
      */
     private Map<Integer, EquipoOtros> equiposOtrosPorId = new HashMap<>();
+    /**
+     * Info del ingreso de ortopedias por equipoId, para el tooltip de las tablas de
+     * materiales. Los "otros" no se pre-mapean: salen de {@link #equiposOtrosPorId}.
+     */
+    private final Map<Integer, IngresoInfo> ingresoOrtopediaPorEquipo = new HashMap<>();
 
     /** Lógica pura de reconciliación disponibles ↔ pendientes (sin Swing). */
     private final ReconciliadorPendientes reconciliador = new ReconciliadorPendientes();
@@ -126,6 +133,11 @@ public class LotesController {
         // modifica el campo de volumen manual.
         panel.setOnVolumenManualChanged(this::actualizarBotonLanzarPorVolumen);
 
+        // Tooltips con la info del ingreso. Los closures resuelven los mapas de forma
+        // perezosa en cada hover, así sobreviven a los cargarDatos() que los repueblan.
+        panel.setTooltipDisponibles(item -> IngresoTooltipFormatter.format(item, resolverIngreso(item)));
+        panel.setTooltipAutoclave(item  -> IngresoTooltipFormatter.format(item, resolverIngreso(item)));
+
         // Configurar DnD después de que el componente esté visible y con tamaño
         panel.addComponentListener(new java.awt.event.ComponentAdapter() {
             private boolean dndConfigurado = false;
@@ -158,15 +170,18 @@ public class LotesController {
         //       nombre en tu modelo (ej. getCliente()), cambiá solo esa línea.
         clientesPorEquipo.clear();
         equiposOtrosPorId.clear();
+        ingresoOrtopediaPorEquipo.clear();
         List<Equipo> equipos = List.of();
         List<EquipoOtros> equiposOtros = List.of();
         if (equipoContexto != null) {
             clientesPorEquipo.put(equipoContexto.getId(), equipoContexto.getClienteNombre());
+            ingresoOrtopediaPorEquipo.put(equipoContexto.getId(), ingresoDe(equipoContexto));
         } else {
             equipos = model.obtenerTodosLosEquipos();
             equiposOtros = model.obtenerTodosLosEquiposOtros();
             for (Equipo eq : equipos) {
                 clientesPorEquipo.put(eq.getId(), eq.getClienteNombre());
+                ingresoOrtopediaPorEquipo.put(eq.getId(), ingresoDe(eq));
             }
             for (EquipoOtros eq : equiposOtros) {
                 equiposOtrosPorId.put(eq.getId(), eq);
@@ -614,6 +629,28 @@ public class LotesController {
             if (item.isEsOtros()) return true;
         }
         return false;
+    }
+
+    private static IngresoInfo ingresoDe(Equipo equipo) {
+        return IngresoInfo.deOrtopedia(
+                equipo.getClienteNombre(),
+                equipo.getProfesionalNombre(),
+                equipo.getPacienteNombre(),
+                equipo.getInstitucionNombre(),
+                equipo.getFechaIngreso());
+    }
+
+    /** Ingreso de origen de una fila de material; null si el equipo ya no está cargado. */
+    private IngresoInfo resolverIngreso(MaterialLoteItem item) {
+        if (!item.isEsOtros()) return ingresoOrtopediaPorEquipo.get(item.getEquipoId());
+
+        EquipoOtros equipo = equiposOtrosPorId.get(item.getEquipoId());
+        if (equipo == null) return null;
+        return IngresoInfo.deOtros(
+                equipo.getClienteNombre(),
+                equipo.getTipoIngreso() == TipoIngresoOtros.REMITO,
+                equipo.getRemitoId(),
+                equipo.getFechaIngreso());
     }
 
     private String nombreClienteOtros(int equipoOtrosId) {
