@@ -14,8 +14,11 @@ Diagnóstico de origen: [hallazgos-arquitectura-pendientes.md](hallazgos-arquite
 
 ## Estado de ejecución (2026-07-23)
 
-**Fases 1, 2 y 3: hechas.** 9 commits en `UXhotfix`, de `110d7c3` a `fe5a227`.
+**Fases 1, 2, 3 y 4: hechas.** 11 commits en `UXhotfix`, de `110d7c3` a `0064570`.
 555 tests en verde (eran 521; +34 nuevos).
+
+**Fase 5 (verificación manual): pendiente** — requiere la app con BD, no se puede
+correr desde la sesión. La checklist está más abajo, sin tachar.
 
 Piezas nuevas: `EdtGuard`, `TareaUI`, `DatosRefresco`, `LectorDatosRefresco`,
 `RefrescadorPantallas`, `AgrupadorEntregas`, `ConstructorMaterialesDisponibles`,
@@ -51,6 +54,31 @@ el inventario original de la Fase 1 — son autocompletados, no `cargarDatos()`:
 Estos son lookups de una fila y sobre índice, así que el costo es bajo, pero rompen la
 regla 1 y el guard los va a marcar. Decidir en la Fase 4 si se migran a `TareaUI` o si
 se documenta la excepción.
+
+### Resultado de la Fase 4 (2026-07-23)
+
+`grep "new Thread(\|SwingWorker"` fuera de `TareaUI` → **1** ocurrencia: el shutdown hook
+de `App.java`. Las dos verificaciones de la fase pasan.
+
+Se migró más de lo mínimo: además de los 17 `new Thread()`, entraron los **3 `SwingWorker`
+de reportes** (`VerLotes`, y los dos de `VerEquipos`), que el plan dejaba como opcionales.
+Con eso `TareaUI` es el único punto de la app que toca `SwingWorker`, que es la regla 2.
+
+En vez de traducir cada bloque uno a uno, las 9 correcciones se unificaron en
+`CorreccionsController.aplicarCorreccion(...)` y las 3 mutaciones de clientes en
+`AjustesController.mutar(...)`: era el mismo boilerplate copiado, y tenerlo repetido es
+exactamente lo que dejó que se desincronizaran los `catch`.
+
+**Autocompletados síncronos: se documentan como excepción, no se migran.** Son
+`OrthopediaInputController:59` y `:69`, `VerEquiposController.abrirDetalleOtros()`
+(`obtenerPorId` al doble click) y el `searchFunction.apply()` de `AutocompleteListener`.
+Razón: son lookups de una fila sobre índice, no son la fuente del congelamiento, y
+volverlos asíncronos **agrega** riesgo — el de `AutocompleteListener` corre dentro de un
+`DocumentListener`, uno por tecla, así que async sin debounce trae resultados fuera de
+orden y popup parpadeando. Es un refactor distinto (hace falta debounce, no solo cambiar
+de hilo) y va con la lógica de la Fase 6 (*reducir* el trabajo), no con la de 1-5
+(*mover* el trabajo). Consecuencia asumida: el `EdtGuard` va a seguir marcando estos
+sitios; la Fase 5 debe verificar que la lista de WARNs sea **exactamente** esa y nada más.
 
 ---
 
@@ -344,7 +372,13 @@ Los tests no agarran nada de esto. Checklist a correr sobre la app real, con el
    datos fuera de orden. Este es el bug que hoy existe y nadie ve.
 10. **Ver Equipos**: aplicar filtros, disparar un refresco global desde otra pantalla, volver →
     los filtros del usuario siguen aplicados.
-11. **Log limpio**: cero WARNs de `EdtGuard`, cero excepciones.
+11. **Log limpio**: cero excepciones, y los únicos WARNs de `EdtGuard` son los cuatro
+    autocompletados documentados en la Fase 4 (`OrthopediaInputController` ×2,
+    `VerEquiposController.abrirDetalleOtros`, `AutocompleteListener`). Cualquier otro
+    sitio en la lista es un camino de lectura que se escapó del refresco global.
+    Ojo con `strict`: si está activo, esos cuatro **lanzan** en vez de avisar, así que
+    conviene correr la checklist sin `strict` y revisar el log, o aceptar que el
+    autocompletado no funcione durante la corrida con `strict`.
 
 Recién con esto en verde: `/code-review ultra` (paso 6 del plan de sesiones).
 
