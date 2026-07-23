@@ -1,5 +1,8 @@
 package com.example.features.ajustes.controller;
 
+import com.example.common.constants.Constantes;
+import com.example.features.actualizaciones.model.ReleaseInfo;
+import com.example.features.actualizaciones.service.ActualizacionService;
 import com.example.features.ajustes.view.FusionarClienteDialog;
 import com.example.features.ajustes.view.NuevoClienteDialog;
 import com.example.features.ajustes.view.PanelGestionClientes;
@@ -11,7 +14,9 @@ import com.example.ui.common.TareaUI;
 import javax.swing.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class AjustesController {
@@ -19,17 +24,22 @@ public class AjustesController {
     private final PantallaAjustes      vista;
     private final PanelGestionClientes panel;
     private final ClienteService       clienteService;
+    private final ActualizacionService actualizacionService;
     private       Runnable             onMutacion;
 
-    /** Alcance: ABM y fusión de clientes. */
-    public AjustesController(PantallaAjustes vista, ClienteService clienteService) {
-        this.vista          = vista;
-        this.panel          = vista.getPanelClientes();
-        this.clienteService = clienteService;
+    /** Alcance: ABM y fusión de clientes, y auto-actualización de la app. */
+    public AjustesController(
+        PantallaAjustes vista, ClienteService clienteService, ActualizacionService actualizacionService
+    ) {
+        this.vista                = vista;
+        this.panel                = vista.getPanelClientes();
+        this.clienteService       = clienteService;
+        this.actualizacionService = actualizacionService;
 
         panel.setOnAgregar(this::agregarCliente);
         panel.setOnEliminar(this::eliminarCliente);
         panel.setOnFusionar(this::fusionarCliente);
+        vista.setOnBuscarActualizaciones(this::buscarActualizaciones);
 
         vista.addComponentListener(new ComponentAdapter() {
             @Override
@@ -149,5 +159,82 @@ public class AjustesController {
 
     private void mostrarError(String mensaje, String titulo) {
         JOptionPane.showMessageDialog(vista, mensaje, titulo, JOptionPane.ERROR_MESSAGE);
+    }
+
+    // ── Auto-actualización ──────────────────────────────────────────────────
+    // Cada paso llama solo a ActualizacionService (nunca a sus colaboradores internos);
+    // el orden chequeo → confirmación → descarga → confirmación → instalación vive acá
+    // porque requiere diálogos intermedios que el service, al no ser código de UI, no puede mostrar.
+
+    private void buscarActualizaciones() {
+        TareaUI.<Optional<ReleaseInfo>>nueva()
+            .nombre("ajustes-chequear-actualizacion")
+            .leer(actualizacionService::hayActualizacionDisponible)
+            .pintar(this::manejarResultadoChequeo)
+            .siFalla(this::mostrarErrorActualizacion)
+            .lanzar();
+    }
+
+    private void manejarResultadoChequeo(Optional<ReleaseInfo> releaseDisponible) {
+        if (releaseDisponible.isEmpty()) {
+            JOptionPane.showMessageDialog(vista, Constantes.Mensajes.NO_HAY_ACTUALIZACIONES,
+                Constantes.Mensajes.TITULO_ACTUALIZACION_DISPONIBLE, JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        ReleaseInfo release = releaseDisponible.get();
+        Object[] opciones = { Constantes.Mensajes.ACTUALIZAR_AHORA, Constantes.Mensajes.MAS_TARDE };
+        int resp = JOptionPane.showOptionDialog(vista,
+            String.format(Constantes.Mensajes.ACTUALIZACION_DISPONIBLE, release.tag(), release.changelog()),
+            Constantes.Mensajes.TITULO_ACTUALIZACION_DISPONIBLE,
+            JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE,
+            null, opciones, opciones[1]);
+        if (resp != 0) return;
+
+        descargarActualizacion(release);
+    }
+
+    private void descargarActualizacion(ReleaseInfo release) {
+        JProgressBar barra = new JProgressBar();
+        barra.setIndeterminate(true);
+        barra.setStringPainted(true);
+        barra.setString(String.format(Constantes.Mensajes.DESCARGANDO_ACTUALIZACION, 0));
+
+        JDialog dialogoProgreso = new JDialog(
+            SwingUtilities.getWindowAncestor(vista), Constantes.Mensajes.TITULO_DESCARGANDO_ACTUALIZACION);
+        dialogoProgreso.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+        dialogoProgreso.getContentPane().add(barra);
+        dialogoProgreso.setSize(320, 80);
+        dialogoProgreso.setLocationRelativeTo(vista);
+        dialogoProgreso.setVisible(true);
+
+        TareaUI.<Path>nueva()
+            .nombre("ajustes-descargar-actualizacion")
+            .leer(() -> actualizacionService.descargarActualizacion(release,
+                bytes -> SwingUtilities.invokeLater(() ->
+                    barra.setString(String.format(Constantes.Mensajes.DESCARGANDO_ACTUALIZACION, bytes / 1024)))))
+            .pintar(this::confirmarInstalacion)
+            .siFalla(this::mostrarErrorActualizacion)
+            .despues(dialogoProgreso::dispose)
+            .lanzar();
+    }
+
+    private void confirmarInstalacion(Path jarVerificado) {
+        int resp = JOptionPane.showConfirmDialog(vista,
+            Constantes.Mensajes.CONFIRMAR_INSTALAR_ACTUALIZACION,
+            Constantes.Mensajes.TITULO_INSTALAR_ACTUALIZACION,
+            JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (resp != JOptionPane.YES_OPTION) return;
+
+        TareaUI.<Void>nueva()
+            .nombre("ajustes-instalar-actualizacion")
+            .leer(() -> { actualizacionService.instalarActualizacion(jarVerificado); return null; })
+            .siFalla(this::mostrarErrorActualizacion)
+            .lanzar();
+    }
+
+    private void mostrarErrorActualizacion(Throwable e) {
+        mostrarError(String.format(Constantes.Mensajes.ERROR_ACTUALIZACION, e.getMessage()),
+            Constantes.Mensajes.TITULO_ERROR_ACTUALIZACION);
     }
 }

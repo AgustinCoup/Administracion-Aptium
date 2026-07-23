@@ -136,6 +136,21 @@ public final class Constantes {
         /** Mensaje de éxito al guardar un remito; incluye el ID generado. */
         public static final String REMITO_GUARDADO_OK = "Remito guardado correctamente.\nIdentificador: %s";
 
+        // ── Actualizaciones ──────────────────────────────────────────────────
+        public static final String NO_HAY_ACTUALIZACIONES        = "Ya tenés la última versión instalada.";
+        public static final String TITULO_ACTUALIZACION_DISPONIBLE = "Actualización disponible";
+        public static final String ACTUALIZACION_DISPONIBLE      = "Hay una nueva versión disponible: %s\n\n%s";
+        public static final String ACTUALIZAR_AHORA               = "Actualizar ahora";
+        public static final String MAS_TARDE                      = "Más tarde";
+        public static final String TITULO_DESCARGANDO_ACTUALIZACION = "Descargando actualización";
+        public static final String DESCARGANDO_ACTUALIZACION      = "Descargando actualización... %,d KB";
+        public static final String TITULO_INSTALAR_ACTUALIZACION  = "Instalar actualización";
+        public static final String CONFIRMAR_INSTALAR_ACTUALIZACION =
+            "La aplicación se va a cerrar para instalar la actualización.\n"
+                + "Es posible que Windows pida permiso de administrador.\n\n¿Continuar?";
+        public static final String TITULO_ERROR_ACTUALIZACION     = "Error al actualizar";
+        public static final String ERROR_ACTUALIZACION            = "No se pudo completar la actualización: %s";
+
         private Mensajes() {}
     }
 
@@ -198,6 +213,7 @@ public final class Constantes {
         public static final String VER_EQUIPOS            = "Ver equipos";
         public static final String CERRAR                 = "Cerrar";
         public static final String AJUSTES               = "Ajustes";
+        public static final String BUSCAR_ACTUALIZACIONES = "Buscar actualizaciones";
 
         private Botones() {}
     }
@@ -330,5 +346,17 @@ public final class Constantes {
         public static final String TOOLTIP_REMITO_ID   = "Generado automáticamente al guardar: fecha-id";
 
         private Textos() {}
+    }
+
+    /**
+     * Configuración del feature de auto-actualización (chequeo/descarga/instalación del fat JAR).
+     */
+    public static final class Actualizaciones {
+        public static final String GITHUB_OWNER   = "AgustinCoup";
+        public static final String GITHUB_REPO    = "Administracion-Aptium";
+        public static final String ASSET_JAR      = "aptium.jar";
+        public static final String ASSET_CHECKSUM = "aptium.jar.sha256";
+
+        private Actualizaciones() {}
     }
 }

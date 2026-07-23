@@ -129,6 +129,13 @@
         <artifactId>jasperreports-pdf</artifactId>
         <version>7.0.3</version>
     </dependency>
+
+    <!-- org.json: parseo de la respuesta de la API de GitHub Releases -->
+    <dependency>
+      <groupId>org.json</groupId>
+      <artifactId>json</artifactId>
+      <version>20240303</version>
+    </dependency>
   </dependencies>
 
 <build>

@@ -80,9 +80,17 @@ Revert del commit — no toca `src/main/java` productivo, solo build/config.
 
 ---
 
-## Fase 1 — Chequeo de versión nueva (solo lectura)
+## Fase 1 — Chequeo de versión nueva (solo lectura) ✅ REALIZADA (2026-07-23)
 
 **Riesgo:** bajo · **Depende de:** Fase 0 (usa `VersionInfo`) · **Toca:** `common/constants/Constantes.java`, paquete nuevo `features/actualizaciones/`
+
+**Nota de implementación:** la jerarquía de excepciones del proyecto usa el nombre real
+`ApplicationException` (no `AptiumException`, que era el nombre en este plan) — `ActualizacionException`
+cuelga de esa clase. `GithubReleaseClient` quedó creado con `java.net.http.HttpClient` + `org.json:json:20240303`
+(agregado a `pom.xml`) tal como especifica la tarea 6, aunque no tiene test dedicado porque el plan solo
+pide tests sin red real para `Version` y `ActualizacionService`. Verificado con
+`mvn -Dtest=VersionTest,ActualizacionServiceTest test` y con `mvn clean package` completo (build entero
+en verde, sin tests rotos).
 
 ### Contexto para agente frío
 Esta fase NO toca filesystem del JAR target ni descarga nada pesado — solo determina "¿hay una versión más nueva que la mía?". Es la fase con más superficie de tests unitarios puros. `IReleaseRepository` es el puerto que permite testear sin red real (ver decisión de arquitectura #4 arriba).
@@ -115,9 +123,15 @@ Revert del commit — código nuevo aislado en un paquete propio, sin tocar nada
 
 ---
 
-## Fase 2 — Descarga y verificación de checksum
+## Fase 2 — Descarga y verificación de checksum ✅ REALIZADA (2026-07-23)
 
 **Riesgo:** medio (I/O real, pero a un staging propio, no al target protegido) · **Depende de:** Fase 1 (usa `ReleaseInfo`) · **Toca:** `features/actualizaciones/service/DescargaService.java` (nuevo)
+
+**Nota de implementación:** los tests usan el servidor HTTP embebido de la JDK
+(`com.sun.net.httpserver.HttpServer`) atado a `127.0.0.1` en un puerto efímero —
+tal como sugería el plan, sin agregar ninguna dependencia nueva. Verificado con
+`mvn test -Dtest=DescargaServiceTest` y con `mvn clean package` completo (build
+entero en verde, incluyendo los ~580 tests existentes).
 
 ### Contexto para agente frío
 Esta fase descarga bytes reales a una carpeta que el usuario siempre puede escribir (`%LOCALAPPDATA%\Aptium\updates\`), nunca a la ruta protegida del JAR en ejecución — ese problema es de la Fase 3, no de esta. Acá el único requisito es: descargar + verificar que no esté corrupto, y fallar limpio si algo no cierra.
@@ -153,9 +167,53 @@ Revert del commit — clase nueva y aislada, sin efectos en el resto de la app.
 
 ---
 
-## Fase 3 — Reemplazo robusto del JAR (mayor riesgo — requiere prueba manual en Windows real)
+## Fase 3 — Reemplazo robusto del JAR ✅ REALIZADA (2026-07-23, incluye prueba manual en Windows real)
 
 **Riesgo:** alto · **Depende de:** Fase 2 (usa el `Path` del JAR descargado y verificado) · **Toca:** `features/actualizaciones/service/RutaJarResolver.java`, `ScriptDeReemplazoGenerator.java`, `ActualizacionInstaller.java` (todos nuevos)
+
+**Nota de implementación:** las tres clases quedaron creadas con sus dos tests unitarios
+(`RutaJarResolverTest`, `ScriptDeReemplazoGeneratorTest`, 5 tests en verde; `mvn clean package`
+completo con 608 tests sin fallos). Decisiones de implementación:
+- `RutaJarResolver` usa `App.class.getProtectionDomain()` (decisión #2). Corriendo desde el
+  classpath de test devuelve el directorio de clases, no un JAR — el test documenta esa limitación.
+- El **fallback manual del paso 5** necesita una URL de página de release que la firma de 4
+  parámetros del generador (PID, staged, target, java.home) no incluía. Se resolvió derivándola
+  dentro del generador como `https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest`
+  desde `Constantes`, sin agregar un 5º parámetro.
+- El script captura **cualquier** fallo del `Move-Item` directo y reintenta con elevación UAC
+  (no un tipo de excepción PowerShell específico): más robusto ante variantes de excepción, y
+  respeta igual el requisito "sin UAC cuando no hace falta" porque el camino de éxito nunca entra
+  al `catch`. `java.exe` se resuelve vía `Join-Path $javaHome 'bin\java.exe'` (no depende del PATH).
+- `ActualizacionInstaller` lanza el script con `cmd /c start "" /min powershell -ExecutionPolicy Bypass
+  -WindowStyle Hidden -File ...`, desacoplado y sin heredar streams, y **solo** llama `System.exit(0)`
+  si el `ProcessBuilder.start()` no lanzó excepción (si falla el lanzamiento, propaga
+  `ActualizacionException` sin cerrar la app).
+
+**Bugs reales encontrados y corregidos durante la prueba manual (no detectables por JUnit):**
+1. `ActualizacionInstaller.lanzarScriptDesacoplado`: `pb.redirectInput(ProcessBuilder.Redirect.DISCARD)`
+   lanzaba `IllegalArgumentException` en runtime — `DISCARD` solo es válido para stdout/stderr, no
+   para stdin. Corregido a `Redirect.from(new File("NUL"))` (dispositivo nulo de Windows).
+2. `ScriptDeReemplazoGenerator`: el `Move-Item` elevado se invocaba con `-Command` en un proceso
+   PowerShell hijo que **no hereda** `$ErrorActionPreference = 'Stop'` del script padre — un fallo
+   ahí adentro no se reflejaba en el `ExitCode`, así que el script podía reportar éxito (código 0)
+   aunque el `Move-Item` hubiera fallado. Corregido fijando `$ErrorActionPreference` explícitamente
+   dentro del comando elevado y devolviendo `exit 0`/`exit 1` según corresponda.
+
+**Nota de metodología:** la primera ronda de pruebas usó `jshell` como driver manual, lo cual dio
+falsos negativos — el proceso `jshell.exe` (herramienta interactiva) retiene el JAR abierto en su
+classpath de forma independiente del JVM "remoto" donde corre el snippet, así que el archivo seguía
+bloqueado incluso después de que el snippet llamara `System.exit(0)`. Esto no ocurre en producción
+(`java -jar aptium.jar` es un solo proceso). Se resolvió reemplazando `jshell` por un driver mínimo
+de una clase (`DriverPruebaManual`, descartado al terminar, no forma parte del código productivo)
+compilado y ejecutado como proceso `java` normal — fiel al comportamiento real de la app.
+
+**Resultado del checklist manual (Windows real, sesión interactiva del usuario, 2026-07-23):**
+| Punto | Resultado |
+|---|---|
+| 1. Carpeta con ACL restringida (`icacls`, deny-write solo a usuarios estándar, allow-full a Administradores/SYSTEM) + reemplazo aceptando UAC | ✅ PASS — cierra, pide UAC, reemplaza, relanza la app nueva, sin `.bak` residual |
+| 2. Mismo caso cancelando el UAC | ✅ PASS — el jar queda intacto (hash original), sin `.bak` residual, staged sin tocar, relanza la app vieja igual (abre además la página de release como fallback) |
+| 3. Carpeta sin restricción de ACL | ✅ PASS — reemplaza sin pedir UAC, sin `.bak` residual |
+| 4. Ningún camino deja la app sin poder levantar | ✅ Confirmado en los 3 casos anteriores |
 
 ### Contexto para agente frío
 Esta es la fase central del pedido original: el JAR no puede sobrescribirse a sí mismo mientras la JVM lo tiene abierto (bloqueo de archivo en Windows), y si además está en una ruta protegida (ACL deniega escritura al usuario actual), hace falta elevar privilegios (UAC) **solo para el paso puntual de mover el archivo**, no para toda la app. Son dos problemas independientes — no confundirlos: el bloqueo de archivo se resuelve esperando a que el proceso termine; el permiso denegado se resuelve reintentando ese único paso elevado.
@@ -185,11 +243,52 @@ Esta es la fase central del pedido original: el JAR no puede sobrescribirse a s�
 - **No es posible ni deseable** testear con JUnit la ejecución real del script (UAC, espera de proceso, relanzamiento) — eso es la prueba manual de abajo.
 
 ### Prueba manual obligatoria (criterio de salida, no opcional)
-En una máquina Windows real (o VM), simular producción:
-1. Copiar un `aptium.jar` de prueba a una carpeta con ACL restringida para el usuario actual (ej. una subcarpeta de `Program Files`, o usar `icacls` para denegar escritura sobre una carpeta cualquiera).
-2. Ejecutar la app desde ahí, disparar el flujo de instalación (puede ser con un mock de descarga que ya tenga el JAR "nuevo" en staging).
-3. Confirmar: (a) la app cierra, (b) aparece el prompt de UAC, (c) al aceptar, el JAR se reemplaza y la app relanza con el nuevo JAR corriendo; (d) repetir cancelando el UAC — confirmar que se restaura el backup y la app vieja vuelve a levantar, sin quedar en un estado roto.
-4. Repetir el mismo flujo en una carpeta SIN restricción de ACL (como `C:\Sistema\app` hoy) — confirmar que nunca aparece el prompt de UAC en ese caso (no debe pedir elevación si no hace falta).
+
+Como la Fase 4 (botón de UI) todavía no existe, se dispara `ActualizacionInstaller`
+directo con `jshell` contra el `aptium.jar` ya compilado — no hace falta la BD porque
+solo se ejercitan las clases de `features/actualizaciones`, no la app completa.
+
+**0. Preparar** (PowerShell, desde la raíz del repo):
+```powershell
+mvn clean package -q
+$prot = "C:\AptiumTestProtegida"; $libre = "C:\AptiumTestLibre"; $stage = "C:\AptiumTestStage"
+New-Item -ItemType Directory -Force -Path $prot,$libre,$stage | Out-Null
+Copy-Item target\aptium.jar "$prot\aptium.jar"
+Copy-Item target\aptium.jar "$libre\aptium.jar"
+Copy-Item target\aptium.jar "$stage\aptium-vTEST.jar"   # "JAR nuevo" simulado (contenido real da igual para esta fase)
+```
+
+**Caso A — carpeta protegida, aceptando UAC:**
+```powershell
+icacls $prot /inheritance:r
+icacls $prot /grant:r "$env:USERNAME:(RX)"        # solo lectura+ejecución, sin escritura
+jshell --class-path "$prot\aptium.jar"
+```
+Dentro de `jshell`:
+```java
+import com.example.features.actualizaciones.service.*;
+import java.nio.file.*;
+new ActualizacionInstaller().instalarYReiniciar(Path.of("C:\\AptiumTestStage\\aptium-vTEST.jar"));
+```
+Esto cierra `jshell` (equivalente a que la app cierre). Confirmar:
+- (a) el proceso `jshell` termina; (b) aparece el prompt de UAC; (c) al **aceptar**, `$prot\aptium.jar` queda reemplazado (comparar hash: `Get-FileHash $prot\aptium.jar` debe coincidir con `Get-FileHash C:\AptiumTestStage\aptium-vTEST.jar` antes de moverlo) y arranca un `java.exe -jar $prot\aptium.jar` nuevo (verificar en el Administrador de tareas — puede fallar al bootear por falta de BD, eso no invalida el test de reemplazo).
+- Repetir el mismo caso pero **cancelando** el UAC: confirmar que `$prot\aptium.jar` queda igual al original (restaurado desde `.bak`) y que igual se relanza `java.exe` con el JAR viejo — la app nunca queda sin proceso vivo.
+
+Reset entre corridas: `icacls $prot /reset /T` y volver a copiar `aptium.jar` limpio antes de repetir.
+
+**Caso B — carpeta sin restricción:**
+```powershell
+jshell --class-path "$libre\aptium.jar"
+```
+Mismo comando de `instalarYReiniciar(...)` apuntando a un staged fresco. Confirmar que el reemplazo ocurre **sin** que aparezca ningún prompt de UAC.
+
+**Limpieza:**
+```powershell
+Get-Process java,jshell,powershell -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*AptiumTest*" } | Stop-Process -Force
+Remove-Item -Recurse -Force $prot,$libre,$stage
+```
+
+Documentar el resultado (pass/fail) de cada uno de los 4 puntos antes de dar la fase por cerrada.
 
 ### Verificación
 ```bash
@@ -207,9 +306,63 @@ Revert del commit. Si ya se probó en una máquina real y quedó algún `aptium.
 
 ---
 
-## Fase 4 — `ActualizacionService` como entry point único + UI
+## Fase 4 — `ActualizacionService` como entry point único + UI ✅ REALIZADA (2026-07-23), incluye prueba manual end-to-end en Windows real
 
 **Riesgo:** medio · **Depende de:** Fases 1, 2 y 3 · **Toca:** `ActualizacionService.java` (ampliar), `PantallaAjustes.java`, `AjustesController.java`, `AppContext.java`, `UiCoordinator.java`
+
+**Nota de implementación:** `ActualizacionService` se amplió con `descargarActualizacion(ReleaseInfo, Consumer<Long>)`
+e `instalarActualizacion(Path)`, ambos delegando directamente en `DescargaService` e
+`ActualizacionInstaller` (nuevos parámetros de su constructor). El controller no orquesta
+los sub-servicios — solo depende de `ActualizacionService`, con tres llamadas secuenciales
+(`hayActualizacionDisponible` → `descargarActualizacion` → `instalarActualizacion`)
+intercaladas con los diálogos de confirmación, porque esos diálogos son intrínsecamente
+responsabilidad de la UI y no pueden vivir dentro del service sin romper la separación de capas.
+El botón se agregó a `PantallaAjustes` (barra inferior, patrón `setOnX(Runnable)` como el
+resto del paquete). `mvn verify` final: 622 tests en verde.
+
+**Limitación de test documentada:** `AjustesControllerTest` solo verifica que el click dispara
+`hayActualizacionDisponible()` en background (con y sin fallo). No se testean las ramas que
+dependen de `JOptionPane` (confirmación, progreso, instalación) porque esos diálogos corren en
+el EDT dentro del `SwingWorker` de `TareaUI`, y el mock estático de `JOptionPane` en Mockito es
+por-thread — no intercepta llamadas hechas desde el EDT si se abre desde el thread del test.
+Cubrir esas ramas requeriría inyectar una abstracción de diálogos testeable, que no estaba
+pedida por este plan y sería una interfaz nueva "por las dudas" (anti-patrón ya listado abajo).
+
+**Prueba manual end-to-end (Windows real, contra un release real de GitHub, 2026-07-23):
+✅ PASS.** Se detecta la actualización, se descarga, se reemplaza el JAR sin caer en el
+fallback y sin pedir UAC (carpeta sin ACL restringida — el camino con UAC ya se había
+probado en la Fase 3), la app se relanza sola con la versión nueva, y al volver a chequear
+informa correctamente que ya está actualizada. La ejecución de esta prueba manual encontró y
+corrigió **cuatro bugs reales** que ningún test unitario detectó, todos con fix + test agregado:
+
+1. **El repo era privado** — `GithubReleaseClient` pega a `api.github.com` sin autenticación
+   a propósito (decisión #6), lo cual nunca iba a funcionar contra un repo privado. Se decidió
+   con el usuario hacer el repo público (no es un cambio de código; se revisó primero que no
+   quedara ninguna credencial vigente en el historial de git — había una vieja, ya en desuso,
+   que se dejó tal cual a pedido del usuario).
+2. **`Version.parse` no soportaba el versionado real del proyecto**: los tags reales usan un
+   4° segmento de hotfix (`v1.1.4.2`), pero la regex solo aceptaba `major.minor.patch`. Se
+   agregó un 4° segmento opcional (`hotfix()`), comparado numéricamente igual que el resto.
+   Ver `Version.java` y `VersionTest`.
+3. **`HttpClient` no seguía redirects** (`GithubReleaseClient` y `DescargaService`): el default
+   de Java es `Redirect.NEVER`, y GitHub redirige (302) la descarga de assets hacia
+   `objects.githubusercontent.com`. Se agregó `.followRedirects(HttpClient.Redirect.NORMAL)`
+   a ambos clientes.
+4. **`Move-Item -Force` no sobreescribe un destino que ya existe** (limitación documentada del
+   cmdlet, a diferencia de `Copy-Item -Force`) — y el target siempre existe (es el JAR que se
+   reemplaza), así que el reemplazo fallaba siempre, tanto sin elevar como elevado. Se agregó
+   `Remove-Item` del target antes del `Move-Item` en ambos intentos (`ScriptDeReemplazoGenerator`).
+5. **El `.ps1` generado no llevaba BOM UTF-8**: Windows PowerShell 5.1 (no `pwsh`) solo detecta
+   UTF-8 en un script sin BOM cayendo al codepage ANSI del sistema, lo que corrompía cualquier
+   carácter no-ASCII embebido en las rutas (ej. una tilde en el nombre de usuario de Windows) —
+   rompiendo la ruta del JAR staged y el reemplazo directo. Se agregó BOM UTF-8 al escribir el
+   script. Este bug no depende de tener o no un usuario con tilde: el fix es puramente defensivo
+   para cualquier PC.
+
+Diagnóstico de los bugs 4 y 5 se hizo agregando logging temporal al script generado
+(`Log(...)` a un archivo `reemplazo.log` en el directorio de staging) para ver la causa real
+sin depender de reproducir a mano — se mantuvo en el código final porque es útil para
+diagnosticar problemas reales de usuarios en producción, no solo para esta prueba.
 
 ### Contexto para agente frío
 Esta fase consolida todo lo anterior detrás de un único método público y lo conecta a la UI. El punto de arquitectura importante (ya revisado y acordado): el controller de Swing **no** debe llamar por separado a `DescargaService`, `ActualizacionInstaller`, etc. — recibe solo `ActualizacionService`, que internamente compone todo. Esto respeta tanto la regla del proyecto ("el controller declara en su constructor los services que usa, sin fachada intermedia") como el hallazgo de la revisión hexagonal (no dejar que el adaptador de UI orqueste el orden de los pasos del caso de uso).
@@ -238,9 +391,9 @@ mvn verify
 Prueba manual end-to-end: `mvn clean package`, ejecutar el JAR generado, ir a Ajustes, click en "Buscar actualizaciones" contra un release real de prueba en GitHub (puede ser un release de testing con una versión mayor a `dev-SNAPSHOT`), confirmar todo el flujo hasta el reemplazo real (reutilizando el checklist de la Fase 3 si aplica).
 
 ### Criterios de salida
-- `AjustesController` tiene un solo parámetro nuevo en su constructor (`ActualizacionService`), no varios.
-- `mvn verify` en verde, cobertura razonable en la lógica nueva.
-- Flujo completo probado manualmente al menos una vez de punta a punta contra un release real.
+- ✅ `AjustesController` tiene un solo parámetro nuevo en su constructor (`ActualizacionService`), no varios.
+- ✅ `mvn verify` en verde (622 tests), cobertura razonable en la lógica nueva.
+- ✅ Flujo completo probado manualmente de punta a punta contra un release real (Windows real, ver nota de implementación arriba).
 
 ### Rollback
 Revert del commit. Si algo queda mal cableado en `AppContext`/`UiCoordinator`, el resto de la app no se ve afectada (el nuevo parámetro es aditivo en ambos constructores).

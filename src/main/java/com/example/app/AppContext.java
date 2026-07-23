@@ -1,5 +1,10 @@
 package com.example.app;
 
+import com.example.common.VersionInfo;
+import com.example.features.actualizaciones.service.ActualizacionInstaller;
+import com.example.features.actualizaciones.service.ActualizacionService;
+import com.example.features.actualizaciones.service.DescargaService;
+import com.example.features.actualizaciones.service.GithubReleaseClient;
 import com.example.features.autoclaves.dao.AutoclaveDAO;
 import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.clientes.dao.ClienteDAO;
@@ -48,6 +53,7 @@ public class AppContext {
     private final LoteReporteService loteReporteService;
     private final EquipoReporteService equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
+    private final ActualizacionService actualizacionService;
 
     public AppContext(
         EquipoService equipoService,
@@ -65,7 +71,8 @@ public class AppContext {
         EquipoOtrosCorreccionService equipoOtrosCorreccionService,
         LoteReporteService loteReporteService,
         EquipoReporteService equipoReporteService,
-        EquipoOtrosReporteService equipoOtrosReporteService
+        EquipoOtrosReporteService equipoOtrosReporteService,
+        ActualizacionService actualizacionService
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
             || profesionalService == null || institucionService == null || materialService == null
@@ -73,7 +80,8 @@ public class AppContext {
             || catalogoOtrosService == null
             || equipoOtrosService == null || equipoCorreccionService == null
             || equipoOtrosCorreccionService == null || loteReporteService == null
-            || equipoReporteService == null || equipoOtrosReporteService == null) {
+            || equipoReporteService == null || equipoOtrosReporteService == null
+            || actualizacionService == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -93,6 +101,7 @@ public class AppContext {
         this.loteReporteService = loteReporteService;
         this.equipoReporteService = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
+        this.actualizacionService = actualizacionService;
     }
 
     public static AppContext createDefault() {
@@ -132,6 +141,9 @@ public class AppContext {
         EquipoOtrosReporteService equipoOtrosReporteService =
             new EquipoOtrosReporteService(equipoOtrosService);
 
+        ActualizacionService actualizacionService = new ActualizacionService(
+            new GithubReleaseClient(), new VersionInfo(), new DescargaService(), new ActualizacionInstaller());
+
         return new AppContext(
             equipoService,
             catalogoService,
@@ -148,7 +160,8 @@ public class AppContext {
             equipoOtrosCorreccionService,
             loteReporteService,
             equipoReporteService,
-            equipoOtrosReporteService
+            equipoOtrosReporteService,
+            actualizacionService
         );
     }
 
@@ -214,6 +227,10 @@ public class AppContext {
 
     public EquipoOtrosReporteService getEquipoOtrosReporteService() {
         return equipoOtrosReporteService;
+    }
+
+    public ActualizacionService getActualizacionService() {
+        return actualizacionService;
     }
 }
 
