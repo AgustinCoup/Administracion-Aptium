@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import javax.swing.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 
 public class CorreccionsController {
 
@@ -81,13 +82,13 @@ public class CorreccionsController {
         // ── General ───────────────────────────────────────────────────────────
         panel.setOnPantallaVisible(this::cargarEquiposNuevos);
 
-        panel.setOnCodigoNuevoChanged((codigo, campoDescripcion) -> {
-            new Thread(() -> {
-                String descripcion = correccionService.obtenerDescripcionMaterial(codigo);
-                SwingUtilities.invokeLater(() -> campoDescripcion.setText(descripcion != null
-                    ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO));
-            }).start();
-        });
+        panel.setOnCodigoNuevoChanged((codigo, campoDescripcion) ->
+            TareaUI.<String>nueva()
+                .nombre("autocompletar-descripcion")
+                .leer(() -> correccionService.obtenerDescripcionMaterial(codigo))
+                .pintar(descripcion -> campoDescripcion.setText(descripcion != null
+                    ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO))
+                .lanzar());
 
         cargarEquiposNuevos();
         panel.limpiarPantalla();
@@ -143,247 +144,143 @@ public class CorreccionsController {
     // ── Carga ────────────────────────────────────────────────────────────────
 
     private void cargarEquiposNuevos() {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
+        TareaUI.<List<EquipoRegistrableInterface>>nueva()
+            .nombre("carga-equipos-nuevos")
+            .leer(() -> {
                 List<Equipo>      ortopedias = correccionService.obtenerEquiposNuevos();
                 List<EquipoOtros> otros      = otrosService.obtenerEquiposOtrosNuevos();
 
                 List<EquipoRegistrableInterface> combinada = new ArrayList<>(ortopedias);
                 combinada.addAll(otros);
-
-                SwingUtilities.invokeLater(() -> {
-                    panel.actualizarListaEquiposUnificada(combinada);
-                    panel.limpiarPantalla();
-                    panel.mostrarMensaje("Se cargaron " + combinada.size() + " equipos en estado NUEVO");
-                    panel.mostrarCargando(false);
-                });
                 log.info("Se cargaron {} equipos nuevos ({} ortopedia, {} otros)",
                     combinada.size(), ortopedias.size(), otros.size());
-            } catch (Exception e) {
-                SwingUtilities.invokeLater(() -> {
-                    panel.mostrarError("Error al cargar equipos: " + e.getMessage());
-                    panel.mostrarCargando(false);
-                });
-                log.error("Error al cargar equipos nuevos", e);
-            }
-        }).start();
+                return combinada;
+            })
+            .pintar(equipos -> {
+                panel.actualizarListaEquiposUnificada(equipos);
+                panel.limpiarPantalla();
+                panel.mostrarMensaje("Se cargaron " + equipos.size() + " equipos en estado NUEVO");
+            })
+            .siFalla(e -> panel.mostrarError("Error al cargar equipos: " + e.getMessage()))
+            .antes(()  -> panel.mostrarCargando(true))
+            .despues(() -> panel.mostrarCargando(false))
+            .lanzar();
     }
 
     // ── Operaciones ortopedia ────────────────────────────────────────────────
 
     private void modificarCantidadMaterial(Integer equipoId, Integer materialId,
                                            Integer cantidadNueva, String motivo) {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = correccionService.modificarCantidadMaterial(
-                    equipoId, materialId, cantidadNueva, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Cantidad modificada correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo modificar la cantidad");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error de base de datos", e);
-            }
-        }).start();
+        aplicarCorreccion("modificar-cantidad",
+            () -> correccionService.modificarCantidadMaterial(equipoId, materialId, cantidadNueva, motivo),
+            "Cantidad modificada correctamente", "No se pudo modificar la cantidad");
     }
 
     private void modificarCodigoMaterial(Integer equipoId, Integer materialId,
                                          Integer codigoNuevo, String motivo) {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = correccionService.modificarCodigoMaterial(
-                    equipoId, materialId, codigoNuevo, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Código modificado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo modificar el código");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error de base de datos", e);
-            }
-        }).start();
+        aplicarCorreccion("modificar-codigo",
+            () -> correccionService.modificarCodigoMaterial(equipoId, materialId, codigoNuevo, motivo),
+            "Código modificado correctamente", "No se pudo modificar el código");
     }
 
     private void agregarMaterial(Integer equipoId, Integer codigoCatalogo,
                                  Integer cantidad, String motivo) {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = correccionService.agregarMaterialAEquipo(
-                    equipoId, codigoCatalogo, cantidad, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Material agregado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo agregar el material");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error de base de datos al agregar material", e);
-            }
-        }).start();
+        aplicarCorreccion("agregar-material",
+            () -> correccionService.agregarMaterialAEquipo(equipoId, codigoCatalogo, cantidad, motivo),
+            "Material agregado correctamente", "No se pudo agregar el material");
     }
 
     private void eliminarEquipo(Integer equipoId, String motivo) {
-        int respuesta = JOptionPane.showConfirmDialog(
-            panel,
-            "¿Está seguro de que desea eliminar este equipo?\n\nEsta acción no se puede deshacer.",
-            "Confirmar eliminación",
-            JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-        if (respuesta != JOptionPane.YES_OPTION) return;
-
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = correccionService.eliminarEquipo(equipoId, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Equipo eliminado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo eliminar el equipo");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error de base de datos", e);
-            }
-        }).start();
+        if (!confirmarEliminacionDeEquipo()) return;
+        aplicarCorreccion("eliminar-equipo",
+            () -> correccionService.eliminarEquipo(equipoId, motivo),
+            "Equipo eliminado correctamente", "No se pudo eliminar el equipo");
     }
 
     private void eliminarMaterial(Integer equipoId, Integer codigoCatalogo, String motivo) {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = correccionService.eliminarMaterial(equipoId, codigoCatalogo, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Material eliminado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo eliminar el material");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error de base de datos", e);
-            }
-        }).start();
+        aplicarCorreccion("eliminar-material",
+            () -> correccionService.eliminarMaterial(equipoId, codigoCatalogo, motivo),
+            "Material eliminado correctamente", "No se pudo eliminar el material");
     }
 
     // ── Operaciones otros ────────────────────────────────────────────────────
 
     private void modificarCantidadRemito(Integer equipoId, Integer cantidadNueva, String motivo) {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = otrosService.modificarCantidadRemito(equipoId, cantidadNueva, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Cantidad del remito modificada correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo modificar la cantidad del remito");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error al modificar cantidad remito equipo={}", equipoId, e);
-            }
-        }).start();
+        aplicarCorreccion("modificar-cantidad-remito",
+            () -> otrosService.modificarCantidadRemito(equipoId, cantidadNueva, motivo),
+            "Cantidad del remito modificada correctamente",
+            "No se pudo modificar la cantidad del remito");
     }
 
     private void modificarCantidadMaterialOtros(Integer equipoId, Integer materialId,
                                                 Integer cantidadNueva, String motivo) {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = otrosService.modificarCantidadMaterial(equipoId, materialId, cantidadNueva, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Cantidad modificada correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo modificar la cantidad");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error de base de datos", e);
-            }
-        }).start();
+        aplicarCorreccion("modificar-cantidad-otros",
+            () -> otrosService.modificarCantidadMaterial(equipoId, materialId, cantidadNueva, motivo),
+            "Cantidad modificada correctamente", "No se pudo modificar la cantidad");
     }
 
     private void agregarMaterialOtros(Integer equipoId, String descripcion,
                                       Integer cantidad, String motivo) {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = otrosService.agregarMaterial(equipoId, descripcion, cantidad, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Material agregado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo agregar el material");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error al agregar material otros equipo={}", equipoId, e);
-            }
-        }).start();
+        aplicarCorreccion("agregar-material-otros",
+            () -> otrosService.agregarMaterial(equipoId, descripcion, cantidad, motivo),
+            "Material agregado correctamente", "No se pudo agregar el material");
     }
 
     private void eliminarMaterialOtros(Integer equipoId, String descripcion, String motivo) {
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = otrosService.eliminarMaterial(equipoId, descripcion, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Material eliminado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo eliminar el material");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error de base de datos", e);
-            }
-        }).start();
+        aplicarCorreccion("eliminar-material-otros",
+            () -> otrosService.eliminarMaterial(equipoId, descripcion, motivo),
+            "Material eliminado correctamente", "No se pudo eliminar el material");
     }
 
     private void eliminarEquipoOtros(Integer equipoId, String motivo) {
-        int respuesta = JOptionPane.showConfirmDialog(
+        if (!confirmarEliminacionDeEquipo()) return;
+        aplicarCorreccion("eliminar-equipo-otros",
+            () -> otrosService.eliminarEquipo(equipoId, motivo),
+            "Equipo eliminado correctamente", "No se pudo eliminar el equipo");
+    }
+
+    // ── Mecánica común de las correcciones ───────────────────────────────────
+
+    /**
+     * Toda corrección tiene la misma forma: se escribe fuera del hilo de UI y, si el
+     * service confirma el cambio, se recarga la lista y se avisa al resto de las
+     * pantallas. Tenerlo en un solo lugar evita que las 9 operaciones se desincronicen.
+     *
+     * @param nombre   identifica la tarea en el log
+     * @param operacion escritura contra el service; {@code false} = el cambio no se aplicó
+     */
+    private void aplicarCorreccion(String nombre, Callable<Boolean> operacion,
+                                   String mensajeExito, String mensajeFallo) {
+        TareaUI.<Boolean>nueva()
+            .nombre(nombre)
+            .leer(operacion)
+            .pintar(aplicada -> {
+                if (Boolean.TRUE.equals(aplicada)) {
+                    panel.mostrarMensaje(mensajeExito);
+                    cargarEquiposNuevos();
+                    notificarCambiosAplicados();
+                } else {
+                    panel.mostrarError(mensajeFallo);
+                }
+            })
+            .siFalla(e -> panel.mostrarError(describirError(e)))
+            .antes(()  -> panel.mostrarCargando(true))
+            .despues(() -> panel.mostrarCargando(false))
+            .lanzar();
+    }
+
+    private boolean confirmarEliminacionDeEquipo() {
+        return JOptionPane.showConfirmDialog(
             panel,
             "¿Está seguro de que desea eliminar este equipo?\n\nEsta acción no se puede deshacer.",
             "Confirmar eliminación",
-            JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-        if (respuesta != JOptionPane.YES_OPTION) return;
+            JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION;
+    }
 
-        panel.mostrarCargando(true);
-        new Thread(() -> {
-            try {
-                boolean ok = otrosService.eliminarEquipo(equipoId, motivo);
-                SwingUtilities.invokeLater(() -> {
-                    if (ok) { panel.mostrarMensaje("Equipo eliminado correctamente"); cargarEquiposNuevos(); notificarCambiosAplicados(); }
-                    else      panel.mostrarError("No se pudo eliminar el equipo");
-                    panel.mostrarCargando(false);
-                });
-            } catch (ValidationException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error de validación: " + e.getMessage()); panel.mostrarCargando(false); });
-            } catch (DatabaseException e) {
-                SwingUtilities.invokeLater(() -> { panel.mostrarError("Error en la base de datos: " + e.getMessage()); panel.mostrarCargando(false); });
-                log.error("Error de base de datos", e);
-            }
-        }).start();
+    private static String describirError(Throwable e) {
+        if (e instanceof ValidationException) return "Error de validación: " + e.getMessage();
+        if (e instanceof DatabaseException)   return "Error en la base de datos: " + e.getMessage();
+        return "Error inesperado: " + e.getMessage();
     }
 
     private void notificarCambiosAplicados() {

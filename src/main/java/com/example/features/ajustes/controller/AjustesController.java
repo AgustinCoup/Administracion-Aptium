@@ -1,12 +1,12 @@
 package com.example.features.ajustes.controller;
 
-import com.example.common.exception.ApplicationException;
 import com.example.features.ajustes.view.FusionarClienteDialog;
 import com.example.features.ajustes.view.NuevoClienteDialog;
 import com.example.features.ajustes.view.PanelGestionClientes;
 import com.example.features.ajustes.view.PantallaAjustes;
 import com.example.features.clientes.model.Cliente;
 import com.example.features.clientes.service.ClienteService;
+import com.example.ui.common.TareaUI;
 
 import javax.swing.*;
 import java.awt.event.ComponentAdapter;
@@ -43,16 +43,12 @@ public class AjustesController {
     public void setOnMutacion(Runnable r) { this.onMutacion = r; }
 
     private void cargarDatos() {
-        new Thread(() -> {
-            try {
-                List<Cliente> clientes = clienteService.obtenerTodosLosClientes();
-                SwingUtilities.invokeLater(() -> panel.setDatos(clientes));
-            } catch (Exception ex) {
-                SwingUtilities.invokeLater(() ->
-                    JOptionPane.showMessageDialog(vista, "Error al cargar clientes.",
-                        "Error", JOptionPane.ERROR_MESSAGE));
-            }
-        }, "ajustes-loader").start();
+        TareaUI.<List<Cliente>>nueva()
+            .nombre("ajustes-cargar-clientes")
+            .leer(clienteService::obtenerTodosLosClientes)
+            .pintar(panel::setDatos)
+            .siFalla(e -> mostrarError("Error al cargar clientes."))
+            .lanzar();
     }
 
     private void notificarMutacion() {
@@ -65,19 +61,9 @@ public class AjustesController {
         String nombre = dialog.obtenerNombre();
         if (nombre == null) return;
 
-        new Thread(() -> {
-            try {
-                clienteService.guardarCliente(new Cliente(0, nombre));
-                SwingUtilities.invokeLater(() -> {
-                    cargarDatos();
-                    notificarMutacion();
-                });
-            } catch (Exception ex) {
-                SwingUtilities.invokeLater(() ->
-                    JOptionPane.showMessageDialog(vista, "Error al guardar el cliente: " + ex.getMessage(),
-                        "Error", JOptionPane.ERROR_MESSAGE));
-            }
-        }, "ajustes-guardar").start();
+        mutar("ajustes-guardar",
+            () -> clienteService.guardarCliente(new Cliente(0, nombre)),
+            "Error al guardar el cliente: ", "Error");
     }
 
     private void eliminarCliente() {
@@ -92,19 +78,9 @@ public class AjustesController {
             "Confirmar eliminación", JOptionPane.YES_NO_OPTION);
         if (resp != JOptionPane.YES_OPTION) return;
 
-        new Thread(() -> {
-            try {
-                clienteService.eliminarCliente(cliente.getId());
-                SwingUtilities.invokeLater(() -> {
-                    cargarDatos();
-                    notificarMutacion();
-                });
-            } catch (ApplicationException ex) {
-                SwingUtilities.invokeLater(() ->
-                    JOptionPane.showMessageDialog(vista, ex.getMessage(),
-                        "No se puede eliminar", JOptionPane.ERROR_MESSAGE));
-            }
-        }, "ajustes-eliminar").start();
+        mutar("ajustes-eliminar",
+            () -> clienteService.eliminarCliente(cliente.getId()),
+            "", "No se puede eliminar");
     }
 
     private void fusionarCliente() {
@@ -115,19 +91,14 @@ public class AjustesController {
             return;
         }
 
-        new Thread(() -> {
-            try {
-                List<Cliente> todos = clienteService.obtenerTodosLosClientes();
-                List<Cliente> candidatos = todos.stream()
-                    .filter(c -> c.getId() != origen.getId())
-                    .collect(Collectors.toList());
-                SwingUtilities.invokeLater(() -> mostrarDialogoFusion(origen, candidatos));
-            } catch (Exception ex) {
-                SwingUtilities.invokeLater(() ->
-                    JOptionPane.showMessageDialog(vista, "Error al cargar clientes: " + ex.getMessage(),
-                        "Error", JOptionPane.ERROR_MESSAGE));
-            }
-        }, "ajustes-fusion-load").start();
+        TareaUI.<List<Cliente>>nueva()
+            .nombre("ajustes-fusion-candidatos")
+            .leer(() -> clienteService.obtenerTodosLosClientes().stream()
+                .filter(c -> c.getId() != origen.getId())
+                .collect(Collectors.toList()))
+            .pintar(candidatos -> mostrarDialogoFusion(origen, candidatos))
+            .siFalla(e -> mostrarError("Error al cargar clientes: " + e.getMessage(), "Error"))
+            .lanzar();
     }
 
     private void mostrarDialogoFusion(Cliente origen, List<Cliente> candidatos) {
@@ -149,18 +120,34 @@ public class AjustesController {
             "Confirmar fusión", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (resp != JOptionPane.YES_OPTION) return;
 
-        new Thread(() -> {
-            try {
-                clienteService.fusionarClientes(origen.getId(), destino.getId());
-                SwingUtilities.invokeLater(() -> {
-                    cargarDatos();
-                    notificarMutacion();
-                });
-            } catch (Exception ex) {
-                SwingUtilities.invokeLater(() ->
-                    JOptionPane.showMessageDialog(vista, "Error al fusionar clientes: " + ex.getMessage(),
-                        "Error", JOptionPane.ERROR_MESSAGE));
-            }
-        }, "ajustes-fusion").start();
+        mutar("ajustes-fusion",
+            () -> clienteService.fusionarClientes(origen.getId(), destino.getId()),
+            "Error al fusionar clientes: ", "Error");
+    }
+
+    // ── Mecánica común ───────────────────────────────────────────────────────
+
+    /**
+     * Toda mutación de clientes sigue la misma forma: se escribe fuera del hilo de UI
+     * y al terminar se recarga la lista y se avisa al resto de la aplicación.
+     */
+    private void mutar(String nombre, Runnable operacion, String prefijoError, String tituloError) {
+        TareaUI.<Void>nueva()
+            .nombre(nombre)
+            .leer(() -> { operacion.run(); return null; })
+            .pintar(sinResultado -> {
+                cargarDatos();
+                notificarMutacion();
+            })
+            .siFalla(e -> mostrarError(prefijoError + e.getMessage(), tituloError))
+            .lanzar();
+    }
+
+    private void mostrarError(String mensaje) {
+        mostrarError(mensaje, "Error");
+    }
+
+    private void mostrarError(String mensaje, String titulo) {
+        JOptionPane.showMessageDialog(vista, mensaje, titulo, JOptionPane.ERROR_MESSAGE);
     }
 }
