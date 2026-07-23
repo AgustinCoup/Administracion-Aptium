@@ -419,12 +419,35 @@ Precondición cumplida: fases 1-5 en verde, checklist manual pasada el 2026-07-2
 
 Dos cosas se resuelven **primero**, porque cambian el alcance de la fase:
 
-1. **Confirmar con el usuario en qué grupo va `CDEView`** — ver trampa 6.3.1. Si va al
-   snapshot operativo, su filtro por `ENTREGADO` queda vacío para siempre y nadie lo nota.
-2. **Verificar contra la app real si un equipo ya entregado aparece en "Equipos para
-   entregar"** — ver trampa 6.3.2. Si aparece, es un bug preexistente: se arregla **aparte,
-   con su propio test y su propio commit**, antes de tocar ningún `WHERE`. Lo que no hay que
-   hacer es congelarlo dentro del SQL nuevo y que quede enterrado.
+**Ambas resueltas el 2026-07-23. No hace falta volver a preguntar:**
+
+1. **`CDEView` va al grupo histórico** (decisión del usuario). Lee bajo demanda, con el
+   histórico completo. **Pero su carga por defecto muestra los equipos NO entregados**: el
+   filtro por `ENTREGADO` arranca excluido y el usuario puede sacarlo a mano. Es un default
+   de la vista, **no** un `WHERE`. Que los datos lleguen completos es justamente lo que hace
+   que sacar el filtro funcione. Ver si conviene reusar el patrón de
+   `PantallaVerEquipos.aplicarFiltroInicial()`, que ya hace algo así.
+
+2. **No hay bug en "Equipos para entregar".** Un equipo entregado por completo no aparece,
+   y el compensador está en `AgrupadorEntregas`, un nivel más abajo de lo que decía la
+   sospecha: `esEntregable(calcularEstado())` es solo una compuerta gruesa, y sí deja pasar
+   `ENTREGADO`. Lo que filtra de verdad es el conteo por material —
+   [`materialesDe()`](../src/main/java/com/example/features/equipos/ortopedias/controller/helpers/AgrupadorEntregas.java#L92)
+   descuenta lo ya entregado y saltea el grupo si `todosEntregados()`; si no queda ningún
+   material, `agrupar()` hace `continue` y el equipo nunca crea un destino.
+
+   **Lo que la Fase 6 tiene que sacar de acá:** el predicado real de esta pantalla no es
+   `esEntregable`, es *"tiene al menos un material con cantidad pendiente"*. Por suerte
+   coincide exacto con el `WHERE` operativo propuesto: `calcularEstado()` es el mínimo de los
+   materiales, así que da `ENTREGADO` **si y solo si** están todos entregados — el mismo
+   corte que hace `todosEntregados()`. El filtro operativo es seguro para esta pantalla.
+   Lo que **no** hay que hacer es escribir el `WHERE` a partir de `esEntregable`: sería
+   demasiado permisivo y traería de vuelta los equipos ya entregados.
+
+   Rama `REMITO` sin filas: no es alcanzable en la práctica.
+   [`EquipoOtrosMaterialHelper`](../src/main/java/com/example/features/equipos/otros/dao/EquipoOtrosMaterialHelper.java#L22)
+   crea filas de material la primera vez que el remito se mueve, así que un remito sin filas
+   sigue en `NUEVO`, que no es entregable. Igual conviene un caso de test que lo fije.
 
 ## 6.1 El movimiento: partir el snapshot en dos
 
