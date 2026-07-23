@@ -1,25 +1,20 @@
 package com.example.features.equipos.ortopedias.view;
 
 import com.example.common.constants.Constantes;
+import com.example.features.equipos.ortopedias.controller.helpers.FiltroAuditorias;
 import com.example.features.equipos.ortopedias.model.EquipoAuditoria;
-import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.PanelHeader;
 import com.toedter.calendar.JDateChooser;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Pantalla que muestra el historial completo de auditoría de todos los cambios del sistema.
@@ -28,12 +23,12 @@ import java.util.stream.Collectors;
  * el botón "Ver Auditoría". El header estándar incluye el botón Volver que regresa
  * siempre a {@link Constantes.Pantallas#CORRECCIONES}.
  *
- * El servicio se inyecta de forma diferida mediante {@link #inicializar(EquipoCorreccionService)}
- * para que UiCoordinator pueda construir la pantalla antes de tener el servicio disponible.
+ * No habla con la capa de servicios: expone callbacks que CorreccionsController
+ * cablea, y este le devuelve los registros ya leídos y filtrados.
  *
  * Filtro de tipos de cambio:
  *   - Por defecto ningún tipo está seleccionado → se muestran todos los registros
- *     (la lógica de {@link #cumpleTipo} ya trata la selección vacía como "sin filtro").
+ *     (FiltroAuditorias trata la selección vacía como "sin filtro").
  *   - "Limpiar Filtros" restaura también la selección vacía.
  *
  * Convención de celdas:
@@ -42,7 +37,6 @@ import java.util.stream.Collectors;
  */
 public class PantallaAuditoria extends JPanel {
 
-    private static final Logger log = LoggerFactory.getLogger(PantallaAuditoria.class);
     private static final SimpleDateFormat SDF = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 
     // ── Índices de columna ───────────────────────────────────────────────────
@@ -59,9 +53,10 @@ public class PantallaAuditoria extends JPanel {
         "Valor Anterior", "Valor Nuevo", "Motivo"
     };
 
-    // ── Estado ───────────────────────────────────────────────────────────────
-    private EquipoCorreccionService correccionService;
-    private List<EquipoAuditoria>   auditoriasCargadas = new ArrayList<>();
+    // ── Callbacks hacia el controller ────────────────────────────────────────
+    private Runnable onRecargar      = () -> { };
+    private Runnable onFiltrosChanged = () -> { };
+
 
     // ── Componentes UI ───────────────────────────────────────────────────────
     private JTable                    tablaAuditoria;
@@ -96,16 +91,52 @@ public class PantallaAuditoria extends JPanel {
         addComponentListener(new ComponentAdapter() {
             @Override
             public void componentShown(ComponentEvent e) {
-                if (correccionService != null) cargarAuditoria();
+                onRecargar.run();
             }
         });
     }
 
     // ── API pública ──────────────────────────────────────────────────────────
 
-    public void inicializar(EquipoCorreccionService servicio) {
-        this.correccionService = servicio;
-        cargarAuditoria();
+    /** Se dispara al mostrar la pantalla: el controller debe releer la auditoría. */
+    public void setOnRecargar(Runnable onRecargar) {
+        this.onRecargar = onRecargar;
+    }
+
+    /** Se dispara cuando el usuario toca un filtro. */
+    public void setOnFiltrosChanged(Runnable onFiltrosChanged) {
+        this.onFiltrosChanged = onFiltrosChanged;
+    }
+
+    /** Criterio tal como lo tiene puesto el usuario en los controles. */
+    public FiltroAuditorias.Criterio getCriterio() {
+        return new FiltroAuditorias.Criterio(
+            aLocalDate(dateChooserDesde.getDate()),
+            aLocalDate(dateChooserHasta.getDate()),
+            cmbTiposCambio.getSelectedItems(),
+            cmbTipoEquipo.getSelectedItems());
+    }
+
+    public void mostrarCargando() {
+        lblTotalRegistros.setForeground(Color.BLACK);
+        lblTotalRegistros.setText("Cargando...");
+    }
+
+    /** Vuelca los registros filtrados y actualiza el contador. */
+    public void mostrarAuditorias(List<EquipoAuditoria> filtradas, int total) {
+        actualizarTabla(filtradas);
+        lblTotalRegistros.setForeground(Color.BLACK);
+        lblTotalRegistros.setText("Mostrando " + filtradas.size() + " de " + total + " registros");
+    }
+
+    public void mostrarError(String mensaje) {
+        lblTotalRegistros.setForeground(Color.RED);
+        lblTotalRegistros.setText("✗ Error al cargar: " + mensaje);
+    }
+
+    private static java.time.LocalDate aLocalDate(java.util.Date fecha) {
+        return fecha == null ? null
+            : fecha.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
     }
 
     // ── Construcción de la UI ────────────────────────────────────────────────
@@ -170,9 +201,9 @@ public class PantallaAuditoria extends JPanel {
         panelFiltros.add(panelControles, BorderLayout.CENTER);
         panelFiltros.add(panelBoton,     BorderLayout.EAST);
 
-        FilterUiHelper.bindOnDateChange(this::aplicarFiltros, dateChooserDesde, dateChooserHasta);
-        cmbTiposCambio.setOnSelectionChange(this::aplicarFiltros);
-        cmbTipoEquipo.setOnSelectionChange(this::aplicarFiltros);
+        FilterUiHelper.bindOnDateChange(() -> onFiltrosChanged.run(), dateChooserDesde, dateChooserHasta);
+        cmbTiposCambio.setOnSelectionChange(() -> onFiltrosChanged.run());
+        cmbTipoEquipo.setOnSelectionChange(() -> onFiltrosChanged.run());
 
         return panelFiltros;
     }
@@ -210,72 +241,7 @@ public class PantallaAuditoria extends JPanel {
         return panel;
     }
 
-    // ── Carga y filtrado ─────────────────────────────────────────────────────
-
-    private void cargarAuditoria() {
-        lblTotalRegistros.setText("Cargando...");
-        lblTotalRegistros.setForeground(Color.BLACK);
-
-        new Thread(() -> {
-            try {
-                List<EquipoAuditoria> auditorias = correccionService.obtenerTodasAuditorias();
-                SwingUtilities.invokeLater(() -> {
-                    auditoriasCargadas = auditorias;
-                    // No se preselecciona ningún tipo: clearSelection ya es el estado inicial
-                    // del CheckableComboBox, así que no es necesario llamar a nada.
-                    aplicarFiltros();
-                    log.info("Cargados {} registros de auditoría", auditorias.size());
-                });
-            } catch (Exception e) {
-                SwingUtilities.invokeLater(() -> {
-                    lblTotalRegistros.setText("✗ Error al cargar: " + e.getMessage());
-                    lblTotalRegistros.setForeground(Color.RED);
-                    log.error("Error al cargar auditoría", e);
-                });
-            }
-        }).start();
-    }
-
-    private void aplicarFiltros() {
-        List<EquipoAuditoria> filtradas = auditoriasCargadas.stream()
-            .filter(this::cumpleFechas)
-            .filter(this::cumpleTipo)
-            .filter(this::cumpleTipoEquipo)
-            .collect(Collectors.toList());
-
-        actualizarTabla(filtradas);
-        lblTotalRegistros.setForeground(Color.BLACK);
-        lblTotalRegistros.setText(
-            "Mostrando " + filtradas.size() + " de " + auditoriasCargadas.size() + " registros");
-    }
-
-    private boolean cumpleFechas(EquipoAuditoria a) {
-        if (a.getFechaCambio() == null) return true;
-        java.time.LocalDate fecha = a.getFechaCambio().toLocalDate();
-
-        if (dateChooserDesde.getDate() != null) {
-            java.time.LocalDate desde = dateChooserDesde.getDate().toInstant()
-                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
-            if (fecha.isBefore(desde)) return false;
-        }
-        if (dateChooserHasta.getDate() != null) {
-            java.time.LocalDate hasta = dateChooserHasta.getDate().toInstant()
-                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
-            if (fecha.isAfter(hasta)) return false;
-        }
-        return true;
-    }
-
-    /**
-     * Filtra por tipo de cambio.
-     * Si ningún tipo está seleccionado (lista vacía) se interpreta como "sin filtro"
-     * y se muestran todos los registros.
-     */
-    private boolean cumpleTipo(EquipoAuditoria a) {
-        List<String> seleccionados = cmbTiposCambio.getSelectedItems();
-        if (seleccionados.isEmpty()) return true;
-        return seleccionados.contains(traducirTipoCambio(a.getTipoCambio()));
-    }
+    // ── Volcado a la tabla ───────────────────────────────────────────────────
 
     private void actualizarTabla(List<EquipoAuditoria> auditorias) {
         DefaultTableModel modelo = (DefaultTableModel) tablaAuditoria.getModel();
@@ -292,7 +258,7 @@ public class PantallaAuditoria extends JPanel {
                 fecha,
                 a.getClienteNombre() != null ? a.getClienteNombre() : "-",
                 a.getMaterialInfo()  != null ? a.getMaterialInfo()  : "-",
-                traducirTipoCambio(a.getTipoCambio()),
+                FiltroAuditorias.traducirTipoCambio(a.getTipoCambio()),
                 valorAnterior,
                 valorNuevo,
                 a.getMotivo()        != null ? a.getMotivo()        : "-"
@@ -301,40 +267,14 @@ public class PantallaAuditoria extends JPanel {
     }
 
     /**
-     * Convierte el tipo de cambio interno (constante en mayúsculas) a la etiqueta
-     * legible que se muestra en la tabla y en el filtro CheckableComboBox.
-     *
-     * Agregar aquí cualquier tipo nuevo garantiza que la traducción sea consistente
-     * entre la columna de la tabla y las opciones del filtro.
-     */
-    private String traducirTipoCambio(String tipoCambio) {
-        if (tipoCambio == null) return "Desconocido";
-        switch (tipoCambio) {
-            case "MODIFICACION_CANTIDAD": return "Modificación de Cantidad";
-            case "MODIFICACION_CODIGO":   return "Modificación de Código";
-            case "ADICION_MATERIAL":      return "Adición de Material";
-            case "ELIMINACION_EQUIPO":    return "Eliminación de Equipo";
-            case "ELIMINACION_MATERIAL":  return "Eliminación de Material";
-            default:                      return tipoCambio;
-        }
-    }
-
-    /**
      * Limpia todos los filtros: fechas y selección de tipos.
      * Dejar el CheckableComboBox vacío muestra todos los registros (sin filtro de tipo).
      */
-    private boolean cumpleTipoEquipo(EquipoAuditoria a) {
-        List<String> seleccionados = cmbTipoEquipo.getSelectedItems();
-        if (seleccionados.isEmpty()) return true;
-        String label = "OTROS".equals(a.getTipoEquipo()) ? "Otros" : "Ortopedia";
-        return seleccionados.contains(label);
-    }
-
     private void limpiarFiltros() {
         dateChooserDesde.setDate(null);
         dateChooserHasta.setDate(null);
         cmbTiposCambio.clearSelection();
         cmbTipoEquipo.clearSelection();
-        aplicarFiltros();
+        onFiltrosChanged.run();
     }
 }

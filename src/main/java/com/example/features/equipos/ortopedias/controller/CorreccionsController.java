@@ -5,8 +5,11 @@ import com.example.common.exception.ValidationException;
 import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.features.catalogo.service.CatalogoOtrosService;
+import com.example.features.equipos.ortopedias.controller.helpers.FiltroAuditorias;
 import com.example.features.equipos.ortopedias.model.Equipo;
+import com.example.features.equipos.ortopedias.model.EquipoAuditoria;
 import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
+import com.example.ui.common.TareaUI;
 import com.example.features.equipos.ortopedias.view.PantallaAuditoria;
 import com.example.features.equipos.ortopedias.view.PantallaCorrecciones;
 import com.example.features.equipos.otros.model.EquipoOtros;
@@ -27,6 +30,10 @@ public class CorreccionsController {
     private final EquipoCorreccionService     correccionService;
     private final EquipoOtrosCorreccionService otrosService;
     private Runnable                           onCambiosAplicados;
+
+    /** Se inyecta después de construir: la pantalla la crea PantallaPrincipal. */
+    private PantallaAuditoria     pantallaAuditoria;
+    private List<EquipoAuditoria> auditoriasCargadas = List.of();
 
     /**
      * Alcance: correcciones auditadas sobre equipos de ortopedia y "otros", más
@@ -96,8 +103,41 @@ public class CorreccionsController {
         this.onCambiosAplicados = callback;
     }
 
+    /**
+     * Toma a su cargo la pantalla de auditoría: la lectura y el filtrado viven
+     * acá, no en la view, que solo dibuja lo que se le pasa.
+     */
     public void inicializarPantallaAuditoria(PantallaAuditoria pantalla) {
-        pantalla.inicializar(correccionService);
+        this.pantallaAuditoria = pantalla;
+        pantalla.setOnRecargar(this::cargarAuditoria);
+        pantalla.setOnFiltrosChanged(this::pintarAuditoriasFiltradas);
+        cargarAuditoria();
+    }
+
+    // ── Auditoría ────────────────────────────────────────────────────────────
+
+    private void cargarAuditoria() {
+        if (pantallaAuditoria == null) return;
+        pantallaAuditoria.mostrarCargando();
+
+        TareaUI.<List<EquipoAuditoria>>nueva()
+            .nombre("carga-auditoria")
+            .leer(correccionService::obtenerTodasAuditorias)
+            .pintar(auditorias -> {
+                auditoriasCargadas = auditorias;
+                pintarAuditoriasFiltradas();
+                log.info("Cargados {} registros de auditoría", auditorias.size());
+            })
+            .siFalla(e -> pantallaAuditoria.mostrarError(e.getMessage()))
+            .lanzar();
+    }
+
+    /** Refiltra lo ya cargado: no vuelve a la base al mover un filtro. */
+    private void pintarAuditoriasFiltradas() {
+        if (pantallaAuditoria == null) return;
+        List<EquipoAuditoria> filtradas =
+            FiltroAuditorias.filtrar(auditoriasCargadas, pantallaAuditoria.getCriterio());
+        pantallaAuditoria.mostrarAuditorias(filtradas, auditoriasCargadas.size());
     }
 
     // ── Carga ────────────────────────────────────────────────────────────────
