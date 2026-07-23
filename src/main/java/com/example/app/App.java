@@ -2,6 +2,8 @@ package com.example.app;
 
 import com.example.app.ui.AppController;
 import com.example.infrastructure.db.ConnectionPool;
+import com.example.infrastructure.db.EdtGuard;
+import java.awt.EventQueue;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import org.slf4j.Logger;
@@ -35,6 +37,10 @@ public class App {
     private static final Logger log = LoggerFactory.getLogger(App.class);
     
     public static void main(String[] args) {
+        // Detector de accesos a BD desde el hilo de la UI. Se instala antes que nada
+        // para que ninguna query del arranque escape del guard.
+        EdtGuard.setDetectorHiloUi(EventQueue::isDispatchThread);
+
         // Handler global para excepciones no manejadas (incluyendo las del EDT de Swing)
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             log.error("Excepción no manejada en hilo '{}'", thread.getName(), throwable);

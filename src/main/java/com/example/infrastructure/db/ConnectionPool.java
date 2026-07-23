@@ -308,6 +308,7 @@ public class ConnectionPool {
      * @throws SQLException Si no hay conexiones disponibles después del timeout
      */
     public static Connection getConnection() throws SQLException {
+        EdtGuard.verificarFueraDelHiloUi();
         javax.sql.DataSource override = testDataSource;
         if (override != null) {
             return override.getConnection();
