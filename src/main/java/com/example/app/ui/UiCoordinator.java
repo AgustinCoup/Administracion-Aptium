@@ -57,11 +57,11 @@ public class UiCoordinator {
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
             vista.getPantallaRegistrarEstado(),
-            context.getEquipoService(),
             context.getEquipoOtrosService(),
             context.getMaterialService(),
             context.getEstadoValidator(),
-            refrescarEstados);
+            refrescarEstados,
+            solicitarRefresco);
 
         EquiposParaEntregarController equiposParaEntregarController =
             new EquiposParaEntregarController(
@@ -168,7 +168,7 @@ public class UiCoordinator {
             DatosRefresco datos = lector.leer();
             cde.pintar(datos);
             verLotes.pintar(datos);
-            registrar.cargarEquipos();
+            registrar.pintar(datos);
             entregar.cargarDatos();
             lotes.cargarDatos();
         };
