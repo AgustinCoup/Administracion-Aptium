@@ -53,14 +53,14 @@ class MaterialDAOTest extends AbstractDAOTest {
     // ── obtenerMaterial ───────────────────────────────────────────────────────
 
     @Test
-    void obtenerMaterial_existente_retornaArrayConDatos() {
-        Object[] datos = dao.obtenerMaterial(materialId);
+    void obtenerMaterial_existente_retornaFilaConDatos() {
+        FilaMaterial datos = dao.obtenerMaterial(materialId);
         assertNotNull(datos);
-        assertEquals(5, datos.length);
-        assertEquals(400, datos[0]);                 // codigo_catalogo
-        assertEquals(equipo.getId(), datos[1]);      // equipo_id
-        assertEquals("Tornillera", datos[2]);        // descripcion (join con catalogo)
-        assertEquals(3, datos[3]);                   // cantidad
+        assertEquals((int) materialId,     datos.id());
+        assertEquals((int) equipo.getId(), datos.equipoId());
+        assertEquals(400,                  datos.codigo());
+        assertEquals("Tornillera",         datos.descripcion());  // join con catalogo
+        assertEquals(3,                    datos.cantidad());
     }
 
     @Test
@@ -86,8 +86,7 @@ class MaterialDAOTest extends AbstractDAOTest {
     @Test
     void actualizarCodigo_existente_retornaTrue() {
         assertTrue(dao.actualizarCodigo(materialId, 401));
-        Object[] datos = dao.obtenerMaterial(materialId);
-        assertEquals(401, datos[0]);
+        assertEquals(401, dao.obtenerMaterial(materialId).codigo());
     }
 
     @Test
@@ -108,7 +107,7 @@ class MaterialDAOTest extends AbstractDAOTest {
     void agregarMaterial_insertaMovimiento() {
         dao.agregarMaterial(equipo.getId(), 400, 2);
         // El equipo ahora debería tener 2 filas para el código 400 (el original + el nuevo)
-        List<Object[]> materiales = dao.obtenerMaterialesPorCodigo(equipo.getId(), 400);
+        List<FilaMaterial> materiales = dao.obtenerMaterialesPorCodigo(equipo.getId(), 400);
         assertTrue(materiales.size() >= 2);
     }
 
@@ -116,9 +115,9 @@ class MaterialDAOTest extends AbstractDAOTest {
 
     @Test
     void obtenerMaterialesPorCodigo_existente_retornaLista() {
-        List<Object[]> materiales = dao.obtenerMaterialesPorCodigo(equipo.getId(), 400);
+        List<FilaMaterial> materiales = dao.obtenerMaterialesPorCodigo(equipo.getId(), 400);
         assertEquals(1, materiales.size());
-        assertEquals(400, materiales.get(0)[1]);
+        assertEquals(400, materiales.get(0).codigo());
     }
 
     @Test

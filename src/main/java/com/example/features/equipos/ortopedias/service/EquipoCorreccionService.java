@@ -5,6 +5,7 @@ import com.example.common.exception.ValidationException;
 import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.equipos.ortopedias.dao.AuditoriaDAO;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
+import com.example.features.equipos.ortopedias.dao.FilaMaterial;
 import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EquipoAuditoria;
@@ -107,11 +108,11 @@ public class EquipoCorreccionService {
         }
 
         try {
-            Object[] materialActual = materialDAO.obtenerMaterial(materialId);
+            FilaMaterial materialActual = materialDAO.obtenerMaterial(materialId);
             if (materialActual == null) throw new ValidationException("El material no existe");
 
-            Integer codigoAnterior      = (Integer) materialActual[0];
-            String  descripcionAnterior = (String)  materialActual[2];
+            int    codigoAnterior      = materialActual.codigo();
+            String descripcionAnterior = materialActual.descripcion();
 
             String descripcionNueva = catalogoDAO.obtenerDescripcion(codigoNuevo);
             if (descripcionNueva == null) {
@@ -197,21 +198,16 @@ public class EquipoCorreccionService {
             throw new ValidationException("El equipo no está en estado 'Nuevo' y no puede ser modificado");
         }
 
-        List<Object[]> materiales = materialDAO.obtenerMaterialesPorCodigo(equipoId, codigoCatalogo);
+        List<FilaMaterial> materiales = materialDAO.obtenerMaterialesPorCodigo(equipoId, codigoCatalogo);
         if (materiales.isEmpty()) {
             throw new ValidationException("No existen materiales con ese código en el equipo seleccionado");
         }
 
         try {
-            for (Object[] material : materiales) {
-                Integer materialId  = (Integer) material[0];
-                Integer codigo      = (Integer) material[1];
-                String  descripcion = (String)  material[2];
-                Integer cantidad    = (Integer) material[3];
-                String  estado      = (String)  material[4];
-
+            for (FilaMaterial material : materiales) {
                 boolean snap = auditoriaDAO.registrarMaterialEliminado(
-                    equipoId, materialId, codigo, descripcion, cantidad, estado, motivo.trim(), "ORTOPEDIA");
+                    equipoId, material.id(), material.codigo(), material.descripcion(),
+                    material.cantidad(), material.estado(), motivo.trim(), "ORTOPEDIA");
                 if (!snap) throw new DatabaseException("No se pudo registrar el snapshot del material eliminado");
             }
 

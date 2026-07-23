@@ -28,7 +28,7 @@ Ver `config.example.properties` como referencia.
 
 ## Arquitectura
 
-Aplicación de escritorio Swing (Java 11) para gestión de equipos médicos y lotes de esterilización. Sin framework de DI — todo se cablea manualmente en el arranque.
+Aplicación de escritorio Swing (Java 17) para gestión de equipos médicos y lotes de esterilización. Sin framework de DI — todo se cablea manualmente en el arranque.
 
 **Flujo de arranque** (`App.main`):
 1. `ConnectionPool` — HikariCP singleton, crea la BD si no existe

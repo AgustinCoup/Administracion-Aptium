@@ -119,7 +119,7 @@ La aplicación registra un shutdown hook (`Runtime.getRuntime().addShutdownHook(
 ### 2.1 En el Servidor de Producción
 
 ```
-Java:       OpenJDK 11+ (recomendado: 17+)
+Java:       OpenJDK 17+ (requerido: el build compila a bytecode 17)
 MySQL:      8.0+ (o MariaDB 10.5+)
 Memoria:    Mínimo 1GB, recomendado 2GB
 Disco:      50MB para aplicación + espacio para BD
@@ -1079,7 +1079,7 @@ mvn clean dependency:tree | findstr "RELEASE\|SNAPSHOT"
 ## 📊 Especificaciones Técnicas
 
 ### Stack Tecnológico:
-- **Lenguaje**: Java 11+
+- **Lenguaje**: Java 17+
 - **BD**: MySQL 8.0+ / MariaDB 10.5+
 - **UI**: Swing (AWT)
 - **Build**: Maven 3.6+
