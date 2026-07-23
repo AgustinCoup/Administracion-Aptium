@@ -17,6 +17,8 @@
     <maven.compiler.release>17</maven.compiler.release>
     <!-- Property por defecto para argLine, JaCoCo lo modifica cuando se ejecuta -->
     <argLine></argLine>
+    <!-- Versión embebida en el JAR (VersionInfo); el workflow de release la pisa con -Dapp.version -->
+    <app.version>dev-SNAPSHOT</app.version>
   </properties>
 
   <dependencies>
@@ -130,6 +132,22 @@
   </dependencies>
 
 <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>version.properties.template</exclude>
+        </excludes>
+      </resource>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>version.properties.template</include>
+        </includes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -199,6 +217,22 @@
         <artifactId>maven-antrun-plugin</artifactId>
         <version>3.0.0</version>
         <executions>
+          <execution>
+            <id>rename-version-properties</id>
+            <!-- process-classes corre siempre después de process-resources (donde se filtra el template),
+                 sin importar el orden de declaración de plugins -->
+            <phase>process-classes</phase>
+            <configuration>
+              <target>
+                <move file="${project.build.outputDirectory}/version.properties.template"
+                      tofile="${project.build.outputDirectory}/version.properties"
+                      overwrite="true"/>
+              </target>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
           <execution>
             <id>copy-jar-to-production</id>
             <phase>package</phase>

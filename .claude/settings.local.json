@@ -8,7 +8,8 @@
       "Bash(mvn -q test -Dtest=EdtGuardTest)",
       "Bash(mvn test *)",
       "Bash(grep -E \"Tests run:.*\\(Fail|Err\\)|Tests run:.*Skipped: [0-9]+$|BUILD\")",
-      "Bash(mvn -q compile)"
+      "Bash(mvn -q compile)",
+      "Bash(mvn -q test)"
     ]
   }
 }
