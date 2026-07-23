@@ -15,6 +15,8 @@ import com.example.features.lotes.controller.VerLotesController;
 import com.example.ui.events.OnEquipoGuardadoListener;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.ui.shell.PantallaPrincipal;
+import java.util.function.Consumer;
+import javax.swing.JOptionPane;
 
 /**
  * Coordina la inicialización de todos los controladores y la conexión entre pantallas.
@@ -44,13 +46,17 @@ public class UiCoordinator {
 
     public void inicializar() {
 
-        // ── Listener diferido: rompe el ciclo controller → runnable → controller ─
-        Runnable[] refrescarRef = { null };
-        OnEstadosActualizadosListener refrescarEstados = () -> { if (refrescarRef[0] != null) refrescarRef[0].run(); };
-        OnEquipoGuardadoListener      refrescarEquipos = () -> { if (refrescarRef[0] != null) refrescarRef[0].run(); };
+        // ── Referencia diferida: rompe el ciclo controller → refrescador → controller.
+        //    El refrescador necesita a los controllers para repartirles el snapshot,
+        //    y ellos necesitan poder pedirle un refresco. Se cablea después de crear
+        //    ambos; hasta entonces solicitar() es un no-op.
+        RefrescadorPantallas[] refrescadorRef = { null };
+        Runnable solicitarRefresco = () -> { if (refrescadorRef[0] != null) refrescadorRef[0].solicitar(); };
+
+        OnEstadosActualizadosListener refrescarEstados = solicitarRefresco::run;
+        OnEquipoGuardadoListener      refrescarEquipos = solicitarRefresco::run;
 
         // ── Controllers ──────────────────────────────────────────────────────
-        Runnable solicitarRefresco = () -> { if (refrescarRef[0] != null) refrescarRef[0].run(); };
 
         CDEViewController cdeViewController = new CDEViewController(
             vista.getPantallaVerCDEv2(), solicitarRefresco);
@@ -106,7 +112,7 @@ public class UiCoordinator {
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.AUDITORIA));
 
         // ── Refresco global de pantallas ─────────────────────────────────────
-        refrescarRef[0] = crearRefrescador(
+        refrescadorRef[0] = crearRefrescador(
             cdeViewController,
             registrarEstadoController,
             equiposParaEntregarController,
@@ -115,7 +121,7 @@ public class UiCoordinator {
             verEquiposController
         );
 
-        correccionesController.setOnCambiosAplicados(() -> refrescarRef[0].run());
+        correccionesController.setOnCambiosAplicados(solicitarRefresco);
 
         new OrthopediaInputController(
             vista.getPanelIngresoOrtopedia(),
@@ -143,12 +149,12 @@ public class UiCoordinator {
             vista.getPantallaAjustes(), context.getClienteService());
         ajustesController.setOnMutacion(solicitarRefresco);
 
-        // Primer pintado: los controllers ya no leen en su constructor, la UI se
-        // puebla con el snapshot compartido.
-        refrescarRef[0].run();
+        // Primer pintado: los controllers ya no leen en su constructor, así que la
+        // UI aparece vacía y se puebla cuando llega esta primera lectura.
+        solicitarRefresco.run();
     }
 
-    private Runnable crearRefrescador(
+    private RefrescadorPantallas crearRefrescador(
         CDEViewController               cde,
         RegistrarEstadoController       registrar,
         EquiposParaEntregarController   entregar,
@@ -163,8 +169,8 @@ public class UiCoordinator {
             context.getCatalogoService(),
             context.getLoteService());
 
-        return () -> {
-            DatosRefresco datos = lector.leer();
+        // Un solo bloque en el hilo de UI: las seis pantallas quedan coherentes.
+        Consumer<DatosRefresco> repartir = datos -> {
             cde.pintar(datos);
             verLotes.pintar(datos);
             registrar.pintar(datos);
@@ -172,5 +178,20 @@ public class UiCoordinator {
             verEquipos.pintar(datos);
             lotes.pintar(datos);
         };
+
+        return new RefrescadorPantallas(lector, repartir, this::mostrarErrorDeRefresco);
+    }
+
+    /**
+     * Un refresco fallido deja las pantallas con datos viejos sin que se note.
+     * Se avisa: {@link com.example.ui.common.TareaUI} ya lo dejó en el log a ERROR.
+     */
+    private void mostrarErrorDeRefresco(Throwable causa) {
+        JOptionPane.showMessageDialog(
+            vista,
+            "No se pudieron actualizar los datos en pantalla.\n" +
+            "Lo que ves puede estar desactualizado.\n\n" + causa.getMessage(),
+            "Error al actualizar",
+            JOptionPane.ERROR_MESSAGE);
     }
 }
