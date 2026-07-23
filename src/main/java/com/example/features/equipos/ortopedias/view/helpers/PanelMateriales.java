@@ -4,7 +4,6 @@ import com.example.ui.common.Estilos;
 import com.example.ui.common.Hotkeys;
 
 import java.awt.*;
-import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,6 +14,7 @@ import javax.swing.event.DocumentListener;
 import com.example.common.constants.Constantes;
 import com.example.common.util.Validador;
 import com.example.ui.common.DuplicadoHighlighter;
+import com.example.ui.common.RestriccionesCampo;
 
 import java.util.function.BiConsumer;
 
@@ -135,7 +135,7 @@ public class PanelMateriales extends JPanel {
         int rowIndex = materialRows.size();
 
         JTextField txtNumero = new JTextField();
-        Validador.aplicarSoloNumeros(txtNumero);
+        RestriccionesCampo.soloNumeros(txtNumero);
         txtNumero.setFont(this.inputFont);
         txtNumero.setColumns(5);
         txtNumero.setMargin(Estilos.Espaciados.INSETS_INPUT);

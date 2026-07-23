@@ -5,17 +5,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import javax.swing.JTextField;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
 
 
 /**
  * Clase centralizada de validaciones para la aplicación.
  * Encapsula todas las reglas de validación de negocio.
- * 
+ *
  * Diseñada para ser reutilizada en múltiples formularios y controladores.
  * Las validaciones son estáticas para facilitar el acceso desde cualquier lugar.
+ *
+ * <p>Reglas puras: no depende de Swing ni de ninguna capa externa. Las
+ * restricciones de tecleo sobre widgets viven en
+ * {@code com.example.ui.common.RestriccionesCampo}.
  */
 public final class Validador {
     
@@ -84,44 +85,6 @@ public final class Validador {
         } catch (NumberFormatException e) {
             return false;
         }
-    }
-    
-    /**
-     * Aplica una restricción a un JTextField para que solo acepte números.
-     * Se ejecuta en tiempo de escritura (KeyListener).
-     * 
-     * @param campo JTextField al que se le aplicará la restricción
-     */
-    public static void aplicarSoloNumeros(JTextField campo) {
-        campo.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyTyped(KeyEvent e) {
-                char c = e.getKeyChar();
-                if (!Character.isDigit(c) && c != KeyEvent.VK_BACK_SPACE) {
-                    e.consume(); // Ignora la tecla si no es número
-                }
-            }
-        });
-    }
-    
-    /**
-     * Aplica una restricción a un JTextField para que solo acepte letras y espacios.
-     * Se ejecuta en tiempo de escritura (KeyListener).
-     * Permite letras con acentos, ñ, Ñ y espacios.
-     * 
-     * @param campo JTextField al que se le aplicará la restricción
-     */
-    public static void aplicarSoloLetrasYEspacios(JTextField campo) {
-        campo.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyTyped(KeyEvent e) {
-                char c = e.getKeyChar();
-                // Permitir: letras, espacios, y backspace
-                if (!Character.isLetter(c) && c != ' ' && c != KeyEvent.VK_BACK_SPACE) {
-                    e.consume(); // Ignora la tecla si no es letra ni espacio
-                }
-            }
-        });
     }
     
     /**

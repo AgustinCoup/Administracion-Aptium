@@ -4,6 +4,7 @@ import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
 import com.example.common.util.Validador;
+import com.example.ui.common.RestriccionesCampo;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.Material;
 import com.example.features.equipos.ortopedias.view.helpers.AgregarMaterialDialog;
@@ -179,7 +180,7 @@ public class PantallaCorrecciones extends JPanel {
         txtCodigoNuevo = new JTextField();
         txtCodigoNuevo.setFont(Estilos.Fuentes.INPUT);
         txtCodigoNuevo.setVisible(false);
-        Validador.aplicarSoloNumeros(txtCodigoNuevo);
+        RestriccionesCampo.soloNumeros(txtCodigoNuevo);
         txtCodigoNuevo.getDocument().addDocumentListener(simpleListener(this::notificarCambioCodigo));
         panel.add(txtCodigoNuevo, gbc);
 
