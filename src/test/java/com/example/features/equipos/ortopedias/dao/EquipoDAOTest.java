@@ -212,7 +212,99 @@ class EquipoDAOTest extends AbstractDAOTest {
         assertEquals(1, nuevos.size());
     }
 
+    // ── obtenerActivos ────────────────────────────────────────────────────────
+    //
+    // El contrato de obtenerActivos() no es "hace un WHERE": es que el WHERE
+    // selecciona *exactamente* lo mismo que el filtro Java que reemplaza. Por eso
+    // cada caso borde se comprueba contra la implementación vieja, no contra una
+    // lista de ids escrita a mano — así un cambio en calcularEstado() rompe el test
+    // en vez de desincronizarse en silencio.
+
+    @Test
+    void obtenerActivos_equivaleAFiltrarTodosPorCalcularEstado() {
+        // Set de prueba con las cuatro formas que puede tomar un equipo.
+        dao.guardarEquipo(equipoConMateriales(EstadoEquipo.NUEVO));                        // activo
+        dao.guardarEquipo(equipoConMateriales(EstadoEquipo.ESTERILIZADO));                 // activo
+        dao.guardarEquipo(equipoConMateriales(EstadoEquipo.ENTREGADO));                    // entregado
+        dao.guardarEquipo(equipoConMateriales(EstadoEquipo.ENTREGADO, EstadoEquipo.LAVANDO)); // mixto → activo
+        dao.guardarEquipo(equipoBase());                                                   // sin materiales → NUEVO
+
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_equipoSinMateriales_seIncluye() {
+        Equipo sinMateriales = equipoBase();
+        dao.guardarEquipo(sinMateriales);
+
+        // calcularEstado() de un equipo vacío es NUEVO, no ENTREGADO: sigue en la cola.
+        assertEquals(List.of(sinMateriales.getId()), ids(dao.obtenerActivos()));
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_todosLosMaterialesEntregados_seExcluye() {
+        Equipo entregado = equipoConMateriales(EstadoEquipo.ENTREGADO, EstadoEquipo.ENTREGADO);
+        dao.guardarEquipo(entregado);
+
+        assertTrue(dao.obtenerActivos().isEmpty());
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_unSoloMaterialSinEntregar_mantieneElEquipo() {
+        Equipo mixto = equipoConMateriales(
+            EstadoEquipo.ENTREGADO, EstadoEquipo.ENTREGADO, EstadoEquipo.ESTERILIZADO);
+        dao.guardarEquipo(mixto);
+
+        assertEquals(List.of(mixto.getId()), ids(dao.obtenerActivos()));
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_traeLosMaterialesEntregadosDelEquipoActivo() {
+        // El WHERE filtra equipos, no materiales: un equipo mixto llega completo,
+        // porque AgrupadorEntregas necesita ver lo entregado para descontarlo.
+        dao.guardarEquipo(equipoConMateriales(EstadoEquipo.ENTREGADO, EstadoEquipo.LAVANDO));
+
+        assertEquals(2, dao.obtenerActivos().get(0).getMateriales().size());
+    }
+
+    @Test
+    void obtenerActivos_respetaElMismoOrdenQueObtenerTodos() throws SQLException {
+        Equipo viejo = equipoConMateriales(EstadoEquipo.NUEVO);
+        dao.guardarEquipo(viejo);
+        Equipo reciente = equipoConMateriales(EstadoEquipo.NUEVO);
+        dao.guardarEquipo(reciente);
+
+        ejecutarSQL("UPDATE equipos SET fecha_ingreso = '2020-01-01 00:00:00' WHERE id = " + viejo.getId());
+        ejecutarSQL("UPDATE equipos SET fecha_ingreso = '2030-01-01 00:00:00' WHERE id = " + reciente.getId());
+
+        assertEquals(List.of(reciente.getId(), viejo.getId()), ids(dao.obtenerActivos()));
+    }
+
     // ── helper ────────────────────────────────────────────────────────────────
+
+    /** La respuesta correcta, calculada con la implementación que obtenerActivos() reemplaza. */
+    private List<Integer> idsEsperados() {
+        return dao.obtenerTodos().stream()
+            .filter(e -> e.calcularEstado() != EstadoEquipo.ENTREGADO)
+            .map(Equipo::getId)
+            .toList();
+    }
+
+    private static List<Integer> ids(List<Equipo> equipos) {
+        return equipos.stream().map(Equipo::getId).toList();
+    }
+
+    private Equipo equipoConMateriales(EstadoEquipo... estados) {
+        Equipo e = equipoBase();
+        int codigo = 400;
+        for (EstadoEquipo estado : estados) {
+            e.agregarMaterial(new Material(codigo++, "Tornillera", 1, estado));
+        }
+        return e;
+    }
 
     private Equipo equipoBase() {
         Equipo e = new Equipo();

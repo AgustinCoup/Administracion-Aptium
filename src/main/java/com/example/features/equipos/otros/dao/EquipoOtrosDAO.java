@@ -42,6 +42,28 @@ public class EquipoOtrosDAO {
     /** Formato del identificador de remito: día-mes-año. */
     private static final DateTimeFormatter FMT_REMITO = DateTimeFormatter.ofPattern("ddMMyyyy");
 
+    /** Cabecera común a todos los listados; el WHERE y el ORDER BY los pone cada método. */
+    private static final String SQL_CABECERA =
+        "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
+        "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
+        "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
+        "eo.volumen_equipo, eo.fecha_ingreso " +
+        "FROM equipo_otros eo " +
+        "JOIN clientes c ON eo.nro_cliente = c.id ";
+
+    /**
+     * "No entregado" en SQL. Refleja las dos ramas de
+     * {@link EquipoOtros#calcularEstado()}: con filas de material manda el mínimo de
+     * esas filas; sin filas (REMITO todavía sin mover) manda la columna
+     * {@code eo.estado}.
+     */
+    private static final String SQL_WHERE_ACTIVOS =
+        "WHERE EXISTS (SELECT 1 FROM equipo_otros_materiales m_act " +
+        "              WHERE m_act.equipo_otros_id = eo.id AND m_act.estado <> ?) " +
+        "   OR (NOT EXISTS (SELECT 1 FROM equipo_otros_materiales m_vac " +
+        "                   WHERE m_vac.equipo_otros_id = eo.id) " +
+        "       AND eo.estado <> ?) ";
+
     private final CatalogoOtrosDAO catalogoOtrosDAO;
 
     public EquipoOtrosDAO(CatalogoOtrosDAO catalogoOtrosDAO) {
@@ -186,87 +208,65 @@ public class EquipoOtrosDAO {
     // ── Lectura ───────────────────────────────────────────────────────────────
 
     /**
-     * Retorna todos los equipos "otros" activos (no ENTREGADO), con sus materiales.
+     * Ejecuta un listado sobre {@link #SQL_CABECERA} y carga los materiales de cada fila.
+     *
+     * <p>Un fallo de SQL se loguea y devuelve lo leído hasta ahí, que es el
+     * comportamiento histórico de estos listados.
+     *
+     * @param filtro     WHERE + ORDER BY, ya armados
+     * @param descripcion qué se estaba listando, para el log de error
      */
-    public List<EquipoOtros> obtenerTodos() {
+    private List<EquipoOtros> listar(String filtro, String descripcion, Object... params) {
         List<EquipoOtros> lista = new ArrayList<>();
-        String sql =
-            "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
-            "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
-            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-            "eo.volumen_equipo, eo.fecha_ingreso " +
-            "FROM equipo_otros eo " +
-            "JOIN clientes c ON eo.nro_cliente = c.id " +
-            "ORDER BY eo.fecha_ingreso DESC, eo.id DESC";
 
         try (Connection conn = ConnectionPool.getConnection();
-             Statement stmt  = conn.createStatement();
-             ResultSet rs    = stmt.executeQuery(sql)) {
+             PreparedStatement ps = conn.prepareStatement(SQL_CABECERA + filtro)) {
 
-            while (rs.next()) {
-                EquipoOtros eq = mapearEquipo(rs);
-                cargarMateriales(conn, eq);
-                lista.add(eq);
+            for (int i = 0; i < params.length; i++) {
+                ps.setObject(i + 1, params[i]);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    EquipoOtros eq = mapearEquipo(rs);
+                    cargarMateriales(conn, eq);
+                    lista.add(eq);
+                }
             }
         } catch (SQLException e) {
-            log.error("Error al obtener todos los EquipoOtros", e);
+            log.error("Error al obtener {}", descripcion, e);
         }
         return lista;
+    }
+
+    /** Retorna todos los equipos "otros", de cualquier estado, con sus materiales. */
+    public List<EquipoOtros> obtenerTodos() {
+        return listar("ORDER BY eo.fecha_ingreso DESC, eo.id DESC", "todos los EquipoOtros");
+    }
+
+    /**
+     * Obtiene la cola activa: los equipos "otros" que todavía tienen algo sin entregar.
+     *
+     * <p>Equivale exactamente a filtrar {@link #obtenerTodos()} por
+     * {@code calcularEstado() != ENTREGADO}. Ver {@link #SQL_WHERE_ACTIVOS}.
+     */
+    public List<EquipoOtros> obtenerActivos() {
+        return listar(
+            SQL_WHERE_ACTIVOS + "ORDER BY eo.fecha_ingreso DESC, eo.id DESC",
+            "EquipoOtros activos",
+            EstadoEquipo.ENTREGADO.getNombre(),
+            EstadoEquipo.ENTREGADO.getNombre());
     }
 
     /** Retorna los equipos "otros" en estado "Nuevo" (editables para correcciones). */
     public List<EquipoOtros> obtenerEquiposNuevos() {
-        List<EquipoOtros> lista = new ArrayList<>();
-        String sql =
-            "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
-            "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
-            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-            "eo.volumen_equipo, eo.fecha_ingreso " +
-            "FROM equipo_otros eo " +
-            "JOIN clientes c ON eo.nro_cliente = c.id " +
-            "WHERE eo.estado = 'Nuevo' " +
-            "ORDER BY eo.id DESC";
-
-        try (Connection conn = ConnectionPool.getConnection();
-             Statement stmt  = conn.createStatement();
-             ResultSet rs    = stmt.executeQuery(sql)) {
-
-            while (rs.next()) {
-                EquipoOtros eq = mapearEquipo(rs);
-                cargarMateriales(conn, eq);
-                lista.add(eq);
-            }
-        } catch (SQLException e) {
-            log.error("Error al obtener EquipoOtros nuevos", e);
-        }
-        return lista;
+        return listar("WHERE eo.estado = ? ORDER BY eo.id DESC", "EquipoOtros nuevos",
+            EstadoEquipo.NUEVO.getNombre());
     }
 
     /** Retorna un equipo_otros por id, con sus materiales cargados, o null si no existe. */
     public EquipoOtros obtenerPorId(int id) {
-        String sql =
-            "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
-            "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
-            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-            "eo.volumen_equipo, eo.fecha_ingreso " +
-            "FROM equipo_otros eo " +
-            "JOIN clientes c ON eo.nro_cliente = c.id " +
-            "WHERE eo.id = ?";
-
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    EquipoOtros eq = mapearEquipo(rs);
-                    cargarMateriales(conn, eq);
-                    return eq;
-                }
-            }
-        } catch (SQLException e) {
-            log.error("Error al obtener EquipoOtros id={}", id, e);
-        }
-        return null;
+        List<EquipoOtros> encontrados = listar("WHERE eo.id = ?", "EquipoOtros id=" + id, id);
+        return encontrados.isEmpty() ? null : encontrados.get(0);
     }
 
     // ── Entrega ───────────────────────────────────────────────────────────────
@@ -854,34 +854,17 @@ public class EquipoOtrosDAO {
 
     /** Retorna todos los equipos "otros" con fecha_ingreso dentro del rango [desde, hasta], todos los estados. */
     public List<EquipoOtros> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
-        List<EquipoOtros> lista = new ArrayList<>();
         String where = "WHERE eo.fecha_ingreso >= ? AND eo.fecha_ingreso <= ?";
-        if (clienteId != null) where += " AND eo.nro_cliente = ?";
-        String sql =
-            "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
-            "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
-            "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-            "eo.volumen_equipo, eo.fecha_ingreso " +
-            "FROM equipo_otros eo " +
-            "JOIN clientes c ON eo.nro_cliente = c.id " +
-            where + " ORDER BY eo.fecha_ingreso, eo.id";
-
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.valueOf(desde.atStartOfDay()));
-            ps.setTimestamp(2, Timestamp.valueOf(hasta.atTime(23, 59, 59)));
-            if (clienteId != null) ps.setInt(3, clienteId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    EquipoOtros eq = mapearEquipo(rs);
-                    cargarMateriales(conn, eq);
-                    lista.add(eq);
-                }
-            }
-        } catch (SQLException e) {
-            log.error("Error al obtener EquipoOtros entre fechas", e);
+        List<Object> params = new ArrayList<>(List.of(
+            Timestamp.valueOf(desde.atStartOfDay()),
+            Timestamp.valueOf(hasta.atTime(23, 59, 59))
+        ));
+        if (clienteId != null) {
+            where += " AND eo.nro_cliente = ?";
+            params.add(clienteId);
         }
-        return lista;
+        return listar(where + " ORDER BY eo.fecha_ingreso, eo.id",
+            "EquipoOtros entre fechas", params.toArray());
     }
 
     private void close(Connection conn) {

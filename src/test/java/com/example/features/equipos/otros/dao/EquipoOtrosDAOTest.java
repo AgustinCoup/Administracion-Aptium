@@ -261,7 +261,110 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
         assertEquals("TestDescMat Principal", encontrado.getMateriales().get(0).getDescripcion());
     }
 
+    // ── obtenerActivos ────────────────────────────────────────────────────────
+    //
+    // Cada caso se compara contra la implementación que obtenerActivos() reemplaza
+    // (obtenerTodos() filtrado por calcularEstado()), no contra ids escritos a mano:
+    // el WHERE tiene que seguir a calcularEstado(), no parecérsele.
+
+    @Test
+    void obtenerActivos_equivaleAFiltrarTodosPorCalcularEstado() throws SQLException {
+        // equipoDetalles (DETALLES en NUEVO) ya existe por @BeforeEach → activo.
+        entregarPorCompleto(conMaterial("TestDesc Entregado"));           // entregado
+        int mixto = conMaterial("TestDesc Mixto");                        // mixto → activo
+        ejecutarSQL("UPDATE equipo_otros_materiales SET estado = 'Entregado' " +
+                    "WHERE equipo_otros_id = " + mixto + " AND descripcion = 'TestDesc Mixto'");
+        agregarFila(mixto, "TestDesc Mixto2", "Lavando");
+
+        EquipoOtros remito = nuevoRemito(4);                              // REMITO sin filas → activo
+        dao.guardar(remito);
+
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_detallesTodoEntregado_seExcluye() throws SQLException {
+        entregarPorCompleto(equipoDetalles.getId());
+
+        assertTrue(dao.obtenerActivos().isEmpty());
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_conFilas_ignoraLaColumnaEstadoDelEncabezado() throws SQLException {
+        // calcularEstado() de un equipo con filas es el mínimo de las filas; la
+        // columna eo.estado puede haber quedado desfasada y no debe decidir.
+        entregarPorCompleto(equipoDetalles.getId());
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Nuevo' WHERE id = " + equipoDetalles.getId());
+
+        assertTrue(dao.obtenerActivos().isEmpty(), "las filas mandan: todas entregadas → fuera");
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_sinFilas_mandaLaColumnaEstadoDelEncabezado() throws SQLException {
+        // Un REMITO todavía sin filas reales: ahí sí el estado vive en el encabezado.
+        EquipoOtros remito = nuevoRemito(3);
+        dao.guardar(remito);
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Entregado' WHERE id = " + remito.getId());
+
+        assertFalse(ids(dao.obtenerActivos()).contains(remito.getId()));
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_remitoSinFilasNoEntregado_seIncluye() {
+        EquipoOtros remito = nuevoRemito(3);
+        dao.guardar(remito);
+
+        assertTrue(ids(dao.obtenerActivos()).contains(remito.getId()));
+        assertEquals(idsEsperados(), ids(dao.obtenerActivos()));
+    }
+
+    @Test
+    void obtenerActivos_respetaElMismoOrdenQueObtenerTodos() throws SQLException {
+        EquipoOtros remito = nuevoRemito(5);
+        dao.guardar(remito);
+
+        ejecutarSQL("UPDATE equipo_otros SET fecha_ingreso = '2030-01-01 00:00:00' WHERE id = " + equipoDetalles.getId());
+        ejecutarSQL("UPDATE equipo_otros SET fecha_ingreso = '2020-01-01 00:00:00' WHERE id = " + remito.getId());
+
+        assertEquals(List.of(equipoDetalles.getId(), remito.getId()), ids(dao.obtenerActivos()));
+    }
+
     // ── helper ────────────────────────────────────────────────────────────────
+
+    /** La respuesta correcta, calculada con la implementación que obtenerActivos() reemplaza. */
+    private List<Integer> idsEsperados() {
+        return dao.obtenerTodos().stream()
+            .filter(e -> e.calcularEstado() != EstadoEquipo.ENTREGADO)
+            .map(EquipoOtros::getId)
+            .toList();
+    }
+
+    private static List<Integer> ids(List<EquipoOtros> equipos) {
+        return equipos.stream().map(EquipoOtros::getId).toList();
+    }
+
+    /** Crea un equipo DETALLES con un único material en NUEVO y devuelve su id. */
+    private int conMaterial(String descripcion) {
+        EquipoOtros equipo = new EquipoOtros();
+        equipo.setNroCliente(1);
+        equipo.setTipoIngreso(TipoIngresoOtros.DETALLES);
+        equipo.agregarMaterial(new MaterialOtros(descripcion, 1));
+        dao.guardar(equipo);
+        return equipo.getId();
+    }
+
+    private void agregarFila(int equipoId, String descripcion, String estado) throws SQLException {
+        int materialId = dao.insertarMaterial(equipoId, descripcion, 1);
+        ejecutarSQL("UPDATE equipo_otros_materiales SET estado = '" + estado + "' WHERE id = " + materialId);
+    }
+
+    private void entregarPorCompleto(int equipoId) throws SQLException {
+        ejecutarSQL("UPDATE equipo_otros_materiales SET estado = 'Entregado' WHERE equipo_otros_id = " + equipoId);
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Entregado' WHERE id = " + equipoId);
+    }
 
     private EquipoOtros nuevoRemito(int cantidad) {
         EquipoOtros remito = new EquipoOtros();
