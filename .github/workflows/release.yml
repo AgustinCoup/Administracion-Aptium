@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build
+        run: mvn -B -Dapp.version=${GITHUB_REF_NAME#v} clean package
+
+      - name: Asegurar nombre de asset aptium.jar
+        run: |
+          if [ ! -f target/aptium.jar ]; then
+            cp "$(ls target/*.jar | grep -v original | head -n1)" target/aptium.jar
+          fi
+
+      - name: Calcular checksum
+        run: sha256sum target/aptium.jar > target/aptium.jar.sha256
+
+      - name: Crear release de GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/aptium.jar
+            target/aptium.jar.sha256
