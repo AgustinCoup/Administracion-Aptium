@@ -66,11 +66,11 @@ public class UiCoordinator {
         EquiposParaEntregarController equiposParaEntregarController =
             new EquiposParaEntregarController(
                 vista.getPantallaEquiposParaEntregar(),
-                context.getEquipoService(),
                 context.getEquipoOtrosService(),
                 context.getMaterialService(),
                 context.getEstadoValidator(),
-                refrescarEstados);
+                refrescarEstados,
+                solicitarRefresco);
 
         CorreccionsController correccionesController = new CorreccionsController(
             vista.getPantallaCorrecciones(),
@@ -169,7 +169,7 @@ public class UiCoordinator {
             cde.pintar(datos);
             verLotes.pintar(datos);
             registrar.pintar(datos);
-            entregar.cargarDatos();
+            entregar.pintar(datos);
             lotes.cargarDatos();
         };
     }

@@ -1,26 +1,19 @@
 package com.example.features.equipos.ortopedias.controller;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
+import com.example.app.ui.DatosRefresco;
 import com.example.ui.events.OnEstadosActualizadosListener;
-import com.example.common.constants.Constantes;
 import com.example.common.model.EntregaDestinoKey;
 import com.example.common.model.EntregaDestinoKey.TipoDestino;
-import com.example.features.equipos.ortopedias.controller.helpers.InstitucionAcumulador;
-import com.example.features.equipos.ortopedias.controller.helpers.MaterialAgrupado;
-import com.example.features.equipos.ortopedias.model.Equipo;
-import com.example.features.equipos.ortopedias.model.EstadoEquipo;
-import com.example.features.equipos.ortopedias.model.Material;
-import com.example.features.equipos.ortopedias.service.EquipoService;
+import com.example.features.equipos.ortopedias.controller.helpers.AgrupadorEntregas;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
 import com.example.features.equipos.ortopedias.service.MaterialService;
-import com.example.features.equipos.otros.model.EquipoOtros;
-import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.equipos.ortopedias.view.PantallaEquiposParaEntregar;
 import com.example.features.equipos.ortopedias.view.helpers.InstitucionEntregaItem;
@@ -35,34 +28,33 @@ public class EquiposParaEntregarController {
     private static final Logger log = LoggerFactory.getLogger(EquiposParaEntregarController.class);
     
     private final PantallaEquiposParaEntregar panel;
-    private final EquipoService       equipoService;
     private final EquipoOtrosService  equipoOtrosService;
     private final MaterialService     materialService;
-    private final IEstadoValidator    estadoValidator;
+    private final AgrupadorEntregas   agrupador;
+    private final Runnable            solicitarRefresco;
     private final Map<EntregaDestinoKey, List<MaterialEntregaItem>> materialesPorDestino  = new HashMap<>();
     private final Map<EntregaDestinoKey, Integer>                   volumenPorDestino     = new HashMap<>();
     private OnEstadosActualizadosListener onEstadosActualizadosListener;
 
     /**
-     * Alcance: lectura de equipos pendientes de entrega (ortopedia + otros),
-     * la regla de "qué estado ya es entregable" y las dos entregas masivas.
+     * Alcance: la regla de "qué estado ya es entregable" y las dos entregas
+     * masivas. Los equipos llegan desde el refresco global, no los lee acá.
      */
     public EquiposParaEntregarController(PantallaEquiposParaEntregar panel,
-                                         EquipoService equipoService,
                                          EquipoOtrosService equipoOtrosService,
                                          MaterialService materialService,
                                          IEstadoValidator estadoValidator,
-                                         OnEstadosActualizadosListener onEstadosActualizadosListener) {
+                                         OnEstadosActualizadosListener onEstadosActualizadosListener,
+                                         Runnable solicitarRefresco) {
         this.panel              = panel;
-        this.equipoService      = equipoService;
         this.equipoOtrosService = equipoOtrosService;
         this.materialService    = materialService;
-        this.estadoValidator    = estadoValidator;
+        this.agrupador          = new AgrupadorEntregas(estadoValidator);
+        this.solicitarRefresco  = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
         this.onEstadosActualizadosListener = onEstadosActualizadosListener;
         inicializarEventos();
-        cargarDatos();
         panel.addComponentListener(new ComponentAdapter() {
-            @Override public void componentShown(ComponentEvent e) { cargarDatos(); }
+            @Override public void componentShown(ComponentEvent e) { solicitarRefresco.run(); }
         });
     }
 
@@ -95,128 +87,18 @@ public class EquiposParaEntregarController {
         panel.setOnEntregarInstitucion(e -> entregarInstitucion());
     }
 
-    public void cargarDatos() {
+    /** Vuelca el snapshot a la pantalla. Sin I/O: la agrupación es lógica pura. */
+    public void pintar(DatosRefresco datos) {
+        AgrupadorEntregas.Resultado agrupado =
+            agrupador.agrupar(datos.equipos(), datos.equiposOtros());
+
         materialesPorDestino.clear();
+        materialesPorDestino.putAll(agrupado.materialesPorDestino());
         volumenPorDestino.clear();
-        Map<EntregaDestinoKey, InstitucionAcumulador> destinos = new LinkedHashMap<>();
+        volumenPorDestino.putAll(agrupado.volumenPorDestino());
 
-        // ── Ortopedia: agrupa por institución ──────────────────────────────────
-        for (Equipo equipo : equipoService.obtenerTodos()) {
-            if (!equipoEsEntregable(equipo)) continue;
-
-            List<MaterialEntregaItem> materiales = construirMateriales(equipo);
-            if (materiales.isEmpty()) continue;
-
-            int institucionId = equipo.getNroInstitucion() != null ? equipo.getNroInstitucion() : -1;
-            String institucionNombre = equipo.getInstitucionNombre();
-            final String nombreFinal = (institucionNombre == null || institucionNombre.isBlank())
-                ? Constantes.Textos.SIN_INSTITUCION : institucionNombre;
-
-            EntregaDestinoKey key = new EntregaDestinoKey(TipoDestino.INSTITUCION, institucionId);
-            destinos.computeIfAbsent(key, k -> new InstitucionAcumulador(k, nombreFinal))
-                    .agregarEquipo(equipo.getId());
-            materialesPorDestino.computeIfAbsent(key, k -> new ArrayList<>()).addAll(materiales);
-        }
-
-        // ── EquipoOtros: agrupa por cliente ────────────────────────────────────
-        for (EquipoOtros equipo : equipoOtrosService.obtenerTodos()) {
-            if (!estadoValidator.esEntregable(equipo.calcularEstado())) continue;
-
-            List<MaterialEntregaItem> materiales = construirMaterialesOtros(equipo);
-            if (materiales.isEmpty()) continue;
-
-            EntregaDestinoKey key = new EntregaDestinoKey(TipoDestino.CLIENTE, equipo.getNroCliente());
-            String nombreCliente = equipo.getClienteNombre() != null ? equipo.getClienteNombre() : "Sin cliente";
-            destinos.computeIfAbsent(key, k -> new InstitucionAcumulador(k, nombreCliente))
-                    .agregarEquipo(equipo.getId());
-            materialesPorDestino.computeIfAbsent(key, k -> new ArrayList<>()).addAll(materiales);
-            volumenPorDestino.merge(key, equipo.getVolumenEquipo(), Integer::sum);
-        }
-
-        List<InstitucionEntregaItem> filasInstituciones = destinos.values().stream()
-            .sorted(Comparator.comparing(InstitucionAcumulador::getNombre, String.CASE_INSENSITIVE_ORDER))
-            .map(ac -> new InstitucionEntregaItem(ac.getKey(), ac.getNombre(), ac.getEquiposCount()))
-            .toList();
-
-        panel.actualizarInstituciones(filasInstituciones);
+        panel.actualizarInstituciones(agrupado.filas());
         panel.limpiarMateriales();
-    }
-
-    private List<MaterialEntregaItem> construirMaterialesOtros(EquipoOtros equipo) {
-        List<MaterialEntregaItem> resultado = new ArrayList<>();
-        List<MaterialOtros> mats = equipo.getMateriales();
-
-        if (mats.isEmpty()) {
-            // REMITO sin filas reales: una sola fila "Elementos"
-            if (equipo.getRemitoCantidad() != null && equipo.getRemitoCantidad() > 0) {
-                resultado.add(new MaterialEntregaItem("Elementos", equipo.getRemitoCantidad(), false));
-            }
-            return resultado;
-        }
-
-        // DETALLES o REMITO con filas reales: agrupar por descripción
-        Map<String, int[]> agrupados = new LinkedHashMap<>();
-        for (MaterialOtros m : mats) {
-            if (!estadoValidator.esEntregable(m.getEstado())) continue;
-            int[] contadores = agrupados.computeIfAbsent(m.getDescripcion(), k -> new int[2]);
-            contadores[0] += m.getCantidad();
-            if (m.getEstado() == EstadoEquipo.ENTREGADO) contadores[1] += m.getCantidad();
-        }
-        for (Map.Entry<String, int[]> e : agrupados.entrySet()) {
-            int pendiente = e.getValue()[0] - e.getValue()[1];
-            if (pendiente > 0) resultado.add(new MaterialEntregaItem(e.getKey(), pendiente, false));
-        }
-        return resultado;
-    }
-
-    private boolean equipoEsEntregable(Equipo equipo) {
-        return equipo != null && estadoValidator.esEntregable(equipo.calcularEstado());
-    }
-
-    private boolean materialEsEntregable(Material material) {
-        return material != null && estadoValidator.esEntregable(material.getEstado());
-    }
-
-    private List<MaterialEntregaItem> construirMateriales(Equipo equipo) {
-        List<MaterialEntregaItem> materiales = new ArrayList<>();
-        if (equipo == null || equipo.getMateriales() == null) {
-            return materiales;
-        }
-
-        // Agrupar materiales por código, sumando cantidades
-        Map<Integer, MaterialAgrupado> agrupados = new LinkedHashMap<>();
-        
-        for (Material material : equipo.getMateriales()) {
-            if (!materialEsEntregable(material)) {
-                continue;
-            }
-            
-            int codigo = material.getCodigo();
-            boolean entregado = material.getEstado() == EstadoEquipo.ENTREGADO;
-            
-            MaterialAgrupado agrupado = agrupados.get(codigo);
-            if (agrupado == null) {
-                agrupado = new MaterialAgrupado(material.getDescripcion());
-                agrupados.put(codigo, agrupado);
-            }
-            
-            agrupado.agregar(material.getCantidad(), entregado);
-        }
-        
-        // Convertir a items para la tabla, omitiendo los que ya fueron entregados en su totalidad
-        for (MaterialAgrupado agrupado : agrupados.values()) {
-            if (agrupado.todosEntregados()) {
-                continue;
-            }
-            MaterialEntregaItem item = new MaterialEntregaItem(
-                agrupado.getDescripcion(),
-                agrupado.getCantidadTotal() - agrupado.getCantidadEntregada(),
-                false
-            );
-            materiales.add(item);
-        }
-        
-        return materiales;
     }
 
     private void entregarInstitucion() {
@@ -261,7 +143,7 @@ public class EquiposParaEntregarController {
 
         if (!exitosas.isEmpty()) {
             log.info("{} institución(es) entregada(s) exitosamente", exitosas.size());
-            cargarDatos();
+            solicitarRefresco.run();
             if (onEstadosActualizadosListener != null) {
                 onEstadosActualizadosListener.onEstadosActualizados();
             } else {
