@@ -1,10 +1,10 @@
 package com.example.features.equipos.controller;
 
+import com.example.app.ui.DatosRefresco;
 import com.example.features.clientes.service.ClienteService;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.service.EquipoReporteService;
-import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
@@ -36,7 +36,6 @@ public class VerEquiposController {
     private static final Logger log = LoggerFactory.getLogger(VerEquiposController.class);
 
     private final PantallaVerEquipos       panel;
-    private final EquipoService            equipoService;
     private final EquipoOtrosService       equipoOtrosService;
     private final ClienteService           clienteService;
     private final InstitucionService       institucionService;
@@ -52,14 +51,13 @@ public class VerEquiposController {
      * cliente/institución en los diálogos de impresión, y los dos reportes.
      */
     public VerEquiposController(PantallaVerEquipos panel,
-                                EquipoService equipoService,
                                 EquipoOtrosService equipoOtrosService,
                                 ClienteService clienteService,
                                 InstitucionService institucionService,
                                 EquipoReporteService equipoReporteService,
-                                EquipoOtrosReporteService equipoOtrosReporteService) {
+                                EquipoOtrosReporteService equipoOtrosReporteService,
+                                Runnable solicitarRefresco) {
         this.panel                   = panel;
-        this.equipoService           = equipoService;
         this.equipoOtrosService      = equipoOtrosService;
         this.clienteService          = clienteService;
         this.institucionService      = institucionService;
@@ -72,10 +70,10 @@ public class VerEquiposController {
 
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
-                // Sin notificar: cargarDatos() recarga la lista y es el único que
-                // filtra y repinta, para no mostrar un flash con datos viejos.
+                // Sin notificar: pintar() es el único que filtra y repinta,
+                // para no mostrar un flash con datos viejos.
                 panel.aplicarFiltroInicial();
-                cargarDatos();
+                solicitarRefresco.run();
             }
         });
 
@@ -94,22 +92,16 @@ public class VerEquiposController {
 
     // ── Carga de datos ────────────────────────────────────────────────────────
 
-    public void cargarDatos() {
-        new Thread(() -> {
-            try {
-                List<Equipo>      ortopedia = equipoService.obtenerTodos();
-                List<EquipoOtros> otros     = equipoOtrosService.obtenerTodos();
-                SwingUtilities.invokeLater(() -> {
-                    todosOrtopedia = ortopedia;
-                    todosOtros     = otros;
-                    cargado        = true;
-                    aplicarFiltros();
-                    log.info("Ver equipos: {} ortopedia, {} otros", ortopedia.size(), otros.size());
-                });
-            } catch (Exception ex) {
-                log.error("Error al cargar equipos para vista", ex);
-            }
-        }, "ver-equipos-loader").start();
+    /**
+     * Vuelca el snapshot a la grilla. Los filtros que el usuario tenga puestos
+     * sobreviven: {@code aplicarFiltros()} los relee del panel en cada pintado.
+     */
+    public void pintar(DatosRefresco datos) {
+        todosOrtopedia = datos.equipos();
+        todosOtros     = datos.equiposOtros();
+        cargado        = true;
+        aplicarFiltros();
+        log.info("Ver equipos: {} ortopedia, {} otros", todosOrtopedia.size(), todosOtros.size());
     }
 
     // ── Filtrado ──────────────────────────────────────────────────────────────

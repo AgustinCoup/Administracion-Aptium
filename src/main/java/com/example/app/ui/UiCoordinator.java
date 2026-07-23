@@ -92,14 +92,14 @@ public class UiCoordinator {
             context.getLoteReporteService(),
             solicitarRefresco);
 
-        new VerEquiposController(
+        VerEquiposController verEquiposController = new VerEquiposController(
             vista.getPantallaVerEquipos(),
-            context.getEquipoService(),
             context.getEquipoOtrosService(),
             context.getClienteService(),
             context.getInstitucionService(),
             context.getEquipoReporteService(),
-            context.getEquipoOtrosReporteService());
+            context.getEquipoOtrosReporteService(),
+            solicitarRefresco);
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
         correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());
@@ -114,7 +114,8 @@ public class UiCoordinator {
             registrarEstadoController,
             equiposParaEntregarController,
             lotesController,
-            verLotesController
+            verLotesController,
+            verEquiposController
         );
 
         correccionesController.setOnCambiosAplicados(() -> refrescarRef[0].run());
@@ -155,7 +156,8 @@ public class UiCoordinator {
         RegistrarEstadoController       registrar,
         EquiposParaEntregarController   entregar,
         LotesController                 lotes,
-        VerLotesController              verLotes
+        VerLotesController              verLotes,
+        VerEquiposController            verEquipos
     ) {
         LectorDatosRefresco lector = new LectorDatosRefresco(
             context.getEquipoService(),
@@ -170,6 +172,7 @@ public class UiCoordinator {
             verLotes.pintar(datos);
             registrar.pintar(datos);
             entregar.pintar(datos);
+            verEquipos.pintar(datos);
             lotes.cargarDatos();
         };
     }
