@@ -10,6 +10,7 @@ import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.service.LoteReporteService;
 import com.example.features.lotes.view.helpers.ImprimirLotesDialog;
 import com.example.features.lotes.view.PantallaVerLotes;
+import com.example.ui.common.TareaUI;
 
 import javax.swing.*;
 import java.awt.*;
@@ -87,29 +88,12 @@ public class VerLotesController extends AbstractFilterController<Lote> {
      * En caso de error muestra un JOptionPane con el mensaje.
      */
     private void generarReporte(LocalDate desde, LocalDate hasta) {
-        try {
-            // Ejecutar fuera del EDT para no bloquear la UI durante la compilación
-            SwingWorker<Void, Void> worker = new SwingWorker<>() {
-                @Override
-                protected Void doInBackground() {
-                    reporteService.generarYMostrarReporte(desde, hasta);
-                    return null;
-                }
-
-                @Override
-                protected void done() {
-                    try {
-                        get(); // re-lanza excepciones del worker
-                    } catch (Exception e) {
-                        mostrarErrorReporte(e.getCause() != null ? e.getCause() : e);
-                    }
-                }
-            };
-            worker.execute();
-
-        } catch (Exception e) {
-            mostrarErrorReporte(e);
-        }
+        // Fuera del hilo de UI: la compilación del reporte tarda.
+        TareaUI.<Void>nueva()
+            .nombre("reporte-lotes")
+            .leer(() -> { reporteService.generarYMostrarReporte(desde, hasta); return null; })
+            .siFalla(this::mostrarErrorReporte)
+            .lanzar();
     }
 
     private void mostrarErrorReporte(Throwable e) {

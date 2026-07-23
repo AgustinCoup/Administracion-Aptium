@@ -14,6 +14,7 @@ import com.example.features.equipos.view.PantallaVerEquipos;
 import com.example.features.equipos.view.helpers.DetalleOrtopediaDialog;
 import com.example.features.equipos.view.helpers.DetalleOtrosDialog;
 import com.example.features.equipos.view.helpers.ImprimirEquiposDialog;
+import com.example.ui.common.TareaUI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +28,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 
@@ -196,20 +196,14 @@ public class VerEquiposController {
             clienteService::buscarClientes,
             institucionService::buscarInstituciones,
             (desde, hasta, clienteId, institucionId) ->
-                new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
+                TareaUI.<Void>nueva()
+                    .nombre("reporte-ortopedias")
+                    .leer(() -> {
                         equipoReporteService.generarYMostrarReporte(desde, hasta, clienteId, institucionId);
                         return null;
-                    }
-                    @Override protected void done() {
-                        try { get(); } catch (InterruptedException | ExecutionException ex) {
-                            log.error("Error al generar reporte de ortopedias", ex);
-                            JOptionPane.showMessageDialog(panel,
-                                "Error al generar el reporte:\n" + ex.getCause().getMessage(),
-                                "Error", JOptionPane.ERROR_MESSAGE);
-                        }
-                    }
-                }.execute()
+                    })
+                    .siFalla(this::mostrarErrorReporte)
+                    .lanzar()
         ).setVisible(true);
     }
 
@@ -218,20 +212,20 @@ public class VerEquiposController {
         new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Otros",
             clienteService::buscarClientes,
             (desde, hasta, clienteId, institucionId) ->
-                new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
+                TareaUI.<Void>nueva()
+                    .nombre("reporte-otros")
+                    .leer(() -> {
                         equipoOtrosReporteService.generarYMostrarReporte(desde, hasta, clienteId);
                         return null;
-                    }
-                    @Override protected void done() {
-                        try { get(); } catch (InterruptedException | ExecutionException ex) {
-                            log.error("Error al generar reporte de otros", ex);
-                            JOptionPane.showMessageDialog(panel,
-                                "Error al generar el reporte:\n" + ex.getCause().getMessage(),
-                                "Error", JOptionPane.ERROR_MESSAGE);
-                        }
-                    }
-                }.execute()
+                    })
+                    .siFalla(this::mostrarErrorReporte)
+                    .lanzar()
         ).setVisible(true);
+    }
+
+    private void mostrarErrorReporte(Throwable e) {
+        JOptionPane.showMessageDialog(panel,
+            "Error al generar el reporte:\n" + e.getMessage(),
+            "Error", JOptionPane.ERROR_MESSAGE);
     }
 }
