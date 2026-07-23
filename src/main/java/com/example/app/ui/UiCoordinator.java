@@ -89,9 +89,8 @@ public class UiCoordinator {
 
         VerLotesController verLotesController = new VerLotesController(
             vista.getPantallaVerLotes(),
-            context.getAutoclaveService(),
-            context.getLoteService(),
-            context.getLoteReporteService());
+            context.getLoteReporteService(),
+            solicitarRefresco);
 
         new VerEquiposController(
             vista.getPantallaVerEquipos(),
@@ -168,10 +167,10 @@ public class UiCoordinator {
         return () -> {
             DatosRefresco datos = lector.leer();
             cde.pintar(datos);
+            verLotes.pintar(datos);
             registrar.cargarEquipos();
             entregar.cargarDatos();
             lotes.cargarDatos();
-            verLotes.cargarDatos();
         };
     }
 }

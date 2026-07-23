@@ -1,14 +1,13 @@
 package com.example.features.lotes.controller;
 
+import com.example.app.ui.DatosRefresco;
 import com.example.common.util.AbstractFilterController;
 import com.example.common.util.FilterStrategy;
 import com.example.features.autoclaves.model.Autoclave;
-import com.example.features.autoclaves.service.AutoclaveService;
 import com.example.features.lotes.controller.helpers.LotesFilterCriteria;
 import com.example.features.lotes.controller.helpers.LotesFilterStrategy;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.service.LoteReporteService;
-import com.example.features.lotes.service.LoteService;
 import com.example.features.lotes.view.helpers.ImprimirLotesDialog;
 import com.example.features.lotes.view.PantallaVerLotes;
 
@@ -18,44 +17,41 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class VerLotesController extends AbstractFilterController<Lote> {
 
     private final PantallaVerLotes                  panel;
-    private final AutoclaveService                  autoclaveService;
-    private final LoteService                       loteService;
     private final FilterStrategy<Lote, LotesFilterCriteria> filterStrategy;
     private final LoteReporteService                reporteService;
 
-    /** Alcance: lectura de lotes y autoclaves para la grilla, más la impresión del reporte. */
+    /** Alcance: pintar la grilla desde el refresco global, más la impresión del reporte. */
     public VerLotesController(PantallaVerLotes panel,
-                              AutoclaveService autoclaveService,
-                              LoteService loteService,
-                              LoteReporteService reporteService) {
+                              LoteReporteService reporteService,
+                              Runnable solicitarRefresco) {
         this.panel            = panel;
-        this.autoclaveService = autoclaveService;
-        this.loteService      = loteService;
         this.filterStrategy   = new LotesFilterStrategy();
         this.reporteService   = reporteService;
+        Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
 
         this.panel.setOnFiltrosChanged(this::aplicarFiltros);
         this.panel.setOnImprimir(this::abrirDialogoImprimir);
 
-        cargarDatos();
         this.panel.addComponentListener(new ComponentAdapter() {
-            @Override public void componentShown(ComponentEvent e) { cargarDatos(); }
+            @Override public void componentShown(ComponentEvent e) { solicitarRefresco.run(); }
         });
     }
 
-    public void cargarDatos() {
-        List<String> autoclaves = autoclaveService.obtenerTodos().stream()
+    /** Vuelca el snapshot a la grilla y al combo de autoclaves. Sin I/O. */
+    public void pintar(DatosRefresco datos) {
+        List<String> autoclaves = datos.autoclaves().stream()
             .map(Autoclave::getNombre)
             .sorted(String::compareToIgnoreCase)
             .collect(Collectors.toList());
         panel.setEquiposFiltro(autoclaves);
 
-        recargarCache(loteService.obtenerTodosLosLotes());
+        recargarCache(datos.todosLosLotes());
     }
 
     @Override
