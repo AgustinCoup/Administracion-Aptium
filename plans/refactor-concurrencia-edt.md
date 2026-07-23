@@ -14,11 +14,12 @@ Diagnóstico de origen: [hallazgos-arquitectura-pendientes.md](hallazgos-arquite
 
 ## Estado de ejecución (2026-07-23)
 
-**Fases 1, 2, 3 y 4: hechas.** 11 commits en `UXhotfix`, de `110d7c3` a `0064570`.
+**Fases 1 a 5: hechas.** 11 commits en `UXhotfix`, de `110d7c3` a `0064570`.
 555 tests en verde (eran 521; +34 nuevos).
 
-**Fase 5 (verificación manual): pendiente** — requiere la app con BD, no se puede
-correr desde la sesión. La checklist está más abajo, sin tachar.
+**Fase 5: pasada por el usuario contra la app real (2026-07-23). Funciona todo.**
+Con eso el hallazgo #6 propiamente dicho — sacar el trabajo de BD del EDT — está
+cerrado. La Fase 6 (*reducir* ese trabajo) queda habilitada para arrancar.
 
 Piezas nuevas: `EdtGuard`, `TareaUI`, `DatosRefresco`, `LectorDatosRefresco`,
 `RefrescadorPantallas`, `AgrupadorEntregas`, `ConstructorMaterialesDisponibles`,
@@ -411,6 +412,19 @@ la curva.
 **Por qué va separado:** mover trabajo de hilo no cambia *qué datos ves*; cambiar el `WHERE` sí.
 Son dos clases de riesgo distintas y una regresión acá es silenciosa (una pantalla que deja de
 mostrar algo). Mezclarlas haría imposible saber cuál de los dos cambios rompió qué.
+
+## Antes de escribir una línea (para la sesión que arranque en frío)
+
+Precondición cumplida: fases 1-5 en verde, checklist manual pasada el 2026-07-23.
+
+Dos cosas se resuelven **primero**, porque cambian el alcance de la fase:
+
+1. **Confirmar con el usuario en qué grupo va `CDEView`** — ver trampa 6.3.1. Si va al
+   snapshot operativo, su filtro por `ENTREGADO` queda vacío para siempre y nadie lo nota.
+2. **Verificar contra la app real si un equipo ya entregado aparece en "Equipos para
+   entregar"** — ver trampa 6.3.2. Si aparece, es un bug preexistente: se arregla **aparte,
+   con su propio test y su propio commit**, antes de tocar ningún `WHERE`. Lo que no hay que
+   hacer es congelarlo dentro del SQL nuevo y que quede enterrado.
 
 ## 6.1 El movimiento: partir el snapshot en dos
 
