@@ -1,5 +1,7 @@
 package com.example.features.lotes.view.helpers;
 
+import com.example.features.lotes.model.OcupacionAutoclave;
+
 /**
  * Sincroniza el volumen final del lote con el total calculado (litros por
  * ingreso + volumen de ortopedias): lo sigue hasta que el usuario lo edita a
@@ -51,8 +53,10 @@ final class SincronizadorVolumenFinal {
     String textoAdvertencia() {
         StringBuilder sb = new StringBuilder();
         if (volumenFinal != totalCalculado()) sb.append("⚠ Volumen ajustado manualmente. ");
-        double porcentaje = capacidadTotal == 0 ? 0 : (double) volumenFinal / capacidadTotal;
-        if (porcentaje < 0.8) sb.append("⚠ Menos del 80% de capacidad.");
+        if (new OcupacionAutoclave(volumenFinal, capacidadTotal).estaPocoCargado()) {
+            sb.append(String.format("⚠ Menos del %d%% de capacidad.",
+                    OcupacionAutoclave.UMBRAL_ADVERTENCIA));
+        }
         return sb.length() == 0 ? " " : sb.toString();
     }
 

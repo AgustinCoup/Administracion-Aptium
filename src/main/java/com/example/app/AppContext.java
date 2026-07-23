@@ -8,7 +8,6 @@ import com.example.features.instituciones.dao.InstitucionDAO;
 import com.example.features.lotes.dao.LoteDAO;
 import com.example.features.profesionales.dao.ProfesionalDAO;
 import com.example.features.autoclaves.service.AutoclaveService;
-import com.example.features.lotes.service.CapacidadCalculatorImpl;
 import com.example.features.catalogo.service.CatalogoService;
 import com.example.features.clientes.service.ClienteService;
 import com.example.features.equipos.ortopedias.dao.AuditoriaDAO;
@@ -18,10 +17,7 @@ import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.ortopedias.service.EstadoValidatorImpl;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
-import com.example.features.equipos.ortopedias.service.IMaterialFilter;
-import com.example.features.equipos.ortopedias.service.MaterialFilterImpl;
 import com.example.features.equipos.ortopedias.service.MaterialService;
-import com.example.features.lotes.service.ICapacidadCalculator;
 import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.lotes.service.LoteService;
 import com.example.features.profesionales.service.ProfesionalService;
@@ -45,8 +41,6 @@ public class AppContext {
     private final AutoclaveService autoclaveService;
     private final LoteService loteService;
     private final IEstadoValidator estadoValidator;
-    private final IMaterialFilter materialFilter;
-    private final ICapacidadCalculator capacidadCalculator;
     private final CatalogoOtrosService catalogoOtrosService;
     private final EquipoOtrosService equipoOtrosService;
     private final EquipoCorreccionService equipoCorreccionService;
@@ -65,8 +59,6 @@ public class AppContext {
         AutoclaveService autoclaveService,
         LoteService loteService,
         IEstadoValidator estadoValidator,
-        IMaterialFilter materialFilter,
-        ICapacidadCalculator capacidadCalculator,
         CatalogoOtrosService catalogoOtrosService,
         EquipoOtrosService equipoOtrosService,
         EquipoCorreccionService equipoCorreccionService,
@@ -78,7 +70,7 @@ public class AppContext {
         if (equipoService == null || catalogoService == null || clienteService == null
             || profesionalService == null || institucionService == null || materialService == null
             || autoclaveService == null || loteService == null || estadoValidator == null
-            || materialFilter == null || capacidadCalculator == null || catalogoOtrosService == null
+            || catalogoOtrosService == null
             || equipoOtrosService == null || equipoCorreccionService == null
             || equipoOtrosCorreccionService == null || loteReporteService == null
             || equipoReporteService == null || equipoOtrosReporteService == null) {
@@ -94,8 +86,6 @@ public class AppContext {
         this.autoclaveService = autoclaveService;
         this.loteService = loteService;
         this.estadoValidator = estadoValidator;
-        this.materialFilter = materialFilter;
-        this.capacidadCalculator = capacidadCalculator;
         this.catalogoOtrosService = catalogoOtrosService;
         this.equipoOtrosService = equipoOtrosService;
         this.equipoCorreccionService = equipoCorreccionService;
@@ -136,8 +126,6 @@ public class AppContext {
         LoteService loteService = new LoteService(loteDAO);
 
         IEstadoValidator estadoValidator = new EstadoValidatorImpl();
-        ICapacidadCalculator capacidadCalculator = new CapacidadCalculatorImpl();
-        IMaterialFilter materialFilter = new MaterialFilterImpl(estadoValidator);
 
         LoteReporteService loteReporteService = new LoteReporteService(loteService);
         EquipoReporteService equipoReporteService = new EquipoReporteService(equipoService);
@@ -154,8 +142,6 @@ public class AppContext {
             autoclaveService,
             loteService,
             estadoValidator,
-            materialFilter,
-            capacidadCalculator,
             catalogoOtrosService,
             equipoOtrosService,
             equipoCorreccionService,
@@ -200,14 +186,6 @@ public class AppContext {
 
     public IEstadoValidator getEstadoValidator() {
         return estadoValidator;
-    }
-
-    public IMaterialFilter getMaterialFilter() {
-        return materialFilter;
-    }
-
-    public ICapacidadCalculator getCapacidadCalculator() {
-        return capacidadCalculator;
     }
 
     public CatalogoOtrosService getCatalogoOtrosService() {

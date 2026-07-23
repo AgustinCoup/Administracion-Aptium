@@ -113,6 +113,11 @@ public class AppModel {
         return estadoValidator.esAvanzableManualmente(estadoActual, estadoSiguiente);
     }
 
+    /** Única fuente de verdad de "¿este estado ya se puede entregar?" (>= ESTERILIZADO). */
+    public boolean esEntregable(EstadoEquipo estado) {
+        return estadoValidator.esEntregable(estado);
+    }
+
     // ==================== EQUIPOS ====================
 
     public boolean guardarEquipo(Equipo equipo) {

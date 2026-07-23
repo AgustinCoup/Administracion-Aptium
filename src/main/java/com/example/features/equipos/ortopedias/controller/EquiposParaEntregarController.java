@@ -103,7 +103,7 @@ public class EquiposParaEntregarController {
 
         // ── EquipoOtros: agrupa por cliente ────────────────────────────────────
         for (EquipoOtros equipo : model.obtenerTodosLosEquiposOtros()) {
-            if (equipo.calcularEstado().getOrden() < EstadoEquipo.ESTERILIZADO.getOrden()) continue;
+            if (!model.esEntregable(equipo.calcularEstado())) continue;
 
             List<MaterialEntregaItem> materiales = construirMaterialesOtros(equipo);
             if (materiales.isEmpty()) continue;
@@ -140,7 +140,7 @@ public class EquiposParaEntregarController {
         // DETALLES o REMITO con filas reales: agrupar por descripción
         Map<String, int[]> agrupados = new LinkedHashMap<>();
         for (MaterialOtros m : mats) {
-            if (m.getEstado().getOrden() < EstadoEquipo.ESTERILIZADO.getOrden()) continue;
+            if (!model.esEntregable(m.getEstado())) continue;
             int[] contadores = agrupados.computeIfAbsent(m.getDescripcion(), k -> new int[2]);
             contadores[0] += m.getCantidad();
             if (m.getEstado() == EstadoEquipo.ENTREGADO) contadores[1] += m.getCantidad();
@@ -153,17 +153,11 @@ public class EquiposParaEntregarController {
     }
 
     private boolean equipoEsEntregable(Equipo equipo) {
-        if (equipo == null) {
-            return false;
-        }
-        return equipo.calcularEstado().getOrden() >= EstadoEquipo.ESTERILIZADO.getOrden();
+        return equipo != null && model.esEntregable(equipo.calcularEstado());
     }
 
     private boolean materialEsEntregable(Material material) {
-        if (material == null) {
-            return false;
-        }
-        return material.getEstado().getOrden() >= EstadoEquipo.ESTERILIZADO.getOrden();
+        return material != null && model.esEntregable(material.getEstado());
     }
 
     private List<MaterialEntregaItem> construirMateriales(Equipo equipo) {

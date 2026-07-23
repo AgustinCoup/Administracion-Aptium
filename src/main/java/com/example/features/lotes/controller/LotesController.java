@@ -17,6 +17,7 @@ import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
+import com.example.features.lotes.model.OcupacionAutoclave;
 import com.example.features.lotes.view.PantallaLotes;
 import com.example.ui.dialogs.CantidadDialogHelper;
 import com.example.features.lotes.view.helpers.AutoclaveItem;
@@ -470,7 +471,10 @@ public class LotesController {
             EstadoStaging estado = reconciliador.alta(estadoStaging(nombre), item, cantidad);
             aplicarEstado(nombre, estado);
 
-            if (reconciliador.capacidadUsada(estado.getPendientes()) > autoclaveSeleccionado.getCapacidad()) {
+            OcupacionAutoclave ocupacion = new OcupacionAutoclave(
+                    reconciliador.capacidadUsada(estado.getPendientes()),
+                    autoclaveSeleccionado.getCapacidad());
+            if (ocupacion.estaSobrecargado()) {
                 panel.mostrarAdvertencia(
                         "El volumen calculado supera la capacidad del autoclave.\n" +
                         "Puede ajustar el volumen final en el campo \"Volumen final\" antes de lanzar.");
@@ -586,7 +590,9 @@ public class LotesController {
             return false;
         }
 
-        if (volumenManual > capacidadTotal) {
+        OcupacionAutoclave ocupacion = new OcupacionAutoclave(volumenManual, capacidadTotal);
+
+        if (ocupacion.estaSobrecargado()) {
             panel.mostrarError(String.format(
                     "El volumen final (%d) supera la capacidad del autoclave (%d).\n" +
                     "Ajuste el valor en el campo \"Volumen final\" antes de lanzar.",
@@ -595,7 +601,6 @@ public class LotesController {
         }
 
         int volumenCalculado = reconciliador.capacidadUsada(pendientes);
-        double porcentaje    = capacidadTotal == 0 ? 0 : (double) volumenManual / capacidadTotal;
 
         StringBuilder mensaje = new StringBuilder();
         mensaje.append("Se lanzará el lote con los siguientes materiales:\n\n");
@@ -603,13 +608,14 @@ public class LotesController {
             mensaje.append("• ").append(linea).append("\n");
         }
         mensaje.append(String.format("\nVolumen calculado (catálogo): %d\n", volumenCalculado));
-        mensaje.append(String.format("Volumen final confirmado:     %d/%d (%.0f%%)\n",
-                volumenManual, capacidadTotal, porcentaje * 100));
+        mensaje.append(String.format("Volumen final confirmado:     %d/%d (%d%%)\n",
+                volumenManual, capacidadTotal, ocupacion.porcentaje()));
 
         if (volumenManual != volumenCalculado)
             mensaje.append("\n⚠ El volumen fue ajustado manualmente respecto al catálogo.");
-        if (porcentaje < 0.8)
-            mensaje.append("\n⚠ El autoclave tiene menos del 80% de capacidad.");
+        if (ocupacion.estaPocoCargado())
+            mensaje.append(String.format("\n⚠ El autoclave tiene menos del %d%% de capacidad.",
+                    OcupacionAutoclave.UMBRAL_ADVERTENCIA));
 
         mensaje.append("\n\n¿Desea continuar?");
 

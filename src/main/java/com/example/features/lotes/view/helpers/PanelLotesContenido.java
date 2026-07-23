@@ -17,6 +17,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import com.example.common.constants.Constantes;
+import com.example.features.lotes.model.OcupacionAutoclave;
 
 /**
  * Panel reutilizable con la lógica de gestión de lotes.
@@ -290,7 +291,7 @@ public class PanelLotesContenido extends JPanel {
         int capacidadTotal = extraerCapacidadTotalDelLabel();
         int volumenManual  = getVolumenManual();
         if (volumenManual >= 0 && capacidadTotal > 0) {
-            actualizarBarraCapacidad(volumenManual, capacidadTotal);
+            actualizarBarraCapacidad(new OcupacionAutoclave(volumenManual, capacidadTotal));
         }
         if (onVolumenManualChanged != null) {
             SwingUtilities.invokeLater(onVolumenManualChanged);
@@ -306,10 +307,10 @@ public class PanelLotesContenido extends JPanel {
     }
 
     /**
-     * 0 % → rojo | 1–100 % → interpolación rojo→verde | >100 % → rojo (sobrecarga)
+     * 0 % → rojo | 1–100 % → interpolación rojo→verde | sobrecarga → rojo
      */
-    private void actualizarBarraCapacidad(int capacidadUsada, int capacidadTotal) {
-        if (capacidadTotal == 0) {
+    private void actualizarBarraCapacidad(OcupacionAutoclave ocupacion) {
+        if (ocupacion.getTotal() == 0) {
             barraCapacidad.setValue(0);
             barraCapacidad.setForeground(COLOR_ROJO);
             barraCapacidad.setString("0%");
@@ -317,12 +318,12 @@ public class PanelLotesContenido extends JPanel {
             return;
         }
 
-        int porcentaje = (capacidadUsada * 100) / capacidadTotal;
+        int porcentaje = ocupacion.porcentaje();
         barraCapacidad.setValue(Math.min(porcentaje, 100));
         barraCapacidad.setString(porcentaje + "%");
 
         Color color;
-        if (porcentaje > 100) {
+        if (ocupacion.estaSobrecargado()) {
             color = COLOR_ROJO;
             lblVolumenManualPorcentaje.setForeground(COLOR_ROJO);
             lblVolumenManualPorcentaje.setText("⚠ " + porcentaje + "%");
@@ -444,13 +445,14 @@ public class PanelLotesContenido extends JPanel {
         try {
             String[] partes = texto.replace("Capacidad: ", "").split("/");
             if (partes.length == 2)
-                actualizarBarraCapacidad(Integer.parseInt(partes[0].trim()), Integer.parseInt(partes[1].trim()));
+                actualizarBarraCapacidad(new OcupacionAutoclave(
+                        Integer.parseInt(partes[0].trim()), Integer.parseInt(partes[1].trim())));
         } catch (NumberFormatException ignored) { }
     }
 
     public void setCapacidad(int capacidadUsada, int capacidadTotal) {
         lblCapacidad.setText(String.format("Capacidad: %d/%d", capacidadUsada, capacidadTotal));
-        actualizarBarraCapacidad(capacidadUsada, capacidadTotal);
+        actualizarBarraCapacidad(new OcupacionAutoclave(capacidadUsada, capacidadTotal));
     }
 
     public void mostrarAdvertencia(String mensaje) {
