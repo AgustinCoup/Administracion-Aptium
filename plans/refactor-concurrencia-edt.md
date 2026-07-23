@@ -12,6 +12,48 @@ Diagnóstico de origen: [hallazgos-arquitectura-pendientes.md](hallazgos-arquite
 
 ---
 
+## Estado de ejecución (2026-07-23)
+
+**Fases 1, 2 y 3: hechas.** 9 commits en `UXhotfix`, de `110d7c3` a `fe5a227`.
+555 tests en verde (eran 521; +34 nuevos).
+
+Piezas nuevas: `EdtGuard`, `TareaUI`, `DatosRefresco`, `LectorDatosRefresco`,
+`RefrescadorPantallas`, `AgrupadorEntregas`, `ConstructorMaterialesDisponibles`,
+`FiltroAuditorias`. Los 6 controllers pasaron de `cargarDatos()` a `pintar(DatosRefresco)`.
+
+**Desvío respecto del plan:** el constructor muerto de `LotesController` con
+`equipoContexto` se **eliminó** en vez de anotarse para el refactor-clean. Sostenerlo
+obligaba a una segunda rama en el camino de pintado y bloqueaba la extracción de
+`ConstructorMaterialesDisponibles`. Confirmado sin llamadores antes de borrarlo.
+
+**Pendiente de verificar contra la app real** (no se pudo en la sesión, requiere BD):
+el arranque, y la lista de WARNs que quedan del `EdtGuard`.
+
+### Lista de trabajo medida para la Fase 4
+
+`grep "new Thread("` → **18** ocurrencias fuera de `App.java`:
+
+| Archivo | Cantidad | Nota |
+|---|---|---|
+| `CorreccionsController` | 12 | 10 operaciones + `cargarEquiposNuevos` + autocompletado de descripción |
+| `AjustesController` | 5 | 2 de ellas leen `obtenerTodosLosClientes()` |
+| `App.java` | 1 | shutdown hook, **no se toca** |
+
+Accesos síncronos a BD que van a seguir gritando en el `EdtGuard` y **no** estaban en
+el inventario original de la Fase 1 — son autocompletados, no `cargarDatos()`:
+
+- `OrthopediaInputController:59` — `catalogoService.obtenerDescripcion()` dentro del
+  `CatalogoLookup` que consume `GestorValidacionFormulario`: corre en cada validación de campo.
+- `OrthopediaInputController:69` — ídem en el listener `onNumeroChanged` del panel de materiales.
+- `AutocompleteListener` (profesionales, instituciones, clientes) — hay que revisar si
+  busca en el EDT en cada tecla.
+
+Estos son lookups de una fila y sobre índice, así que el costo es bajo, pero rompen la
+regla 1 y el guard los va a marcar. Decidir en la Fase 4 si se migran a `TareaUI` o si
+se documenta la excepción.
+
+---
+
 ## Decisiones tomadas (2026-07-23)
 
 | Decisión | Elección | Alternativa descartada |
