@@ -1,6 +1,6 @@
 package com.example.features.lotes.controller;
 
-import com.example.app.ui.DatosRefresco;
+import com.example.app.ui.HistorialLotes;
 import com.example.common.util.AbstractFilterController;
 import com.example.common.util.FilterStrategy;
 import com.example.features.autoclaves.model.Autoclave;
@@ -45,7 +45,7 @@ public class VerLotesController extends AbstractFilterController<Lote> {
     }
 
     /** Vuelca el snapshot a la grilla y al combo de autoclaves. Sin I/O. */
-    public void pintar(DatosRefresco datos) {
+    public void pintar(HistorialLotes datos) {
         List<String> autoclaves = datos.autoclaves().stream()
             .map(Autoclave::getNombre)
             .sorted(String::compareToIgnoreCase)

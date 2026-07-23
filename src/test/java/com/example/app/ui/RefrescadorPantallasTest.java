@@ -2,22 +2,24 @@ package com.example.app.ui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
-import com.example.features.lotes.model.Lote;
 import java.awt.EventQueue;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+/**
+ * El refrescador es agnóstico al tipo de snapshot — lo comparten los tres grupos
+ * de pantallas — así que se prueba con {@code String}: lo que importa es en qué
+ * hilo corre cada mitad y qué resultado termina pintándose.
+ */
 class RefrescadorPantallasTest {
 
     private static final int TIMEOUT_SEGUNDOS = 10;
@@ -29,8 +31,8 @@ class RefrescadorPantallasTest {
         AtomicInteger lecturas = new AtomicInteger();
         CountDownLatch pinto = new CountDownLatch(1);
 
-        RefrescadorPantallas refrescador = refrescador(
-            () -> { lecturas.incrementAndGet(); return DatosRefresco.vacio(); },
+        RefrescadorPantallas<String> refrescador = refrescador(
+            () -> { lecturas.incrementAndGet(); return "datos"; },
             datos -> pinto.countDown(),
             e -> { });
 
@@ -49,7 +51,7 @@ class RefrescadorPantallasTest {
         AtomicBoolean enHiloUi = new AtomicBoolean(false);
         CountDownLatch pinto = new CountDownLatch(1);
 
-        refrescador(DatosRefresco::vacio,
+        refrescador(() -> "datos",
                     datos -> { enHiloUi.set(EventQueue.isDispatchThread()); pinto.countDown(); },
                     e -> { })
             .solicitar();
@@ -64,7 +66,7 @@ class RefrescadorPantallasTest {
         AtomicBoolean enHiloUi = new AtomicBoolean(true);
         CountDownLatch pinto = new CountDownLatch(1);
 
-        refrescador(() -> { enHiloUi.set(EventQueue.isDispatchThread()); return DatosRefresco.vacio(); },
+        refrescador(() -> { enHiloUi.set(EventQueue.isDispatchThread()); return "datos"; },
                     datos -> pinto.countDown(),
                     e -> { })
             .solicitar();
@@ -98,25 +100,24 @@ class RefrescadorPantallasTest {
         CountDownLatch primeraContinua = new CountDownLatch(1);
         AtomicInteger lecturas = new AtomicInteger();
         AtomicInteger pintados = new AtomicInteger();
-        AtomicReference<DatosRefresco> ultimoPintado = new AtomicReference<>();
+        AtomicReference<String> ultimoPintado = new AtomicReference<>();
         CountDownLatch pinto = new CountDownLatch(1);
 
-        // Dos snapshots distinguibles: la vieja trae un lote, la nueva ninguno.
-        DatosRefresco vieja = new DatosRefresco(
-            List.of(), List.of(), List.of(), Map.of(), Map.of(), List.of(mock(Lote.class)));
-        DatosRefresco nueva = DatosRefresco.vacio();
-
-        LectorDatosRefresco lector = mock(LectorDatosRefresco.class);
-        when(lector.leer()).thenAnswer(invocacion -> {
+        Supplier<String> lector = () -> {
             if (lecturas.incrementAndGet() == 1) {
                 primeraArranco.countDown();
-                primeraContinua.await(TIMEOUT_SEGUNDOS, TimeUnit.SECONDS);
-                return vieja;
+                try {
+                    primeraContinua.await(TIMEOUT_SEGUNDOS, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return "vieja";
             }
-            return nueva;
-        });
+            return "nueva";
+        };
 
-        RefrescadorPantallas refrescador = new RefrescadorPantallas(
+        RefrescadorPantallas<String> refrescador = new RefrescadorPantallas<>(
+            "test",
             lector,
             datos -> { pintados.incrementAndGet(); ultimoPintado.set(datos); pinto.countDown(); },
             e -> { },
@@ -135,22 +136,15 @@ class RefrescadorPantallasTest {
 
         assertEquals(2, lecturas.get(), "las dos lecturas llegan a ejecutarse");
         assertEquals(1, pintados.get(), "el resultado viejo se descarta, no se pinta");
-        assertTrue(ultimoPintado.get().todosLosLotes().isEmpty(), "lo pintado es la lectura nueva");
+        assertEquals("nueva", ultimoPintado.get(), "lo pintado es la lectura nueva");
     }
 
     // ── Utilidades ───────────────────────────────────────────────────────────
 
-    private static RefrescadorPantallas refrescador(LecturaDePrueba lectura,
-                                                    java.util.function.Consumer<DatosRefresco> repartir,
-                                                    java.util.function.Consumer<Throwable> alFallar) {
-        LectorDatosRefresco lector = mock(LectorDatosRefresco.class);
-        when(lector.leer()).thenAnswer(invocacion -> lectura.leer());
-        return new RefrescadorPantallas(lector, repartir, alFallar, DEBOUNCE_TEST_MS);
-    }
-
-    @FunctionalInterface
-    private interface LecturaDePrueba {
-        DatosRefresco leer() throws Exception;
+    private static RefrescadorPantallas<String> refrescador(Supplier<String> lector,
+                                                            Consumer<String> repartir,
+                                                            Consumer<Throwable> alFallar) {
+        return new RefrescadorPantallas<>("test", lector, repartir, alFallar, DEBOUNCE_TEST_MS);
     }
 
     private static void esperar(CountDownLatch latch) throws InterruptedException {

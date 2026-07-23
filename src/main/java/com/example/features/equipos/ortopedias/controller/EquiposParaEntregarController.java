@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import com.example.app.ui.DatosRefresco;
+import com.example.app.ui.DatosOperativos;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.common.model.EntregaDestinoKey;
 import com.example.common.model.EntregaDestinoKey.TipoDestino;
@@ -87,8 +87,15 @@ public class EquiposParaEntregarController {
         panel.setOnEntregarInstitucion(e -> entregarInstitucion());
     }
 
-    /** Vuelca el snapshot a la pantalla. Sin I/O: la agrupación es lógica pura. */
-    public void pintar(DatosRefresco datos) {
+    /**
+     * Vuelca el snapshot a la pantalla. Sin I/O: la agrupación es lógica pura.
+     *
+     * <p>El snapshot es la cola activa, y de eso depende la pantalla: un equipo
+     * entregado por completo no llega hasta acá. {@link AgrupadorEntregas} descuenta
+     * lo ya entregado <i>dentro</i> de un equipo que todavía tiene pendientes, pero
+     * no filtra al equipo entero — ver {@code AgrupadorEntregasTest}.
+     */
+    public void pintar(DatosOperativos datos) {
         AgrupadorEntregas.Resultado agrupado =
             agrupador.agrupar(datos.equipos(), datos.equiposOtros());
 

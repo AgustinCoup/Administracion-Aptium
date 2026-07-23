@@ -8,45 +8,46 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Foto de la base de datos que alimenta a todas las pantallas en un refresco.
+ * La cola de trabajo: lo que hace falta para operar, y nada más.
  *
- * <p>Antes cada pantalla leía lo suyo por su cuenta: 13 queries en serie por
- * guardado, con {@code equipos} y {@code equipos_otros} repetidos cuatro veces
- * cada uno, y cada pantalla viendo un instante distinto de la base. Este record
- * es el resultado de leer las seis queries una sola vez, para que todas pinten
- * el mismo estado.
+ * <p>Es el snapshot que se relee en <b>cada guardado</b>, así que su costo se paga
+ * todo el tiempo. Por eso {@code equipos} y {@code equiposOtros} traen solo los
+ * <b>no entregados</b> — el corte lo hace el {@code WHERE} de
+ * {@code obtenerActivos()}, no un filtro en Java, para que el histórico ni siquiera
+ * salga de la base. Sin eso el trabajo por guardado crece con el volumen acumulado
+ * de la empresa, que es exactamente lo que no tiene por qué crecer.
+ *
+ * <p>El histórico completo vive en {@link HistorialEquipos} e {@link HistorialLotes},
+ * que se leen solo cuando el usuario abre una pantalla de consulta.
  *
  * <p>Es inmutable de raíz para adentro: se construye en un hilo de fondo y se
  * consume en el hilo de UI. Los modelos que contiene se tratan como de solo
  * lectura — quien reciba este record puede transformar, no mutar.
  *
- * @param equipos           todos los equipos de ortopedia
- * @param equiposOtros      todos los equipos "otros"
+ * @param equipos           equipos de ortopedia con algo sin entregar
+ * @param equiposOtros      equipos "otros" con algo sin entregar
  * @param autoclaves        autoclaves configurados
  * @param volumenesCatalogo volumen unitario por código de catálogo
  * @param lotesActivos      lote en curso por nombre de autoclave
- * @param todosLosLotes     histórico completo de lotes
  */
-public record DatosRefresco(
+public record DatosOperativos(
     List<Equipo>         equipos,
     List<EquipoOtros>    equiposOtros,
     List<Autoclave>      autoclaves,
     Map<Integer,Integer> volumenesCatalogo,
-    Map<String,Lote>     lotesActivos,
-    List<Lote>           todosLosLotes
+    Map<String,Lote>     lotesActivos
 ) {
 
-    public DatosRefresco {
+    public DatosOperativos {
         equipos           = List.copyOf(equipos);
         equiposOtros      = List.copyOf(equiposOtros);
         autoclaves        = List.copyOf(autoclaves);
         volumenesCatalogo = Map.copyOf(volumenesCatalogo);
         lotesActivos      = Map.copyOf(lotesActivos);
-        todosLosLotes     = List.copyOf(todosLosLotes);
     }
 
     /** Snapshot vacío, para el primer pintado antes de que llegue la lectura real. */
-    public static DatosRefresco vacio() {
-        return new DatosRefresco(List.of(), List.of(), List.of(), Map.of(), Map.of(), List.of());
+    public static DatosOperativos vacio() {
+        return new DatosOperativos(List.of(), List.of(), List.of(), Map.of(), Map.of());
     }
 }

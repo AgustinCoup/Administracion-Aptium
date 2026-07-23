@@ -1,6 +1,6 @@
 package com.example.features.equipos.ortopedias.controller;
 
-import com.example.app.ui.DatosRefresco;
+import com.example.app.ui.DatosOperativos;
 import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoKey;
 import com.example.common.model.EquipoRegistrableInterface;
@@ -44,7 +44,7 @@ public class RegistrarEstadoController {
      * Último snapshot recibido. Permite repintar tras descartar cambios locales
      * sin volver a la base: nada cambió ahí, solo el buffer de esta pantalla.
      */
-    private DatosRefresco ultimoSnapshot = DatosRefresco.vacio();
+    private DatosOperativos ultimoSnapshot = DatosOperativos.vacio();
 
     // Buffer de cambios pendientes indexado por EquipoKey (tipo + id).
     // Necesario porque equipos y equipo_otros tienen auto-increment independientes.
@@ -103,10 +103,10 @@ public class RegistrarEstadoController {
     // ── Carga de datos ────────────────────────────────────────────────────────
 
     /**
-     * Vuelca al panel los equipos (ortopedia + otros) que todavía no están
-     * ENTREGADO. El filtro es sobre el snapshot: sin I/O, todo en el hilo de UI.
+     * Vuelca al panel los equipos (ortopedia + otros) de la cola activa. Sin I/O:
+     * el snapshot ya viene sin entregados, así que acá solo se concatena.
      */
-    public void pintar(DatosRefresco datos) {
+    public void pintar(DatosOperativos datos) {
         this.ultimoSnapshot = datos;
         repintar();
     }
@@ -114,18 +114,11 @@ public class RegistrarEstadoController {
     /** Repinta desde el último snapshot, sin volver a la base. */
     private void repintar() {
         List<EquipoRegistrableInterface> todos = new ArrayList<>();
-        agregarNoEntregados(ultimoSnapshot.equipos(), todos);
-        agregarNoEntregados(ultimoSnapshot.equiposOtros(), todos);
+        todos.addAll(ultimoSnapshot.equipos());
+        todos.addAll(ultimoSnapshot.equiposOtros());
 
         panel.actualizarEquipos(todos);
         actualizarTextoAvanzar();
-    }
-
-    private static void agregarNoEntregados(List<? extends EquipoRegistrableInterface> origen,
-                                            List<EquipoRegistrableInterface> destino) {
-        for (EquipoRegistrableInterface equipo : origen) {
-            if (equipo.calcularEstado() != EstadoEquipo.ENTREGADO) destino.add(equipo);
-        }
     }
 
     // ── Lógica de avanzar ─────────────────────────────────────────────────────

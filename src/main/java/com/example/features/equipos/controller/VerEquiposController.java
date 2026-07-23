@@ -1,6 +1,6 @@
 package com.example.features.equipos.controller;
 
-import com.example.app.ui.DatosRefresco;
+import com.example.app.ui.HistorialEquipos;
 import com.example.features.clientes.service.ClienteService;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
@@ -96,7 +96,7 @@ public class VerEquiposController {
      * Vuelca el snapshot a la grilla. Los filtros que el usuario tenga puestos
      * sobreviven: {@code aplicarFiltros()} los relee del panel en cada pintado.
      */
-    public void pintar(DatosRefresco datos) {
+    public void pintar(HistorialEquipos datos) {
         todosOrtopedia = datos.equipos();
         todosOtros     = datos.equiposOtros();
         cargado        = true;

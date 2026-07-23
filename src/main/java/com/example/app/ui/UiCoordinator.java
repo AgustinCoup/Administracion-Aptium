@@ -46,20 +46,28 @@ public class UiCoordinator {
 
     public void inicializar() {
 
-        // ── Referencia diferida: rompe el ciclo controller → refrescador → controller.
-        //    El refrescador necesita a los controllers para repartirles el snapshot,
-        //    y ellos necesitan poder pedirle un refresco. Se cablea después de crear
+        // ── Referencias diferidas: rompen el ciclo controller → refrescador → controller.
+        //    Cada refrescador necesita a sus controllers para repartirles el snapshot,
+        //    y ellos necesitan poder pedirle una lectura. Se cablean después de crear
         //    ambos; hasta entonces solicitar() es un no-op.
-        RefrescadorPantallas[] refrescadorRef = { null };
-        Runnable solicitarRefresco = () -> { if (refrescadorRef[0] != null) refrescadorRef[0].solicitar(); };
+        //
+        //    Son tres grupos con disparadores distintos, no un refresco global:
+        //      · operativo         → cada guardado; la cola activa, sin histórico.
+        //      · historial equipos → al abrir "Ver Equipos" o "Estado de procesos".
+        //      · historial lotes   → al abrir "Ver Lotes".
+        //    Las pantallas de consulta se releen cuando el usuario las mira; antes
+        //    se releían en cada guardado incluso estando ocultas.
+        Disparador operativo         = new Disparador();
+        Disparador historialEquipos  = new Disparador();
+        Disparador historialLotes    = new Disparador();
 
-        OnEstadosActualizadosListener refrescarEstados = solicitarRefresco::run;
-        OnEquipoGuardadoListener      refrescarEquipos = solicitarRefresco::run;
+        OnEstadosActualizadosListener refrescarEstados = operativo::solicitar;
+        OnEquipoGuardadoListener      refrescarEquipos = operativo::solicitar;
 
         // ── Controllers ──────────────────────────────────────────────────────
 
         CDEViewController cdeViewController = new CDEViewController(
-            vista.getPantallaVerCDEv2(), solicitarRefresco);
+            vista.getPantallaVerCDEv2(), historialEquipos);
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
             vista.getPantallaRegistrarEstado(),
@@ -67,7 +75,7 @@ public class UiCoordinator {
             context.getMaterialService(),
             context.getEstadoValidator(),
             refrescarEstados,
-            solicitarRefresco);
+            operativo);
 
         EquiposParaEntregarController equiposParaEntregarController =
             new EquiposParaEntregarController(
@@ -76,7 +84,7 @@ public class UiCoordinator {
                 context.getMaterialService(),
                 context.getEstadoValidator(),
                 refrescarEstados,
-                solicitarRefresco);
+                operativo);
 
         CorreccionsController correccionesController = new CorreccionsController(
             vista.getPantallaCorrecciones(),
@@ -88,12 +96,12 @@ public class UiCoordinator {
             vista.getPantallaLotes(),
             context.getLoteService(),
             refrescarEstados,
-            solicitarRefresco);
+            operativo);
 
         VerLotesController verLotesController = new VerLotesController(
             vista.getPantallaVerLotes(),
             context.getLoteReporteService(),
-            solicitarRefresco);
+            historialLotes);
 
         VerEquiposController verEquiposController = new VerEquiposController(
             vista.getPantallaVerEquipos(),
@@ -102,7 +110,7 @@ public class UiCoordinator {
             context.getInstitucionService(),
             context.getEquipoReporteService(),
             context.getEquipoOtrosReporteService(),
-            solicitarRefresco);
+            historialEquipos);
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
         correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());
@@ -111,17 +119,16 @@ public class UiCoordinator {
         correccionesController.setOnVerAuditoria(() ->
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.AUDITORIA));
 
-        // ── Refresco global de pantallas ─────────────────────────────────────
-        refrescadorRef[0] = crearRefrescador(
-            cdeViewController,
-            registrarEstadoController,
-            equiposParaEntregarController,
-            lotesController,
-            verLotesController,
-            verEquiposController
-        );
+        // ── Refresco por grupo ───────────────────────────────────────────────
+        operativo.cablear(crearRefrescadorOperativo(
+            registrarEstadoController, equiposParaEntregarController, lotesController));
 
-        correccionesController.setOnCambiosAplicados(solicitarRefresco);
+        historialEquipos.cablear(crearRefrescadorHistorialEquipos(
+            cdeViewController, verEquiposController));
+
+        historialLotes.cablear(crearRefrescadorHistorialLotes(verLotesController));
+
+        correccionesController.setOnCambiosAplicados(operativo);
 
         new OrthopediaInputController(
             vista.getPanelIngresoOrtopedia(),
@@ -147,39 +154,88 @@ public class UiCoordinator {
 
         AjustesController ajustesController = new AjustesController(
             vista.getPantallaAjustes(), context.getClienteService());
-        ajustesController.setOnMutacion(solicitarRefresco);
+        ajustesController.setOnMutacion(operativo);
 
         // Primer pintado: los controllers ya no leen en su constructor, así que la
-        // UI aparece vacía y se puebla cuando llega esta primera lectura.
-        solicitarRefresco.run();
+        // UI aparece vacía y se puebla cuando llega esta primera lectura. Solo el
+        // grupo operativo; las pantallas de consulta leen al abrirse, y ninguna
+        // está visible al arrancar (el CardLayout muestra el menú).
+        operativo.solicitar();
     }
 
-    private RefrescadorPantallas crearRefrescador(
-        CDEViewController               cde,
-        RegistrarEstadoController       registrar,
-        EquiposParaEntregarController   entregar,
-        LotesController                 lotes,
-        VerLotesController              verLotes,
-        VerEquiposController            verEquipos
+    /** Las tres pantallas de la cola de trabajo, coherentes dentro del mismo bloque de UI. */
+    private RefrescadorPantallas<DatosOperativos> crearRefrescadorOperativo(
+        RegistrarEstadoController     registrar,
+        EquiposParaEntregarController entregar,
+        LotesController               lotes
     ) {
-        LectorDatosRefresco lector = new LectorDatosRefresco(
+        LectorDatosOperativos lector = new LectorDatosOperativos(
             context.getEquipoService(),
             context.getEquipoOtrosService(),
             context.getAutoclaveService(),
             context.getCatalogoService(),
             context.getLoteService());
 
-        // Un solo bloque en el hilo de UI: las seis pantallas quedan coherentes.
-        Consumer<DatosRefresco> repartir = datos -> {
-            cde.pintar(datos);
-            verLotes.pintar(datos);
+        Consumer<DatosOperativos> repartir = datos -> {
             registrar.pintar(datos);
             entregar.pintar(datos);
-            verEquipos.pintar(datos);
             lotes.pintar(datos);
         };
 
-        return new RefrescadorPantallas(lector, repartir, this::mostrarErrorDeRefresco);
+        return new RefrescadorPantallas<>(
+            "refresco-operativo", lector, repartir, this::mostrarErrorDeRefresco);
+    }
+
+    /** Las dos pantallas que consultan el histórico de equipos. */
+    private RefrescadorPantallas<HistorialEquipos> crearRefrescadorHistorialEquipos(
+        CDEViewController cde,
+        VerEquiposController verEquipos
+    ) {
+        LectorHistorialEquipos lector = new LectorHistorialEquipos(
+            context.getEquipoService(),
+            context.getEquipoOtrosService());
+
+        Consumer<HistorialEquipos> repartir = datos -> {
+            cde.pintar(datos);
+            verEquipos.pintar(datos);
+        };
+
+        return new RefrescadorPantallas<>(
+            "refresco-historial-equipos", lector, repartir, this::mostrarErrorDeRefresco);
+    }
+
+    /** La pantalla que consulta el histórico de lotes. */
+    private RefrescadorPantallas<HistorialLotes> crearRefrescadorHistorialLotes(
+        VerLotesController verLotes
+    ) {
+        LectorHistorialLotes lector = new LectorHistorialLotes(
+            context.getAutoclaveService(),
+            context.getLoteService());
+
+        return new RefrescadorPantallas<>(
+            "refresco-historial-lotes", lector, verLotes::pintar, this::mostrarErrorDeRefresco);
+    }
+
+    /**
+     * Handle que los controllers reciben para pedir un refresco, cableado al
+     * refrescador real recién cuando este existe.
+     *
+     * <p>Existe solo para romper el ciclo de construcción: un controller no puede
+     * recibir por constructor un refrescador que a su vez lo necesita a él.
+     */
+    private static final class Disparador implements Runnable {
+
+        private RefrescadorPantallas<?> refrescador;
+
+        void cablear(RefrescadorPantallas<?> refrescador) {
+            this.refrescador = refrescador;
+        }
+
+        void solicitar() {
+            if (refrescador != null) refrescador.solicitar();
+        }
+
+        @Override public void run() { solicitar(); }
     }
 
     /**

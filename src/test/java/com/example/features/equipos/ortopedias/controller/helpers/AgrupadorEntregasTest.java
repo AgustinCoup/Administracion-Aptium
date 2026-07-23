@@ -96,6 +96,38 @@ class AgrupadorEntregasTest {
     }
 
     @Test
+    @DisplayName("un REMITO ya entregado y sin filas reales igual genera fila: no lo filtra el agrupador")
+    void agrupar_remitoEntregadoSinFilas_dependeDeLaConsulta() {
+        // esEntregable() es "orden >= ESTERILIZADO", así que ENTREGADO la pasa, y sin
+        // filas de material no hay nada que descontar: este agrupador, solo, no puede
+        // excluirlo. Quien lo excluye es el WHERE de obtenerActivos(), que no trae los
+        // equipos entregados — ver EquipoOtrosDAOTest.
+        //
+        // El caso no es alcanzable con datos reales (un remito que se movió ya tiene
+        // filas), pero el test fija de quién depende la pantalla: si alguien vuelve a
+        // alimentarla con el histórico completo, los entregados reaparecen acá.
+        EquipoOtros entregado = otros(3, "Clínica Norte", 12, 40, List.of());
+        when(entregado.calcularEstado()).thenReturn(EstadoEquipo.ENTREGADO);
+
+        AgrupadorEntregas.Resultado resultado = agrupador.agrupar(List.of(), List.of(entregado));
+
+        assertEquals(1, resultado.filas().size(),
+            "el filtro por estado vive en la consulta, no acá");
+    }
+
+    @Test
+    @DisplayName("un REMITO con filas ya entregadas no genera fila")
+    void agrupar_remitoConFilasEntregadas_noAparece() {
+        // Con filas reales sí hay de dónde descontar, y el agrupador se vale por sí mismo.
+        EquipoOtros equipo = otros(3, "Clínica Norte", 12, 40,
+            List.of(materialOtros("Elementos", 12, EstadoEquipo.ENTREGADO)));
+
+        AgrupadorEntregas.Resultado resultado = agrupador.agrupar(List.of(), List.of(equipo));
+
+        assertTrue(resultado.filas().isEmpty());
+    }
+
+    @Test
     @DisplayName("dos equipos del mismo cliente suman volumen y comparten destino")
     void agrupar_otrosDelMismoClienteSeSuman() {
         EquipoOtros uno = otros(3, "Clínica Norte", 1, 40, List.of());
@@ -136,6 +168,14 @@ class AgrupadorEntregasTest {
     private static Material material(int codigo, String descripcion, int cantidad, EstadoEquipo estado) {
         Material material = mock(Material.class);
         when(material.getCodigo()).thenReturn(codigo);
+        when(material.getDescripcion()).thenReturn(descripcion);
+        when(material.getCantidad()).thenReturn(cantidad);
+        when(material.getEstado()).thenReturn(estado);
+        return material;
+    }
+
+    private static MaterialOtros materialOtros(String descripcion, int cantidad, EstadoEquipo estado) {
+        MaterialOtros material = mock(MaterialOtros.class);
         when(material.getDescripcion()).thenReturn(descripcion);
         when(material.getCantidad()).thenReturn(cantidad);
         when(material.getEstado()).thenReturn(estado);

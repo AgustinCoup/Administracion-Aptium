@@ -1,6 +1,6 @@
 package com.example.features.lotes.controller;
 
-import com.example.app.ui.DatosRefresco;
+import com.example.app.ui.DatosOperativos;
 import com.example.common.constants.Constantes;
 import com.example.features.lotes.controller.helpers.AgrupadorIngresosLote;
 import com.example.features.lotes.controller.helpers.ConstructorMaterialesDisponibles;
@@ -55,7 +55,7 @@ public class LotesController {
      * forma perezosa, así que se repuebla todo desde acá y <b>solo en el hilo de
      * UI, dentro de {@link #repintar()}</b>. Nunca desde el hilo de fondo.
      */
-    private DatosRefresco ultimoSnapshot = DatosRefresco.vacio();
+    private DatosOperativos ultimoSnapshot = DatosOperativos.vacio();
 
     private final Map<String, List<MaterialLoteItem>> pendientesPorAutoclave = new HashMap<>();
     private final Map<String, Lote> lotesActivos = new HashMap<>();
@@ -161,7 +161,7 @@ public class LotesController {
     }
 
     /** Recibe el snapshot compartido y repinta. Corre en el hilo de UI, sin I/O. */
-    public void pintar(DatosRefresco datos) {
+    public void pintar(DatosOperativos datos) {
         this.ultimoSnapshot = datos;
         repintar();
     }

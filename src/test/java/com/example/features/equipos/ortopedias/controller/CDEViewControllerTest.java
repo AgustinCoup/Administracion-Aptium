@@ -5,14 +5,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.app.ui.DatosRefresco;
+import com.example.app.ui.HistorialEquipos;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.view.PantallaVerCDEv2;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,7 +19,7 @@ import org.mockito.ArgumentCaptor;
 
 /**
  * {@code pintar()} es 100% hilo de UI y sin I/O, así que se puede verificar
- * con un {@link DatosRefresco} fabricado y sin base de datos.
+ * con un {@link HistorialEquipos} fabricado y sin base de datos.
  */
 class CDEViewControllerTest {
 
@@ -55,13 +54,13 @@ class CDEViewControllerTest {
     @DisplayName("un snapshot vacío deja la tabla vacía, no la deja con datos viejos")
     void pintar_snapshotVacio() {
         controller.pintar(datosCon(List.of(equipo("A")), List.of()));
-        controller.pintar(DatosRefresco.vacio());
+        controller.pintar(HistorialEquipos.vacio());
 
         verify(panel).actualizarTabla(List.of());
     }
 
-    private static DatosRefresco datosCon(List<Equipo> equipos, List<EquipoOtros> otros) {
-        return new DatosRefresco(equipos, otros, List.of(), Map.of(), Map.of(), List.of());
+    private static HistorialEquipos datosCon(List<Equipo> equipos, List<EquipoOtros> otros) {
+        return new HistorialEquipos(equipos, otros);
     }
 
     private static Equipo equipo(String cliente) {

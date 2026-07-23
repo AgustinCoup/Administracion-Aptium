@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
  * fácil de escribir mal y de escribir a medias — sobre todo omitiendo el manejo de error.
  *
  * <pre>{@code
- * TareaUI.<DatosRefresco>nueva()
+ * TareaUI.<DatosOperativos>nueva()
  *     .nombre("refresco-pantallas")
  *     .leer(lector::leer)                        // fuera del hilo de UI
  *     .pintar(datos -> aplicar(datos))           // en el hilo de UI
