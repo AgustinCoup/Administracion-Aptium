@@ -1,22 +1,17 @@
 package com.example.features.lotes.controller;
 
+import com.example.app.ui.DatosRefresco;
 import com.example.common.constants.Constantes;
 import com.example.features.lotes.controller.helpers.AgrupadorIngresosLote;
+import com.example.features.lotes.controller.helpers.ConstructorMaterialesDisponibles;
 import com.example.features.lotes.controller.helpers.EstadoStaging;
 import com.example.features.lotes.controller.helpers.ReconciliadorPendientes;
 import com.example.ui.common.dnd.MultiRowTableTransferHandler;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.features.autoclaves.model.Autoclave;
-import com.example.features.autoclaves.service.AutoclaveService;
-import com.example.features.catalogo.service.CatalogoService;
 import com.example.features.equipos.ortopedias.model.Equipo;
-import com.example.features.equipos.ortopedias.model.EstadoEquipo;
-import com.example.features.equipos.ortopedias.model.Material;
-import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.otros.model.EquipoOtros;
-import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
-import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
@@ -37,9 +32,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 public class LotesController {
@@ -47,13 +42,20 @@ public class LotesController {
     private static final Logger log = LoggerFactory.getLogger(LotesController.class);
 
     private final PanelLotesContenido panel;
-    private final CatalogoService     catalogoService;
-    private final AutoclaveService    autoclaveService;
     private final LoteService         loteService;
-    private final EquipoService       equipoService;
-    private final EquipoOtrosService  equipoOtrosService;
-    private final Equipo equipoContexto;  // null = todos los equipos, non-null = solo este
+    private final Runnable            solicitarRefresco;
     private OnEstadosActualizadosListener onEstadosActualizadosListener;
+
+    /** Arma la tabla de disponibles descontando lo ya cargado. Lógica pura. */
+    private final ConstructorMaterialesDisponibles constructorDisponibles =
+        new ConstructorMaterialesDisponibles();
+
+    /**
+     * Último snapshot recibido. El DnD y los tooltips leen los mapas de abajo de
+     * forma perezosa, así que se repuebla todo desde acá y <b>solo en el hilo de
+     * UI, dentro de {@link #repintar()}</b>. Nunca desde el hilo de fondo.
+     */
+    private DatosRefresco ultimoSnapshot = DatosRefresco.vacio();
 
     private final Map<String, List<MaterialLoteItem>> pendientesPorAutoclave = new HashMap<>();
     private final Map<String, Lote> lotesActivos = new HashMap<>();
@@ -95,17 +97,20 @@ public class LotesController {
     }
 
     /**
-     * Constructor para PantallaLotes (pantalla completa, sin contexto de equipo).
+     * Alcance: ciclo de vida del lote (lanzar, finalizar, marcar fallo). Los
+     * equipos, autoclaves, volúmenes y lotes activos llegan por el refresco
+     * global; este controller no lee de la base.
      */
     public LotesController(PantallaLotes pantallaLotes,
-                           CatalogoService catalogoService,
-                           AutoclaveService autoclaveService,
                            LoteService loteService,
-                           EquipoService equipoService,
-                           EquipoOtrosService equipoOtrosService,
-                           OnEstadosActualizadosListener listener) {
-        this(pantallaLotes.getPanelContenido(), catalogoService, autoclaveService, loteService,
-             equipoService, equipoOtrosService, null, listener);
+                           OnEstadosActualizadosListener listener,
+                           Runnable solicitarRefresco) {
+        this.panel             = pantallaLotes.getPanelContenido();
+        this.loteService       = loteService;
+        this.solicitarRefresco = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
+        this.onEstadosActualizadosListener = listener;
+
+        inicializarEventos();
 
         // Bloquear navegación si hay materiales cargados en algún autoclave sin lanzar
         pantallaLotes.setGuardVolver(
@@ -113,37 +118,6 @@ public class LotesController {
             Constantes.Mensajes.GUARD_LOTES_CAMBIOS,
             this::descartarCambiosPendientes
         );
-    }
-
-    /**
-     * Constructor para PanelLotesContenido embebido con contexto de equipo.
-     *
-     * <p>Alcance: volúmenes del catálogo, autoclaves, ciclo de vida del lote y
-     * lectura de los equipos cuyos materiales se cargan al autoclave.
-     *
-     * @param panel          Panel reusable para gestión de lotes
-     * @param equipoContexto Equipo específico (null = todos los equipos del sistema)
-     * @param listener       Listener para notificaciones
-     */
-    public LotesController(PanelLotesContenido panel,
-                           CatalogoService catalogoService,
-                           AutoclaveService autoclaveService,
-                           LoteService loteService,
-                           EquipoService equipoService,
-                           EquipoOtrosService equipoOtrosService,
-                           Equipo equipoContexto,
-                           OnEstadosActualizadosListener listener) {
-        this.panel              = panel;
-        this.catalogoService    = catalogoService;
-        this.autoclaveService   = autoclaveService;
-        this.loteService        = loteService;
-        this.equipoService      = equipoService;
-        this.equipoOtrosService = equipoOtrosService;
-        this.equipoContexto     = equipoContexto;
-        this.onEstadosActualizadosListener = listener;
-
-        inicializarEventos();
-        cargarDatos();
     }
 
     public void setOnEstadosActualizados(OnEstadosActualizadosListener listener) {
@@ -162,7 +136,7 @@ public class LotesController {
         panel.setOnVolumenManualChanged(this::actualizarBotonLanzarPorVolumen);
 
         // Tooltips con la info del ingreso. Los closures resuelven los mapas de forma
-        // perezosa en cada hover, así sobreviven a los cargarDatos() que los repueblan.
+        // perezosa en cada hover, así sobreviven a los repintados que los repueblan.
         panel.setTooltipDisponibles(item -> IngresoTooltipFormatter.format(item, resolverIngreso(item)));
         panel.setTooltipAutoclave(item  -> IngresoTooltipFormatter.format(item, resolverIngreso(item)));
 
@@ -186,41 +160,42 @@ public class LotesController {
         });
     }
 
-    public void cargarDatos() {
-        String autoclaveSeleccion = autoclaveSeleccionado != null ? autoclaveSeleccionado.getNombre() : null;
-        volumenesCatalogo = catalogoService.obtenerVolumenes();
-        List<Autoclave> autoclaves = autoclaveService.obtenerTodos();
-        lotesActivos.clear();
-        lotesActivos.putAll(loteService.obtenerLotesActivosPorAutoclave());
+    /** Recibe el snapshot compartido y repinta. Corre en el hilo de UI, sin I/O. */
+    public void pintar(DatosRefresco datos) {
+        this.ultimoSnapshot = datos;
+        repintar();
+    }
 
-        // Construir mapa equipoId → clienteNombre a partir de todos los equipos cargados.
-        // NOTA: se asume que Equipo expone getClienteNombre(). Si el método tiene otro
-        //       nombre en tu modelo (ej. getCliente()), cambiá solo esa línea.
+    /**
+     * Vuelca el último snapshot al panel, descontando lo que el usuario ya
+     * arrastró a los autoclaves. Es el <b>único</b> lugar donde se escriben los
+     * mapas que leen el DnD y los tooltips, y siempre desde el hilo de UI.
+     */
+    private void repintar() {
+        String autoclaveSeleccion = autoclaveSeleccionado != null ? autoclaveSeleccionado.getNombre() : null;
+        volumenesCatalogo = ultimoSnapshot.volumenesCatalogo();
+        lotesActivos.clear();
+        lotesActivos.putAll(ultimoSnapshot.lotesActivos());
+
         clientesPorEquipo.clear();
         equiposOtrosPorId.clear();
         ingresoOrtopediaPorEquipo.clear();
-        List<Equipo> equipos = List.of();
-        List<EquipoOtros> equiposOtros = List.of();
-        if (equipoContexto != null) {
-            clientesPorEquipo.put(equipoContexto.getId(), equipoContexto.getClienteNombre());
-            ingresoOrtopediaPorEquipo.put(equipoContexto.getId(), ingresoDe(equipoContexto));
-        } else {
-            equipos = equipoService.obtenerTodos();
-            equiposOtros = equipoOtrosService.obtenerTodos();
-            for (Equipo eq : equipos) {
-                clientesPorEquipo.put(eq.getId(), eq.getClienteNombre());
-                ingresoOrtopediaPorEquipo.put(eq.getId(), ingresoDe(eq));
-            }
-            for (EquipoOtros eq : equiposOtros) {
-                equiposOtrosPorId.put(eq.getId(), eq);
-            }
+        for (Equipo equipo : ultimoSnapshot.equipos()) {
+            clientesPorEquipo.put(equipo.getId(), equipo.getClienteNombre());
+            ingresoOrtopediaPorEquipo.put(equipo.getId(), ingresoDe(equipo));
+        }
+        for (EquipoOtros equipo : ultimoSnapshot.equiposOtros()) {
+            equiposOtrosPorId.put(equipo.getId(), equipo);
         }
 
-        materialesDisponibles = construirMaterialesDisponibles(equipos, equiposOtros);
-        aplicarPendientesEnDisponibles();
+        materialesDisponibles = constructorDisponibles.construir(
+            ultimoSnapshot.equipos(),
+            ultimoSnapshot.equiposOtros(),
+            volumenesCatalogo,
+            pendientesPorAutoclave);
 
         List<AutoclaveItem> items = new ArrayList<>();
-        for (Autoclave autoclave : autoclaves) {
+        for (Autoclave autoclave : ultimoSnapshot.autoclaves()) {
             Lote loteActivo = lotesActivos.get(autoclave.getNombre());
             boolean ocupado = loteActivo != null;
             int capacidadUsada = ocupado
@@ -246,98 +221,6 @@ public class LotesController {
         panel.setAutoclaves(items);
         if (autoclaveSeleccion != null) panel.seleccionarAutoclave(autoclaveSeleccion);
         panel.setMaterialesDisponibles(materialesDisponibles);
-    }
-
-    private List<MaterialLoteItem> construirMaterialesDisponibles(
-            List<Equipo> equipos, List<EquipoOtros> equiposOtros) {
-        List<MaterialLoteItem> disponibles = new ArrayList<>();
-
-        if (equipoContexto != null) {
-            if (equipoContexto.getMateriales() == null) return disponibles;
-            String clienteNombre = clientesPorEquipo.getOrDefault(equipoContexto.getId(), "");
-            for (Material material : equipoContexto.getMateriales()) {
-                EstadoEquipo siguiente = equipoContexto.getSiguienteEstado(material.getEstado());
-                if (siguiente != EstadoEquipo.ESTERILIZANDO) continue;
-                Integer volumen = volumenesCatalogo.get(material.getCodigo());
-                int volumenUnitario = volumen != null ? volumen : 1;
-                disponibles.add(new MaterialLoteItem(
-                        material.getId(),
-                        equipoContexto.getId(),
-                        material.getDescripcion(),
-                        material.getCantidad(),
-                        volumenUnitario,
-                        clienteNombre
-                ));
-            }
-            return disponibles;
-        }
-
-        for (Equipo equipo : equipos) {
-            if (equipo.getMateriales() == null) continue;
-            String clienteNombre = clientesPorEquipo.getOrDefault(equipo.getId(), "");
-            for (Material material : equipo.getMateriales()) {
-                EstadoEquipo siguiente = equipo.getSiguienteEstado(material.getEstado());
-                if (siguiente != EstadoEquipo.ESTERILIZANDO) continue;
-                Integer volumen = volumenesCatalogo.get(material.getCodigo());
-                int volumenUnitario = volumen != null ? volumen : 1;
-                disponibles.add(new MaterialLoteItem(
-                        material.getId(),
-                        equipo.getId(),
-                        material.getDescripcion(),
-                        material.getCantidad(),
-                        volumenUnitario,
-                        clienteNombre
-                ));
-            }
-        }
-
-        // EquipoOtros: REMITO y DETALLES
-        for (EquipoOtros equipo : equiposOtros) {
-            String clienteNombre = equipo.getClienteNombre() != null ? equipo.getClienteNombre() : "";
-            List<MaterialOtros> mats = equipo.getMateriales();
-            boolean remitoSinFilas = equipo.getTipoIngreso() == TipoIngresoOtros.REMITO
-                                     && (mats == null || mats.isEmpty());
-            if (remitoSinFilas) {
-                EstadoEquipo siguiente = equipo.getSiguienteEstado(equipo.getEstado());
-                if (siguiente != EstadoEquipo.ESTERILIZANDO) continue;
-                int cantidad = equipo.getRemitoCantidad() != null ? equipo.getRemitoCantidad() : 1;
-                // materialId negativo = -equipoId, señal única de REMITO para el DAO
-                disponibles.add(new MaterialLoteItem(
-                        -equipo.getId(), equipo.getId(), "Elementos", cantidad, 1, clienteNombre, true));
-            } else {
-                if (mats == null) continue;
-                for (MaterialOtros material : mats) {
-                    EstadoEquipo siguiente = equipo.getSiguienteEstado(material.getEstado());
-                    if (siguiente != EstadoEquipo.ESTERILIZANDO) continue;
-                    if (material.getId() == null) continue;
-                    disponibles.add(new MaterialLoteItem(
-                            material.getId(), equipo.getId(), material.getDescripcion(),
-                            material.getCantidad(), 1, clienteNombre, true));
-                }
-            }
-        }
-
-        return disponibles;
-    }
-
-    private void aplicarPendientesEnDisponibles() {
-        Map<String, MaterialLoteItem> disponiblesPorId = new LinkedHashMap<>();
-        for (MaterialLoteItem item : materialesDisponibles) {
-            disponiblesPorId.put(ReconciliadorPendientes.claveItem(item), item);
-        }
-
-        for (List<MaterialLoteItem> pendientes : pendientesPorAutoclave.values()) {
-            for (MaterialLoteItem pendiente : pendientes) {
-                String clave = ReconciliadorPendientes.claveItem(pendiente);
-                MaterialLoteItem disponible = disponiblesPorId.get(clave);
-                if (disponible == null) continue;
-                int restante = disponible.getCantidad() - pendiente.getCantidad();
-                if (restante <= 0) disponiblesPorId.remove(clave);
-                else disponible.setCantidad(restante);
-            }
-        }
-
-        materialesDisponibles = new ArrayList<>(disponiblesPorId.values());
     }
 
     private void onAutoclaveSeleccionado(AutoclaveItem autoclave) {
@@ -469,7 +352,7 @@ public class LotesController {
                 .onImport(items -> SwingUtilities.invokeLater(() -> agregarMateriales(items)))
                 .onExportDone(action -> {
                     arrastrandoDesdeAutoclave = false; // reset incondicional (aunque se aborte)
-                    if (action == TransferHandler.MOVE) SwingUtilities.invokeLater(this::cargarDatos);
+                    if (action == TransferHandler.MOVE) SwingUtilities.invokeLater(this::repintar);
                 })
                 .build();
     }
@@ -507,7 +390,7 @@ public class LotesController {
                         "Puede ajustar el volumen final en el campo \"Volumen final\" antes de lanzar.");
             }
         }
-        cargarDatos();
+        repintar();
     }
 
     /** Diálogo de cantidad (Swing) con checkbox "Todos"; null = cancelado. */
@@ -542,7 +425,7 @@ public class LotesController {
         if (autoclaveSeleccionado == null || seleccionados == null || seleccionados.isEmpty()) return;
         String nombre = autoclaveSeleccionado.getNombre();
         aplicarEstado(nombre, reconciliador.baja(estadoStaging(nombre), seleccionados));
-        cargarDatos();
+        repintar();
     }
 
     private EstadoStaging estadoStaging(String autoclaveNombre) {
@@ -603,7 +486,7 @@ public class LotesController {
         }
 
         pendientesPorAutoclave.remove(autoclaveSeleccionado.getNombre());
-        cargarDatos();
+        solicitarRefresco.run();
 
         if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
     }
@@ -703,7 +586,7 @@ public class LotesController {
             return;
         }
 
-        cargarDatos();
+        solicitarRefresco.run();
         if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
     }
 
@@ -720,7 +603,7 @@ public class LotesController {
         }
 
         panel.mostrarInfo(Constantes.Mensajes.LOTE_FALLO_OK);
-        cargarDatos();
+        solicitarRefresco.run();
         if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
     }
 
@@ -742,6 +625,6 @@ public class LotesController {
         }
 
         pendientesPorAutoclave.clear();
-        cargarDatos();
+        repintar();
     }
 }
