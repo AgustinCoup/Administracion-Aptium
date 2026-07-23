@@ -1,12 +1,15 @@
 package com.example.features.equipos.controller;
 
-import com.example.app.AppModel;
+import com.example.features.clientes.service.ClienteService;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.service.EquipoReporteService;
+import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
+import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.equipos.view.PantallaVerEquipos;
 import com.example.features.equipos.view.helpers.DetalleOrtopediaDialog;
 import com.example.features.equipos.view.helpers.DetalleOtrosDialog;
@@ -33,7 +36,10 @@ public class VerEquiposController {
     private static final Logger log = LoggerFactory.getLogger(VerEquiposController.class);
 
     private final PantallaVerEquipos       panel;
-    private final AppModel                 model;
+    private final EquipoService            equipoService;
+    private final EquipoOtrosService       equipoOtrosService;
+    private final ClienteService           clienteService;
+    private final InstitucionService       institucionService;
     private final EquipoReporteService     equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
 
@@ -41,11 +47,22 @@ public class VerEquiposController {
     private List<EquipoOtros> todosOtros     = List.of();
     private boolean           cargado        = false;
 
-    public VerEquiposController(PantallaVerEquipos panel, AppModel model,
+    /**
+     * Alcance: lectura de equipos para la grilla y el detalle, autocompletado de
+     * cliente/institución en los diálogos de impresión, y los dos reportes.
+     */
+    public VerEquiposController(PantallaVerEquipos panel,
+                                EquipoService equipoService,
+                                EquipoOtrosService equipoOtrosService,
+                                ClienteService clienteService,
+                                InstitucionService institucionService,
                                 EquipoReporteService equipoReporteService,
                                 EquipoOtrosReporteService equipoOtrosReporteService) {
         this.panel                   = panel;
-        this.model                   = model;
+        this.equipoService           = equipoService;
+        this.equipoOtrosService      = equipoOtrosService;
+        this.clienteService          = clienteService;
+        this.institucionService      = institucionService;
         this.equipoReporteService    = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
 
@@ -80,8 +97,8 @@ public class VerEquiposController {
     public void cargarDatos() {
         new Thread(() -> {
             try {
-                List<Equipo>      ortopedia = model.obtenerTodosLosEquipos();
-                List<EquipoOtros> otros     = model.obtenerTodosLosEquiposOtros();
+                List<Equipo>      ortopedia = equipoService.obtenerTodos();
+                List<EquipoOtros> otros     = equipoOtrosService.obtenerTodos();
                 SwingUtilities.invokeLater(() -> {
                     todosOrtopedia = ortopedia;
                     todosOtros     = otros;
@@ -173,7 +190,7 @@ public class VerEquiposController {
         int modelRow = panel.getTablaOtros().convertRowIndexToModel(viewRow);
         EquipoOtros equipo = panel.getEquipoOtrosAt(modelRow);
         if (equipo == null) return;
-        EquipoOtros equipoConMateriales = model.obtenerEquipoOtrosPorId(equipo.getId());
+        EquipoOtros equipoConMateriales = equipoOtrosService.obtenerPorId(equipo.getId());
         if (equipoConMateriales == null) return;
         Window ventana = SwingUtilities.getWindowAncestor(panel);
         new DetalleOtrosDialog(ventana, equipoConMateriales).setVisible(true);
@@ -184,8 +201,8 @@ public class VerEquiposController {
     private void abrirDialogoOrtopedias() {
         Frame ventana = (Frame) SwingUtilities.getWindowAncestor(panel);
         new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Ortopedias",
-            model::buscarClientes,
-            model::buscarInstituciones,
+            clienteService::buscarClientes,
+            institucionService::buscarInstituciones,
             (desde, hasta, clienteId, institucionId) ->
                 new SwingWorker<Void, Void>() {
                     @Override protected Void doInBackground() {
@@ -207,7 +224,7 @@ public class VerEquiposController {
     private void abrirDialogoOtros() {
         Frame ventana = (Frame) SwingUtilities.getWindowAncestor(panel);
         new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Otros",
-            model::buscarClientes,
+            clienteService::buscarClientes,
             (desde, hasta, clienteId, institucionId) ->
                 new SwingWorker<Void, Void>() {
                     @Override protected Void doInBackground() {

@@ -5,13 +5,14 @@ import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.example.app.AppModel;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.util.AbstractFilterController;
 import com.example.common.util.FilterStrategy;
 import com.example.features.equipos.ortopedias.controller.helpers.CdeFilterCriteria;
 import com.example.features.equipos.ortopedias.controller.helpers.CdeFilterStrategy;
+import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.ortopedias.view.PantallaVerCDEv2;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
 
 /**
  * Controlador para {@link PantallaVerCDEv2}.
@@ -22,14 +23,19 @@ import com.example.features.equipos.ortopedias.view.PantallaVerCDEv2;
  */
 public class CDEViewController extends AbstractFilterController<EquipoRegistrableInterface> {
 
-    private final PantallaVerCDEv2 panel;
-    private final AppModel         model;
+    private final PantallaVerCDEv2     panel;
+    private final EquipoService        equipoService;
+    private final EquipoOtrosService   equipoOtrosService;
     private final FilterStrategy<EquipoRegistrableInterface, CdeFilterCriteria> filterStrategy;
 
-    public CDEViewController(PantallaVerCDEv2 panel, AppModel model) {
-        this.panel          = panel;
-        this.model          = model;
-        this.filterStrategy = new CdeFilterStrategy();
+    /** Alcance: lectura de equipos de ortopedia y "otros" para la tabla unificada. */
+    public CDEViewController(PantallaVerCDEv2 panel,
+                             EquipoService equipoService,
+                             EquipoOtrosService equipoOtrosService) {
+        this.panel              = panel;
+        this.equipoService      = equipoService;
+        this.equipoOtrosService = equipoOtrosService;
+        this.filterStrategy     = new CdeFilterStrategy();
 
         this.panel.setOnFiltrosChanged(this::aplicarFiltros);
         cargarDatos();
@@ -41,8 +47,8 @@ public class CDEViewController extends AbstractFilterController<EquipoRegistrabl
     /** Carga todos los equipos activos (ortopedia + otros) y recarga el cache. */
     public void cargarDatos() {
         List<EquipoRegistrableInterface> todos = new ArrayList<>();
-        todos.addAll(model.obtenerTodosLosEquipos());
-        todos.addAll(model.obtenerTodosLosEquiposOtros());
+        todos.addAll(equipoService.obtenerTodos());
+        todos.addAll(equipoOtrosService.obtenerTodos());
         recargarCache(todos);
     }
 

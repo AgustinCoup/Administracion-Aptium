@@ -1,8 +1,8 @@
 package com.example.features.equipos.common.controller;
 
-import com.example.app.AppModel;
 import com.example.common.constants.Constantes;
 import com.example.features.clientes.model.Cliente;
+import com.example.features.clientes.service.ClienteService;
 import com.example.features.equipos.common.view.PantallaIngresoBase;
 import com.example.features.equipos.ortopedias.controller.helpers.GestorNuevasEntidades;
 import com.example.ui.common.AutocompleteListener;
@@ -20,18 +20,20 @@ public abstract class EquipoInputControllerBase<P extends JPanel & PantallaIngre
     protected static final Logger log = LoggerFactory.getLogger(EquipoInputControllerBase.class);
 
     protected final P                        panel;
-    protected final AppModel                 model;
     protected final CardLayout               navegador;
     protected final JPanel                   contenedor;
     protected final OnEquipoGuardadoListener onEquipoGuardadoListener;
 
+    /** Privado a propósito: el autocompletado de cliente es lo único común a ambos ingresos. */
+    private final ClienteService            clienteService;
+
     private AutocompleteListener<Cliente>   autocompleteClienteListener;
     private GestorNuevasEntidades<Cliente>  gestorNuevosClientes;
 
-    protected EquipoInputControllerBase(P panel, AppModel model, CardLayout navegador,
+    protected EquipoInputControllerBase(P panel, ClienteService clienteService, CardLayout navegador,
                                         JPanel contenedor, OnEquipoGuardadoListener listener) {
         this.panel                    = panel;
-        this.model                    = model;
+        this.clienteService           = clienteService;
         this.navegador                = navegador;
         this.contenedor               = contenedor;
         this.onEquipoGuardadoListener = listener;
@@ -57,7 +59,7 @@ public abstract class EquipoInputControllerBase<P extends JPanel & PantallaIngre
     protected final void inicializarClienteAutocomplete() {
         autocompleteClienteListener = new AutocompleteListener<>(
             panel.getTxtCliente(),
-            texto -> model.buscarClientes(texto),
+            clienteService::buscarClientes,
             cliente -> panel.setSelectedClienteId(cliente.getId()),
             nombre  -> gestorNuevosClientes.manejarEntidadNoExistente(nombre)
         );
@@ -68,7 +70,7 @@ public abstract class EquipoInputControllerBase<P extends JPanel & PantallaIngre
             nombre -> panel.getTxtCliente().setText(nombre),
             id     -> panel.setSelectedClienteId(id),
             autocompleteClienteListener,
-            cliente -> model.guardarCliente(cliente),
+            clienteService::guardarCliente,
             Cliente::new
         );
     }

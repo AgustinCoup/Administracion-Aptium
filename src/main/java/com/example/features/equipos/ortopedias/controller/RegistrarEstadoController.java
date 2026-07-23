@@ -6,8 +6,11 @@ import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
+import com.example.features.equipos.ortopedias.service.EquipoService;
+import com.example.features.equipos.ortopedias.service.IEstadoValidator;
+import com.example.features.equipos.ortopedias.service.MaterialService;
 import com.example.features.equipos.ortopedias.view.PantallaRegistrarEstado;
-import com.example.app.AppModel;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.ui.events.OnEstadosActualizadosListener;
 
 import java.awt.event.ComponentAdapter;
@@ -30,7 +33,10 @@ import java.util.stream.Collectors;
 public class RegistrarEstadoController {
 
     private final PantallaRegistrarEstado     panel;
-    private final AppModel                    model;
+    private final EquipoService               equipoService;
+    private final EquipoOtrosService          equipoOtrosService;
+    private final MaterialService             materialService;
+    private final IEstadoValidator            estadoValidator;
     private OnEstadosActualizadosListener     onEstadosActualizadosListener;
 
     // Buffer de cambios pendientes indexado por EquipoKey (tipo + id).
@@ -38,10 +44,21 @@ public class RegistrarEstadoController {
     private final Map<EquipoKey, Map<Integer, MovimientoMaterial>> cambiosPendientes = new HashMap<>();
     private final Map<EquipoKey, EquipoRegistrableInterface>       equiposPendientes = new HashMap<>();
 
-    public RegistrarEstadoController(PantallaRegistrarEstado panel, AppModel model,
+    /**
+     * Alcance: lectura de equipos (ortopedia + otros), avance de estado de sus
+     * materiales y la regla de qué transición es manual.
+     */
+    public RegistrarEstadoController(PantallaRegistrarEstado panel,
+                                     EquipoService equipoService,
+                                     EquipoOtrosService equipoOtrosService,
+                                     MaterialService materialService,
+                                     IEstadoValidator estadoValidator,
                                      OnEstadosActualizadosListener onEstadosActualizadosListener) {
-        this.panel = panel;
-        this.model = model;
+        this.panel              = panel;
+        this.equipoService      = equipoService;
+        this.equipoOtrosService = equipoOtrosService;
+        this.materialService    = materialService;
+        this.estadoValidator    = estadoValidator;
         this.onEstadosActualizadosListener = onEstadosActualizadosListener;
 
         inicializarEventos();
@@ -84,13 +101,13 @@ public class RegistrarEstadoController {
      */
     public void cargarEquipos() {
         // Equipos de ortopedia
-        List<EquipoRegistrableInterface> ortopedia = model.obtenerTodosLosEquipos()
+        List<EquipoRegistrableInterface> ortopedia = equipoService.obtenerTodos()
             .stream()
             .filter(eq -> eq.calcularEstado() != EstadoEquipo.ENTREGADO)
             .collect(Collectors.toList());
 
         // Equipos "otros"
-        List<EquipoRegistrableInterface> otros = model.obtenerTodosLosEquiposOtros()
+        List<EquipoRegistrableInterface> otros = equipoOtrosService.obtenerTodos()
             .stream()
             .filter(eq -> eq.calcularEstado() != EstadoEquipo.ENTREGADO)
             .collect(Collectors.toList());
@@ -123,7 +140,7 @@ public class RegistrarEstadoController {
         MaterialRegistrableInterface material = equipo.getMaterialesRegistrables().get(materialIndex);
         EstadoEquipo siguienteEstado  = equipo.getSiguienteEstado(material.getEstado());
 
-        if (!model.esAvanzableManualmente(material.getEstado(), siguienteEstado)) {
+        if (!estadoValidator.esAvanzableManualmente(material.getEstado(), siguienteEstado)) {
             panel.setAvanzarEnabled(false);
             panel.setAvanzarVisible(false);
             return;
@@ -257,9 +274,9 @@ public class RegistrarEstadoController {
 
             boolean exitoso;
             if (key.getTipo() == EquipoRegistrableInterface.TipoEquipo.OTROS) {
-                exitoso = model.aplicarMovimientosOtros(key.getId(), movs);
+                exitoso = equipoOtrosService.aplicarMovimientos(key.getId(), movs);
             } else {
-                exitoso = model.aplicarMovimientos(key.getId(), movs);
+                exitoso = materialService.aplicarMovimientos(key.getId(), movs);
             }
 
             if (!exitoso) {

@@ -319,8 +319,25 @@ public class ConnectionPool {
     }
     
     /**
+     * Verifica que el pool pueda entregar una conexión utilizable.
+     *
+     * <p>Se usa como chequeo de arranque antes de levantar la UI: si devuelve
+     * false, la aplicación muestra el diálogo de error de conexión y termina.
+     *
+     * @return true si se pudo abrir y devolver una conexión
+     */
+    public static boolean validarConexion() {
+        try (Connection conn = getConnection()) {
+            return conn != null;
+        } catch (SQLException e) {
+            log.error("Error al validar conexión", e);
+            return false;
+        }
+    }
+
+    /**
      * Cierra el pool de conexiones.
-     * 
+     *
      * Debe llamarse al cerrar la aplicación para liberar recursos.
      * Cierra todas las conexiones activas de forma ordenada.
      */

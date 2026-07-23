@@ -1,12 +1,14 @@
 package com.example.features.equipos.otros.controller;
 
-import com.example.app.AppModel;
 import com.example.common.constants.Constantes;
 import com.example.common.exception.ValidationException;
+import com.example.features.catalogo.service.CatalogoOtrosService;
+import com.example.features.clientes.service.ClienteService;
 import com.example.features.equipos.common.controller.EquipoInputControllerBase;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.equipos.otros.view.PantallaIngresoOtros;
 import com.example.features.equipos.otros.view.helpers.PanelMaterialesOtros;
 import com.example.ui.events.OnEquipoGuardadoListener;
@@ -17,18 +19,27 @@ import javax.swing.JPanel;
 
 public class OtrosInputController extends EquipoInputControllerBase<PantallaIngresoOtros> {
 
-    public OtrosInputController(PantallaIngresoOtros panel, AppModel model,
+    private final CatalogoOtrosService catalogoOtrosService;
+    private final EquipoOtrosService   equipoOtrosService;
+
+    /** Alcance: alta de un ingreso "otros" y autocompletado contra su catálogo. */
+    public OtrosInputController(PantallaIngresoOtros panel,
+                                ClienteService clienteService,
+                                CatalogoOtrosService catalogoOtrosService,
+                                EquipoOtrosService equipoOtrosService,
                                 CardLayout navegador, JPanel contenedor,
                                 OnEquipoGuardadoListener onEquipoGuardadoListener) {
-        super(panel, model, navegador, contenedor, onEquipoGuardadoListener);
+        super(panel, clienteService, navegador, contenedor, onEquipoGuardadoListener);
+        this.catalogoOtrosService = catalogoOtrosService;
+        this.equipoOtrosService   = equipoOtrosService;
         inicializarEventosComunes();
         inicializarEventosEspecificos();
     }
 
     private void inicializarEventosEspecificos() {
         panel.getPanelMateriales().configurarAutocompletado(
-            texto -> model.buscarMaterialesOtrosPorDescripcion(texto),
-            desc  -> model.existeMaterialOtros(desc));
+            catalogoOtrosService::buscarPorDescripcionParcial,
+            catalogoOtrosService::existeDescripcion);
     }
 
     @Override
@@ -95,7 +106,7 @@ public class OtrosInputController extends EquipoInputControllerBase<PantallaIngr
     private void persistir(EquipoOtros equipo) {
         boolean exito;
         try {
-            exito = model.guardarEquipoOtros(equipo);
+            exito = equipoOtrosService.guardarEquipo(equipo);
         } catch (ValidationException ex) {
             String msg = ex.getValidationErrors().isEmpty()
                 ? "Error de validación."

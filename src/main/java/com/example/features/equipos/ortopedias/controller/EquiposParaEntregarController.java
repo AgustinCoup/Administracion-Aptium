@@ -11,14 +11,17 @@ import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.common.constants.Constantes;
 import com.example.common.model.EntregaDestinoKey;
 import com.example.common.model.EntregaDestinoKey.TipoDestino;
-import com.example.app.AppModel;
 import com.example.features.equipos.ortopedias.controller.helpers.InstitucionAcumulador;
 import com.example.features.equipos.ortopedias.controller.helpers.MaterialAgrupado;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.Material;
+import com.example.features.equipos.ortopedias.service.EquipoService;
+import com.example.features.equipos.ortopedias.service.IEstadoValidator;
+import com.example.features.equipos.ortopedias.service.MaterialService;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.MaterialOtros;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.equipos.ortopedias.view.PantallaEquiposParaEntregar;
 import com.example.features.equipos.ortopedias.view.helpers.InstitucionEntregaItem;
 import com.example.features.equipos.ortopedias.view.helpers.MaterialEntregaItem;
@@ -32,15 +35,29 @@ public class EquiposParaEntregarController {
     private static final Logger log = LoggerFactory.getLogger(EquiposParaEntregarController.class);
     
     private final PantallaEquiposParaEntregar panel;
-    private final AppModel model;
+    private final EquipoService       equipoService;
+    private final EquipoOtrosService  equipoOtrosService;
+    private final MaterialService     materialService;
+    private final IEstadoValidator    estadoValidator;
     private final Map<EntregaDestinoKey, List<MaterialEntregaItem>> materialesPorDestino  = new HashMap<>();
     private final Map<EntregaDestinoKey, Integer>                   volumenPorDestino     = new HashMap<>();
     private OnEstadosActualizadosListener onEstadosActualizadosListener;
 
-    public EquiposParaEntregarController(PantallaEquiposParaEntregar panel, AppModel model,
+    /**
+     * Alcance: lectura de equipos pendientes de entrega (ortopedia + otros),
+     * la regla de "qué estado ya es entregable" y las dos entregas masivas.
+     */
+    public EquiposParaEntregarController(PantallaEquiposParaEntregar panel,
+                                         EquipoService equipoService,
+                                         EquipoOtrosService equipoOtrosService,
+                                         MaterialService materialService,
+                                         IEstadoValidator estadoValidator,
                                          OnEstadosActualizadosListener onEstadosActualizadosListener) {
-        this.panel = panel;
-        this.model = model;
+        this.panel              = panel;
+        this.equipoService      = equipoService;
+        this.equipoOtrosService = equipoOtrosService;
+        this.materialService    = materialService;
+        this.estadoValidator    = estadoValidator;
         this.onEstadosActualizadosListener = onEstadosActualizadosListener;
         inicializarEventos();
         cargarDatos();
@@ -84,7 +101,7 @@ public class EquiposParaEntregarController {
         Map<EntregaDestinoKey, InstitucionAcumulador> destinos = new LinkedHashMap<>();
 
         // ── Ortopedia: agrupa por institución ──────────────────────────────────
-        for (Equipo equipo : model.obtenerTodosLosEquipos()) {
+        for (Equipo equipo : equipoService.obtenerTodos()) {
             if (!equipoEsEntregable(equipo)) continue;
 
             List<MaterialEntregaItem> materiales = construirMateriales(equipo);
@@ -102,8 +119,8 @@ public class EquiposParaEntregarController {
         }
 
         // ── EquipoOtros: agrupa por cliente ────────────────────────────────────
-        for (EquipoOtros equipo : model.obtenerTodosLosEquiposOtros()) {
-            if (!model.esEntregable(equipo.calcularEstado())) continue;
+        for (EquipoOtros equipo : equipoOtrosService.obtenerTodos()) {
+            if (!estadoValidator.esEntregable(equipo.calcularEstado())) continue;
 
             List<MaterialEntregaItem> materiales = construirMaterialesOtros(equipo);
             if (materiales.isEmpty()) continue;
@@ -140,7 +157,7 @@ public class EquiposParaEntregarController {
         // DETALLES o REMITO con filas reales: agrupar por descripción
         Map<String, int[]> agrupados = new LinkedHashMap<>();
         for (MaterialOtros m : mats) {
-            if (!model.esEntregable(m.getEstado())) continue;
+            if (!estadoValidator.esEntregable(m.getEstado())) continue;
             int[] contadores = agrupados.computeIfAbsent(m.getDescripcion(), k -> new int[2]);
             contadores[0] += m.getCantidad();
             if (m.getEstado() == EstadoEquipo.ENTREGADO) contadores[1] += m.getCantidad();
@@ -153,11 +170,11 @@ public class EquiposParaEntregarController {
     }
 
     private boolean equipoEsEntregable(Equipo equipo) {
-        return equipo != null && model.esEntregable(equipo.calcularEstado());
+        return equipo != null && estadoValidator.esEntregable(equipo.calcularEstado());
     }
 
     private boolean materialEsEntregable(Material material) {
-        return material != null && model.esEntregable(material.getEstado());
+        return material != null && estadoValidator.esEntregable(material.getEstado());
     }
 
     private List<MaterialEntregaItem> construirMateriales(Equipo equipo) {
@@ -236,8 +253,8 @@ public class EquiposParaEntregarController {
             InstitucionEntregaItem institucion = entry.getKey();
             EntregaDestinoKey key = institucion.getKey();
             boolean exitoso = key.getTipo() == TipoDestino.CLIENTE
-                ? model.entregarClienteOtrosCompleto(key.getId())
-                : model.entregarInstitucionCompleta(key.getId());
+                ? equipoOtrosService.entregarClienteCompleto(key.getId())
+                : materialService.entregarInstitucionCompleta(key.getId());
             if (exitoso) exitosas.add(institucion.getNombre());
             else errores.add(institucion.getNombre());
         }

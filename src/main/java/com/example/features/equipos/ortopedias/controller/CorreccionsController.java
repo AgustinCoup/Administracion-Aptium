@@ -1,10 +1,10 @@
 package com.example.features.equipos.ortopedias.controller;
 
-import com.example.app.AppModel;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ValidationException;
 import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoRegistrableInterface;
+import com.example.features.catalogo.service.CatalogoOtrosService;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.features.equipos.ortopedias.view.PantallaAuditoria;
@@ -28,10 +28,17 @@ public class CorreccionsController {
     private final EquipoOtrosCorreccionService otrosService;
     private Runnable                           onCambiosAplicados;
 
-    public CorreccionsController(PantallaCorrecciones panel, AppModel model) {
-        this.panel            = panel;
-        this.correccionService = model.getEquipoCorreccionService();
-        this.otrosService      = model.getEquipoOtrosCorreccionService();
+    /**
+     * Alcance: correcciones auditadas sobre equipos de ortopedia y "otros", más
+     * el autocompletado del catálogo de "otros" en el formulario de corrección.
+     */
+    public CorreccionsController(PantallaCorrecciones panel,
+                                 EquipoCorreccionService correccionService,
+                                 EquipoOtrosCorreccionService otrosService,
+                                 CatalogoOtrosService catalogoOtrosService) {
+        this.panel             = panel;
+        this.correccionService = correccionService;
+        this.otrosService      = otrosService;
 
         // ── Callbacks ortopedia ───────────────────────────────────────────────
         panel.setOnModificarCantidad((equipoId, materialId, cantidad, motivo) ->
@@ -61,8 +68,8 @@ public class CorreccionsController {
 
         panel.setOnEliminarEquipoOtros(this::eliminarEquipoOtros);
 
-        panel.setBuscarMaterialesOtros(texto -> model.buscarMaterialesOtrosPorDescripcion(texto));
-        panel.setVerificarMaterialOtros(desc  -> model.existeMaterialOtros(desc));
+        panel.setBuscarMaterialesOtros(catalogoOtrosService::buscarPorDescripcionParcial);
+        panel.setVerificarMaterialOtros(catalogoOtrosService::existeDescripcion);
 
         // ── General ───────────────────────────────────────────────────────────
         panel.setOnPantallaVisible(this::cargarEquiposNuevos);

@@ -595,13 +595,10 @@ PASO 4: Crear Contexto de Dependencias
   └─ Instancia todos los Services
   └─ Inyecta dependencias
 
-PASO 5: Crear AppModel
-  └─ Encapsula toda la lógica de negocio
+PASO 5: Crear AppController
+  └─ Wirea controllers a vistas, cada uno con los services de su alcance
 
-PASO 6: Crear AppController
-  └─ Wirea controllers a vistas
-
-PASO 7: Iniciar UI
+PASO 6: Iniciar UI
   └─ Muestra ventana principal
 ```
 
@@ -619,7 +616,6 @@ PASO 7: Iniciar UI
 [INFO] ✓ Esquema BD verificado/creado
 [INFO] PASO 3/4: Creando contexto de dependencias...
 [INFO] ✓ Contexto creado con DAOs y Services
-[INFO] ✓ AppModel creado
 [INFO] PASO 4/4: Iniciando interfaz de usuario...
 [INFO] ✓ AppController creado
 [INFO] ═══════════════════════════════════════════════════════════

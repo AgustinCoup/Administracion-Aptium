@@ -5,7 +5,8 @@ import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 
 import com.example.common.constants.Constantes;
-import com.example.app.AppModel;
+import com.example.app.AppContext;
+import com.example.infrastructure.db.ConnectionPool;
 import com.example.ui.common.Estilos;
 import com.example.ui.shell.PantallaPrincipal;
 import com.formdev.flatlaf.FlatLaf;
@@ -18,16 +19,16 @@ public class AppController {
 
     private static final Logger log = LoggerFactory.getLogger(AppController.class);
 
-    private final AppModel model;
+    private final AppContext context;
     private PantallaPrincipal vista;
 
-    public AppController(AppModel model) {
-        this.model = model;
+    public AppController(AppContext context) {
+        this.context = context;
     }
 
     public void iniciarAplicacion() {
-        // Validar conexión y inicializar BD (el model se encarga de la inicialización)
-        if (!model.validarConexion()) {
+        // El pool ya fue inicializado en App.main; acá solo se confirma que responde.
+        if (!ConnectionPool.validarConexion()) {
             mostrarErrorConexion();
             return;
         }
@@ -42,7 +43,7 @@ public class AppController {
 
     private void inicializarVista() {
         vista = new PantallaPrincipal();
-        UiCoordinator coordinator = new UiCoordinator(model, vista);
+        UiCoordinator coordinator = new UiCoordinator(context, vista);
         coordinator.inicializar();
         vista.setVisible(true);
     }

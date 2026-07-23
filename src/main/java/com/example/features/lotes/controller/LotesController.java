@@ -6,18 +6,22 @@ import com.example.features.lotes.controller.helpers.EstadoStaging;
 import com.example.features.lotes.controller.helpers.ReconciliadorPendientes;
 import com.example.ui.common.dnd.MultiRowTableTransferHandler;
 import com.example.ui.events.OnEstadosActualizadosListener;
-import com.example.app.AppModel;
 import com.example.features.autoclaves.model.Autoclave;
+import com.example.features.autoclaves.service.AutoclaveService;
+import com.example.features.catalogo.service.CatalogoService;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.Material;
+import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
 import com.example.features.lotes.model.OcupacionAutoclave;
+import com.example.features.lotes.service.LoteService;
 import com.example.features.lotes.view.PantallaLotes;
 import com.example.ui.dialogs.CantidadDialogHelper;
 import com.example.features.lotes.view.helpers.AutoclaveItem;
@@ -43,7 +47,11 @@ public class LotesController {
     private static final Logger log = LoggerFactory.getLogger(LotesController.class);
 
     private final PanelLotesContenido panel;
-    private final AppModel model;
+    private final CatalogoService     catalogoService;
+    private final AutoclaveService    autoclaveService;
+    private final LoteService         loteService;
+    private final EquipoService       equipoService;
+    private final EquipoOtrosService  equipoOtrosService;
     private final Equipo equipoContexto;  // null = todos los equipos, non-null = solo este
     private OnEstadosActualizadosListener onEstadosActualizadosListener;
 
@@ -89,8 +97,15 @@ public class LotesController {
     /**
      * Constructor para PantallaLotes (pantalla completa, sin contexto de equipo).
      */
-    public LotesController(PantallaLotes pantallaLotes, AppModel model, OnEstadosActualizadosListener listener) {
-        this(pantallaLotes.getPanelContenido(), model, null, listener);
+    public LotesController(PantallaLotes pantallaLotes,
+                           CatalogoService catalogoService,
+                           AutoclaveService autoclaveService,
+                           LoteService loteService,
+                           EquipoService equipoService,
+                           EquipoOtrosService equipoOtrosService,
+                           OnEstadosActualizadosListener listener) {
+        this(pantallaLotes.getPanelContenido(), catalogoService, autoclaveService, loteService,
+             equipoService, equipoOtrosService, null, listener);
 
         // Bloquear navegación si hay materiales cargados en algún autoclave sin lanzar
         pantallaLotes.setGuardVolver(
@@ -103,16 +118,28 @@ public class LotesController {
     /**
      * Constructor para PanelLotesContenido embebido con contexto de equipo.
      *
+     * <p>Alcance: volúmenes del catálogo, autoclaves, ciclo de vida del lote y
+     * lectura de los equipos cuyos materiales se cargan al autoclave.
+     *
      * @param panel          Panel reusable para gestión de lotes
-     * @param model          Modelo de datos
      * @param equipoContexto Equipo específico (null = todos los equipos del sistema)
      * @param listener       Listener para notificaciones
      */
-    public LotesController(PanelLotesContenido panel, AppModel model, Equipo equipoContexto,
+    public LotesController(PanelLotesContenido panel,
+                           CatalogoService catalogoService,
+                           AutoclaveService autoclaveService,
+                           LoteService loteService,
+                           EquipoService equipoService,
+                           EquipoOtrosService equipoOtrosService,
+                           Equipo equipoContexto,
                            OnEstadosActualizadosListener listener) {
-        this.panel = panel;
-        this.model = model;
-        this.equipoContexto = equipoContexto;
+        this.panel              = panel;
+        this.catalogoService    = catalogoService;
+        this.autoclaveService   = autoclaveService;
+        this.loteService        = loteService;
+        this.equipoService      = equipoService;
+        this.equipoOtrosService = equipoOtrosService;
+        this.equipoContexto     = equipoContexto;
         this.onEstadosActualizadosListener = listener;
 
         inicializarEventos();
@@ -161,10 +188,10 @@ public class LotesController {
 
     public void cargarDatos() {
         String autoclaveSeleccion = autoclaveSeleccionado != null ? autoclaveSeleccionado.getNombre() : null;
-        volumenesCatalogo = model.obtenerVolumenesCatalogo();
-        List<Autoclave> autoclaves = model.obtenerAutoclaves();
+        volumenesCatalogo = catalogoService.obtenerVolumenes();
+        List<Autoclave> autoclaves = autoclaveService.obtenerTodos();
         lotesActivos.clear();
-        lotesActivos.putAll(model.obtenerLotesActivosPorAutoclave());
+        lotesActivos.putAll(loteService.obtenerLotesActivosPorAutoclave());
 
         // Construir mapa equipoId → clienteNombre a partir de todos los equipos cargados.
         // NOTA: se asume que Equipo expone getClienteNombre(). Si el método tiene otro
@@ -178,8 +205,8 @@ public class LotesController {
             clientesPorEquipo.put(equipoContexto.getId(), equipoContexto.getClienteNombre());
             ingresoOrtopediaPorEquipo.put(equipoContexto.getId(), ingresoDe(equipoContexto));
         } else {
-            equipos = model.obtenerTodosLosEquipos();
-            equiposOtros = model.obtenerTodosLosEquiposOtros();
+            equipos = equipoService.obtenerTodos();
+            equiposOtros = equipoOtrosService.obtenerTodos();
             for (Equipo eq : equipos) {
                 clientesPorEquipo.put(eq.getId(), eq.getClienteNombre());
                 ingresoOrtopediaPorEquipo.put(eq.getId(), ingresoDe(eq));
@@ -567,7 +594,7 @@ public class LotesController {
                     item.getMaterialId(), item.getEquipoId(), item.getCantidad(), item.isEsOtros()));
         }
 
-        Lote lote = model.lanzarLote(autoclaveSeleccionado.getNombre(),
+        Lote lote = loteService.lanzarLote(autoclaveSeleccionado.getNombre(),
                 capacidadTotal, volumenFinal, movimientos, volumenesPorIngreso);
 
         if (lote == null) {
@@ -670,7 +697,7 @@ public class LotesController {
         if (!panel.confirmar(Constantes.Mensajes.CONFIRMAR_FINALIZAR_LOTE,
                 Constantes.Mensajes.TITULO_CONFIRMAR_CAMBIOS)) return;
 
-        boolean exitoso = model.finalizarLote(autoclaveSeleccionado.getLoteId());
+        boolean exitoso = loteService.finalizarLote(autoclaveSeleccionado.getLoteId());
         if (!exitoso) {
             panel.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_LOTE);
             return;
@@ -686,7 +713,7 @@ public class LotesController {
         if (!panel.confirmar(Constantes.Mensajes.CONFIRMAR_MARCAR_LOTE_FALLO,
                 Constantes.Mensajes.TITULO_CONFIRMAR_CAMBIOS)) return;
 
-        boolean exitoso = model.marcarLoteFallo(autoclaveSeleccionado.getLoteId());
+        boolean exitoso = loteService.marcarLoteFallo(autoclaveSeleccionado.getLoteId());
         if (!exitoso) {
             panel.mostrarError(Constantes.Mensajes.ERROR_MARCAR_LOTE_FALLO);
             return;

@@ -1,12 +1,12 @@
 package com.example.features.ajustes.controller;
 
-import com.example.app.AppModel;
 import com.example.common.exception.ApplicationException;
 import com.example.features.ajustes.view.FusionarClienteDialog;
 import com.example.features.ajustes.view.NuevoClienteDialog;
 import com.example.features.ajustes.view.PanelGestionClientes;
 import com.example.features.ajustes.view.PantallaAjustes;
 import com.example.features.clientes.model.Cliente;
+import com.example.features.clientes.service.ClienteService;
 
 import javax.swing.*;
 import java.awt.event.ComponentAdapter;
@@ -18,13 +18,14 @@ public class AjustesController {
 
     private final PantallaAjustes      vista;
     private final PanelGestionClientes panel;
-    private final AppModel             model;
+    private final ClienteService       clienteService;
     private       Runnable             onMutacion;
 
-    public AjustesController(PantallaAjustes vista, AppModel model) {
-        this.vista  = vista;
-        this.panel  = vista.getPanelClientes();
-        this.model  = model;
+    /** Alcance: ABM y fusión de clientes. */
+    public AjustesController(PantallaAjustes vista, ClienteService clienteService) {
+        this.vista          = vista;
+        this.panel          = vista.getPanelClientes();
+        this.clienteService = clienteService;
 
         panel.setOnAgregar(this::agregarCliente);
         panel.setOnEliminar(this::eliminarCliente);
@@ -44,7 +45,7 @@ public class AjustesController {
     private void cargarDatos() {
         new Thread(() -> {
             try {
-                List<Cliente> clientes = model.obtenerTodosLosClientes();
+                List<Cliente> clientes = clienteService.obtenerTodosLosClientes();
                 SwingUtilities.invokeLater(() -> panel.setDatos(clientes));
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() ->
@@ -66,7 +67,7 @@ public class AjustesController {
 
         new Thread(() -> {
             try {
-                model.guardarCliente(new Cliente(0, nombre));
+                clienteService.guardarCliente(new Cliente(0, nombre));
                 SwingUtilities.invokeLater(() -> {
                     cargarDatos();
                     notificarMutacion();
@@ -93,7 +94,7 @@ public class AjustesController {
 
         new Thread(() -> {
             try {
-                model.eliminarCliente(cliente.getId());
+                clienteService.eliminarCliente(cliente.getId());
                 SwingUtilities.invokeLater(() -> {
                     cargarDatos();
                     notificarMutacion();
@@ -116,7 +117,7 @@ public class AjustesController {
 
         new Thread(() -> {
             try {
-                List<Cliente> todos = model.obtenerTodosLosClientes();
+                List<Cliente> todos = clienteService.obtenerTodosLosClientes();
                 List<Cliente> candidatos = todos.stream()
                     .filter(c -> c.getId() != origen.getId())
                     .collect(Collectors.toList());
@@ -150,7 +151,7 @@ public class AjustesController {
 
         new Thread(() -> {
             try {
-                model.fusionarClientes(origen.getId(), destino.getId());
+                clienteService.fusionarClientes(origen.getId(), destino.getId());
                 SwingUtilities.invokeLater(() -> {
                     cargarDatos();
                     notificarMutacion();

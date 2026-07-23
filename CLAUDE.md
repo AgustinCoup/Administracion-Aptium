@@ -34,8 +34,7 @@ Aplicación de escritorio Swing (Java 17) para gestión de equipos médicos y lo
 1. `ConnectionPool` — HikariCP singleton, crea la BD si no existe
 2. `DatabaseInitializer` — ejecuta schema.sql + seeds
 3. `AppContext.createDefault()` — instancia todos los DAOs, Services y Strategies
-4. `AppModel` — fachada de negocio que expone los services a los controllers
-5. `AppController` → `UiCoordinator` → `PantallaPrincipal` (CardLayout)
+4. `AppController` → `UiCoordinator` → `PantallaPrincipal` (CardLayout)
 
 Si cualquier paso falla, aparece un diálogo de error y la app termina.
 
@@ -47,8 +46,8 @@ Features: `equipos/ortopedias`, `equipos/otros`, `lotes`, `autoclaves`, `catalog
 
 **Clases clave:**
 - `AppContext` — único lugar donde se construyen dependencias (new DAO, new Service, new Strategy)
-- `AppModel` — único punto de acceso de la UI a la lógica de negocio; expone métodos semánticos, nunca servicios crudos (excepción documentada: `getEquipoCorreccionService()`)
-- `UiCoordinator` — instancia todos los controllers, cablea listeners; crea un `Runnable` global de refresh que todos los controllers disparan al guardar datos
+- `UiCoordinator` — único punto de la UI que ve el `AppContext` completo: instancia todos los controllers pasándole a cada uno **solo los services de su alcance**, cablea listeners, y crea un `Runnable` global de refresh que todos disparan al guardar datos
+- **Regla de extensión:** un controller declara en su constructor los services que usa. No hay fachada intermedia — si necesita algo nuevo, se agrega un parámetro y `UiCoordinator` lo provee desde `AppContext`. Así el alcance de cada controller es visible en su firma y el compilador lo hace cumplir.
 - `Constantes` — todas las constantes de la app (nombres de pantallas para CardLayout, anchos de columnas, etc.)
 - `AptiumException` y subclases — jerarquía de excepciones del dominio
 

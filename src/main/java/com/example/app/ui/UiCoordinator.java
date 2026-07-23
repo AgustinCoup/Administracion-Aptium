@@ -1,6 +1,6 @@
 package com.example.app.ui;
 
-import com.example.app.AppModel;
+import com.example.app.AppContext;
 import com.example.common.constants.Constantes;
 import com.example.features.equipos.ortopedias.controller.CDEViewController;
 import com.example.features.equipos.ortopedias.controller.CorreccionsController;
@@ -20,22 +20,25 @@ import com.example.ui.shell.PantallaPrincipal;
  * Coordina la inicialización de todos los controladores y la conexión entre pantallas.
  *
  * Responsabilidades:
- * - Instanciar cada controller con su vista y modelo correspondientes.
+ * - Instanciar cada controller con su vista y los servicios que necesita.
  * - Delegar inyecciones que un controller no puede hacerse a sí mismo
  *   (p. ej. inicializar PantallaAuditoria desde CorreccionsController).
  * - Cablear los listeners de navegación entre pantallas.
  * - Construir el Runnable de refresco global que cada controller dispara al modificar datos.
+ *
+ * <p>Es el único punto de la UI que ve el {@link AppContext} completo: cada controller
+ * recibe solo los servicios de su alcance, declarados en su constructor.
  */
 public class UiCoordinator {
 
-    private final AppModel        model;
+    private final AppContext        context;
     private final PantallaPrincipal vista;
 
-    public UiCoordinator(AppModel model, PantallaPrincipal vista) {
-        if (model == null || vista == null) {
-            throw new IllegalArgumentException("Model y vista no pueden ser nulos");
+    public UiCoordinator(AppContext context, PantallaPrincipal vista) {
+        if (context == null || vista == null) {
+            throw new IllegalArgumentException("Context y vista no pueden ser nulos");
         }
-        this.model = model;
+        this.context = context;
         this.vista = vista;
     }
 
@@ -48,26 +51,56 @@ public class UiCoordinator {
 
         // ── Controllers ──────────────────────────────────────────────────────
         CDEViewController cdeViewController = new CDEViewController(
-            vista.getPantallaVerCDEv2(), model);
+            vista.getPantallaVerCDEv2(),
+            context.getEquipoService(),
+            context.getEquipoOtrosService());
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
-            vista.getPantallaRegistrarEstado(), model, refrescarEstados);
+            vista.getPantallaRegistrarEstado(),
+            context.getEquipoService(),
+            context.getEquipoOtrosService(),
+            context.getMaterialService(),
+            context.getEstadoValidator(),
+            refrescarEstados);
 
         EquiposParaEntregarController equiposParaEntregarController =
             new EquiposParaEntregarController(
-                vista.getPantallaEquiposParaEntregar(), model, refrescarEstados);
+                vista.getPantallaEquiposParaEntregar(),
+                context.getEquipoService(),
+                context.getEquipoOtrosService(),
+                context.getMaterialService(),
+                context.getEstadoValidator(),
+                refrescarEstados);
 
         CorreccionsController correccionesController = new CorreccionsController(
-            vista.getPantallaCorrecciones(), model);
+            vista.getPantallaCorrecciones(),
+            context.getEquipoCorreccionService(),
+            context.getEquipoOtrosCorreccionService(),
+            context.getCatalogoOtrosService());
 
         LotesController lotesController = new LotesController(
-            vista.getPantallaLotes(), model, refrescarEstados);
+            vista.getPantallaLotes(),
+            context.getCatalogoService(),
+            context.getAutoclaveService(),
+            context.getLoteService(),
+            context.getEquipoService(),
+            context.getEquipoOtrosService(),
+            refrescarEstados);
 
         VerLotesController verLotesController = new VerLotesController(
-            vista.getPantallaVerLotes(), model, model.getLoteReporteService());
+            vista.getPantallaVerLotes(),
+            context.getAutoclaveService(),
+            context.getLoteService(),
+            context.getLoteReporteService());
 
-        new VerEquiposController(vista.getPantallaVerEquipos(), model,
-            model.getEquipoReporteService(), model.getEquipoOtrosReporteService());
+        new VerEquiposController(
+            vista.getPantallaVerEquipos(),
+            context.getEquipoService(),
+            context.getEquipoOtrosService(),
+            context.getClienteService(),
+            context.getInstitucionService(),
+            context.getEquipoReporteService(),
+            context.getEquipoOtrosReporteService());
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
         correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());
@@ -89,7 +122,11 @@ public class UiCoordinator {
 
         new OrthopediaInputController(
             vista.getPanelIngresoOrtopedia(),
-            model,
+            context.getClienteService(),
+            context.getCatalogoService(),
+            context.getProfesionalService(),
+            context.getInstitucionService(),
+            context.getEquipoService(),
             vista.getNavegador(),
             vista.getContenedor(),
             refrescarEquipos
@@ -97,13 +134,16 @@ public class UiCoordinator {
 
         new OtrosInputController(
             vista.getPanelIngresoOtros(),
-            model,
+            context.getClienteService(),
+            context.getCatalogoOtrosService(),
+            context.getEquipoOtrosService(),
             vista.getNavegador(),
             vista.getContenedor(),
             refrescarEquipos
         );
 
-        AjustesController ajustesController = new AjustesController(vista.getPantallaAjustes(), model);
+        AjustesController ajustesController = new AjustesController(
+            vista.getPantallaAjustes(), context.getClienteService());
         ajustesController.setOnMutacion(() -> { if (refrescarRef[0] != null) refrescarRef[0].run(); });
     }
 

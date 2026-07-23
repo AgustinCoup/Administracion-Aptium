@@ -1,15 +1,19 @@
 package com.example.features.equipos.ortopedias.controller;
 
-import com.example.app.AppModel;
 import com.example.common.constants.Constantes;
 import com.example.common.exception.ValidationException;
+import com.example.features.catalogo.service.CatalogoService;
+import com.example.features.clientes.service.ClienteService;
 import com.example.features.equipos.common.controller.EquipoInputControllerBase;
 import com.example.features.equipos.ortopedias.controller.helpers.CatalogoLookup;
 import com.example.features.equipos.ortopedias.controller.helpers.ConstructorEquipo;
 import com.example.features.equipos.ortopedias.controller.helpers.GestorNuevasEntidades;
 import com.example.features.equipos.ortopedias.controller.helpers.GestorValidacionFormulario;
+import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.instituciones.model.Institucion;
+import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.profesionales.model.Profesional;
+import com.example.features.profesionales.service.ProfesionalService;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.view.PantallaIngresoOrtopedia;
 import com.example.ui.common.AutocompleteListener;
@@ -29,14 +33,32 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
     private AutocompleteListener<Profesional> autocompleteProfesionalListener;
     private AutocompleteListener<Institucion> autocompleteInstitucionListener;
 
-    public OrthopediaInputController(PantallaIngresoOrtopedia panel, AppModel model,
+    private final CatalogoService     catalogoService;
+    private final ProfesionalService  profesionalService;
+    private final InstitucionService  institucionService;
+    private final EquipoService       equipoService;
+
+    /**
+     * Alcance: alta de un ingreso de ortopedia, con autocompletado contra el
+     * catálogo de códigos, profesionales e instituciones.
+     */
+    public OrthopediaInputController(PantallaIngresoOrtopedia panel,
+                                     ClienteService clienteService,
+                                     CatalogoService catalogoService,
+                                     ProfesionalService profesionalService,
+                                     InstitucionService institucionService,
+                                     EquipoService equipoService,
                                      CardLayout navegador, JPanel contenedor,
                                      OnEquipoGuardadoListener onEquipoGuardadoListener) {
-        super(panel, model, navegador, contenedor, onEquipoGuardadoListener);
+        super(panel, clienteService, navegador, contenedor, onEquipoGuardadoListener);
+        this.catalogoService    = catalogoService;
+        this.profesionalService = profesionalService;
+        this.institucionService = institucionService;
+        this.equipoService      = equipoService;
 
-        CatalogoLookup catalogoLookup = codigo -> model.obtenerDescripcionMaterial(codigo) != null;
+        CatalogoLookup catalogoLookup = codigo -> catalogoService.obtenerDescripcion(codigo) != null;
         this.gestorValidacion  = new GestorValidacionFormulario(panel, catalogoLookup);
-        this.constructorEquipo = new ConstructorEquipo(panel, model);
+        this.constructorEquipo = new ConstructorEquipo(panel);
 
         inicializarEventosComunes();
         inicializarEventosEspecificos();
@@ -44,21 +66,21 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
 
     private void inicializarEventosEspecificos() {
         panel.getPanelMateriales().setOnNumeroChangedListener((codigo, campoDescripcion) -> {
-            String descripcion = model.obtenerDescripcionMaterial(codigo);
+            String descripcion = catalogoService.obtenerDescripcion(codigo);
             campoDescripcion.setText(
                 descripcion != null ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO);
         });
 
         autocompleteProfesionalListener = new AutocompleteListener<>(
             panel.getTxtProfesional(),
-            texto -> model.buscarProfesionales(texto),
+            profesionalService::buscarProfesionales,
             profesional -> panel.setSelectedProfesionalId(profesional.getId()),
             nombre -> gestorNuevosProfesionales.manejarEntidadNoExistente(nombre)
         );
 
         autocompleteInstitucionListener = new AutocompleteListener<>(
             panel.getTxtInstitucion(),
-            texto -> model.buscarInstituciones(texto),
+            institucionService::buscarInstituciones,
             institucion -> panel.setSelectedInstitucionId(institucion.getId()),
             nombre -> gestorNuevasInstituciones.manejarEntidadNoExistente(nombre)
         );
@@ -69,7 +91,7 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
             nombre -> panel.getTxtProfesional().setText(nombre),
             id     -> panel.setSelectedProfesionalId(id),
             autocompleteProfesionalListener,
-            profesional -> model.guardarProfesional(profesional),
+            profesionalService::guardarProfesional,
             Profesional::new
         );
 
@@ -79,7 +101,7 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
             nombre -> panel.getTxtInstitucion().setText(nombre),
             id     -> panel.setSelectedInstitucionId(id),
             autocompleteInstitucionListener,
-            institucion -> model.guardarInstitucion(institucion),
+            institucionService::guardarInstitucion,
             Institucion::new
         );
     }
@@ -99,7 +121,7 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
 
         boolean exito;
         try {
-            exito = model.guardarEquipo(equipo);
+            exito = equipoService.guardarEquipo(equipo);
         } catch (ValidationException e) {
             String mensaje = e.getValidationErrors().isEmpty()
                 ? Constantes.Mensajes.ERROR_GUARDAR_EQUIPO

@@ -2,17 +2,17 @@
 
 Diagnóstico de la revisión profunda del 2026-07-22.
 
-**Estado al 2026-07-23:** #1, #2, #4 y #5 **ejecutados**, suite en verde
-(509 tests). Quedan **#3 y #6**.
+**Estado al 2026-07-23:** #1 a #5 **ejecutados**, suite en verde (509 tests).
+Queda solo **#6**.
 
 | # | Estado | Commit |
 |---|---|---|
 | #1 fallos silenciosos ortopedias | hecho | `de1af06` |
 | #2 strategies muertas (`IMaterialFilter` + `ICapacidadCalculator`) | hecho | `a370e61` |
 | #5 `common` ↔ Swing | hecho | `fc15bd1` |
-| #4 `Object[]` → records | hecho (2026-07-23) | sin commitear |
-| #3 `AppModel` | **pendiente** — requiere decisión del usuario | — |
-| #6 concurrencia / EDT | **pendiente** — el más grande, planificar aparte | — |
+| #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
+| #3 `AppModel` | hecho (2026-07-23) — **disuelto** | sin commitear |
+| #6 concurrencia / EDT | **pendiente** — plan escrito en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | — |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -22,7 +22,60 @@ transacciones "por prolijidad".
 
 ---
 
-## #3 — `AppModel`: fachada que ya se rompió y crece sin techo  (GRAVE)
+## #3 — `AppModel`: fachada que ya se rompió y crece sin techo  ✅ HECHO (2026-07-23)
+
+**Decisión del usuario:** *disolver* la fachada. `AppModel.java` fue **eliminado** (362 líneas).
+`UiCoordinator` pasó a recibir `AppContext` y es ahora el único punto de la UI que lo ve
+completo: le entrega a cada controller **solo los services de su alcance**, declarados en su
+constructor y documentados con un javadoc de una línea.
+
+Reparto resultante (13 archivos de `src/main` tocados, 0 tests — ninguno referenciaba `AppModel`):
+
+| Controller | Services que recibe |
+|---|---|
+| `CDEViewController` | `Equipo`, `EquipoOtros` |
+| `RegistrarEstadoController` | `Equipo`, `EquipoOtros`, `Material`, `IEstadoValidator` |
+| `EquiposParaEntregarController` | `Equipo`, `EquipoOtros`, `Material`, `IEstadoValidator` |
+| `CorreccionsController` | `EquipoCorreccion`, `EquipoOtrosCorreccion`, `CatalogoOtros` |
+| `LotesController` | `Catalogo`, `Autoclave`, `Lote`, `Equipo`, `EquipoOtros` |
+| `VerLotesController` | `Autoclave`, `Lote`, `LoteReporte` |
+| `VerEquiposController` | `Equipo`, `EquipoOtros`, `Cliente`, `Institucion`, + los 2 reporte |
+| `OrthopediaInputController` | `Cliente`(super), `Catalogo`, `Profesional`, `Institucion`, `Equipo` |
+| `OtrosInputController` | `Cliente`(super), `CatalogoOtros`, `EquipoOtros` |
+| `AjustesController` | `Cliente` |
+
+**Lo que resolvió, punto por punto:**
+- **(b) queda cerrado por diseño, no por disciplina:** `LotesController` ya no *puede* llamar
+  `fusionarClientes()` — nunca ve `ClienteService`. El compilador reemplaza a la regla escrita.
+- **Los 5 getters de servicio desaparecieron solos**, incluida la "excepción reconocida al patrón
+  facade" de `getEquipoCorreccionService()`: `CorreccionsController` ya guardaba el service como
+  campo, solo cambió de dónde lo recibe.
+- **16 de los 47 métodos de delegación eran código muerto** (cero llamadores en `src/main`:
+  `obtenerEquipoPorId`, `actualizarEquipo`, `contarEquipos`, `obtenerCatalogo`,
+  `obtenerLotesFinalizados`, `obtenerMaterialesPorLote`, `obtenerVolumenesPorLote`,
+  `obtenerLotesEnRango`, `obtenerClientesPorLote`, `obtenerMaterialesPorClientePorLote`,
+  `obtenerOtrosPorClientePorLote`, `obtenerClientePorId`, `obtenerProfesionalPorId`,
+  `obtenerInstitucionPorId`, `obtenerEquiposOtrosEntreFechas`, `obtenerEquiposEntreFechas`).
+  Se fueron con la clase, sin necesidad de un refactor-clean aparte.
+- **(a) el crecimiento lineal se cortó:** agregar una operación ya no toca un archivo compartido
+  por toda la app; toca el controller que la usa y la línea de `UiCoordinator` que lo construye.
+
+**Efectos colaterales que destapó:**
+- `validarConexion()` era el **único** método de `AppModel` que no delegaba a un service. Se movió
+  a `ConnectionPool.validarConexion()`, que es donde vive esa responsabilidad. `AppController`
+  ahora la llama ahí.
+- `ConstructorEquipo` declaraba un campo `AppModel model` **que nunca usaba** — `construir()` solo
+  lee del panel. Se eliminó el parámetro; el constructor quedó en `(PantallaIngresoOrtopedia)`.
+- `EquipoInputControllerBase` exponía `protected final AppModel model` a sus dos subclases, o sea
+  que heredaban acceso a toda la API del sistema. Ahora tiene un `private final ClienteService`
+  (lo único realmente común: el autocompletado de cliente) y cada subclase declara lo suyo.
+- `App.main` perdió un paso entero: la secuencia de arranque bajó de 7 a 6 pasos. Actualizados
+  `CLAUDE.md` y `README-DEPLOY.md` (incluida la salida de log esperada).
+
+**Verificación:** `mvn compile` OK, **509 tests en verde**, `grep AppModel src/` sin resultados.
+
+<details>
+<summary>Diagnóstico original</summary>
 
 **Qué:** `AppModel` (**362 líneas**, ~60 métodos de delegación de una línea). El javadoc dice
 explícitamente *"No exponer servicios internos (get\*Service)"* y abajo hay **cinco** getters
@@ -41,13 +94,13 @@ controllers, salteando la fachada.
 - (b) Todo controller ve la API completa del sistema — `LotesController` puede llamar
   `fusionarClientes()`. La regla "no exponer servicios" se cumple por disciplina, no por diseño.
 
-**Decisión pendiente (del usuario):**
-- **Disolver** `AppModel` a favor de inyección directa por controller — `AppContext` entrega a
-  cada controller solo los servicios que necesita (ya lo hace con los reporte-services y con
-  `VerLotesController`). Cada constructor documenta su alcance. Es el camino ya empezado.
-- **o Mantener** la fachada y hacer cumplir por diseño la regla de no exponer servicios.
+**Decisión que estaba pendiente (resuelta el 2026-07-23):** se eligió **disolver** — inyección
+directa por controller. La alternativa descartada era mantener la fachada y hacer cumplir por
+diseño la regla de no exponer servicios (p. ej. segregando en interfaces por rol), que conservaba
+la capa de nombres semánticos pero dejaba vivo el problema (a): la interfaz también crece con
+cada feature, con más archivos.
 
-Cambia bastante el trabajo según cuál. Preguntar antes de ejecutar.
+</details>
 
 ---
 
@@ -162,14 +215,16 @@ handoff son los commits + este doc, así que un chat limpio arranca más barato 
 resumen lossy.
 
 1. ~~**#4** (`Object[]`→records)~~ — ✅ hecho el 2026-07-23.
-2. **#3** (`AppModel`) — **bloqueado por decisión del usuario** (ver la sección #3:
-   disolver la fachada vs. mantenerla y hacer cumplir la regla por diseño). Preguntar
-   al arrancar el chat, con el código a la vista.
-3. **#6** (concurrencia/EDT) — el más grande. **Primero un plan escrito, después
-   ejecutar**, probablemente en dos chats. Es donde está el riesgo real: los bugs de
-   EDT y de refrescos fuera de orden no los agarra la suite de tests.
+2. ~~**#3** (`AppModel`)~~ — ✅ hecho el 2026-07-23, disuelto.
+3. **#6** (concurrencia/EDT) — el más grande y el único que queda. Plan escrito el 2026-07-23
+   en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md): 5 fases, a ejecutar en
+   2 chats (fases 1-3 / fases 4-5). Es donde está el riesgo real: los bugs de EDT y de
+   refrescos fuera de orden no los agarra la suite de tests.
+   Nota: #3 dejó el terreno mejor — `UiCoordinator.crearRefrescador()` sigue igual, pero
+   ahora cada controller declara qué services toca, así que es visible cuáles hacen I/O.
 4. **refactor-clean** — barre el código muerto que dejen los anteriores. Ya identificados:
    `Validador.esEmailValido` / `esNumeroPositivo` (de #5) y `MaterialCorreccionDTO` (de #4).
+   Los 16 métodos muertos de `AppModel` ya se fueron con la clase en #3.
 5. **security review** — superficie real acotada: queries parametrizadas, credenciales
    en `config.properties` y los defaults hardcodeados, validación de entrada. Es una app
    Swing de escritorio sin auth ni endpoints: presupuestar un chat corto, no una fase.
