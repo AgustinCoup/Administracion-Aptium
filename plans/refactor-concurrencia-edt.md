@@ -517,6 +517,56 @@ mixto (un material entregado y otro no), REMITO sin filas, REMITO con filas.
    ortopedias no es el estado calculado. Usarlo por parecido daría resultados sutilmente
    distintos.
 
+## Resultado de la Fase 6 (2026-07-23)
+
+**Ejecutada. 577 tests en verde** (eran 574 al terminar 1-5; +22 nuevos contando los
+que reemplazaron a los borrados). Tres commits: `71d6cfa`, `8143d24` y el de la medición.
+
+**Medición (lo que pedía 6.4).** Con 3 ingresos activos y 25 entregados:
+
+| | Sentencias JDBC por guardado |
+|---|---|
+| Antes de la Fase 6 | **34** |
+| Después | **8** |
+| Después, con **cero** entregados | **8** |
+
+La última fila es la que importa: el costo de un guardado dejó de depender del volumen
+acumulado. Está fijado como test (`CostoDelRefrescoTest`), no anotado acá, porque un
+número en un documento se desactualiza y la propiedad no.
+
+Lo que sigue creciendo es el N+1 de `equipo_otros` (una query de materiales por ingreso),
+pero ahora acotado a la cola activa. Bajarlo a una sola query con JOIN, como ya hace
+`EquipoDAO`, es el siguiente escalón y no hizo falta para esta fase.
+
+**Piezas nuevas:** `DatosOperativos` / `LectorDatosOperativos`, `HistorialEquipos` /
+`LectorHistorialEquipos`, `HistorialLotes` / `LectorHistorialLotes`.
+`DatosRefresco` y `LectorDatosRefresco` se eliminaron.
+`RefrescadorPantallas` pasó a ser genérico sobre el tipo de snapshot: un solo mecanismo
+(debounce + token de generación + `TareaUI`), tres instancias con disparadores distintos.
+
+**Desvíos respecto del plan:**
+
+1. **El grupo histórico se partió en dos**, no en uno. `VerLotes` no necesita nada de lo
+   que necesitan `VerEquipos` y `CDEView`; con un solo record, abrir "Ver Lotes" habría
+   seguido leyendo el histórico entero de equipos — justo lo que la fase venía a evitar.
+
+2. **Las pantallas históricas leen en `componentShown` y nada más.** El plan decía
+   "y cuando cambian sus propios filtros", pero sus filtros siguen siendo de Java sobre la
+   lista ya cargada: releer al filtrar sería trabajo extra sin ningún cambio de resultado.
+   Recién aplicaría si los filtros bajaran al `WHERE`, que es el escalón de paginar.
+
+3. **`RegistrarEstadoController` perdió su filtro Java por `ENTREGADO`.** Con el `WHERE`
+   nuevo es redundante, y dos definiciones de "activo" conviviendo son exactamente como se
+   desincronizan sin que nadie lo note. Los tests de equivalencia son el guard.
+
+4. **`AgrupadorEntregas` no se tocó**, pero se le agregaron dos tests que fijan de qué
+   depende: un REMITO entregado sin filas reales **sí** genera fila si le llega, así que
+   quien lo excluye es la consulta. Si alguien vuelve a alimentar esa pantalla con el
+   histórico, el test explica por qué reaparecen los entregados.
+
+**Pendiente:** la checklist manual de la Fase 5, completa (6.4 la exige de nuevo: es la
+misma superficie), más la comprobación específica de entregar un equipo por completo.
+
 ## 6.4 Verificación de la fase
 
 - Los tests de equivalencia de 6.2 en verde (es el corazón: garantizan que el `WHERE` nuevo
@@ -531,6 +581,9 @@ mixto (un material entregado y otro no), REMITO sin filas, REMITO con filas.
 
 - **Paginar** las pantallas históricas. La Fase 6 saca el histórico del *camino del guardado*,
   pero `VerEquipos` abierta sigue leyendo todo. Es el siguiente escalón, y recién hace falta
-  cuando el volumen lo pida.
+  cuando el volumen lo pida. Ahí también bajarían los filtros al `WHERE`.
+- **El N+1 de `EquipoOtrosDAO`**: una query de materiales por ingreso, contra la única query
+  con JOIN que ya usa `EquipoDAO`. La Fase 6 lo acotó a la cola activa; eliminarlo es un
+  cambio aparte y de riesgo distinto (toca el mapeo, no el filtro).
 - Constructor muerto de `LotesController` con `equipoContexto` → refactor-clean.
 - Migrar los 2 `SwingWorker` de reportes a `TareaUI` — opcional, decidir en la Fase 4.
