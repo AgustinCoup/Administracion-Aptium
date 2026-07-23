@@ -50,10 +50,10 @@ public class UiCoordinator {
         OnEquipoGuardadoListener      refrescarEquipos = () -> { if (refrescarRef[0] != null) refrescarRef[0].run(); };
 
         // ── Controllers ──────────────────────────────────────────────────────
+        Runnable solicitarRefresco = () -> { if (refrescarRef[0] != null) refrescarRef[0].run(); };
+
         CDEViewController cdeViewController = new CDEViewController(
-            vista.getPantallaVerCDEv2(),
-            context.getEquipoService(),
-            context.getEquipoOtrosService());
+            vista.getPantallaVerCDEv2(), solicitarRefresco);
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
             vista.getPantallaRegistrarEstado(),
@@ -144,7 +144,11 @@ public class UiCoordinator {
 
         AjustesController ajustesController = new AjustesController(
             vista.getPantallaAjustes(), context.getClienteService());
-        ajustesController.setOnMutacion(() -> { if (refrescarRef[0] != null) refrescarRef[0].run(); });
+        ajustesController.setOnMutacion(solicitarRefresco);
+
+        // Primer pintado: los controllers ya no leen en su constructor, la UI se
+        // puebla con el snapshot compartido.
+        refrescarRef[0].run();
     }
 
     private Runnable crearRefrescador(
@@ -154,8 +158,16 @@ public class UiCoordinator {
         LotesController                 lotes,
         VerLotesController              verLotes
     ) {
+        LectorDatosRefresco lector = new LectorDatosRefresco(
+            context.getEquipoService(),
+            context.getEquipoOtrosService(),
+            context.getAutoclaveService(),
+            context.getCatalogoService(),
+            context.getLoteService());
+
         return () -> {
-            cde.cargarDatos();
+            DatosRefresco datos = lector.leer();
+            cde.pintar(datos);
             registrar.cargarEquipos();
             entregar.cargarDatos();
             lotes.cargarDatos();
