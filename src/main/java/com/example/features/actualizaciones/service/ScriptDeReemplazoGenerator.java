@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 
 /**
  * Genera el script PowerShell que reemplaza el fat JAR <em>fuera</em> de la JVM en ejecución.
@@ -31,12 +32,14 @@ public class ScriptDeReemplazoGenerator {
      * @param jarStaged  JAR nuevo, ya descargado y verificado, a mover sobre el target
      * @param jarTarget  ruta real del JAR en ejecución que será reemplazado
      * @param javaHome   {@code java.home} de la JVM actual, para relanzar sin depender del PATH
+     * @param lock       lock de actualización (ver {@link RutaJarResolver#resolverLockActualizacion})
+     *                   que el script libera al terminar, haya salido bien o mal
      * @return ruta del script {@code .ps1} generado
      * @throws ActualizacionException si no se puede escribir el script
      */
-    public Path generar(long pidActual, Path jarStaged, Path jarTarget, Path javaHome) {
-        if (jarStaged == null || jarTarget == null || javaHome == null) {
-            throw new IllegalArgumentException("jarStaged, jarTarget y javaHome no pueden ser nulos");
+    public Path generar(long pidActual, Path jarStaged, Path jarTarget, Path javaHome, Path lock) {
+        if (jarStaged == null || jarTarget == null || javaHome == null || lock == null) {
+            throw new IllegalArgumentException("jarStaged, jarTarget, javaHome y lock no pueden ser nulos");
         }
         Path directorioStaging = jarStaged.getParent();
         if (directorioStaging == null) {
@@ -53,8 +56,11 @@ public class ScriptDeReemplazoGenerator {
             .replace("__STAGED__", psLiteral(jarStaged))
             .replace("__TARGET__", psLiteral(jarTarget))
             .replace("__BACKUP__", psLiteral(backup))
+            .replace("__LOCK__", psLiteral(lock))
             .replace("__JAVA_HOME__", psLiteral(javaHome))
-            .replace("__RELEASE_URL__", psEscape(releaseUrl));
+            .replace("__RELEASE_URL__", psEscape(releaseUrl))
+            .replace("__COMANDO_MOVE_ENCODED__", psEncodedCommand(comandoElevadoMove(jarStaged, jarTarget)))
+            .replace("__COMANDO_RESTORE_ENCODED__", psEncodedCommand(comandoElevadoRestore(backup, jarTarget)));
 
         try {
             // Windows PowerShell 5.1 (powershell.exe, no pwsh) solo detecta UTF-8 en un .ps1
@@ -81,6 +87,39 @@ public class ScriptDeReemplazoGenerator {
         return valor.replace("'", "''");
     }
 
+    /**
+     * Arma, ya en Java, el comando que corre el proceso elevado para mover el JAR.
+     *
+     * <p>No se arma interpolando {@code $target}/{@code $staged} en el script padre: esas
+     * variables ya contienen el valor des-escapado (el apóstrofe suelto, si el path lo tiene),
+     * y reinyectarlas dentro de otro literal PowerShell {@code '...'} rompe el parseo. Acá se
+     * escapa una única vez con {@link #psLiteral} y el resultado viaja como texto opaco
+     * (Base64 vía {@code -EncodedCommand}), evitando cualquier anidamiento de comillas.
+     */
+    private String comandoElevadoMove(Path jarStaged, Path jarTarget) {
+        String target = psLiteral(jarTarget);
+        String staged = psLiteral(jarStaged);
+        return "$ErrorActionPreference = 'Stop'; try { "
+            + "if (Test-Path '" + target + "') { Remove-Item -Path '" + target + "' -Force }; "
+            + "Move-Item -Path '" + staged + "' -Destination '" + target + "' -Force; "
+            + "exit 0 } catch { exit 1 }";
+    }
+
+    /** Mismo criterio que {@link #comandoElevadoMove}, para reintentar el restore del backup con UAC. */
+    private String comandoElevadoRestore(Path backup, Path jarTarget) {
+        String backupLiteral = psLiteral(backup);
+        String target = psLiteral(jarTarget);
+        return "$ErrorActionPreference = 'Stop'; try { "
+            + "if ((Test-Path '" + backupLiteral + "') -and -not (Test-Path '" + target + "')) { "
+            + "Copy-Item -Path '" + backupLiteral + "' -Destination '" + target + "' -Force }; "
+            + "exit 0 } catch { exit 1 }";
+    }
+
+    /** Codifica un script en el formato que exige {@code -EncodedCommand}: Base64 de UTF-16LE. */
+    private String psEncodedCommand(String script) {
+        return Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_16LE));
+    }
+
     private String plantilla() {
         return """
             # Script de reemplazo del fat JAR de Aptium (generado automáticamente).
@@ -91,6 +130,7 @@ public class ScriptDeReemplazoGenerator {
             $staged      = '__STAGED__'
             $target      = '__TARGET__'
             $backup      = '__BACKUP__'
+            $lock        = '__LOCK__'
             $javaExe     = Join-Path '__JAVA_HOME__' 'bin\\javaw.exe'
             $releaseUrl  = '__RELEASE_URL__'
             $logPath     = Join-Path $PSScriptRoot 'reemplazo.log'
@@ -132,14 +172,14 @@ public class ScriptDeReemplazoGenerator {
             } catch {
                 Log "Move-Item directo FALLO: $($_.Exception.GetType().FullName): $($_.Exception.Message)"
                 # 4. Acceso denegado (ruta protegida): reintentar SOLO el move con elevación UAC.
-                #    El proceso elevado no hereda $ErrorActionPreference del script padre, así
-                #    que hay que fijarlo explícitamente ahí adentro y devolver el resultado real
-                #    por código de salida — de lo contrario un Move-Item fallido igual sale con
-                #    ExitCode 0 y el fallo pasa desapercibido.
+                #    El comando viaja pre-armado y codificado en Base64 desde Java (vía
+                #    -EncodedCommand): interpolar $target/$staged acá mismo rompía el literal
+                #    PowerShell si el path tenía un apóstrofe. El proceso elevado tampoco hereda
+                #    $ErrorActionPreference del padre, así que el comando lo fija él mismo y
+                #    devuelve el resultado real por código de salida.
                 try {
-                    $comandoMove = "`$ErrorActionPreference = 'Stop'; try { if (Test-Path '$target') { Remove-Item -Path '$target' -Force }; Move-Item -Path '$staged' -Destination '$target' -Force; exit 0 } catch { exit 1 }"
                     $proc = Start-Process powershell -Verb RunAs -Wait -PassThru `
-                        -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command', $comandoMove
+                        -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand', '__COMANDO_MOVE_ENCODED__'
                     Log "Move-Item elevado: ExitCode=$($proc.ExitCode), staged aun existe=$(Test-Path $staged)"
                     if ($proc.ExitCode -eq 0 -and -not (Test-Path $staged)) { $reemplazado = $true }
                 } catch {
@@ -152,18 +192,34 @@ public class ScriptDeReemplazoGenerator {
             Log "Resultado final: reemplazado=$reemplazado"
 
             if ($reemplazado) {
-                # 6. Éxito: limpiar el backup y relanzar la app nueva.
+                # 6. Éxito: limpiar el backup, liberar el lock de actualización y relanzar la app nueva.
                 try { if (Test-Path $backup) { Remove-Item $backup -Force } } catch { }
+                try { if (Test-Path $lock) { Remove-Item $lock -Force } } catch { }
                 Relanzar-App
                 exit 0
             } else {
-                # 5. Fallback: restaurar el backup si el original quedó tocado, abrir la
-                #    página del release para descarga manual, y relanzar la app vieja igual.
+                # 5. Fallback: restaurar el backup si el original quedó tocado. Si el restore
+                #    directo falla (típico: es la misma carpeta protegida que obligó a elevar
+                #    el move), reintenta con UAC en vez de tragarse el error — sin esto el JAR
+                #    quedaba borrado y sin forma de arrancar.
                 try {
                     if ((Test-Path $backup) -and -not (Test-Path $target)) {
                         Copy-Item -Path $backup -Destination $target -Force
                     }
-                } catch { }
+                    Log "Restore directo: OK (o no hacia falta)"
+                } catch {
+                    Log "Restore directo FALLO: $($_.Exception.Message)"
+                    try {
+                        $procRestore = Start-Process powershell -Verb RunAs -Wait -PassThru `
+                            -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand', '__COMANDO_RESTORE_ENCODED__'
+                        Log "Restore elevado: ExitCode=$($procRestore.ExitCode)"
+                    } catch {
+                        Log "Elevacion de restore FALLO: $($_.Exception.Message)"
+                    }
+                }
+                # El lock se libera acá también: si esta corrida no pudo reemplazar el JAR,
+                # que la próxima (manual o de la tarea programada) no quede bloqueada por esta.
+                try { if (Test-Path $lock) { Remove-Item $lock -Force } } catch { }
                 try { Start-Process $releaseUrl } catch { }
                 Relanzar-App
                 exit 1

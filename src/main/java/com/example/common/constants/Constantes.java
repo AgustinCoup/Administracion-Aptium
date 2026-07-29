@@ -356,6 +356,8 @@ public final class Constantes {
         public static final String GITHUB_REPO    = "Administracion-Aptium";
         public static final String ASSET_JAR      = "aptium.jar";
         public static final String ASSET_CHECKSUM = "aptium.jar.sha256";
+        public static final String SUFIJO_LOCK    = ".lock";
+        public static final long LOCK_OBSOLETO_MINUTOS = 15;
 
         private Actualizaciones() {}
     }
