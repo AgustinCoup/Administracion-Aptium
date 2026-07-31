@@ -23,7 +23,6 @@ $token = $env:APTIUM_GITHUB_TOKEN   # Ya no se hardcodea: setx APTIUM_GITHUB_TOK
 $jarDestino = "C:\Sistema\app\aptium.jar"
 $jarBackup = "$jarDestino.bak"
 $jarLock = "$jarDestino.lock"
-$jarVersionFile = "$jarDestino.version"
 $lockObsoletoMinutos = 15
 $directorioTrabajo = Split-Path $jarDestino
 
@@ -67,6 +66,53 @@ if (-not (Adquirir-LockActualizacion -Lock $jarLock -ObsoletoMinutos $lockObsole
     Exit
 }
 
+# Lee "app.version" desde el version.properties embebido en el propio JAR instalado, en vez de
+# llevar un registro aparte: así no depende de que alguien lo siembre en el primer deploy, y
+# nunca queda desactualizado si el JAR se reemplazó por otro medio (ej. el botón de la app).
+function Obtener-VersionInstalada {
+    param([string]$JarPath)
+
+    if (-not (Test-Path $JarPath)) {
+        return $null
+    }
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($JarPath)
+        try {
+            $entry = $zip.Entries | Where-Object { $_.FullName -eq "version.properties" }
+            if (-not $entry) {
+                return $null
+            }
+            $reader = New-Object System.IO.StreamReader($entry.Open())
+            try {
+                $contenido = $reader.ReadToEnd()
+            } finally {
+                $reader.Dispose()
+            }
+        } finally {
+            $zip.Dispose()
+        }
+    } catch {
+        # JAR corrupto, bloqueado, o formato inesperado: se trata como versión desconocida
+        # (fuerza la reinstalación, que es el comportamiento seguro ante la duda).
+        return $null
+    }
+
+    $match = [regex]::Match($contenido, "app\.version\s*=\s*(.+)")
+    if (-not $match.Success) {
+        return $null
+    }
+    return $match.Groups[1].Value.Trim()
+}
+
+# Normaliza el prefijo "v" opcional (los tags de GitHub lo llevan, app.version no) para poder
+# comparar como texto sin que un simple prefijo distinto dispare una reinstalación de más.
+function Normalizar-Version {
+    param([string]$Version)
+    if ($null -eq $Version) { return $null }
+    return $Version.Trim().TrimStart('v', 'V')
+}
+
 try {
     # --- 1. CONSULTA DE LA ÚLTIMA RELEASE EN GITHUB ---
     Write-Host "[INFO] Consultando últimas versiones en GitHub..." -ForegroundColor Cyan
@@ -94,15 +140,12 @@ try {
 
     # --- 2. CONTROL DE VERSIONES ---
     # Evita matar los procesos Java y reinstalar en cada boot cuando ya está la última versión.
-    $versionInstalada = $null
-    if (Test-Path $jarVersionFile) {
-        $versionInstalada = (Get-Content $jarVersionFile -Raw).Trim()
-    }
-    if ($versionInstalada -eq $tagNuevaVersion) {
+    $versionInstalada = Obtener-VersionInstalada -JarPath $jarDestino
+    if ((Normalizar-Version $versionInstalada) -eq (Normalizar-Version $tagNuevaVersion)) {
         Write-Host "[INFO] Ya está instalada la última versión ($tagNuevaVersion). No hay nada para hacer." -ForegroundColor Green
         Exit
     }
-    $versionInstaladaTexto = if ($versionInstalada) { $versionInstalada } else { "desconocida" }
+    $versionInstaladaTexto = if ($versionInstalada) { $versionInstalada } else { "desconocida (primera corrida o JAR no encontrado)" }
     Write-Host "[INFO] Nueva versión detectada: $tagNuevaVersion (instalada: $versionInstaladaTexto). Procediendo con la descarga..." -ForegroundColor Green
 
     # --- 3. CIERRE SEGURO DEL PROCESO JAVA (ANTI-BLOQUEO) ---
@@ -166,7 +209,6 @@ try {
         if (Test-Path $jarBackup) {
             Remove-Item $jarBackup -Force -ErrorAction SilentlyContinue
         }
-        Set-Content -Path $jarVersionFile -Value $tagNuevaVersion -NoNewline
         Write-Host "[SUCCESS] Sistema actualizado con éxito a la versión $tagNuevaVersion." -ForegroundColor Green
 
     } catch {
