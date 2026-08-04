@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,15 +22,18 @@ jobs:
           java-version: '17'
 
       - name: Build
+        shell: bash
         run: mvn -B -Dapp.version=${GITHUB_REF_NAME#v} clean package
 
       - name: Asegurar nombre de asset aptium.jar
+        shell: bash
         run: |
           if [ ! -f target/aptium.jar ]; then
             cp "$(ls target/*.jar | grep -v original | head -n1)" target/aptium.jar
           fi
 
       - name: Calcular checksum
+        shell: bash
         run: sha256sum target/aptium.jar > target/aptium.jar.sha256
 
       - name: Crear release de GitHub

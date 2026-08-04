@@ -71,4 +71,42 @@ class AjustesControllerTest {
 
         verify(actualizacionService, timeout(2000)).hayActualizacionDisponible();
     }
+
+    @Test
+    @DisplayName("deshabilita el botón al hacer click, para no permitir chequeos/descargas concurrentes")
+    void buscarActualizaciones_deshabilitaElBotonInmediatamente() {
+        // Sin stub de hayActualizacionDisponible(): esta prueba solo verifica el deshabilitado
+        // sincrónico al click, que no depende de qué devuelva (ni de que termine) la tarea
+        // de fondo — stubearlo acá dispara UnnecessaryStubbingException porque el hilo de
+        // fondo puede no haber llegado a invocarlo todavía cuando el test ya terminó de verificar.
+        onBuscarActualizaciones.run();
+
+        // Sincrónico respecto del click: no depende de que termine la tarea de fondo.
+        verify(vista).setBuscarActualizacionesHabilitado(false);
+    }
+
+    @Test
+    @DisplayName("rehabilita el botón cuando el chequeo no encuentra actualizaciones")
+    void buscarActualizaciones_sinActualizaciones_rehabilitaElBoton() {
+        when(actualizacionService.hayActualizacionDisponible()).thenReturn(Optional.empty());
+
+        onBuscarActualizaciones.run();
+
+        // atLeast(1): en el entorno headless de test, JOptionPane.showMessageDialog dispara
+        // HeadlessException, así que el rehabilitado ocurre tanto en manejarResultadoChequeo
+        // como (de nuevo, redundante pero inofensivo) en el manejador de error de TareaUI que
+        // atrapa esa excepción. En producción real (con display) solo se llama una vez.
+        verify(vista, timeout(2000).atLeast(1)).setBuscarActualizacionesHabilitado(true);
+    }
+
+    @Test
+    @DisplayName("rehabilita el botón cuando el chequeo falla")
+    void buscarActualizaciones_chequeoFalla_rehabilitaElBoton() {
+        when(actualizacionService.hayActualizacionDisponible())
+            .thenThrow(new ActualizacionException("sin conexión"));
+
+        onBuscarActualizaciones.run();
+
+        verify(vista, timeout(2000).atLeast(1)).setBuscarActualizacionesHabilitado(true);
+    }
 }

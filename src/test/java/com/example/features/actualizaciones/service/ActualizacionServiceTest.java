@@ -60,6 +60,27 @@ class ActualizacionServiceTest {
     }
 
     @Test
+    void hayActualizacionDisponible_versionActualNoParseable_ofreceElReleaseIgual() {
+        when(versionInfo.actual()).thenReturn("dev-SNAPSHOT");
+        ReleaseInfo release = new ReleaseInfo("v1.1.0", Map.of(), "changelog");
+        when(releaseRepository.obtenerUltimoRelease()).thenReturn(release);
+
+        Optional<ReleaseInfo> resultado = crearService().hayActualizacionDisponible();
+
+        assertTrue(resultado.isPresent(), "sin versión actual conocida, se debe ofrecer igual el último release");
+        assertEquals(release, resultado.get());
+    }
+
+    @Test
+    void hayActualizacionDisponible_tagDeReleaseNoParseable_devuelveOptionalVacio() {
+        when(releaseRepository.obtenerUltimoRelease())
+            .thenReturn(new ReleaseInfo("latest", Map.of(), "changelog"));
+
+        assertTrue(crearService().hayActualizacionDisponible().isEmpty(),
+            "un tag que no es una versión válida no debe ofrecerse como actualización");
+    }
+
+    @Test
     void hayActualizacionDisponible_repositorioLanzaExcepcion_sePropaga() {
         when(releaseRepository.obtenerUltimoRelease())
             .thenThrow(new ActualizacionException("Error de red"));

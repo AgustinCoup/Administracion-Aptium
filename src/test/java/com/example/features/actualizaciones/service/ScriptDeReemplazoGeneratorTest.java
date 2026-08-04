@@ -66,6 +66,36 @@ class ScriptDeReemplazoGeneratorTest {
     }
 
     @Test
+    @DisplayName("no toca el target si el backup previo falla, para no perder el JAR sin red de seguridad")
+    void generar_backupFalla_noBorraElTargetAntesDeMover(@TempDir Path staging, @TempDir Path instalacion) throws IOException {
+        Path script = generator.generar(1L, staging.resolve("aptium-nuevo.jar"),
+            instalacion.resolve("aptium.jar"), instalacion.resolve("jdk"), instalacion.resolve("aptium.jar.lock"));
+
+        String contenido = Files.readString(script);
+        assertTrue(contenido.contains("$backupOk = $true"), "debe trackear si el backup salió bien");
+        assertTrue(contenido.contains("$backupOk = $false"), "debe marcar el backup como fallido en el catch");
+        assertTrue(contenido.contains("if (-not $backupOk -and (Test-Path $target)) {"),
+            "debe abortar el reemplazo si el backup falló y el target todavía existe");
+
+        int indiceBackupFallo = contenido.indexOf("$backupOk = $false");
+        int indiceGuarda = contenido.indexOf("-not $backupOk -and (Test-Path $target)");
+        int indiceRemoveTarget = contenido.indexOf("Remove-Item -Path $target -Force");
+        assertTrue(indiceBackupFallo < indiceGuarda && indiceGuarda < indiceRemoveTarget,
+            "la guarda debe evaluarse después de intentar el backup y antes de borrar el target");
+    }
+
+    @Test
+    @DisplayName("cita el target al relanzar la app, para no truncar un path con espacios (ej. Program Files)")
+    void generar_relanzarApp_citaElTargetEnElArgumentList(@TempDir Path staging, @TempDir Path instalacion) throws IOException {
+        Path script = generator.generar(1L, staging.resolve("aptium-nuevo.jar"),
+            instalacion.resolve("aptium.jar"), instalacion.resolve("jdk"), instalacion.resolve("aptium.jar.lock"));
+
+        String contenido = Files.readString(script);
+        assertTrue(contenido.contains("-ArgumentList '-jar', \"`\"$target`\"\""),
+            "el target debe viajar entre comillas dobles dentro del ArgumentList, no como token suelto");
+    }
+
+    @Test
     @DisplayName("escapa comillas simples en las rutas para no romper los literales PowerShell")
     void generar_escapaComillasSimplesEnRutas(@TempDir Path base) throws IOException {
         Path staging = base.resolve("carpeta'con'comilla");

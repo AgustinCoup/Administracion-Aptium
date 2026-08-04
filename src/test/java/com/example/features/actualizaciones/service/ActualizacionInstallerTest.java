@@ -40,7 +40,7 @@ class ActualizacionInstallerTest {
         Path lock = base.resolve("aptium.jar.lock");
         Files.createFile(lock);
         when(rutaJarResolver.resolverJarActual()).thenReturn(jarTarget);
-        when(rutaJarResolver.resolverLockActualizacion(jarTarget)).thenReturn(lock);
+        when(rutaJarResolver.resolverLockActualizacion()).thenReturn(lock);
 
         ActualizacionException ex = assertThrows(ActualizacionException.class,
             () -> crearInstaller().instalarYReiniciar(base.resolve("aptium-nuevo.jar")));
@@ -58,7 +58,7 @@ class ActualizacionInstallerTest {
         Files.createFile(lock);
         Files.setLastModifiedTime(lock, FileTime.from(Instant.now().minus(30, ChronoUnit.MINUTES)));
         when(rutaJarResolver.resolverJarActual()).thenReturn(jarTarget);
-        when(rutaJarResolver.resolverLockActualizacion(jarTarget)).thenReturn(lock);
+        when(rutaJarResolver.resolverLockActualizacion()).thenReturn(lock);
         when(scriptGenerator.generar(anyLong(), any(), eq(jarTarget), any(), eq(lock)))
             .thenThrow(new ActualizacionException("fallo simulado del generador"));
 
@@ -75,7 +75,7 @@ class ActualizacionInstallerTest {
         Path jarTarget = base.resolve("aptium.jar");
         Path lock = base.resolve("aptium.jar.lock");
         when(rutaJarResolver.resolverJarActual()).thenReturn(jarTarget);
-        when(rutaJarResolver.resolverLockActualizacion(jarTarget)).thenReturn(lock);
+        when(rutaJarResolver.resolverLockActualizacion()).thenReturn(lock);
         when(scriptGenerator.generar(anyLong(), any(), eq(jarTarget), any(), eq(lock)))
             .thenThrow(new ActualizacionException("fallo simulado del generador"));
 

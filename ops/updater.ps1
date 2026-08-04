@@ -133,6 +133,17 @@ try {
             Write-Host "[ERROR] No se encontró ningún archivo .jar en la última release." -ForegroundColor Red
             Exit
         }
+
+        # El checksum se verifica después de la descarga (paso 5): sin él, un HTTP 200 con
+        # contenido corrupto o truncado (proxy, portal cautivo, corte a mitad de descarga que
+        # Invoke-WebRequest no siempre reporta como excepción) se instalaría igual y se borraría
+        # el único backup disponible, dejando el sistema sin forma de volver atrás.
+        $assetChecksum = $releaseInfo.assets | Where-Object { $_.name -like "*.sha256" } | Select-Object -First 1
+
+        if (-not $assetChecksum) {
+            Write-Host "[ERROR] No se encontró el archivo .sha256 de la última release; no se puede verificar la integridad de la descarga." -ForegroundColor Red
+            Exit
+        }
     } catch {
         Write-Host "[ERROR] No se pudo obtener la información de GitHub: $_" -ForegroundColor Red
         Exit
@@ -205,6 +216,16 @@ try {
         # Descarga directa
         Invoke-WebRequest -Uri $asset.url -Headers $downloadHeaders -OutFile $jarDestino -ErrorAction Stop
 
+        # Verificación de integridad: un HTTP 200 no garantiza que el contenido descargado sea
+        # el JAR correcto (ver comentario junto a $assetChecksum, paso 1). Comparación de string
+        # en PowerShell es case-insensitive por default, así que no hace falta normalizar mayúsculas
+        # entre el hex en minúscula de sha256sum y el que devuelve Get-FileHash.
+        $hashEsperado = ((Invoke-RestMethod -Uri $assetChecksum.url -Headers $downloadHeaders -ErrorAction Stop) -split '\s+')[0]
+        $hashCalculado = (Get-FileHash -Path $jarDestino -Algorithm SHA256).Hash
+        if ($hashCalculado -ne $hashEsperado) {
+            throw "El checksum del JAR descargado ($hashCalculado) no coincide con el publicado ($hashEsperado)."
+        }
+
         # Si todo salió bien, eliminamos el backup viejo para limpiar el directorio
         if (Test-Path $jarBackup) {
             Remove-Item $jarBackup -Force -ErrorAction SilentlyContinue
@@ -212,7 +233,7 @@ try {
         Write-Host "[SUCCESS] Sistema actualizado con éxito a la versión $tagNuevaVersion." -ForegroundColor Green
 
     } catch {
-        Write-Host "[ERROR] La descarga falló o se interrumpió: $_" -ForegroundColor Red
+        Write-Host "[ERROR] La descarga falló, se interrumpió, o el checksum no coincide: $_" -ForegroundColor Red
         Write-Host "[INFO] Iniciando proceso de Rollback para restaurar la versión anterior..." -ForegroundColor Yellow
 
         # Si se llegó a crear un archivo corrupto o parcial a mitad de la descarga, lo removemos

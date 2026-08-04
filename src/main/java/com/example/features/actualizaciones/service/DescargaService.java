@@ -32,16 +32,25 @@ public class DescargaService {
     private static final int TAMANO_BUFFER = 8192;
 
     private final HttpClient httpClient;
+    private final DirectorioStagingResolver stagingResolver;
 
     public DescargaService() {
         this(HttpClient.newBuilder().connectTimeout(TIMEOUT).followRedirects(HttpClient.Redirect.NORMAL).build());
     }
 
     public DescargaService(HttpClient httpClient) {
+        this(httpClient, new DirectorioStagingResolver());
+    }
+
+    public DescargaService(HttpClient httpClient, DirectorioStagingResolver stagingResolver) {
         if (httpClient == null) {
             throw new IllegalArgumentException("HttpClient no puede ser nulo");
         }
+        if (stagingResolver == null) {
+            throw new IllegalArgumentException("stagingResolver no puede ser nulo");
+        }
         this.httpClient = httpClient;
+        this.stagingResolver = stagingResolver;
     }
 
     /**
@@ -62,7 +71,7 @@ public class DescargaService {
                     + Constantes.Actualizaciones.ASSET_JAR + " / " + Constantes.Actualizaciones.ASSET_CHECKSUM + ")");
         }
 
-        Path directorioStaging = resolverDirectorioStaging();
+        Path directorioStaging = stagingResolver.resolver();
         Path archivoParcial = directorioStaging.resolve("aptium-" + release.tag() + ".jar.part");
         Path archivoFinal = directorioStaging.resolve("aptium-" + release.tag() + ".jar");
 
@@ -83,20 +92,6 @@ public class DescargaService {
             throw new ActualizacionException("No se pudo finalizar la descarga del JAR verificado", e);
         }
         return archivoFinal;
-    }
-
-    private Path resolverDirectorioStaging() {
-        String localAppData = System.getenv("LOCALAPPDATA");
-        if (localAppData == null || localAppData.isBlank()) {
-            throw new ActualizacionException("La variable de entorno LOCALAPPDATA no está definida");
-        }
-        Path directorio = Path.of(localAppData, "Aptium", "updates");
-        try {
-            Files.createDirectories(directorio);
-        } catch (IOException e) {
-            throw new ActualizacionException("No se pudo crear el directorio de staging: " + directorio, e);
-        }
-        return directorio;
     }
 
     private String descargarChecksum(String checksumUrl) {

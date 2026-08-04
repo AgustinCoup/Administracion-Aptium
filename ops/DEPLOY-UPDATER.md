@@ -87,6 +87,10 @@ contexto de la tarea). Después revisar `C:\Sistema\updater.log`:
 - `[SUCCESS] Sistema actualizado con éxito a la versión ...` → funcionó y actualizó.
 - `[INFO] Ya hay una actualización en curso (lock: ...)` → el botón de la app estaba
   actualizando al mismo tiempo; es el comportamiento esperado, no un error.
+- `[ERROR] La descarga falló, se interrumpió, o el checksum no coincide: ...` seguido de
+  `[SUCCESS] Rollback completado` → la descarga llegó corrupta o incompleta (ej. corte de red,
+  proxy) y el script la descartó en vez de instalarla; la versión anterior sigue funcionando.
+  Reintentar en el próximo boot o correr el paso 7 de nuevo.
 
 ### 8. Confirmar que el lock se liberó
 

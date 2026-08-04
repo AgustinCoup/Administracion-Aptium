@@ -62,7 +62,7 @@ public class ActualizacionInstaller {
             throw new IllegalArgumentException("jarVerificado no puede ser nulo");
         }
         Path jarTarget = rutaJarResolver.resolverJarActual();
-        Path lock = rutaJarResolver.resolverLockActualizacion(jarTarget);
+        Path lock = rutaJarResolver.resolverLockActualizacion();
         adquirirLock(lock);
 
         try {

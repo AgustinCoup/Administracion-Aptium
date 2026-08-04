@@ -3,6 +3,8 @@ package com.example.features.actualizaciones.service;
 import com.example.common.VersionInfo;
 import com.example.features.actualizaciones.model.ReleaseInfo;
 import com.example.features.actualizaciones.model.Version;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.Optional;
@@ -15,6 +17,8 @@ import java.util.function.Consumer;
  * ni dependa directamente de {@link DescargaService} o {@link ActualizacionInstaller}.
  */
 public class ActualizacionService {
+
+    private static final Logger log = LoggerFactory.getLogger(ActualizacionService.class);
 
     private final IReleaseRepository releaseRepository;
     private final VersionInfo versionInfo;
@@ -51,9 +55,26 @@ public class ActualizacionService {
      */
     public Optional<ReleaseInfo> hayActualizacionDisponible() {
         ReleaseInfo release = releaseRepository.obtenerUltimoRelease();
-        Version disponible = Version.parse(release.tag());
-        Version actual = Version.parse(versionInfo.actual());
-        return disponible.compareTo(actual) > 0 ? Optional.of(release) : Optional.empty();
+        Optional<Version> disponible = parsearVersion(release.tag(), "tag del release");
+        if (disponible.isEmpty()) {
+            return Optional.empty();
+        }
+        // Sin un app.version numérico embebido (builds locales de desarrollo, o cualquier
+        // JAR instalado antes de que esta feature existiera) no hay con qué comparar: se
+        // trata la versión actual como desconocida y se ofrece igual el último release,
+        // en vez de romper el chequeo entero con un error de formato.
+        Optional<Version> actual = parsearVersion(versionInfo.actual(), "versión actual");
+        boolean hayActualizacion = actual.isEmpty() || disponible.get().compareTo(actual.get()) > 0;
+        return hayActualizacion ? Optional.of(release) : Optional.empty();
+    }
+
+    private Optional<Version> parsearVersion(String texto, String contexto) {
+        try {
+            return Optional.of(Version.parse(texto));
+        } catch (IllegalArgumentException e) {
+            log.warn("No se pudo interpretar la {} ('{}') como versión, se trata como desconocida", contexto, texto);
+            return Optional.empty();
+        }
     }
 
     /**

@@ -140,7 +140,11 @@ public class ScriptDeReemplazoGenerator {
             }
 
             function Relanzar-App {
-                Start-Process -FilePath $javaExe -ArgumentList '-jar', $target
+                # -ArgumentList une los elementos del array con un espacio y arma la línea de
+                # comandos tal cual, sin citar cada uno como haría el operador '&': un $target
+                # con espacio (ej. Program Files) se partiría en tokens separados y javaw.exe
+                # recibiría un path truncado como argumento de -jar.
+                Start-Process -FilePath $javaExe -ArgumentList '-jar', "`"$target`""
             }
 
             Log "=== Inicio del script (PID a esperar: $pidObjetivo) ==="
@@ -150,10 +154,12 @@ public class ScriptDeReemplazoGenerator {
             Log "Wait-Process terminado"
 
             # 2. Respaldar el JAR target actual antes de tocarlo.
+            $backupOk = $true
             try {
                 if (Test-Path $target) { Copy-Item -Path $target -Destination $backup -Force }
                 Log "Backup ok (existe target: $(Test-Path $target))"
             } catch {
+                $backupOk = $false
                 Log "Backup FALLO: $($_.Exception.Message)"
             }
 
@@ -163,7 +169,13 @@ public class ScriptDeReemplazoGenerator {
             #    documentada del cmdlet, a diferencia de Copy-Item -Force) — el target
             #    siempre existe acá (es el JAR que se está reemplazando), así que hay que
             #    borrarlo antes de mover, o el Move-Item falla siempre con "ya existe".
+            #    Si el backup de arriba falló y el target existe, no hay red de seguridad:
+            #    se aborta sin tocar $target en vez de arriesgarse a un estado sin JAR y
+            #    sin backup (pérdida irrecuperable si el Move-Item de abajo también falla).
             $reemplazado = $false
+            if (-not $backupOk -and (Test-Path $target)) {
+                Log "Reemplazo abortado: el backup fallo y el target existe, no se toca"
+            } else {
             try {
                 if (Test-Path $target) { Remove-Item -Path $target -Force }
                 Move-Item -Path $staged -Destination $target -Force
@@ -187,6 +199,7 @@ public class ScriptDeReemplazoGenerator {
                     Log "Elevacion (Start-Process -Verb RunAs) FALLO: $($_.Exception.Message)"
                     $reemplazado = $false
                 }
+            }
             }
 
             Log "Resultado final: reemplazado=$reemplazado"

@@ -3,6 +3,7 @@ package com.example.features.ajustes.controller;
 import com.example.common.constants.Constantes;
 import com.example.features.actualizaciones.model.ReleaseInfo;
 import com.example.features.actualizaciones.service.ActualizacionService;
+import com.example.features.ajustes.controller.helpers.ThrottleDeProgreso;
 import com.example.features.ajustes.view.FusionarClienteDialog;
 import com.example.features.ajustes.view.NuevoClienteDialog;
 import com.example.features.ajustes.view.PanelGestionClientes;
@@ -20,6 +21,9 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class AjustesController {
+
+    /** Cota de actualizaciones de la barra de progreso durante la descarga del JAR. */
+    private static final long INTERVALO_PROGRESO_DESCARGA_MS = 100;
 
     private final PantallaAjustes      vista;
     private final PanelGestionClientes panel;
@@ -167,6 +171,7 @@ public class AjustesController {
     // porque requiere diálogos intermedios que el service, al no ser código de UI, no puede mostrar.
 
     private void buscarActualizaciones() {
+        vista.setBuscarActualizacionesHabilitado(false);
         TareaUI.<Optional<ReleaseInfo>>nueva()
             .nombre("ajustes-chequear-actualizacion")
             .leer(actualizacionService::hayActualizacionDisponible)
@@ -177,6 +182,7 @@ public class AjustesController {
 
     private void manejarResultadoChequeo(Optional<ReleaseInfo> releaseDisponible) {
         if (releaseDisponible.isEmpty()) {
+            vista.setBuscarActualizacionesHabilitado(true);
             JOptionPane.showMessageDialog(vista, Constantes.Mensajes.NO_HAY_ACTUALIZACIONES,
                 Constantes.Mensajes.TITULO_ACTUALIZACION_DISPONIBLE, JOptionPane.INFORMATION_MESSAGE);
             return;
@@ -189,7 +195,10 @@ public class AjustesController {
             Constantes.Mensajes.TITULO_ACTUALIZACION_DISPONIBLE,
             JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE,
             null, opciones, opciones[1]);
-        if (resp != 0) return;
+        if (resp != 0) {
+            vista.setBuscarActualizacionesHabilitado(true);
+            return;
+        }
 
         descargarActualizacion(release);
     }
@@ -208,11 +217,15 @@ public class AjustesController {
         dialogoProgreso.setLocationRelativeTo(vista);
         dialogoProgreso.setVisible(true);
 
+        ThrottleDeProgreso throttle = new ThrottleDeProgreso(INTERVALO_PROGRESO_DESCARGA_MS);
         TareaUI.<Path>nueva()
             .nombre("ajustes-descargar-actualizacion")
             .leer(() -> actualizacionService.descargarActualizacion(release,
-                bytes -> SwingUtilities.invokeLater(() ->
-                    barra.setString(String.format(Constantes.Mensajes.DESCARGANDO_ACTUALIZACION, bytes / 1024)))))
+                bytes -> {
+                    if (!throttle.permitir()) return;
+                    SwingUtilities.invokeLater(() ->
+                        barra.setString(String.format(Constantes.Mensajes.DESCARGANDO_ACTUALIZACION, bytes / 1024)));
+                }))
             .pintar(this::confirmarInstalacion)
             .siFalla(this::mostrarErrorActualizacion)
             .despues(dialogoProgreso::dispose)
@@ -224,7 +237,10 @@ public class AjustesController {
             Constantes.Mensajes.CONFIRMAR_INSTALAR_ACTUALIZACION,
             Constantes.Mensajes.TITULO_INSTALAR_ACTUALIZACION,
             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-        if (resp != JOptionPane.YES_OPTION) return;
+        if (resp != JOptionPane.YES_OPTION) {
+            vista.setBuscarActualizacionesHabilitado(true);
+            return;
+        }
 
         TareaUI.<Void>nueva()
             .nombre("ajustes-instalar-actualizacion")
@@ -233,7 +249,9 @@ public class AjustesController {
             .lanzar();
     }
 
+    /** Maneja el error de cualquiera de los tres pasos del flujo (chequeo, descarga, instalación). */
     private void mostrarErrorActualizacion(Throwable e) {
+        vista.setBuscarActualizacionesHabilitado(true);
         mostrarError(String.format(Constantes.Mensajes.ERROR_ACTUALIZACION, e.getMessage()),
             Constantes.Mensajes.TITULO_ERROR_ACTUALIZACION);
     }

@@ -16,6 +16,19 @@ import java.security.CodeSource;
  */
 public class RutaJarResolver {
 
+    private final DirectorioStagingResolver stagingResolver;
+
+    public RutaJarResolver() {
+        this(new DirectorioStagingResolver());
+    }
+
+    public RutaJarResolver(DirectorioStagingResolver stagingResolver) {
+        if (stagingResolver == null) {
+            throw new IllegalArgumentException("stagingResolver no puede ser nulo");
+        }
+        this.stagingResolver = stagingResolver;
+    }
+
     /**
      * @return ruta del JAR en ejecución
      * @throws ActualizacionException si no se puede determinar la ubicación del código, o si la
@@ -43,8 +56,15 @@ public class RutaJarResolver {
         return ubicacion;
     }
 
-    /** Ruta del lock que evita que dos reemplazos de {@code jarTarget} corran a la vez. */
-    public Path resolverLockActualizacion(Path jarTarget) {
-        return jarTarget.resolveSibling(jarTarget.getFileName() + Constantes.Actualizaciones.SUFIJO_LOCK);
+    /**
+     * Ruta del lock que evita que dos reemplazos corran a la vez.
+     *
+     * <p>Vive en el directorio de staging ({@code %LOCALAPPDATA%/Aptium/updates}), no al lado
+     * del JAR target: crearlo ahí sin elevar privilegios fallaría en instalaciones con ACL
+     * restringida (ej. Program Files) — justo el caso para el que existe la elevación UAC del
+     * script de reemplazo, que nunca llegaría a correr si el lock ya bloquea antes.
+     */
+    public Path resolverLockActualizacion() {
+        return stagingResolver.resolver().resolve(Constantes.Actualizaciones.ASSET_JAR + Constantes.Actualizaciones.SUFIJO_LOCK);
     }
 }

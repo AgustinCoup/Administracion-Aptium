@@ -36,4 +36,9 @@ public class PantallaAjustes extends JPanel {
     public void setOnBuscarActualizaciones(Runnable r) {
         btnBuscarActualizaciones.addActionListener(e -> r.run());
     }
+
+    /** Evita clicks re-entrantes mientras el flujo de chequeo/descarga/instalación está en curso. */
+    public void setBuscarActualizacionesHabilitado(boolean habilitado) {
+        btnBuscarActualizaciones.setEnabled(habilitado);
+    }
 }
