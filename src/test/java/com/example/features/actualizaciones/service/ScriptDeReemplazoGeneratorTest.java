@@ -66,6 +66,22 @@ class ScriptDeReemplazoGeneratorTest {
     }
 
     @Test
+    @DisplayName("espera a que la JVM anterior termine con timeout, y fuerza el cierre si lo excede")
+    void generar_esperaJvmConTimeoutYFuerzaElCierre(@TempDir Path staging, @TempDir Path instalacion) throws IOException {
+        Path script = generator.generar(999L, staging.resolve("aptium-nuevo.jar"),
+            instalacion.resolve("aptium.jar"), instalacion.resolve("jdk"), instalacion.resolve("aptium.jar.lock"));
+
+        String contenido = Files.readString(script);
+        String timeout = Long.toString(Constantes.Actualizaciones.TIMEOUT_ESPERA_JVM_SEGUNDOS);
+        assertTrue(contenido.contains("Wait-Process -Id $pidObjetivo -Timeout " + timeout + " -ErrorAction Stop"),
+            "debe esperar con un timeout, no indefinidamente");
+        assertTrue(contenido.contains("catch [System.TimeoutException]"),
+            "debe distinguir el timeout de otros errores de Wait-Process");
+        assertTrue(contenido.contains("Stop-Process -Id $pidObjetivo -Force"),
+            "si se cumple el timeout, debe forzar el cierre de la JVM anterior para poder seguir");
+    }
+
+    @Test
     @DisplayName("no toca el target si el backup previo falla, para no perder el JAR sin red de seguridad")
     void generar_backupFalla_noBorraElTargetAntesDeMover(@TempDir Path staging, @TempDir Path instalacion) throws IOException {
         Path script = generator.generar(1L, staging.resolve("aptium-nuevo.jar"),

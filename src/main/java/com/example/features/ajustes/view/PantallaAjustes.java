@@ -10,6 +10,7 @@ public class PantallaAjustes extends JPanel {
 
     private final PanelGestionClientes panelClientes = new PanelGestionClientes();
     private final JButton btnBuscarActualizaciones = new JButton(Constantes.Botones.BUSCAR_ACTUALIZACIONES);
+    private Runnable onBuscarActualizaciones;
 
     public PantallaAjustes(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
@@ -23,6 +24,14 @@ public class PantallaAjustes extends JPanel {
         add(header, BorderLayout.NORTH);
         add(panelClientes, BorderLayout.CENTER);
         add(crearBarraActualizaciones(), BorderLayout.SOUTH);
+
+        // Listener cableado una sola vez (igual que PanelGestionClientes): setOnBuscarActualizaciones
+        // solo reasigna el Runnable que se lee al click. Con addActionListener directo ahí, llamar
+        // el setter más de una vez apilaba un listener nuevo por llamada y un click terminaba
+        // disparando todos los Runnable acumulados, no solo el último.
+        btnBuscarActualizaciones.addActionListener(e -> {
+            if (onBuscarActualizaciones != null) onBuscarActualizaciones.run();
+        });
     }
 
     private JPanel crearBarraActualizaciones() {
@@ -34,7 +43,7 @@ public class PantallaAjustes extends JPanel {
     public PanelGestionClientes getPanelClientes() { return panelClientes; }
 
     public void setOnBuscarActualizaciones(Runnable r) {
-        btnBuscarActualizaciones.addActionListener(e -> r.run());
+        onBuscarActualizaciones = r;
     }
 
     /** Evita clicks re-entrantes mientras el flujo de chequeo/descarga/instalación está en curso. */

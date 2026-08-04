@@ -226,7 +226,14 @@ public class AjustesController {
                     SwingUtilities.invokeLater(() ->
                         barra.setString(String.format(Constantes.Mensajes.DESCARGANDO_ACTUALIZACION, bytes / 1024)));
                 }))
-            .pintar(this::confirmarInstalacion)
+            .pintar(jarVerificado -> {
+                // Cierra el progreso ANTES de abrir el modal de confirmación: si se deja para
+                // despues(), TareaUI lo corre recién cuando pintar() termina — y pintar() no
+                // termina hasta que el usuario responde ese modal, así que el diálogo de
+                // progreso quedaba visible por debajo todo ese tiempo.
+                dialogoProgreso.dispose();
+                confirmarInstalacion(jarVerificado);
+            })
             .siFalla(this::mostrarErrorActualizacion)
             .despues(dialogoProgreso::dispose)
             .lanzar();

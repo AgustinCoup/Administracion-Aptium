@@ -125,21 +125,25 @@ public class DescargaService {
             }
             throw new ActualizacionException("No se pudo descargar el JAR del release", e);
         }
-        if (response.statusCode() != 200) {
-            eliminarSilenciosamente(destino);
-            throw new ActualizacionException(
-                "El servidor respondió con estado " + response.statusCode() + " al descargar el JAR");
-        }
-
+        // response.body() abre el InputStream (y la conexión HTTP subyacente) apenas llega la
+        // respuesta, con estado 200 o no: si se lo descartaba sin leer en el camino de error
+        // (statusCode != 200, más abajo), la conexión nunca se cerraba ni volvía al pool.
         long totalDescargado = 0;
-        try (InputStream entrada = response.body(); OutputStream salida = Files.newOutputStream(destino)) {
-            byte[] buffer = new byte[TAMANO_BUFFER];
-            int leidos;
-            while ((leidos = entrada.read(buffer)) != -1) {
-                salida.write(buffer, 0, leidos);
-                totalDescargado += leidos;
-                if (onBytesDescargados != null) {
-                    onBytesDescargados.accept(totalDescargado);
+        try (InputStream entrada = response.body()) {
+            if (response.statusCode() != 200) {
+                eliminarSilenciosamente(destino);
+                throw new ActualizacionException(
+                    "El servidor respondió con estado " + response.statusCode() + " al descargar el JAR");
+            }
+            try (OutputStream salida = Files.newOutputStream(destino)) {
+                byte[] buffer = new byte[TAMANO_BUFFER];
+                int leidos;
+                while ((leidos = entrada.read(buffer)) != -1) {
+                    salida.write(buffer, 0, leidos);
+                    totalDescargado += leidos;
+                    if (onBytesDescargados != null) {
+                        onBytesDescargados.accept(totalDescargado);
+                    }
                 }
             }
         } catch (IOException e) {

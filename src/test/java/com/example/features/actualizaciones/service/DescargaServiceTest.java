@@ -117,6 +117,46 @@ class DescargaServiceTest {
     }
 
     @Test
+    void descargarYVerificar_jarResponde404_lanzaExcepcionYCierraElBodySinDejarArchivo() throws IOException {
+        String tag = "vTEST-" + UUID.randomUUID();
+        servidor = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        servidor.createContext("/checksum", exchange -> {
+            byte[] body = (sha256Hex(CONTENIDO_JAR) + "  " + Constantes.Actualizaciones.ASSET_JAR).getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.getResponseBody().close();
+        });
+        servidor.createContext("/jar", exchange -> {
+            byte[] body = "no encontrado".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(404, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.getResponseBody().close();
+        });
+        servidor.start();
+
+        ReleaseInfo release = new ReleaseInfo(
+            tag,
+            Map.of(
+                Constantes.Actualizaciones.ASSET_JAR, urlDe(servidor, "/jar"),
+                Constantes.Actualizaciones.ASSET_CHECKSUM, urlDe(servidor, "/checksum")),
+            "changelog");
+
+        // Antes del fix, el InputStream de la respuesta 404 (response.body()) nunca se leía ni
+        // cerraba: la conexión HTTP quedaba abierta sin volver al pool. No hay forma directa de
+        // aserirlo en un test unitario sin inspeccionar el pool interno del HttpClient, pero al
+        // menos se verifica el comportamiento funcional: la excepción, el mensaje y que no quede
+        // ningún archivo a medio escribir.
+        ActualizacionException ex = assertThrows(ActualizacionException.class,
+            () -> descargaService.descargarYVerificar(release, null));
+        assertTrue(ex.getMessage().contains("404"), "el mensaje debe incluir el status code recibido");
+
+        String localAppData = System.getenv("LOCALAPPDATA");
+        Path directorioStaging = Path.of(localAppData, "Aptium", "updates");
+        assertFalse(Files.exists(directorioStaging.resolve("aptium-" + tag + ".jar")));
+        assertFalse(Files.exists(directorioStaging.resolve("aptium-" + tag + ".jar.part")));
+    }
+
+    @Test
     void descargarYVerificar_assetFaltante_lanzaExcepcionSinIntentarDescarga() {
         ReleaseInfo release = new ReleaseInfo(
             "vTEST-" + UUID.randomUUID(),

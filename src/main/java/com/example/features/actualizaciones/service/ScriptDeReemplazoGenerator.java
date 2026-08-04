@@ -53,6 +53,7 @@ public class ScriptDeReemplazoGenerator {
 
         String contenido = plantilla()
             .replace("__PID__", Long.toString(pidActual))
+            .replace("__TIMEOUT_ESPERA_JVM_SEGUNDOS__", Long.toString(Constantes.Actualizaciones.TIMEOUT_ESPERA_JVM_SEGUNDOS))
             .replace("__STAGED__", psLiteral(jarStaged))
             .replace("__TARGET__", psLiteral(jarTarget))
             .replace("__BACKUP__", psLiteral(backup))
@@ -149,9 +150,19 @@ public class ScriptDeReemplazoGenerator {
 
             Log "=== Inicio del script (PID a esperar: $pidObjetivo) ==="
 
-            # 1. Esperar a que la JVM actual termine y libere el lock sobre el JAR.
-            try { Wait-Process -Id $pidObjetivo -ErrorAction SilentlyContinue } catch { }
-            Log "Wait-Process terminado"
+            # 1. Esperar a que la JVM actual termine y libere el lock sobre el JAR. Con timeout:
+            #    un Wait-Process sin límite dejaba el script (y el lock de actualización) esperando
+            #    para siempre si la JVM colgaba al salir (shutdown hook trabado, deadlock), y la
+            #    app nunca volvía a levantar. Pasado el timeout, se fuerza el cierre y se sigue.
+            try {
+                Wait-Process -Id $pidObjetivo -Timeout __TIMEOUT_ESPERA_JVM_SEGUNDOS__ -ErrorAction Stop
+                Log "Wait-Process terminado (salida normal)"
+            } catch [System.TimeoutException] {
+                Log "Wait-Process: timeout de __TIMEOUT_ESPERA_JVM_SEGUNDOS__s, forzando el cierre del proceso $pidObjetivo"
+                try { Stop-Process -Id $pidObjetivo -Force -ErrorAction SilentlyContinue } catch { }
+            } catch {
+                Log "Wait-Process: el proceso $pidObjetivo ya no existía"
+            }
 
             # 2. Respaldar el JAR target actual antes de tocarlo.
             $backupOk = $true
