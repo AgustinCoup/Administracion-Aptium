@@ -18,8 +18,9 @@ import java.time.Instant;
  * {@link ScriptDeReemplazoGenerator} (qué script hará el trabajo fuera de la JVM),
  * lanza el script como proceso desacoplado y cierra la app con {@code System.exit(0)}.
  *
- * <p>Antes de arrancar, toma un lock de archivo (sibling del JAR target) para que dos
- * reemplazos no corran a la vez — ej. dos clicks del botón, o dos instancias de la app.
+ * <p>Antes de arrancar, toma un lock de archivo (en el directorio de staging, ver
+ * {@link RutaJarResolver#resolverLockActualizacion()}) para que dos reemplazos no corran
+ * a la vez — ej. dos clicks del botón, o dos instancias de la app.
  * El lock lo libera el script generado (que sigue vivo después de que esta JVM cierra), o
  * este mismo método si falla antes de llegar a lanzarlo. Si el lock ya existe y es reciente,
  * la instalación se rechaza; si es viejo (una corrida anterior que no lo limpió, ej. por un

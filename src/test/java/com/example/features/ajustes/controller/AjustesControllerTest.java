@@ -1,6 +1,7 @@
 package com.example.features.ajustes.controller;
 
 import com.example.features.actualizaciones.exception.ActualizacionException;
+import com.example.features.actualizaciones.model.ReleaseInfo;
 import com.example.features.actualizaciones.service.ActualizacionService;
 import com.example.features.ajustes.view.PanelGestionClientes;
 import com.example.features.ajustes.view.PantallaAjustes;
@@ -13,9 +14,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,6 +43,7 @@ class AjustesControllerTest {
     @Mock ActualizacionService actualizacionService;
 
     private Runnable onBuscarActualizaciones;
+    private AjustesController controller;
 
     @BeforeEach
     void setUp() {
@@ -47,7 +52,7 @@ class AjustesControllerTest {
         ArgumentCaptor<Runnable> captor = ArgumentCaptor.forClass(Runnable.class);
         doNothing().when(vista).setOnBuscarActualizaciones(captor.capture());
 
-        new AjustesController(vista, clienteService, actualizacionService);
+        controller = new AjustesController(vista, clienteService, actualizacionService);
         onBuscarActualizaciones = captor.getValue();
     }
 
@@ -108,5 +113,56 @@ class AjustesControllerTest {
         onBuscarActualizaciones.run();
 
         verify(vista, timeout(2000).atLeast(1)).setBuscarActualizacionesHabilitado(true);
+    }
+
+    // ── Chequeo silencioso al iniciar ────────────────────────────────────────
+
+    @Test
+    @DisplayName("chequeo al iniciar dispara el chequeo en background")
+    void chequearAlIniciar_disparaChequeoEnBackground() {
+        when(actualizacionService.hayActualizacionDisponible()).thenReturn(Optional.empty());
+
+        controller.chequearActualizacionesAlIniciar();
+
+        verify(actualizacionService, timeout(2000)).hayActualizacionDisponible();
+    }
+
+    @Test
+    @DisplayName("sin actualizaciones disponibles, el chequeo al iniciar no toca la vista")
+    void chequearAlIniciar_sinActualizaciones_noTocaLaVista() {
+        when(actualizacionService.hayActualizacionDisponible()).thenReturn(Optional.empty());
+
+        controller.chequearActualizacionesAlIniciar();
+
+        verify(actualizacionService, timeout(2000)).hayActualizacionDisponible();
+        verify(vista, never()).setBuscarActualizacionesHabilitado(anyBoolean());
+    }
+
+    @Test
+    @DisplayName("un fallo en el chequeo al iniciar no rompe el flujo ni toca la vista")
+    void chequearAlIniciar_chequeoFalla_noRompeElFlujo() {
+        when(actualizacionService.hayActualizacionDisponible())
+            .thenThrow(new ActualizacionException("sin conexión"));
+
+        controller.chequearActualizacionesAlIniciar();
+
+        verify(actualizacionService, timeout(2000)).hayActualizacionDisponible();
+        verify(vista, never()).setBuscarActualizacionesHabilitado(anyBoolean());
+    }
+
+    @Test
+    @DisplayName("con una actualización disponible, el chequeo al iniciar la ofrece sin romper el flujo")
+    void chequearAlIniciar_hayActualizacion_ofreceInstalarSinRomperElFlujo() {
+        ReleaseInfo release = new ReleaseInfo("v1.2.3", Map.of("aptium.jar", "https://example.test/aptium.jar"), "changelog");
+        when(actualizacionService.hayActualizacionDisponible()).thenReturn(Optional.of(release));
+
+        controller.chequearActualizacionesAlIniciar();
+
+        // El diálogo de oferta (JOptionPane.showOptionDialog) dispara HeadlessException en el
+        // entorno de test (igual que el resto de los diálogos de esta clase, ver comentario de
+        // clase); TareaUI la contiene vía siFalla(), que acá solo loguea — no llega a tocar
+        // setBuscarActualizacionesHabilitado, a diferencia del flujo manual del botón.
+        verify(actualizacionService, timeout(2000)).hayActualizacionDisponible();
+        verify(vista, never()).setBuscarActualizacionesHabilitado(anyBoolean());
     }
 }

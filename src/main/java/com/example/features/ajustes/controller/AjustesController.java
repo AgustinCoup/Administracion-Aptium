@@ -11,6 +11,8 @@ import com.example.features.ajustes.view.PantallaAjustes;
 import com.example.features.clientes.model.Cliente;
 import com.example.features.clientes.service.ClienteService;
 import com.example.ui.common.TareaUI;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.awt.event.ComponentAdapter;
@@ -21,6 +23,8 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class AjustesController {
+
+    private static final Logger log = LoggerFactory.getLogger(AjustesController.class);
 
     /** Cota de actualizaciones de la barra de progreso durante la descarga del JAR. */
     private static final long INTERVALO_PROGRESO_DESCARGA_MS = 100;
@@ -180,6 +184,21 @@ public class AjustesController {
             .lanzar();
     }
 
+    /**
+     * Chequeo automático al arrancar la app: mismo chequeo que el botón, pero sin ningún
+     * diálogo ni cambio de estado visible si no hay novedades o si falla (red caída al
+     * bootear es normal, no un error para interrumpir al usuario). Si hay una actualización
+     * disponible, ofrece instalarla igual que el flujo manual.
+     */
+    public void chequearActualizacionesAlIniciar() {
+        TareaUI.<Optional<ReleaseInfo>>nueva()
+            .nombre("ajustes-chequear-actualizacion-inicio")
+            .leer(actualizacionService::hayActualizacionDisponible)
+            .pintar(releaseDisponible -> releaseDisponible.ifPresent(this::ofrecerInstalarActualizacion))
+            .siFalla(e -> log.warn("Chequeo silencioso de actualizaciones al iniciar falló: {}", e.getMessage()))
+            .lanzar();
+    }
+
     private void manejarResultadoChequeo(Optional<ReleaseInfo> releaseDisponible) {
         if (releaseDisponible.isEmpty()) {
             vista.setBuscarActualizacionesHabilitado(true);
@@ -188,7 +207,10 @@ public class AjustesController {
             return;
         }
 
-        ReleaseInfo release = releaseDisponible.get();
+        ofrecerInstalarActualizacion(releaseDisponible.get());
+    }
+
+    private void ofrecerInstalarActualizacion(ReleaseInfo release) {
         Object[] opciones = { Constantes.Mensajes.ACTUALIZAR_AHORA, Constantes.Mensajes.MAS_TARDE };
         int resp = JOptionPane.showOptionDialog(vista,
             String.format(Constantes.Mensajes.ACTUALIZACION_DISPONIBLE, release.tag(), release.changelog()),

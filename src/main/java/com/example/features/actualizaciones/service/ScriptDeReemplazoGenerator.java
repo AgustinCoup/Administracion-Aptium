@@ -242,7 +242,7 @@ public class ScriptDeReemplazoGenerator {
                     }
                 }
                 # El lock se libera acá también: si esta corrida no pudo reemplazar el JAR,
-                # que la próxima (manual o de la tarea programada) no quede bloqueada por esta.
+                # que la próxima no quede bloqueada por esta.
                 try { if (Test-Path $lock) { Remove-Item $lock -Force } } catch { }
                 try { Start-Process $releaseUrl } catch { }
                 Relanzar-App
