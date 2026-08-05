@@ -54,6 +54,7 @@ public class AppContext {
     private final EquipoReporteService equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
     private final ActualizacionService actualizacionService;
+    private final VersionInfo versionInfo;
 
     public AppContext(
         EquipoService equipoService,
@@ -72,7 +73,8 @@ public class AppContext {
         LoteReporteService loteReporteService,
         EquipoReporteService equipoReporteService,
         EquipoOtrosReporteService equipoOtrosReporteService,
-        ActualizacionService actualizacionService
+        ActualizacionService actualizacionService,
+        VersionInfo versionInfo
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
             || profesionalService == null || institucionService == null || materialService == null
@@ -81,7 +83,7 @@ public class AppContext {
             || equipoOtrosService == null || equipoCorreccionService == null
             || equipoOtrosCorreccionService == null || loteReporteService == null
             || equipoReporteService == null || equipoOtrosReporteService == null
-            || actualizacionService == null) {
+            || actualizacionService == null || versionInfo == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -102,6 +104,7 @@ public class AppContext {
         this.equipoReporteService = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
         this.actualizacionService = actualizacionService;
+        this.versionInfo = versionInfo;
     }
 
     public static AppContext createDefault() {
@@ -141,8 +144,9 @@ public class AppContext {
         EquipoOtrosReporteService equipoOtrosReporteService =
             new EquipoOtrosReporteService(equipoOtrosService);
 
+        VersionInfo versionInfo = new VersionInfo();
         ActualizacionService actualizacionService = new ActualizacionService(
-            new GithubReleaseClient(), new VersionInfo(), new DescargaService(), new ActualizacionInstaller());
+            new GithubReleaseClient(), versionInfo, new DescargaService(), new ActualizacionInstaller());
 
         return new AppContext(
             equipoService,
@@ -161,7 +165,8 @@ public class AppContext {
             loteReporteService,
             equipoReporteService,
             equipoOtrosReporteService,
-            actualizacionService
+            actualizacionService,
+            versionInfo
         );
     }
 
@@ -231,6 +236,10 @@ public class AppContext {
 
     public ActualizacionService getActualizacionService() {
         return actualizacionService;
+    }
+
+    public VersionInfo getVersionInfo() {
+        return versionInfo;
     }
 }
 

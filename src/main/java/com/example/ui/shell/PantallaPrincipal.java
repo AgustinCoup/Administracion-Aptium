@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import com.example.common.VersionInfo;
 import com.example.common.constants.Constantes;
 import com.example.features.equipos.ortopedias.view.PantallaAuditoria;
 import com.example.features.equipos.ortopedias.view.PantallaCorrecciones;
@@ -43,8 +44,8 @@ public class PantallaPrincipal extends JFrame {
     private final PantallaVerEquipos            verEquipos;
     private final PantallaAjustes               pantallaAjustes;
 
-    public PantallaPrincipal() {
-        setTitle(Constantes.Titulos.APP);
+    public PantallaPrincipal(VersionInfo versionInfo) {
+        setTitle(Constantes.Titulos.APP + " - v" + versionInfo.actual());
         setSize(1280, 720);
         setMinimumSize(new Dimension(1280, 720));
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);

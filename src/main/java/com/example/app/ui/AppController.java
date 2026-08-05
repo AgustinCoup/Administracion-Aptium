@@ -42,7 +42,7 @@ public class AppController {
     }
 
     private void inicializarVista() {
-        vista = new PantallaPrincipal();
+        vista = new PantallaPrincipal(context.getVersionInfo());
         UiCoordinator coordinator = new UiCoordinator(context, vista);
         coordinator.inicializar();
         vista.setVisible(true);

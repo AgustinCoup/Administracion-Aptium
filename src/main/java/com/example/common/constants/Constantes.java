@@ -158,7 +158,7 @@ public final class Constantes {
      * Títulos de las pantallas.
      */
     public static final class Titulos {
-        public static final String APP                   = "Sistema Empresa - v1.0";
+        public static final String APP                   = "Sistema Aptium";
         public static final String MENU_PRINCIPAL        = "Menú Principal de Gestión";
         public static final String CENTRO_ESTERILIZACION = "CENTRO DE ESTERILIZACIÓN";
         public static final String INGRESO               = "INGRESO";
