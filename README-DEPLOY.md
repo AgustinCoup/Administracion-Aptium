@@ -119,7 +119,7 @@ La aplicación registra un shutdown hook (`Runtime.getRuntime().addShutdownHook(
 ### 2.1 En el Servidor de Producción
 
 ```
-Java:       OpenJDK 11+ (recomendado: 17+)
+Java:       OpenJDK 17+ (requerido: el build compila a bytecode 17)
 MySQL:      8.0+ (o MariaDB 10.5+)
 Memoria:    Mínimo 1GB, recomendado 2GB
 Disco:      50MB para aplicación + espacio para BD
@@ -595,13 +595,10 @@ PASO 4: Crear Contexto de Dependencias
   └─ Instancia todos los Services
   └─ Inyecta dependencias
 
-PASO 5: Crear AppModel
-  └─ Encapsula toda la lógica de negocio
+PASO 5: Crear AppController
+  └─ Wirea controllers a vistas, cada uno con los services de su alcance
 
-PASO 6: Crear AppController
-  └─ Wirea controllers a vistas
-
-PASO 7: Iniciar UI
+PASO 6: Iniciar UI
   └─ Muestra ventana principal
 ```
 
@@ -619,7 +616,6 @@ PASO 7: Iniciar UI
 [INFO] ✓ Esquema BD verificado/creado
 [INFO] PASO 3/4: Creando contexto de dependencias...
 [INFO] ✓ Contexto creado con DAOs y Services
-[INFO] ✓ AppModel creado
 [INFO] PASO 4/4: Iniciando interfaz de usuario...
 [INFO] ✓ AppController creado
 [INFO] ═══════════════════════════════════════════════════════════
@@ -1079,7 +1075,7 @@ mvn clean dependency:tree | findstr "RELEASE\|SNAPSHOT"
 ## 📊 Especificaciones Técnicas
 
 ### Stack Tecnológico:
-- **Lenguaje**: Java 11+
+- **Lenguaje**: Java 17+
 - **BD**: MySQL 8.0+ / MariaDB 10.5+
 - **UI**: Swing (AWT)
 - **Build**: Maven 3.6+

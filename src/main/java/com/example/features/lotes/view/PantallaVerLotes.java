@@ -39,7 +39,11 @@ public class PantallaVerLotes extends JPanel {
     private JDateChooser                dateChooserDesde;
     private JDateChooser                dateChooserHasta;
     private JButton                     btnLimpiarFiltros;
-    private JButton                     btnImprimir;
+    /**
+     * Vive en el panel sur, no en el de filtros. Se inicializa en la declaración
+     * para no depender de que crearPanelFiltros() corra antes que crearPanelSur().
+     */
+    private final JButton               btnImprimir = new JButton(Constantes.Botones.IMPRIMIR);
 
     private Runnable onFiltrosChanged;
 
@@ -82,6 +86,14 @@ public class PantallaVerLotes extends JPanel {
         tablaLotes.getColumnModel().getColumn(5).setCellRenderer(new EstadoCellRenderer());
 
         add(new JScrollPane(tablaLotes), BorderLayout.CENTER);
+        add(crearPanelSur(), BorderLayout.SOUTH);
+    }
+
+    private JPanel crearPanelSur() {
+        btnImprimir.setFont(Estilos.Fuentes.INPUT);
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        panel.add(btnImprimir);
+        return panel;
     }
 
     // ── Construcción del panel de filtros ─────────────────────────────────────
@@ -121,9 +133,6 @@ public class PantallaVerLotes extends JPanel {
         btnLimpiarFiltros.setFont(Estilos.Fuentes.INPUT);
         btnLimpiarFiltros.addActionListener(e -> limpiarFiltros());
 
-        btnImprimir = new JButton(Constantes.Botones.IMPRIMIR);
-        btnImprimir.setFont(Estilos.Fuentes.INPUT);
-
         // ── Dos filas para que no se corten en pantallas pequeñas ────────────
         JPanel fila1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         fila1.add(lblId);       fila1.add(txtFiltroId);
@@ -134,7 +143,6 @@ public class PantallaVerLotes extends JPanel {
         fila2.add(lblDesde); fila2.add(dateChooserDesde);
         fila2.add(lblHasta); fila2.add(dateChooserHasta);
         fila2.add(btnLimpiarFiltros);
-        fila2.add(btnImprimir);
 
         JPanel panelFiltros = new JPanel(new BorderLayout());
         panelFiltros.setBorder(BorderFactory.createTitledBorder("Filtros"));

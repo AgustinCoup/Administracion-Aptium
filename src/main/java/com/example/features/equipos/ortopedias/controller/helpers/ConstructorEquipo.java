@@ -1,6 +1,5 @@
 package com.example.features.equipos.ortopedias.controller.helpers;
 
-import com.example.app.AppModel;
 import com.example.common.util.Validador;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.Material;
@@ -18,11 +17,9 @@ import com.example.features.equipos.ortopedias.view.PantallaIngresoOrtopedia;
 public class ConstructorEquipo {
     
     private final PantallaIngresoOrtopedia panel;
-    private final AppModel model;
-    
-    public ConstructorEquipo(PantallaIngresoOrtopedia panel, AppModel model) {
+
+    public ConstructorEquipo(PantallaIngresoOrtopedia panel) {
         this.panel = panel;
-        this.model = model;
     }
     
     /**

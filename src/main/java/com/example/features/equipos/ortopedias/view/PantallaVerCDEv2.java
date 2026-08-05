@@ -10,6 +10,7 @@ import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.CheckableComboBox;
 import java.awt.*;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -104,11 +105,40 @@ public class PantallaVerCDEv2 extends JPanel {
         panelTablas.actualizarEquipos(equipos);
     }
 
+    /**
+     * Limpia todo: deja ver también los equipos entregados. Es la contraparte
+     * explícita de {@link #aplicarFiltroInicial()}.
+     */
     public void limpiarFiltros() {
         txtFiltroCliente.setText("");
         txtFiltroInstitucion.setText("");
         cmbFiltroEstado.clearSelection();
         notificarCambioFiltros();
+    }
+
+    /**
+     * Aplica el filtro por defecto de la pantalla: oculta los equipos ya
+     * entregados. Esta pantalla muestra el estado de los procesos en curso, y un
+     * equipo entregado ya no está en curso.
+     *
+     * <p>Es un default de la vista, <b>no</b> un {@code WHERE}: los datos llegan
+     * completos, así que destildar ENTREGADO en el combo (o "Limpiar filtros") los
+     * trae de vuelta. Si el filtro viviera en la consulta, esa opción del combo
+     * quedaría vacía para siempre y nadie lo notaría.
+     *
+     * <p>No dispara el callback de filtros: quien navega a esta pantalla pide
+     * datos frescos justo después, y repintar acá mostraría un instante la lista
+     * vieja.
+     */
+    public void aplicarFiltroInicial() {
+        cmbFiltroEstado.setSelectedItems(estadosVisiblesPorDefecto());
+    }
+
+    private static List<String> estadosVisiblesPorDefecto() {
+        return Arrays.stream(EstadoEquipo.values())
+            .filter(estado -> estado != EstadoEquipo.ENTREGADO)
+            .map(EstadoEquipo::getNombre)
+            .toList();
     }
 
     private void notificarCambioFiltros() {

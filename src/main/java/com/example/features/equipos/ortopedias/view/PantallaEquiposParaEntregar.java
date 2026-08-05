@@ -4,6 +4,7 @@ import javax.swing.*;
 import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.awt.event.ActionListener;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -53,7 +54,7 @@ public class PantallaEquiposParaEntregar extends JPanel {
         modeloInstituciones = new InstitucionEntregaTableModel();
         tablaInstituciones = new JTable(modeloInstituciones);
         TableStyler.applyStandard(tablaInstituciones);
-        tablaInstituciones.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        tablaInstituciones.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
         JScrollPane scrollInstituciones = new JScrollPane(tablaInstituciones);
         gbc.gridy = 1;
@@ -102,16 +103,12 @@ public class PantallaEquiposParaEntregar extends JPanel {
 
     private ListSelectionListener crearListenerSeleccionInstitucion() {
         return e -> {
-            if (e.getValueIsAdjusting()) {
-                return;
-            }
-            int selectedRow = tablaInstituciones.getSelectedRow();
-            if (selectedRow >= 0) {
-                InstitucionEntregaItem institucion = modeloInstituciones.getInstitucionAt(selectedRow);
-                if (onInstitucionSeleccionada != null) {
-                    onInstitucionSeleccionada.accept(institucion);
-                }
-            } else if (onInstitucionSeleccionada != null) {
+            if (e.getValueIsAdjusting()) return;
+            int[] selectedRows = tablaInstituciones.getSelectedRows();
+            if (onInstitucionSeleccionada == null) return;
+            if (selectedRows.length == 1) {
+                onInstitucionSeleccionada.accept(modeloInstituciones.getInstitucionAt(selectedRows[0]));
+            } else {
                 onInstitucionSeleccionada.accept(null);
             }
         };
@@ -138,12 +135,13 @@ public class PantallaEquiposParaEntregar extends JPanel {
         btnEntregarInstitucion.addActionListener(listener);
     }
 
-    public InstitucionEntregaItem getInstitucionSeleccionada() {
-        int selectedRow = tablaInstituciones.getSelectedRow();
-        if (selectedRow >= 0) {
-            return modeloInstituciones.getInstitucionAt(selectedRow);
+    public List<InstitucionEntregaItem> getInstitucionesSeleccionadas() {
+        int[] selectedRows = tablaInstituciones.getSelectedRows();
+        List<InstitucionEntregaItem> result = new ArrayList<>();
+        for (int row : selectedRows) {
+            result.add(modeloInstituciones.getInstitucionAt(row));
         }
-        return null;
+        return result;
     }
 
     public void mostrarAdvertencia(String mensaje) {

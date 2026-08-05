@@ -7,8 +7,10 @@ import com.example.features.lotes.model.LoteMaterialInfo;
 import com.example.features.lotes.model.LoteMovimiento;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class LoteService {
 
@@ -54,7 +56,8 @@ public class LoteService {
     }
 
     public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
-                           List<LoteMovimiento> movimientos) {
+                           List<LoteMovimiento> movimientos,
+                           Map<Integer, Integer> volumenesPorIngreso) {
         ValidationException.Builder builder = ValidationException.builder();
         builder.addErrorIf(autoclaveNombre == null || autoclaveNombre.isBlank(),
             "El nombre del autoclave es obligatorio");
@@ -66,9 +69,44 @@ public class LoteService {
             "La capacidad usada no puede superar la capacidad total");
         builder.addErrorIf(movimientos == null || movimientos.isEmpty(),
             "El lote debe contener al menos un material");
+        builder.addErrorIf(volumenesPorIngreso == null,
+            "Los volúmenes por ingreso son obligatorios");
         builder.throwIfHasErrors();
 
-        return loteDAO.lanzarLote(autoclaveNombre, capacidadTotal, capacidadUsada, movimientos);
+        validarVolumenesPorIngreso(movimientos, volumenesPorIngreso);
+
+        return loteDAO.lanzarLote(autoclaveNombre, capacidadTotal, capacidadUsada,
+            movimientos, volumenesPorIngreso);
+    }
+
+    /**
+     * Cada ingreso (equipo_otros) con materiales en el lote debe tener litros
+     * asignados (>= 1), y no se admiten litros para ingresos fuera del lote.
+     */
+    private void validarVolumenesPorIngreso(List<LoteMovimiento> movimientos,
+                                            Map<Integer, Integer> volumenesPorIngreso) {
+        Set<Integer> ingresosEnLote = new HashSet<>();
+        for (LoteMovimiento mov : movimientos) {
+            if (mov.isEsOtros()) ingresosEnLote.add(mov.getEquipoId());
+        }
+
+        ValidationException.Builder builder = ValidationException.builder();
+        for (Integer ingresoId : ingresosEnLote) {
+            Integer litros = volumenesPorIngreso.get(ingresoId);
+            builder.addErrorIf(litros == null,
+                "Falta asignar el volumen del ingreso " + ingresoId);
+            builder.addErrorIf(litros != null && litros < 1,
+                "El volumen del ingreso " + ingresoId + " debe ser al menos 1 litro");
+        }
+        for (Integer ingresoId : volumenesPorIngreso.keySet()) {
+            builder.addErrorIf(!ingresosEnLote.contains(ingresoId),
+                "Se asignó volumen a un ingreso que no está en el lote: " + ingresoId);
+        }
+        builder.throwIfHasErrors();
+    }
+
+    public Map<Integer, Integer> obtenerVolumenesPorLote(int loteId) {
+        return loteDAO.obtenerVolumenesPorLote(loteId);
     }
 
     public boolean finalizarLote(int loteId) {

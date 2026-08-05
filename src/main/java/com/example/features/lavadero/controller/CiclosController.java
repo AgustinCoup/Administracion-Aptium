@@ -1,6 +1,5 @@
 package com.example.features.lavadero.controller;
 
-import com.example.app.AppModel;
 import com.example.common.constants.Constantes;
 import com.example.features.lavadero.controller.helpers.ElementoCicloTransferable;
 import com.example.features.lavadero.model.CicloLavadero;
@@ -8,6 +7,9 @@ import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.Lavarropas;
+import com.example.features.lavadero.service.CatalogoJabonesService;
+import com.example.features.lavadero.service.CicloLavaderoService;
+import com.example.features.lavadero.service.LavarropasService;
 import com.example.features.lavadero.view.EquipoSubdivisionDialog;
 import com.example.features.lavadero.view.LavarropasCard;
 import com.example.features.lavadero.view.PantallaCiclos;
@@ -32,7 +34,9 @@ public class CiclosController {
     private static final Logger log = LoggerFactory.getLogger(CiclosController.class);
 
     private final PantallaCiclos pantalla;
-    private final AppModel       model;
+    private final CicloLavaderoService  cicloLavaderoService;
+    private final LavarropasService     lavarropasService;
+    private final CatalogoJabonesService catalogoJabonesService;
     private final Map<Integer, LavarropasCard> cards;
 
     private final Map<Integer, List<ElementoCicloItem>> pendientesPorLavarropas = new HashMap<>();
@@ -55,9 +59,13 @@ public class CiclosController {
         ELEMENTO_CICLO_FLAVOR = flavor;
     }
 
-    public CiclosController(PantallaCiclos pantalla, AppModel model) {
+    public CiclosController(PantallaCiclos pantalla, CicloLavaderoService cicloLavaderoService,
+                             LavarropasService lavarropasService,
+                             CatalogoJabonesService catalogoJabonesService) {
         this.pantalla = pantalla;
-        this.model    = model;
+        this.cicloLavaderoService   = cicloLavaderoService;
+        this.lavarropasService      = lavarropasService;
+        this.catalogoJabonesService = catalogoJabonesService;
         this.cards    = pantalla.getAllCards();
         inicializarEventos();
         cargarDatos();
@@ -66,7 +74,7 @@ public class CiclosController {
     private void inicializarEventos() {
         // El catálogo de jabones no cambia en runtime: se puebla una sola vez
         // para no resetear la selección del usuario en cada refresh.
-        List<JabonCatalogo> jabones = model.obtenerJabones();
+        List<JabonCatalogo> jabones = catalogoJabonesService.obtenerTodos();
         for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
             int num = entry.getKey();
             LavarropasCard card = entry.getValue();
@@ -118,12 +126,12 @@ public class CiclosController {
     }
 
     public void cargarDatos() {
-        ciclosActivos = model.obtenerCiclosActivosPorLavarropas();
+        ciclosActivos = cicloLavaderoService.obtenerCiclosActivosPorLavarropas();
 
-        List<ElementoCicloItem> dbDisponibles = model.obtenerElementosDisponiblesParaCiclo();
+        List<ElementoCicloItem> dbDisponibles = cicloLavaderoService.obtenerElementosDisponiblesParaCiclo();
         elementosDisponibles = aplicarPendientesEnDisponibles(dbDisponibles);
 
-        List<Lavarropas> lavarropasLista = model.obtenerLavarropas();
+        List<Lavarropas> lavarropasLista = lavarropasService.obtenerTodos();
         lavarropasItems = new ArrayList<>();
         for (Lavarropas lv : lavarropasLista) {
             CicloLavadero activo = ciclosActivos.get(lv.getNumero());
@@ -143,7 +151,7 @@ public class CiclosController {
             LavarropasCard card = entry.getValue();
             if (ciclosActivos.containsKey(num)) {
                 List<ElementoCicloItem> items =
-                    model.obtenerElementosDeCiclo(ciclosActivos.get(num).getId());
+                    cicloLavaderoService.obtenerElementosDeCiclo(ciclosActivos.get(num).getId());
                 card.setModoActivo(ciclosActivos.get(num).getId());
                 card.setItems(items, Collections.emptyMap());
             } else {
@@ -374,7 +382,7 @@ public class CiclosController {
     }
 
     private void refrescarDisponiblesYCards() {
-        List<ElementoCicloItem> dbDisponibles = model.obtenerElementosDisponiblesParaCiclo();
+        List<ElementoCicloItem> dbDisponibles = cicloLavaderoService.obtenerElementosDisponiblesParaCiclo();
         elementosDisponibles = aplicarPendientesEnDisponibles(dbDisponibles);
         pantalla.setElementosDisponibles(elementosDisponibles);
         actualizarTodasLasCards();
@@ -411,7 +419,7 @@ public class CiclosController {
                 item.getElementoClasificacionId(), item.getCantidadEnCiclo()));
         }
         try {
-            model.lanzarCiclo(num, jabon, litrosJabon, suavizante, potenciador, litrosTotales, movimientos);
+            cicloLavaderoService.lanzarCiclo(num, jabon, litrosJabon, suavizante, potenciador, litrosTotales, movimientos);
             pendientesPorLavarropas.remove(num);
         } catch (Exception e) {
             log.error("Error al lanzar ciclo en lavarropas {}", num, e);
@@ -460,7 +468,7 @@ public class CiclosController {
         CicloLavadero ciclo = ciclosActivos.get(num);
         if (ciclo == null) return;
         try {
-            model.finalizarCiclo(ciclo.getId());
+            cicloLavaderoService.finalizarCiclo(ciclo.getId());
         } catch (Exception e) {
             log.error("Error al finalizar ciclo {}", ciclo.getId(), e);
             pantalla.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_CICLO);

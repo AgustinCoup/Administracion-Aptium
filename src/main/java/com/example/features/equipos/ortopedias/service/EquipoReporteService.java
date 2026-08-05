@@ -1,6 +1,5 @@
 package com.example.features.equipos.ortopedias.service;
 
-import com.example.app.AppModel;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EquipoReporteDTO;
 import com.example.features.equipos.ortopedias.model.Material;
@@ -30,16 +29,16 @@ public class EquipoReporteService {
     private static final String JRXML_PATH = "/reports/ReporteOrtopedias.jrxml";
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    private final AppModel model;
+    private final EquipoService equipoService;
 
-    public EquipoReporteService(AppModel model) {
-        if (model == null) throw new IllegalArgumentException("AppModel no puede ser nulo");
-        this.model = model;
+    public EquipoReporteService(EquipoService equipoService) {
+        if (equipoService == null) throw new IllegalArgumentException("EquipoService no puede ser nulo");
+        this.equipoService = equipoService;
     }
 
-    public void generarYMostrarReporte(LocalDate desde, LocalDate hasta, Integer clienteId) {
+    public void generarYMostrarReporte(LocalDate desde, LocalDate hasta, Integer clienteId, Integer institucionId) {
         try {
-            List<EquipoReporteDTO> datos = construirDatos(desde, hasta, clienteId);
+            List<EquipoReporteDTO> datos = construirDatos(desde, hasta, clienteId, institucionId);
 
             InputStream jrxmlStream = getClass().getResourceAsStream(JRXML_PATH);
             if (jrxmlStream == null) {
@@ -64,8 +63,8 @@ public class EquipoReporteService {
         }
     }
 
-    private List<EquipoReporteDTO> construirDatos(LocalDate desde, LocalDate hasta, Integer clienteId) {
-        List<Equipo> equipos = model.obtenerEquiposEntreFechas(desde, hasta, clienteId);
+    private List<EquipoReporteDTO> construirDatos(LocalDate desde, LocalDate hasta, Integer clienteId, Integer institucionId) {
+        List<Equipo> equipos = equipoService.obtenerEntreFechas(desde, hasta, clienteId, institucionId);
         List<EquipoReporteDTO> dtos = new ArrayList<>(equipos.size());
 
         for (Equipo eq : equipos) {

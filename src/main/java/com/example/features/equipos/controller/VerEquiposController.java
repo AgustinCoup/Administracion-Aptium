@@ -1,16 +1,20 @@
 package com.example.features.equipos.controller;
 
-import com.example.app.AppModel;
+import com.example.app.ui.HistorialEquipos;
+import com.example.features.clientes.service.ClienteService;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.service.EquipoReporteService;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
+import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.equipos.view.PantallaVerEquipos;
 import com.example.features.equipos.view.helpers.DetalleOrtopediaDialog;
 import com.example.features.equipos.view.helpers.DetalleOtrosDialog;
 import com.example.features.equipos.view.helpers.ImprimirEquiposDialog;
+import com.example.ui.common.TareaUI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,7 +28,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 
@@ -33,7 +36,9 @@ public class VerEquiposController {
     private static final Logger log = LoggerFactory.getLogger(VerEquiposController.class);
 
     private final PantallaVerEquipos       panel;
-    private final AppModel                 model;
+    private final EquipoOtrosService       equipoOtrosService;
+    private final ClienteService           clienteService;
+    private final InstitucionService       institucionService;
     private final EquipoReporteService     equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
 
@@ -41,11 +46,21 @@ public class VerEquiposController {
     private List<EquipoOtros> todosOtros     = List.of();
     private boolean           cargado        = false;
 
-    public VerEquiposController(PantallaVerEquipos panel, AppModel model,
+    /**
+     * Alcance: lectura de equipos para la grilla y el detalle, autocompletado de
+     * cliente/institución en los diálogos de impresión, y los dos reportes.
+     */
+    public VerEquiposController(PantallaVerEquipos panel,
+                                EquipoOtrosService equipoOtrosService,
+                                ClienteService clienteService,
+                                InstitucionService institucionService,
                                 EquipoReporteService equipoReporteService,
-                                EquipoOtrosReporteService equipoOtrosReporteService) {
+                                EquipoOtrosReporteService equipoOtrosReporteService,
+                                Runnable solicitarRefresco) {
         this.panel                   = panel;
-        this.model                   = model;
+        this.equipoOtrosService      = equipoOtrosService;
+        this.clienteService          = clienteService;
+        this.institucionService      = institucionService;
         this.equipoReporteService    = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
 
@@ -55,8 +70,10 @@ public class VerEquiposController {
 
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
-                panel.limpiarFiltros();
-                cargarDatos();
+                // Sin notificar: pintar() es el único que filtra y repinta,
+                // para no mostrar un flash con datos viejos.
+                panel.aplicarFiltroInicial();
+                solicitarRefresco.run();
             }
         });
 
@@ -75,22 +92,16 @@ public class VerEquiposController {
 
     // ── Carga de datos ────────────────────────────────────────────────────────
 
-    public void cargarDatos() {
-        new Thread(() -> {
-            try {
-                List<Equipo>      ortopedia = model.obtenerTodosLosEquipos();
-                List<EquipoOtros> otros     = model.obtenerTodosLosEquiposOtros();
-                SwingUtilities.invokeLater(() -> {
-                    todosOrtopedia = ortopedia;
-                    todosOtros     = otros;
-                    cargado        = true;
-                    aplicarFiltros();
-                    log.info("Ver equipos: {} ortopedia, {} otros", ortopedia.size(), otros.size());
-                });
-            } catch (Exception ex) {
-                log.error("Error al cargar equipos para vista", ex);
-            }
-        }, "ver-equipos-loader").start();
+    /**
+     * Vuelca el snapshot a la grilla. Los filtros que el usuario tenga puestos
+     * sobreviven: {@code aplicarFiltros()} los relee del panel en cada pintado.
+     */
+    public void pintar(HistorialEquipos datos) {
+        todosOrtopedia = datos.equipos();
+        todosOtros     = datos.equiposOtros();
+        cargado        = true;
+        aplicarFiltros();
+        log.info("Ver equipos: {} ortopedia, {} otros", todosOrtopedia.size(), todosOtros.size());
     }
 
     // ── Filtrado ──────────────────────────────────────────────────────────────
@@ -171,7 +182,7 @@ public class VerEquiposController {
         int modelRow = panel.getTablaOtros().convertRowIndexToModel(viewRow);
         EquipoOtros equipo = panel.getEquipoOtrosAt(modelRow);
         if (equipo == null) return;
-        EquipoOtros equipoConMateriales = model.obtenerEquipoOtrosPorId(equipo.getId());
+        EquipoOtros equipoConMateriales = equipoOtrosService.obtenerPorId(equipo.getId());
         if (equipoConMateriales == null) return;
         Window ventana = SwingUtilities.getWindowAncestor(panel);
         new DetalleOtrosDialog(ventana, equipoConMateriales).setVisible(true);
@@ -182,44 +193,39 @@ public class VerEquiposController {
     private void abrirDialogoOrtopedias() {
         Frame ventana = (Frame) SwingUtilities.getWindowAncestor(panel);
         new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Ortopedias",
-            model::buscarClientes,
-            (desde, hasta, clienteId) ->
-                new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
-                        equipoReporteService.generarYMostrarReporte(desde, hasta, clienteId);
+            clienteService::buscarClientes,
+            institucionService::buscarInstituciones,
+            (desde, hasta, clienteId, institucionId) ->
+                TareaUI.<Void>nueva()
+                    .nombre("reporte-ortopedias")
+                    .leer(() -> {
+                        equipoReporteService.generarYMostrarReporte(desde, hasta, clienteId, institucionId);
                         return null;
-                    }
-                    @Override protected void done() {
-                        try { get(); } catch (InterruptedException | ExecutionException ex) {
-                            log.error("Error al generar reporte de ortopedias", ex);
-                            JOptionPane.showMessageDialog(panel,
-                                "Error al generar el reporte:\n" + ex.getCause().getMessage(),
-                                "Error", JOptionPane.ERROR_MESSAGE);
-                        }
-                    }
-                }.execute()
+                    })
+                    .siFalla(this::mostrarErrorReporte)
+                    .lanzar()
         ).setVisible(true);
     }
 
     private void abrirDialogoOtros() {
         Frame ventana = (Frame) SwingUtilities.getWindowAncestor(panel);
         new ImprimirEquiposDialog(ventana, "Imprimir Reporte de Otros",
-            model::buscarClientes,
-            (desde, hasta, clienteId) ->
-                new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
+            clienteService::buscarClientes,
+            (desde, hasta, clienteId, institucionId) ->
+                TareaUI.<Void>nueva()
+                    .nombre("reporte-otros")
+                    .leer(() -> {
                         equipoOtrosReporteService.generarYMostrarReporte(desde, hasta, clienteId);
                         return null;
-                    }
-                    @Override protected void done() {
-                        try { get(); } catch (InterruptedException | ExecutionException ex) {
-                            log.error("Error al generar reporte de otros", ex);
-                            JOptionPane.showMessageDialog(panel,
-                                "Error al generar el reporte:\n" + ex.getCause().getMessage(),
-                                "Error", JOptionPane.ERROR_MESSAGE);
-                        }
-                    }
-                }.execute()
+                    })
+                    .siFalla(this::mostrarErrorReporte)
+                    .lanzar()
         ).setVisible(true);
+    }
+
+    private void mostrarErrorReporte(Throwable e) {
+        JOptionPane.showMessageDialog(panel,
+            "Error al generar el reporte:\n" + e.getMessage(),
+            "Error", JOptionPane.ERROR_MESSAGE);
     }
 }

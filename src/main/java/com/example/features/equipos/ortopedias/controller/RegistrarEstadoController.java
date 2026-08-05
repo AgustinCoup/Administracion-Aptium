@@ -1,21 +1,25 @@
 package com.example.features.equipos.ortopedias.controller;
 
+import com.example.app.ui.DatosOperativos;
 import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoKey;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
+import com.example.features.equipos.ortopedias.service.IEstadoValidator;
+import com.example.features.equipos.ortopedias.service.MaterialService;
 import com.example.features.equipos.ortopedias.view.PantallaRegistrarEstado;
-import com.example.app.AppModel;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.ui.events.OnEstadosActualizadosListener;
 
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Objects;
 
 /**
  * Controlador para {@link PantallaRegistrarEstado}.
@@ -30,26 +34,45 @@ import java.util.stream.Collectors;
 public class RegistrarEstadoController {
 
     private final PantallaRegistrarEstado     panel;
-    private final AppModel                    model;
+    private final EquipoOtrosService          equipoOtrosService;
+    private final MaterialService             materialService;
+    private final IEstadoValidator            estadoValidator;
+    private final Runnable                    solicitarRefresco;
     private OnEstadosActualizadosListener     onEstadosActualizadosListener;
+
+    /**
+     * Último snapshot recibido. Permite repintar tras descartar cambios locales
+     * sin volver a la base: nada cambió ahí, solo el buffer de esta pantalla.
+     */
+    private DatosOperativos ultimoSnapshot = DatosOperativos.vacio();
 
     // Buffer de cambios pendientes indexado por EquipoKey (tipo + id).
     // Necesario porque equipos y equipo_otros tienen auto-increment independientes.
     private final Map<EquipoKey, Map<Integer, MovimientoMaterial>> cambiosPendientes = new HashMap<>();
     private final Map<EquipoKey, EquipoRegistrableInterface>       equiposPendientes = new HashMap<>();
 
-    public RegistrarEstadoController(PantallaRegistrarEstado panel, AppModel model,
-                                     OnEstadosActualizadosListener onEstadosActualizadosListener) {
-        this.panel = panel;
-        this.model = model;
+    /**
+     * Alcance: lectura de equipos (ortopedia + otros), avance de estado de sus
+     * materiales y la regla de qué transición es manual.
+     */
+    public RegistrarEstadoController(PantallaRegistrarEstado panel,
+                                     EquipoOtrosService equipoOtrosService,
+                                     MaterialService materialService,
+                                     IEstadoValidator estadoValidator,
+                                     OnEstadosActualizadosListener onEstadosActualizadosListener,
+                                     Runnable solicitarRefresco) {
+        this.panel              = panel;
+        this.equipoOtrosService = equipoOtrosService;
+        this.materialService    = materialService;
+        this.estadoValidator    = estadoValidator;
         this.onEstadosActualizadosListener = onEstadosActualizadosListener;
+        this.solicitarRefresco  = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
 
         inicializarEventos();
-        cargarEquipos();
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
                 if (!cambiosPendientes.isEmpty()) resetearCambios();
-                else cargarEquipos();
+                else solicitarRefresco.run();
             }
         });
     }
@@ -80,24 +103,19 @@ public class RegistrarEstadoController {
     // ── Carga de datos ────────────────────────────────────────────────────────
 
     /**
-     * Carga todos los equipos activos (ortopedia + otros) que no estén ENTREGADO.
+     * Vuelca al panel los equipos (ortopedia + otros) de la cola activa. Sin I/O:
+     * el snapshot ya viene sin entregados, así que acá solo se concatena.
      */
-    public void cargarEquipos() {
-        // Equipos de ortopedia
-        List<EquipoRegistrableInterface> ortopedia = model.obtenerTodosLosEquipos()
-            .stream()
-            .filter(eq -> eq.calcularEstado() != EstadoEquipo.ENTREGADO)
-            .collect(Collectors.toList());
+    public void pintar(DatosOperativos datos) {
+        this.ultimoSnapshot = datos;
+        repintar();
+    }
 
-        // Equipos "otros"
-        List<EquipoRegistrableInterface> otros = model.obtenerTodosLosEquiposOtros()
-            .stream()
-            .filter(eq -> eq.calcularEstado() != EstadoEquipo.ENTREGADO)
-            .collect(Collectors.toList());
-
-        List<EquipoRegistrableInterface> todos = new java.util.ArrayList<>();
-        todos.addAll(ortopedia);
-        todos.addAll(otros);
+    /** Repinta desde el último snapshot, sin volver a la base. */
+    private void repintar() {
+        List<EquipoRegistrableInterface> todos = new ArrayList<>();
+        todos.addAll(ultimoSnapshot.equipos());
+        todos.addAll(ultimoSnapshot.equiposOtros());
 
         panel.actualizarEquipos(todos);
         actualizarTextoAvanzar();
@@ -123,7 +141,7 @@ public class RegistrarEstadoController {
         MaterialRegistrableInterface material = equipo.getMaterialesRegistrables().get(materialIndex);
         EstadoEquipo siguienteEstado  = equipo.getSiguienteEstado(material.getEstado());
 
-        if (!model.esAvanzableManualmente(material.getEstado(), siguienteEstado)) {
+        if (!estadoValidator.esAvanzableManualmente(material.getEstado(), siguienteEstado)) {
             panel.setAvanzarEnabled(false);
             panel.setAvanzarVisible(false);
             return;
@@ -222,7 +240,8 @@ public class RegistrarEstadoController {
     private void resetearCambios() {
         cambiosPendientes.clear();
         equiposPendientes.clear();
-        cargarEquipos();
+        // Solo se descartó el buffer local: la base no cambió, alcanza con repintar.
+        repintar();
         actualizarTextoAvanzar();
         actualizarContadorCambios();
         panel.setConfirmarEnabled(false);
@@ -253,13 +272,13 @@ public class RegistrarEstadoController {
 
         for (Map.Entry<EquipoKey, Map<Integer, MovimientoMaterial>> entry : cambiosPendientes.entrySet()) {
             EquipoKey key                            = entry.getKey();
-            List<MovimientoMaterial> movs            = new java.util.ArrayList<>(entry.getValue().values());
+            List<MovimientoMaterial> movs            = new ArrayList<>(entry.getValue().values());
 
             boolean exitoso;
             if (key.getTipo() == EquipoRegistrableInterface.TipoEquipo.OTROS) {
-                exitoso = model.aplicarMovimientosOtros(key.getId(), movs);
+                exitoso = equipoOtrosService.aplicarMovimientos(key.getId(), movs);
             } else {
-                exitoso = model.aplicarMovimientos(key.getId(), movs);
+                exitoso = materialService.aplicarMovimientos(key.getId(), movs);
             }
 
             if (!exitoso) {
@@ -276,11 +295,14 @@ public class RegistrarEstadoController {
 
         cambiosPendientes.clear();
         equiposPendientes.clear();
-        cargarEquipos();
         actualizarTextoAvanzar();
         actualizarContadorCambios();
         panel.setConfirmarEnabled(false);
         panel.setCancelarEnabled(false);
+
+        // Se escribió en la base: hay que releerla. Se pide siempre, incluso si
+        // alguna operación falló, porque las que sí pasaron cambiaron estado.
+        solicitarRefresco.run();
 
         if (todosExitosos && onEstadosActualizadosListener != null) {
             onEstadosActualizadosListener.onEstadosActualizados();

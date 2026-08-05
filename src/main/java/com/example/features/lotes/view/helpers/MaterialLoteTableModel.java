@@ -7,7 +7,7 @@ import java.util.List;
 public class MaterialLoteTableModel extends AbstractTableModel {
 
     private final String[] columnas = {
-        "Material", "Cantidad", "Volumen Total", "Cliente"
+        "Material", "Cantidad", "Cliente"
     };
 
     private final List<MaterialLoteItem> filas = new ArrayList<>();
@@ -27,22 +27,14 @@ public class MaterialLoteTableModel extends AbstractTableModel {
         switch (columnIndex) {
             case 0: return item.getDescripcion();
             case 1: return item.getCantidad();
-            case 2:
-                if (item.isEsOtros()) {
-                    // Antes de añadir al autoclave: sin volumen aún → guión
-                    // Después (en autoclave): mostrar el volumen declarado
-                    return item.getVolumenOtros() != null ? item.getVolumenOtros() : "-";
-                }
-                return item.getVolumenTotal();
-            case 3: return item.getClienteNombre();
+            case 2: return item.getClienteNombre();
             default: return "";
         }
     }
 
     @Override
     public Class<?> getColumnClass(int columnIndex) {
-        if (columnIndex == 1) return Integer.class;
-        return String.class;  // col 2 puede ser Integer o "-"; usar String evita errores de renderer
+        return columnIndex == 1 ? Integer.class : String.class;
     }
 
     @Override

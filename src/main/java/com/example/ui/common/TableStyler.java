@@ -1,7 +1,6 @@
 package com.example.ui.common;
 
 
-import com.example.ui.common.Estilos;
 import javax.swing.JTable;
 import javax.swing.SwingConstants;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -86,9 +85,36 @@ public final class TableStyler {
     private static Map<String, Color> crearEstadoColores() {
         Map<String, Color> colores = new HashMap<>();
         for (EstadoEquipo estado : EstadoEquipo.values()) {
-            colores.put(estado.getNombre(), estado.getColor());
+            colores.put(estado.getNombre(), colorDe(estado));
         }
         return colores;
+    }
+
+    /**
+     * Color de fondo con el que se pinta cada estado en las tablas.
+     *
+     * <p>Vive acá y no en {@link EstadoEquipo} porque es una decisión de
+     * presentación: el enum es de dominio y no debe depender de AWT.
+     *
+     * <p>El {@code default} no es defensivo por gusto: Java 11 no verifica
+     * exhaustividad en un {@code switch} sobre enum, así que si se agrega un
+     * estado nuevo sin color esto falla al cargar la clase (el mapa se
+     * construye en el inicializador estático) en lugar de pintar un fondo
+     * {@code null} en silencio.
+     */
+    private static Color colorDe(EstadoEquipo estado) {
+        switch (estado) {
+            case NUEVO:         return new Color(211, 211, 211);  // LIGHT_GRAY
+            case LAVANDO:       return Color.CYAN;
+            case LAVADO:        return new Color(135, 206, 250);  // SKY_BLUE
+            case EMPAQUETADO:   return Color.ORANGE;
+            case ESTERILIZANDO: return Color.PINK;
+            case ESTERILIZADO:  return Color.GREEN;
+            case ENTREGADO:     return Color.GRAY;
+            default:
+                throw new IllegalStateException(
+                    "Estado sin color asignado en TableStyler: " + estado);
+        }
     }
 }
 

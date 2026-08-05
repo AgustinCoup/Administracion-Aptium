@@ -7,7 +7,7 @@ import java.util.List;
 import javax.swing.*;
 
 import com.example.common.constants.Constantes;
-import com.example.common.util.Validador;
+import com.example.ui.common.RestriccionesCampo;
 import com.example.features.equipos.common.view.PantallaIngresoBase;
 import com.example.features.equipos.ortopedias.view.helpers.PanelMateriales;
 import com.example.ui.common.Estilos;
@@ -96,10 +96,10 @@ public class PantallaIngresoOrtopedia extends JPanel implements PantallaIngresoB
         // Crear campos de texto
         txtCliente = crearTextField(inputFont, inputHeight);
         txtProfesional = crearTextField(inputFont, inputHeight);
-        Validador.aplicarSoloLetrasYEspacios(txtProfesional);
+        RestriccionesCampo.soloLetrasYEspacios(txtProfesional);
         
         txtPaciente = crearTextField(inputFont, inputHeight);
-        Validador.aplicarSoloLetrasYEspacios(txtPaciente);
+        RestriccionesCampo.soloLetrasYEspacios(txtPaciente);
         
         txtInstitucion = crearTextField(inputFont, inputHeight);
 

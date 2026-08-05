@@ -2,6 +2,7 @@ package com.example.features.equipos.ortopedias.view.helpers;
 
 import com.example.common.constants.Constantes;
 import com.example.common.util.Validador;
+import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.Estilos;
 
 import javax.swing.*;
@@ -59,7 +60,7 @@ public class AgregarMaterialDialog {
         panel.add(lblCod, gbc);
         gbc.gridx = 1; gbc.weightx = 0.7;
         txtCodigo.setFont(Estilos.Fuentes.INPUT);
-        Validador.aplicarSoloNumeros(txtCodigo);
+        RestriccionesCampo.soloNumeros(txtCodigo);
         panel.add(txtCodigo, gbc);
 
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;

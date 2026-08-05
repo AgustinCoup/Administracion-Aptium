@@ -2,6 +2,8 @@ package com.example.app;
 
 import com.example.app.ui.AppController;
 import com.example.infrastructure.db.ConnectionPool;
+import com.example.infrastructure.db.EdtGuard;
+import java.awt.EventQueue;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import org.slf4j.Logger;
@@ -11,18 +13,17 @@ import org.slf4j.LoggerFactory;
  * Clase principal de la aplicación.
  * 
  * ARQUITECTURA CON DEPENDENCY INJECTION:
- * 1. AppContext arma DAOs y Services
- * 2. AppModel recibe dependencias
- * 3. AppController recibe AppModel
+ * 1. AppContext arma DAOs y Services (composition root único)
+ * 2. AppController recibe AppContext y lo reparte: cada controller recibe
+ *    solo los services de su alcance, declarados en su constructor.
  *
  * STARTUP SEQUENCE:
  * 1. Registrar shutdown hook (cierre graceful)
  * 2. Inicializar Connection Pool (conectar a BD)
  * 3. Inicializar esquema BD (crear tablas si faltan)
  * 4. Crear AppContext (DAOs y Services)
- * 5. Crear AppModel (lógica de negocio)
- * 6. Crear AppController (UI)
- * 7. Iniciar aplicación
+ * 5. Crear AppController (UI)
+ * 6. Iniciar aplicación
  *
  * ERROR HANDLING:
  * - Errores de BD: Mostrar diálogo de error
@@ -36,6 +37,10 @@ public class App {
     private static final Logger log = LoggerFactory.getLogger(App.class);
     
     public static void main(String[] args) {
+        // Detector de accesos a BD desde el hilo de la UI. Se instala antes que nada
+        // para que ninguna query del arranque escape del guard.
+        EdtGuard.setDetectorHiloUi(EventQueue::isDispatchThread);
+
         // Handler global para excepciones no manejadas (incluyendo las del EDT de Swing)
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             log.error("Excepción no manejada en hilo '{}'", thread.getName(), throwable);
@@ -86,6 +91,8 @@ public class App {
             
             // ==================== PASO 4: CONTEXTO Y DEPENDENCIAS ====================
             log.info("PASO 3/4: Creando contexto de dependencias...");
+            // NOTA: 'context' se declara fuera del try para poder pasarlo al
+            // AppController abajo; el catch termina el método con return.
             AppContext context = null;
             try {
                 context = AppContext.createDefault();
@@ -98,23 +105,11 @@ public class App {
                 return;
             }
             
-            AppModel model = null;
-            try {
-                model = new AppModel(context);
-                log.info("✓ AppModel creado");
-            } catch (Exception e) {
-                log.error("✗ Error creando AppModel", e);
-                mostrarErrorYSalir("Error del Modelo",
-                    "No se pudo crear el modelo de la aplicación:\n" +
-                    e.getMessage());
-                return;
-            }
-            
             // ==================== PASO 5: UI ====================
             log.info("PASO 4/4: Iniciando interfaz de usuario...");
             AppController controller = null;
             try {
-                controller = new AppController(model);
+                controller = new AppController(context);
                 log.info("✓ AppController creado");
             } catch (Exception e) {
                 log.error("✗ Error creando AppController", e);

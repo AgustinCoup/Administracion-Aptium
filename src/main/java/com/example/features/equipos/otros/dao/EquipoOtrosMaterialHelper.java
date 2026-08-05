@@ -22,7 +22,7 @@ public final class EquipoOtrosMaterialHelper {
      * <p>Si {@code cantidadMover < remitoCantidad}, inserta una fila extra para los
      * elementos que no avanzan, manteniéndolos en {@code estadoActual} sin lote.
      * Siempre inserta la fila para los elementos que avanzan a {@code estadoDestino}
-     * (con {@code loteId} y {@code volumenLote} opcionales) y registra el movimiento.
+     * (con {@code loteId} opcional) y registra el movimiento.
      *
      * @return ID de la fila avanzada en {@code equipo_otros_materiales}
      */
@@ -34,8 +34,7 @@ public final class EquipoOtrosMaterialHelper {
             String estadoActual,
             int cantidadMover,
             String estadoDestino,
-            Integer loteId,
-            Integer volumenLote) throws SQLException {
+            Integer loteId) throws SQLException {
 
         if (cantidadMover <= 0)
             throw new SQLException("cantidadMover debe ser mayor que cero: " + cantidadMover);
@@ -63,15 +62,14 @@ public final class EquipoOtrosMaterialHelper {
         int movedId;
         try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO equipo_otros_materiales " +
-                "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado, lote_id, volumen_lote) " +
-                "VALUES (?, ?, 'Elementos', ?, ?, ?, ?)",
+                "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado, lote_id) " +
+                "VALUES (?, ?, 'Elementos', ?, ?, ?)",
                 PreparedStatement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, equipoOtrosId);
             ps.setInt(2, catalogoId);
             ps.setInt(3, cantidadEfectiva);
             ps.setString(4, estadoDestino);
             if (loteId != null) ps.setInt(5, loteId);     else ps.setNull(5, Types.INTEGER);
-            if (volumenLote != null) ps.setInt(6, volumenLote); else ps.setNull(6, Types.INTEGER);
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) {
                 if (!rs.next()) throw new SQLException("No se generó ID al materializar REMITO split");

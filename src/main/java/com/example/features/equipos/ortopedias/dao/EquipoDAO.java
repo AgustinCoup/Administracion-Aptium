@@ -64,6 +64,21 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "LEFT JOIN lotes l ON em.lote_id = l.id ";
 
     /**
+     * "No entregado" en SQL. No puede ser {@code e.estado <> 'Entregado'}: el estado
+     * de un equipo de ortopedia es el <b>mínimo</b> de sus materiales
+     * ({@link Equipo#calcularEstado()}), no la columna {@code e.estado}. Se traduce a
+     * "tiene al menos un material sin entregar".
+     *
+     * <p>El segundo término no es opcional: un equipo sin materiales calcula NUEVO,
+     * no ENTREGADO, así que también es activo.
+     */
+    private static final String SQL_WHERE_ACTIVOS =
+        "WHERE EXISTS (SELECT 1 FROM equipo_materiales em_act " +
+        "              WHERE em_act.equipo_id = e.id AND em_act.estado <> ?) " +
+        "   OR NOT EXISTS (SELECT 1 FROM equipo_materiales em_vac " +
+        "                  WHERE em_vac.equipo_id = e.id) ";
+
+    /**
      * Guarda un equipo completo y su lista de materiales en una sola transacción.
      * Implementa el método guardar de la interfaz DAO.
      * 
@@ -314,7 +329,21 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * Método público para compatibilidad con código existente.
      */
     public List<Equipo> obtenerTodosLosEquipos() {
-        return obtenerEquiposConJoin("ORDER BY e.estado, e.id DESC, em.id");
+        return obtenerEquiposConJoin("ORDER BY e.fecha_ingreso DESC, e.id DESC, em.id");
+    }
+
+    /**
+     * Obtiene la cola activa: los equipos que todavía tienen algo sin entregar.
+     *
+     * <p>Equivale exactamente a filtrar {@link #obtenerTodos()} por
+     * {@code calcularEstado() != ENTREGADO}, pero sin traer el histórico completo.
+     * Ver {@link #SQL_WHERE_ACTIVOS} para por qué el filtro no es sobre {@code e.estado}.
+     */
+    public List<Equipo> obtenerActivos() {
+        return obtenerEquiposConJoin(
+            SQL_WHERE_ACTIVOS + "ORDER BY e.fecha_ingreso DESC, e.id DESC, em.id",
+            EstadoEquipo.ENTREGADO.getNombre()
+        );
     }
 
     /**
@@ -334,8 +363,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
             
             return filasActualizadas > 0;
         } catch (SQLException e) {
-            log.error("Error al actualizar equipo: {}", equipo.getId(), e);
-            return false;
+            throw new DatabaseException("Error al actualizar equipo con ID: " + equipo.getId(), e);
         }
     }
 
@@ -355,8 +383,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
             
             return filasEliminadas > 0;
         } catch (SQLException e) {
-            log.error("Error al eliminar equipo: {}", id, e);
-            return false;
+            throw new DatabaseException("Error al eliminar equipo con ID: " + id, e);
         }
     }
 
@@ -405,7 +432,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         );
     }
 
-    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
+    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId, Integer institucionId) {
         String where = "WHERE e.fecha_ingreso >= ? AND e.fecha_ingreso <= ?";
         List<Object> params = new ArrayList<>(Arrays.asList(
             Timestamp.valueOf(desde.atStartOfDay()),
@@ -414,6 +441,10 @@ public class EquipoDAO implements DAO<Equipo, String> {
         if (clienteId != null) {
             where += " AND e.nro_cliente = ?";
             params.add(clienteId);
+        }
+        if (institucionId != null) {
+            where += " AND e.nro_institucion = ?";
+            params.add(institucionId);
         }
         return obtenerEquiposConJoin(where + " ORDER BY e.fecha_ingreso, em.id", params.toArray());
     }

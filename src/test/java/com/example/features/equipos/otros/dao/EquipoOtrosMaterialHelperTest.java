@@ -33,7 +33,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             SQLException ex = assertThrows(SQLException.class, () ->
                 EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                    conn, equipoId, catalogoId, 10, "Nuevo", 0, "Lavando", null, null));
+                    conn, equipoId, catalogoId, 10, "Nuevo", 0, "Lavando", null));
             assertTrue(ex.getMessage().contains("cantidadMover"));
         }
     }
@@ -46,7 +46,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             SQLException ex = assertThrows(SQLException.class, () ->
                 EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                    conn, equipoId, catalogoId, 5, "Nuevo", 10, "Lavando", null, null));
+                    conn, equipoId, catalogoId, 5, "Nuevo", 10, "Lavando", null));
             assertTrue(ex.getMessage().contains("cantidadMover"));
             assertTrue(ex.getMessage().contains("remitoCantidad"));
         }
@@ -62,7 +62,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 8, "Nuevo", 8, "Lavando", null, null);
+                conn, equipoId, catalogoId, 8, "Nuevo", 8, "Lavando", null);
             conn.commit();
         }
 
@@ -77,7 +77,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 8, "Nuevo", 8, "Lavando", null, null);
+                conn, equipoId, catalogoId, 8, "Nuevo", 8, "Lavando", null);
             conn.commit();
         }
 
@@ -92,7 +92,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 8, "Nuevo", 8, "Lavando", null, null);
+                conn, equipoId, catalogoId, 8, "Nuevo", 8, "Lavando", null);
             conn.commit();
         }
 
@@ -115,7 +115,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 8, "Nuevo", 8, "Lavando", null, null);
+                conn, equipoId, catalogoId, 8, "Nuevo", 8, "Lavando", null);
             conn.commit();
         }
 
@@ -123,7 +123,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
     }
 
     @Test
-    void avanceTotal_conLoteId_filaGuardaLoteYVolumen() throws Exception {
+    void avanceTotal_conLoteId_filaGuardaLote() throws Exception {
         int equipoId   = insertarEquipoRemito(5);
         int catalogoId = obtenerOCrearCatalogo();
         int loteId     = insertarLote();
@@ -131,18 +131,17 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 5, "Nuevo", 5, "Esterilizando", loteId, 20);
+                conn, equipoId, catalogoId, 5, "Nuevo", 5, "Esterilizando", loteId);
             conn.commit();
         }
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "SELECT lote_id, volumen_lote FROM equipo_otros_materiales WHERE equipo_otros_id = ?")) {
+                 "SELECT lote_id FROM equipo_otros_materiales WHERE equipo_otros_id = ?")) {
             ps.setInt(1, equipoId);
             try (ResultSet rs = ps.executeQuery()) {
                 assertTrue(rs.next());
                 assertEquals(loteId, rs.getInt("lote_id"));
-                assertEquals(20,     rs.getInt("volumen_lote"));
             }
         }
     }
@@ -156,7 +155,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             movedId = EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 5, "Nuevo", 5, "Lavando", null, null);
+                conn, equipoId, catalogoId, 5, "Nuevo", 5, "Lavando", null);
             conn.commit();
         }
 
@@ -181,7 +180,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null, null);
+                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null);
             conn.commit();
         }
 
@@ -196,7 +195,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null, null);
+                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null);
             conn.commit();
         }
 
@@ -211,7 +210,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null, null);
+                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null);
             conn.commit();
         }
 
@@ -235,7 +234,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null, null);
+                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null);
             conn.commit();
         }
 
@@ -260,7 +259,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Esterilizando", loteId, 15);
+                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Esterilizando", loteId);
             conn.commit();
         }
 
@@ -285,7 +284,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null, null);
+                conn, equipoId, catalogoId, 10, "Nuevo", 4, "Lavando", null);
             conn.commit();
         }
 
@@ -300,7 +299,7 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         try (Connection conn = ConnectionPool.getConnection()) {
             conn.setAutoCommit(false);
             EquipoOtrosMaterialHelper.materializarRemitoSplit(
-                conn, equipoId, catalogoId, 5, "Nuevo", 3, "Lavando", null, null);
+                conn, equipoId, catalogoId, 5, "Nuevo", 3, "Lavando", null);
             conn.commit();
         }
 

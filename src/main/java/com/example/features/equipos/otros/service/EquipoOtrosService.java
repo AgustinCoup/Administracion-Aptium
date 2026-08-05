@@ -66,6 +66,16 @@ public class EquipoOtrosService {
         return dao.obtenerTodos();
     }
 
+    /**
+     * Retorna la cola activa: los equipos "otros" con algo sin entregar.
+     *
+     * <p>Contraparte de {@link #obtenerTodos()} para las pantallas operativas,
+     * que se refrescan en cada guardado y no necesitan el histórico.
+     */
+    public List<EquipoOtros> obtenerActivos() {
+        return dao.obtenerActivos();
+    }
+
     public EquipoOtros obtenerPorId(int id) {
         return dao.obtenerPorId(id);
     }

@@ -153,12 +153,10 @@ public class LoteDAO {
     }
 
     public Map<String, List<String>> obtenerOtrosPorClientePorLote(int loteId) {
-        Map<String, List<String>> resultado      = new LinkedHashMap<>();
-        Map<String, Integer>      litrosPorCliente = new LinkedHashMap<>();
+        Map<String, List<String>> resultado = new LinkedHashMap<>();
         String sql =
             "SELECT c.nombre AS cliente, eo.remito_id, " +
-            "       eom.descripcion, eom.cantidad, " +
-            "       COALESCE(eom.volumen_lote, 0) AS litros " +
+            "       eom.descripcion, eom.cantidad " +
             "FROM equipo_otros_materiales eom " +
             "  JOIN equipo_otros eo ON eom.equipo_otros_id = eo.id " +
             "  JOIN clientes c     ON eo.nro_cliente       = c.id " +
@@ -176,15 +174,40 @@ public class LoteDAO {
                             ? remitoId
                             : rs.getString("descripcion") + " x" + rs.getInt("cantidad");
                     resultado.computeIfAbsent(cliente, k -> new ArrayList<>()).add(linea);
-                    litrosPorCliente.merge(cliente, rs.getInt("litros"), Integer::sum);
                 }
             }
         } catch (SQLException e) {
             throw new DatabaseException("Error al obtener materiales otros por cliente del lote " + loteId, e);
         }
+        // Litros desde lote_otros_volumenes en query separada: un JOIN con las filas de
+        // material multiplicaría los litros por la cantidad de filas del ingreso.
+        // Solo se anexan a clientes ya presentes (los lotes fallidos relanzados dejan
+        // filas de volumen sin materiales, que no deben generar líneas fantasma).
+        Map<String, Integer> litrosPorCliente = obtenerLitrosPorCliente(loteId);
         for (Map.Entry<String, List<String>> entry : resultado.entrySet())
             entry.getValue().add("Litros: " + litrosPorCliente.getOrDefault(entry.getKey(), 0));
         return resultado;
+    }
+
+    private Map<String, Integer> obtenerLitrosPorCliente(int loteId) {
+        Map<String, Integer> litros = new LinkedHashMap<>();
+        String sql =
+            "SELECT c.nombre AS cliente, SUM(v.volumen) AS litros " +
+            "FROM lote_otros_volumenes v " +
+            "  JOIN equipo_otros eo ON v.equipo_otros_id = eo.id " +
+            "  JOIN clientes c     ON eo.nro_cliente     = c.id " +
+            "WHERE v.lote_id = ? " +
+            "GROUP BY c.nombre";
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, loteId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) litros.put(rs.getString("cliente"), rs.getInt("litros"));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al obtener litros por cliente del lote " + loteId, e);
+        }
+        return litros;
     }
 
     public List<LoteMaterialInfo> obtenerMaterialesPorLote(int loteId) {
@@ -198,8 +221,9 @@ public class LoteDAO {
             "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
             "WHERE em.lote_id = ? " +
             "UNION ALL " +
-            "SELECT eom.id, eom.equipo_otros_id, 0, eom.descripcion, eom.cantidad, " +
-            "       COALESCE(eom.volumen_lote, 1) " +
+            // El volumen de los "otros" pertenece al ingreso (lote_otros_volumenes),
+            // no a la fila de material: acá va 0 fijo.
+            "SELECT eom.id, eom.equipo_otros_id, 0, eom.descripcion, eom.cantidad, 0 " +
             "FROM equipo_otros_materiales eom " +
             "WHERE eom.lote_id = ? " +
             "ORDER BY id";
@@ -225,6 +249,22 @@ public class LoteDAO {
             throw new DatabaseException("Error al obtener materiales del lote " + loteId, e);
         }
         return materiales;
+    }
+
+    /** Litros declarados por ingreso (equipo_otros) para un lote. */
+    public Map<Integer, Integer> obtenerVolumenesPorLote(int loteId) {
+        Map<Integer, Integer> volumenes = new LinkedHashMap<>();
+        String sql = "SELECT equipo_otros_id, volumen FROM lote_otros_volumenes WHERE lote_id = ?";
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, loteId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) volumenes.put(rs.getInt("equipo_otros_id"), rs.getInt("volumen"));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al obtener volúmenes del lote " + loteId, e);
+        }
+        return volumenes;
     }
 
     // ── Mutaciones ───────────────────────────────────────────────────────────
@@ -347,7 +387,8 @@ public class LoteDAO {
     }
 
     public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
-                           List<LoteMovimiento> movimientos) {
+                           List<LoteMovimiento> movimientos,
+                           Map<Integer, Integer> volumenesPorIngreso) {
         if (movimientos == null || movimientos.isEmpty()) {
             throw new IllegalArgumentException("La lista de movimientos no puede ser nula o vacía");
         }
@@ -376,11 +417,28 @@ public class LoteDAO {
 
             procesarEquiposSoloRecalculo(conn, equiposAfectados);
             procesarEquiposOtrosAfectados(conn, equiposOtrosAfectados);
+            insertarVolumenesIngreso(conn, loteId, volumenesPorIngreso);
  
             tx.commit();
             return obtenerLotePorId(conn, loteId);
         } catch (SQLException e) {
             throw new DatabaseException("Error al lanzar lote para autoclave: " + autoclaveNombre, e);
+        }
+    }
+
+    /** Inserta una fila por ingreso en lote_otros_volumenes dentro de la transacción del lote. */
+    private void insertarVolumenesIngreso(Connection conn, int loteId,
+                                          Map<Integer, Integer> volumenesPorIngreso) throws SQLException {
+        if (volumenesPorIngreso == null || volumenesPorIngreso.isEmpty()) return;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO lote_otros_volumenes (lote_id, equipo_otros_id, volumen) VALUES (?, ?, ?)")) {
+            for (Map.Entry<Integer, Integer> entry : volumenesPorIngreso.entrySet()) {
+                ps.setInt(1, loteId);
+                ps.setInt(2, entry.getKey());
+                ps.setInt(3, entry.getValue());
+                ps.addBatch();
+            }
+            ps.executeBatch();
         }
     }
 
@@ -648,7 +706,6 @@ public class LoteDAO {
         int materialId    = movimiento.getMaterialId();
         int equipoOtrosId = movimiento.getEquipoId();
         int cantidadMover = movimiento.getCantidad();
-        Integer volumenLote = movimiento.getVolumenOtros();
 
         if (materialId < 0) {
             // REMITO: leer estado actual y cantidad total original
@@ -692,13 +749,13 @@ public class LoteDAO {
                 EquipoOtrosMaterialHelper.materializarRemitoSplit(
                         conn, equipoOtrosId, catalogoId, disponibleMaterializado,
                         estadoActual, cantidadMover,
-                        EstadoEquipo.ESTERILIZANDO.getNombre(), loteId, volumenLote);
+                        EstadoEquipo.ESTERILIZANDO.getNombre(), loteId);
             } else {
                 // Primer split: no existen filas reales aún
                 EquipoOtrosMaterialHelper.materializarRemitoSplit(
                         conn, equipoOtrosId, catalogoId, remitoCantidad,
                         estadoActual, cantidadMover,
-                        EstadoEquipo.ESTERILIZANDO.getNombre(), loteId, volumenLote);
+                        EstadoEquipo.ESTERILIZANDO.getNombre(), loteId);
             }
             return;
         }
@@ -730,12 +787,10 @@ public class LoteDAO {
 
         if (cantidadMover == cantidadActual) {
             try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE equipo_otros_materiales SET estado = ?, lote_id = ?, volumen_lote = ? WHERE id = ?")) {
+                    "UPDATE equipo_otros_materiales SET estado = ?, lote_id = ? WHERE id = ?")) {
                 ps.setString(1, EstadoEquipo.ESTERILIZANDO.getNombre());
                 ps.setInt(2, loteId);
-                if (volumenLote != null) ps.setInt(3, volumenLote);
-                else                     ps.setNull(3, Types.INTEGER);
-                ps.setInt(4, materialId);
+                ps.setInt(3, materialId);
                 ps.executeUpdate();
             }
             registrarMovimientoOtros(conn, materialId, equipoOtrosId, cantidadMover, estadoActual,
@@ -750,8 +805,8 @@ public class LoteDAO {
             int nuevoMatId;
             try (PreparedStatement ps = conn.prepareStatement(
                     "INSERT INTO equipo_otros_materiales " +
-                    "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado, lote_id, volumen_lote) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado, lote_id) " +
+                    "VALUES (?, ?, ?, ?, ?, ?)",
                     Statement.RETURN_GENERATED_KEYS)) {
                 ps.setInt(1, equipoOtrosId);
                 ps.setInt(2, catalogoId);
@@ -759,8 +814,6 @@ public class LoteDAO {
                 ps.setInt(4, cantidadMover);
                 ps.setString(5, EstadoEquipo.ESTERILIZANDO.getNombre());
                 ps.setInt(6, loteId);
-                if (volumenLote != null) ps.setInt(7, volumenLote);
-                else                     ps.setNull(7, Types.INTEGER);
                 ps.executeUpdate();
                 try (ResultSet rs = ps.getGeneratedKeys()) {
                     if (!rs.next()) throw new SQLException("No se generó ID para split material otros en lote");
@@ -852,12 +905,12 @@ public class LoteDAO {
         }
     }
 
-    /** Suma los volumen_lote del equipo en este lote y los acumula en equipo_otros.volumen_equipo. */
+    /** Lee los litros del ingreso en este lote (lote_otros_volumenes) y los acumula en equipo_otros.volumen_equipo. */
     private void acumularVolumenEquipoOtros(Connection conn, int equipoOtrosId,
                                             int loteId) throws SQLException {
         int suma = 0;
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT COALESCE(SUM(volumen_lote), 0) FROM equipo_otros_materiales " +
+                "SELECT COALESCE(SUM(volumen), 0) FROM lote_otros_volumenes " +
                 "WHERE equipo_otros_id = ? AND lote_id = ?")) {
             ps.setInt(1, equipoOtrosId);
             ps.setInt(2, loteId);

@@ -5,6 +5,7 @@ import com.example.common.exception.ValidationException;
 import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.equipos.ortopedias.dao.AuditoriaDAO;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
+import com.example.features.equipos.ortopedias.dao.FilaMaterial;
 import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
@@ -176,7 +177,8 @@ class EquipoCorreccionServiceTest {
     @Test
     void modificarCodigo_codigoNuevoNoExisteEnCatalogo_lanzaValidation() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
-        when(materialDAO.obtenerMaterial(1)).thenReturn(new Object[]{100, null, "DescVieja"});
+        when(materialDAO.obtenerMaterial(1)).thenReturn(
+            new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
         when(catalogoDAO.obtenerDescripcion(200)).thenReturn(null);
 
         assertThrows(ValidationException.class,
@@ -186,7 +188,8 @@ class EquipoCorreccionServiceTest {
     @Test
     void modificarCodigo_valido_actualizaYAudita() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
-        when(materialDAO.obtenerMaterial(1)).thenReturn(new Object[]{100, null, "DescVieja"});
+        when(materialDAO.obtenerMaterial(1)).thenReturn(
+            new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
         when(catalogoDAO.obtenerDescripcion(200)).thenReturn("DescNueva");
 
         boolean resultado = service.modificarCodigoMaterial(1, 1, 200, "motivo");
@@ -238,9 +241,23 @@ class EquipoCorreccionServiceTest {
             any(), any(), any(), anyString(), anyString())).thenReturn(true);
         when(auditoriaDAO.registrarMaterialEliminado(any(), any(), anyInt(), any(), any(),
             any(), anyString(), anyString())).thenReturn(true);
+        when(equipoDAO.eliminar("1")).thenReturn(true);
 
         assertTrue(service.eliminarEquipo(1, "baja por error"));
         verify(equipoDAO).eliminar("1");
+    }
+
+    @Test
+    void eliminarEquipo_borradoNoAfectaFilas_lanzaDatabaseException() {
+        Equipo e = equipoConEstado(EstadoEquipo.NUEVO);
+        when(equipoDAO.obtenerPorId("1")).thenReturn(e);
+        when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
+            any(), any(), any(), anyString(), anyString())).thenReturn(true);
+        // El DELETE no toca ninguna fila (o falla): el service no debe reportar éxito.
+        when(equipoDAO.eliminar("1")).thenReturn(false);
+
+        assertThrows(DatabaseException.class,
+            () -> service.eliminarEquipo(1, "motivo"));
     }
 
     // ── eliminarMaterial ──────────────────────────────────────────────────────
@@ -276,8 +293,8 @@ class EquipoCorreccionServiceTest {
     @Test
     void eliminarMaterial_valido_eliminaYAudita() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
-        List<Object[]> mats = Collections.singletonList(
-            new Object[]{5, 100, "MatDesc", 3, "Nuevo"}
+        List<FilaMaterial> mats = Collections.singletonList(
+            new FilaMaterial(5, 1, 100, "MatDesc", 3, "Nuevo")
         );
         when(materialDAO.obtenerMaterialesPorCodigo(1, 100)).thenReturn(mats);
         when(auditoriaDAO.registrarMaterialEliminado(any(), any(), anyInt(), any(), any(),

@@ -85,17 +85,64 @@ class LoteServiceTest {
     }
 
     @Test
-    void lanzarLote_delegaADAO() {
+    void lanzarLote_movimientosVacios_lanzaValidationException() {
+        assertThrows(com.example.common.exception.ValidationException.class,
+            () -> service.lanzarLote("AutoA", 500, 300, Collections.emptyList(), Map.of()));
+    }
+
+    // ── lanzarLote con volúmenes por ingreso (paso 2 del plan) ───────────────
+
+    @Test
+    void lanzarLote_otrosConVolumen_delegaADAO() {
         Lote lote = mock(Lote.class);
-        List<LoteMovimiento> movs = List.of(new LoteMovimiento(1, 1, 10));
-        when(loteDAO.lanzarLote("AutoA", 500, 300, movs)).thenReturn(lote);
-        assertSame(lote, service.lanzarLote("AutoA", 500, 300, movs));
+        List<LoteMovimiento> movs = List.of(new LoteMovimiento(-5, 5, 10, true));
+        Map<Integer, Integer> volumenes = Map.of(5, 12);
+        when(loteDAO.lanzarLote("AutoA", 500, 300, movs, volumenes)).thenReturn(lote);
+        assertSame(lote, service.lanzarLote("AutoA", 500, 300, movs, volumenes));
     }
 
     @Test
-    void lanzarLote_movimientosVacios_lanzaValidationException() {
+    void lanzarLote_soloOrtopediaConMapaVacio_delegaADAO() {
+        Lote lote = mock(Lote.class);
+        List<LoteMovimiento> movs = List.of(new LoteMovimiento(1, 1, 10));
+        when(loteDAO.lanzarLote("AutoA", 500, 300, movs, Map.of())).thenReturn(lote);
+        assertSame(lote, service.lanzarLote("AutoA", 500, 300, movs, Map.of()));
+    }
+
+    @Test
+    void lanzarLote_otrosSinVolumenEnMapa_lanzaValidationException() {
+        List<LoteMovimiento> movs = List.of(new LoteMovimiento(-5, 5, 10, true));
         assertThrows(com.example.common.exception.ValidationException.class,
-            () -> service.lanzarLote("AutoA", 500, 300, Collections.emptyList()));
+            () -> service.lanzarLote("AutoA", 500, 300, movs, Map.of()));
+        verifyNoInteractions(loteDAO);
+    }
+
+    @Test
+    void lanzarLote_volumenCero_lanzaValidationException() {
+        List<LoteMovimiento> movs = List.of(new LoteMovimiento(-5, 5, 10, true));
+        assertThrows(com.example.common.exception.ValidationException.class,
+            () -> service.lanzarLote("AutoA", 500, 300, movs, Map.of(5, 0)));
+    }
+
+    @Test
+    void lanzarLote_volumenNegativo_lanzaValidationException() {
+        List<LoteMovimiento> movs = List.of(new LoteMovimiento(-5, 5, 10, true));
+        assertThrows(com.example.common.exception.ValidationException.class,
+            () -> service.lanzarLote("AutoA", 500, 300, movs, Map.of(5, -3)));
+    }
+
+    @Test
+    void lanzarLote_mapaNull_lanzaValidationException() {
+        List<LoteMovimiento> movs = List.of(new LoteMovimiento(-5, 5, 10, true));
+        assertThrows(com.example.common.exception.ValidationException.class,
+            () -> service.lanzarLote("AutoA", 500, 300, movs, null));
+    }
+
+    @Test
+    void lanzarLote_claveSinIngresoEnElLote_lanzaValidationException() {
+        List<LoteMovimiento> movs = List.of(new LoteMovimiento(1, 1, 10)); // solo ortopedia
+        assertThrows(com.example.common.exception.ValidationException.class,
+            () -> service.lanzarLote("AutoA", 500, 300, movs, Map.of(9, 5)));
     }
 
     @Test

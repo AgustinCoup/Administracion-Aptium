@@ -18,7 +18,9 @@ import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class PantallaVerEquipos extends JPanel {
 
@@ -37,6 +39,11 @@ public class PantallaVerEquipos extends JPanel {
     private final JTextField                 txtInstitucion;
     private final CheckableComboBox<String>  cmbTipoIngreso;
     private       Runnable                   onCambioRef;
+    // true mientras se resetean los controles de filtro programáticamente
+    // (aplicarFiltroInicial/limpiarFiltros), para no contar como cambio del
+    // usuario el aviso que igual disparan JDateChooser/CheckableComboBox al
+    // limpiarse (p.ej. JDateChooser.setDate(null) avisa aunque ya fuera null).
+    private       boolean                    silenciandoCallback;
     private final JPanel                     panelFiltrosOrt;   // Prof + Pac + Inst
     private final JPanel                     panelFiltrosOtro;  // Tipo Ingreso
     private final JPanel                     panelFiltros;
@@ -235,10 +242,11 @@ public class PantallaVerEquipos extends JPanel {
     /** Registra los callbacks de filtro con el Runnable provisto por el controller. */
     public void configurarFiltros(Runnable onCambio) {
         this.onCambioRef = onCambio;
-        cmbEstados.setOnSelectionChange(onCambio);
-        FilterUiHelper.bindOnTextChange(onCambio, txtCliente, txtProfesional, txtPaciente, txtInstitucion);
-        FilterUiHelper.bindOnDateChange(onCambio, dateDesde, dateHasta);
-        cmbTipoIngreso.setOnSelectionChange(onCambio);
+        Runnable notificar = () -> { if (!silenciandoCallback) onCambio.run(); };
+        cmbEstados.setOnSelectionChange(notificar);
+        FilterUiHelper.bindOnTextChange(notificar, txtCliente, txtProfesional, txtPaciente, txtInstitucion);
+        FilterUiHelper.bindOnDateChange(notificar, dateDesde, dateHasta);
+        cmbTipoIngreso.setOnSelectionChange(notificar);
         btnLimpiar.addActionListener(e -> limpiarFiltros(onCambio));
         tabs.addChangeListener(e -> {
             actualizarFiltrosParaTab(tabs.getSelectedIndex());
@@ -266,7 +274,46 @@ public class PantallaVerEquipos extends JPanel {
     public void limpiarFiltros() { if (onCambioRef != null) limpiarFiltros(onCambioRef); }
 
     private void limpiarFiltros(Runnable onCambio) {
-        cmbEstados.clearSelection();
+        silenciandoCallback = true;
+        try {
+            cmbEstados.clearSelection();
+            limpiarCamposFiltro();
+        } finally {
+            silenciandoCallback = false;
+        }
+        onCambio.run();
+    }
+
+    /**
+     * Aplica el filtro por defecto de la pantalla: oculta los equipos ya
+     * entregados (se ven en el historial a demanda, no en la vista principal).
+     * Distinto de {@link #limpiarFiltros()}, que muestra todos los estados sin
+     * excepción.
+     *
+     * <p>No dispara el callback de {@link #configurarFiltros}: quien navega a
+     * esta pantalla suele recargar datos frescos justo después (ver
+     * VerEquiposController), y renderizar acá repintaría con la lista vieja
+     * un instante antes de que esa recarga la reemplace. Usar
+     * {@link #aplicarFiltroInicialYNotificar()} si hace falta el repintado
+     * inmediato.
+     */
+    public void aplicarFiltroInicial() {
+        silenciandoCallback = true;
+        try {
+            cmbEstados.setSelectedItems(estadosVisiblesPorDefecto());
+            limpiarCamposFiltro();
+        } finally {
+            silenciandoCallback = false;
+        }
+    }
+
+    /** Como {@link #aplicarFiltroInicial()}, pero además dispara el callback de {@link #configurarFiltros}. */
+    public void aplicarFiltroInicialYNotificar() {
+        aplicarFiltroInicial();
+        if (onCambioRef != null) onCambioRef.run();
+    }
+
+    private void limpiarCamposFiltro() {
         txtCliente.setText("");
         txtProfesional.setText("");
         txtPaciente.setText("");
@@ -274,7 +321,13 @@ public class PantallaVerEquipos extends JPanel {
         cmbTipoIngreso.clearSelection();
         dateDesde.setDate(null);
         dateHasta.setDate(null);
-        onCambio.run();
+    }
+
+    private List<String> estadosVisiblesPorDefecto() {
+        return Arrays.stream(EstadoEquipo.values())
+            .filter(estado -> estado != EstadoEquipo.ENTREGADO)
+            .map(EstadoEquipo::getNombre)
+            .collect(Collectors.toList());
     }
 
     private JPanel crearPanelSurTab(JLabel lblConteo, JButton btnImprimir) {

@@ -1,7 +1,7 @@
 package com.example.features.lavadero.controller;
 
-import com.example.app.AppModel;
 import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.view.PantallaVerCiclos;
 
 import java.awt.event.ComponentAdapter;
@@ -13,13 +13,13 @@ import java.util.stream.Collectors;
 public class VerCiclosController {
 
     private final PantallaVerCiclos pantalla;
-    private final AppModel          model;
+    private final CicloLavaderoService cicloLavaderoService;
 
     private List<CicloLavadero> cache = List.of();
 
-    public VerCiclosController(PantallaVerCiclos pantalla, AppModel model) {
+    public VerCiclosController(PantallaVerCiclos pantalla, CicloLavaderoService cicloLavaderoService) {
         this.pantalla = pantalla;
-        this.model    = model;
+        this.cicloLavaderoService = cicloLavaderoService;
 
         pantalla.setOnFiltrosChanged(this::aplicarFiltros);
         pantalla.setOnLimpiar(pantalla::limpiarFiltros);
@@ -32,7 +32,7 @@ public class VerCiclosController {
     }
 
     public void cargarDatos() {
-        cache = model.obtenerTodosLosCiclos();
+        cache = cicloLavaderoService.obtenerTodosLosCiclos();
         aplicarFiltros();
     }
 

@@ -66,14 +66,6 @@ public class PantallaLotes extends JPanel {
         panelContenido.setMaterialesAutoclave(materiales);
     }
 
-    public MaterialLoteItem getMaterialDisponibleSeleccionado() {
-        return panelContenido.getMaterialDisponibleSeleccionado();
-    }
-
-    public MaterialLoteItem getMaterialAutoclaveSeleccionado() {
-        return panelContenido.getMaterialAutoclaveSeleccionado();
-    }
-
     public void setOnAutoclaveSeleccionado(Consumer<AutoclaveItem> listener) {
         panelContenido.setOnAutoclaveSeleccionado(listener);
     }

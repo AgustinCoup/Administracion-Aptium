@@ -1,10 +1,11 @@
 package com.example.features.lavadero.controller;
 
-import com.example.app.AppModel;
 import com.example.common.constants.Constantes;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.model.ElementoClasificacion;
 import com.example.features.lavadero.model.IngresoLavaderoResumen;
+import com.example.features.lavadero.service.ClasificacionLavaderoService;
+import com.example.features.lavadero.service.LavaderoService;
 import com.example.features.lavadero.view.PanelElementosClasificacion.ElementoFila;
 import com.example.features.lavadero.view.PantallaClasificacionLavadero;
 import com.example.ui.events.OnEquipoGuardadoListener;
@@ -17,18 +18,21 @@ import java.util.List;
 public class ClasificacionController {
 
     private final PantallaClasificacionLavadero panel;
-    private final AppModel                      model;
+    private final LavaderoService               lavaderoService;
+    private final ClasificacionLavaderoService   clasificacionLavaderoService;
     private final CardLayout                    navegador;
     private final JPanel                        contenedor;
     private final OnEquipoGuardadoListener      onGuardado;
 
     public ClasificacionController(PantallaClasificacionLavadero panel,
-                                   AppModel model,
+                                   LavaderoService lavaderoService,
+                                   ClasificacionLavaderoService clasificacionLavaderoService,
                                    CardLayout navegador,
                                    JPanel contenedor,
                                    OnEquipoGuardadoListener onGuardado) {
         this.panel      = panel;
-        this.model      = model;
+        this.lavaderoService = lavaderoService;
+        this.clasificacionLavaderoService = clasificacionLavaderoService;
         this.navegador  = navegador;
         this.contenedor = contenedor;
         this.onGuardado = onGuardado;
@@ -39,8 +43,8 @@ public class ClasificacionController {
 
     public void cargarIngresosSinClasificar() {
         panel.refrescar(
-            model.obtenerIngresosSinClasificar(),
-            model.obtenerCatalogoElementosLavadero()
+            lavaderoService.obtenerIngresosSinClasificar(),
+            clasificacionLavaderoService.obtenerCatalogo()
         );
     }
 
@@ -65,7 +69,7 @@ public class ClasificacionController {
         }
 
         try {
-            boolean ok = model.registrarClasificacion(ingreso.getId(), elementos);
+            boolean ok = clasificacionLavaderoService.guardar(ingreso.getId(), elementos);
             if (ok) {
                 panel.mostrarInfo(Constantes.Mensajes.DATOS_GUARDADOS);
                 panel.limpiarFormulario();

@@ -87,6 +87,19 @@ public class EquipoService {
     }
 
     /**
+     * Obtiene la cola activa: equipos con al menos un material sin entregar.
+     *
+     * <p>Es lo que consumen las pantallas operativas, que se refrescan en cada
+     * guardado. El histórico completo ({@link #obtenerTodos()}) queda para las
+     * pantallas de consulta, que leen solo cuando el usuario las abre.
+     *
+     * @return Lista de equipos no entregados
+     */
+    public List<Equipo> obtenerActivos() {
+        return equipoDAO.obtenerActivos();
+    }
+
+    /**
      * Obtiene un equipo específico por su ID.
      * 
      * @param id ID único del equipo
@@ -133,8 +146,8 @@ public class EquipoService {
         return equipoDAO.existe(id);
     }
 
-    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId) {
-        return equipoDAO.obtenerEntreFechas(desde, hasta, clienteId);
+    public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId, Integer institucionId) {
+        return equipoDAO.obtenerEntreFechas(desde, hasta, clienteId, institucionId);
     }
 }
 

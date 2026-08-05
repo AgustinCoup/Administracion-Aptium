@@ -28,14 +28,13 @@ Ver `config.example.properties` como referencia.
 
 ## Arquitectura
 
-Aplicación de escritorio Swing (Java 11) para gestión de equipos médicos y lotes de esterilización. Sin framework de DI — todo se cablea manualmente en el arranque.
+Aplicación de escritorio Swing (Java 17) para gestión de equipos médicos y lotes de esterilización. Sin framework de DI — todo se cablea manualmente en el arranque.
 
 **Flujo de arranque** (`App.main`):
 1. `ConnectionPool` — HikariCP singleton, crea la BD si no existe
 2. `DatabaseInitializer` — ejecuta schema.sql + seeds
 3. `AppContext.createDefault()` — instancia todos los DAOs, Services y Strategies
-4. `AppModel` — fachada de negocio que expone los services a los controllers
-5. `AppController` → `UiCoordinator` → `PantallaPrincipal` (CardLayout)
+4. `AppController` → `UiCoordinator` → `PantallaPrincipal` (CardLayout)
 
 Si cualquier paso falla, aparece un diálogo de error y la app termina.
 
@@ -47,8 +46,8 @@ Features: `equipos/ortopedias`, `equipos/otros`, `lotes`, `autoclaves`, `catalog
 
 **Clases clave:**
 - `AppContext` — único lugar donde se construyen dependencias (new DAO, new Service, new Strategy)
-- `AppModel` — único punto de acceso de la UI a la lógica de negocio; expone métodos semánticos, nunca servicios crudos (excepción documentada: `getEquipoCorreccionService()`)
-- `UiCoordinator` — instancia todos los controllers, cablea listeners; crea un `Runnable` global de refresh que todos los controllers disparan al guardar datos
+- `UiCoordinator` — único punto de la UI que ve el `AppContext` completo: instancia todos los controllers pasándole a cada uno **solo los services de su alcance**, cablea listeners, y crea un `Runnable` global de refresh que todos disparan al guardar datos
+- **Regla de extensión:** un controller declara en su constructor los services que usa. No hay fachada intermedia — si necesita algo nuevo, se agrega un parámetro y `UiCoordinator` lo provee desde `AppContext`. Así el alcance de cada controller es visible en su firma y el compilador lo hace cumplir.
 - `Constantes` — todas las constantes de la app (nombres de pantallas para CardLayout, anchos de columnas, etc.)
 - `AptiumException` y subclases — jerarquía de excepciones del dominio
 
@@ -96,4 +95,11 @@ builder.throwIfHasErrors();
 
 ## Tests
 
-La infraestructura está configurada (JUnit 4, Mockito 5, H2 en memoria) pero `src/test/` está vacío actualmente.
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. Más de 500 tests en `src/test/java`,
+reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
+DAO/Service/Controller/helper relevante).
+
+Para lógica de negocio embebida en clases de Swing (diálogos, paneles), el
+patrón del repo es extraerla a una clase plana sin dependencias de Swing y
+testearla en aislamiento — ver `AgrupadorIngresosLote`, `DuplicadoHighlighter`
+y `SincronizadorVolumenFinal` como ejemplos.

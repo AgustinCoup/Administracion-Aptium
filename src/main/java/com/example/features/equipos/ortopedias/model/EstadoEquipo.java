@@ -1,40 +1,38 @@
 package com.example.features.equipos.ortopedias.model;
 
-import java.awt.Color;
-
 /**
  * Enum que define todos los estados posibles de un equipo en el sistema.
  * Encapsula los valores válidos y evita errores de tipeo con strings.
- * 
+ *
  * Cada estado incluye:
  * - Nombre del estado
- * - Color asociado para visualización en la UI
  * - Orden de progresión en el flujo de trabajo
+ *
+ * <p>El color con el que se pinta cada estado es una decisión de presentación
+ * y vive en {@code TableStyler}, no acá: este enum es de dominio y no debe
+ * depender de AWT/Swing.
  */
 public enum EstadoEquipo {
-    
-    NUEVO("Nuevo", new Color(211, 211, 211), 1),              // LIGHT_GRAY
-    LAVANDO("Lavando", Color.CYAN, 2),
-    LAVADO("Lavado", new Color(135, 206, 250), 3),            // SKY_BLUE
-    EMPAQUETADO("Empaquetado", Color.ORANGE, 4),
-    ESTERILIZANDO("Esterilizando", Color.PINK, 5),
-    ESTERILIZADO("Esterilizado", Color.GREEN, 6),
-    ENTREGADO("Entregado", Color.GRAY, 7);               // Estado final
-    
+
+    NUEVO("Nuevo", 1),
+    LAVANDO("Lavando", 2),
+    LAVADO("Lavado", 3),
+    EMPAQUETADO("Empaquetado", 4),
+    ESTERILIZANDO("Esterilizando", 5),
+    ESTERILIZADO("Esterilizado", 6),
+    ENTREGADO("Entregado", 7);               // Estado final
+
     private final String nombre;
-    private final Color color;
     private final int orden;  // Orden en el flujo de trabajo
-    
+
     /**
      * Constructor del enum.
-     * 
+     *
      * @param nombre Nombre legible del estado
-     * @param color Color asociado para UI
      * @param orden Posición en el flujo de trabajo
      */
-    EstadoEquipo(String nombre, Color color, int orden) {
+    EstadoEquipo(String nombre, int orden) {
         this.nombre = nombre;
-        this.color = color;
         this.orden = orden;
     }
     
@@ -44,14 +42,6 @@ public enum EstadoEquipo {
      */
     public String getNombre() {
         return nombre;
-    }
-    
-    /**
-     * Obtiene el color asociado para visualización.
-     * @return Color del estado
-     */
-    public Color getColor() {
-        return color;
     }
     
     /**

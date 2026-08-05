@@ -1,10 +1,11 @@
 package com.example.features.lavadero.controller;
 
-import com.example.app.AppModel;
 import com.example.common.constants.Constantes;
 import com.example.common.exception.ValidationException;
+import com.example.features.clientes.service.ClienteService;
 import com.example.features.lavadero.model.BolsaLavadero;
 import com.example.features.lavadero.model.IngresoLavadero;
+import com.example.features.lavadero.service.LavaderoService;
 import com.example.features.lavadero.view.PanelBolsas;
 import com.example.features.lavadero.view.PantallaIngresoLavadero;
 import com.example.ui.common.AutocompleteListener;
@@ -18,16 +19,19 @@ import javax.swing.JPanel;
 public class LavaderoController {
 
     private final PantallaIngresoLavadero  panel;
-    private final AppModel                 model;
+    private final ClienteService           clienteService;
+    private final LavaderoService          lavaderoService;
     private final CardLayout               navegador;
     private final JPanel                   contenedor;
     private final OnEquipoGuardadoListener onGuardado;
 
-    public LavaderoController(PantallaIngresoLavadero panel, AppModel model,
+    public LavaderoController(PantallaIngresoLavadero panel, ClienteService clienteService,
+                               LavaderoService lavaderoService,
                                CardLayout navegador, JPanel contenedor,
                                OnEquipoGuardadoListener onGuardado) {
         this.panel      = panel;
-        this.model      = model;
+        this.clienteService  = clienteService;
+        this.lavaderoService = lavaderoService;
         this.navegador  = navegador;
         this.contenedor = contenedor;
         this.onGuardado = onGuardado;
@@ -39,7 +43,7 @@ public class LavaderoController {
     private void cablearAutocompleteCliente() {
         new AutocompleteListener<>(
             panel.getTxtCliente(),
-            text   -> model.buscarClientesLavadero(text),
+            text   -> clienteService.buscarClientes(text),
             cliente -> panel.setSelectedClienteId(cliente.getId())
         );
     }
@@ -69,7 +73,7 @@ public class LavaderoController {
 
         boolean exito;
         try {
-            exito = model.registrarIngresoLavadero(ingreso);
+            exito = lavaderoService.registrarIngreso(ingreso);
         } catch (ValidationException ex) {
             String msg = ex.getValidationErrors().isEmpty()
                 ? "Error de validación."

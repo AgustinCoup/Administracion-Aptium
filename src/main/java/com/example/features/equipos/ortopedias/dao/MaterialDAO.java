@@ -302,9 +302,9 @@ public class MaterialDAO {
         }
     }
 
-    public Object[] obtenerMaterial(Integer materialId) {
+    public FilaMaterial obtenerMaterial(Integer materialId) {
         String sql =
-            "SELECT em.codigo_catalogo, em.equipo_id, cd.descripcion, em.cantidad, em.estado " +
+            "SELECT em.id, em.equipo_id, em.codigo_catalogo, cd.descripcion, em.cantidad, em.estado " +
             "FROM equipo_materiales em " +
             "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
             "WHERE em.id = ?";
@@ -312,20 +312,28 @@ public class MaterialDAO {
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, materialId);
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return new Object[]{
-                        rs.getInt("codigo_catalogo"),
-                        rs.getInt("equipo_id"),
-                        rs.getString("descripcion"),
-                        rs.getInt("cantidad"),
-                        rs.getString("estado")
-                    };
-                }
+                if (rs.next()) return mapearFila(rs);
             }
         } catch (SQLException e) {
             throw new DatabaseException("Error al obtener material " + materialId, e);
         }
         return null; // no encontrado
+    }
+
+    /**
+     * Mapea la fila actual del {@code ResultSet} a {@link FilaMaterial}.
+     * El acceso es por nombre de columna, así que reordenar el {@code SELECT}
+     * no rompe nada; agregar o quitar una columna del record sí falla al compilar.
+     */
+    private static FilaMaterial mapearFila(ResultSet rs) throws SQLException {
+        return new FilaMaterial(
+            rs.getInt("id"),
+            rs.getInt("equipo_id"),
+            rs.getInt("codigo_catalogo"),
+            rs.getString("descripcion"),
+            rs.getInt("cantidad"),
+            rs.getString("estado")
+        );
     }
 
     public Integer agregarMaterial(Integer equipoId, Integer codigoCatalogo, Integer cantidad) {
@@ -378,10 +386,10 @@ public class MaterialDAO {
         }
     }
 
-    public List<Object[]> obtenerMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo) {
-        List<Object[]> materiales = new ArrayList<>();
+    public List<FilaMaterial> obtenerMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo) {
+        List<FilaMaterial> materiales = new ArrayList<>();
         String sql =
-            "SELECT em.id, em.codigo_catalogo, cd.descripcion, em.cantidad, em.estado " +
+            "SELECT em.id, em.equipo_id, em.codigo_catalogo, cd.descripcion, em.cantidad, em.estado " +
             "FROM equipo_materiales em " +
             "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
             "WHERE em.equipo_id = ? AND em.codigo_catalogo = ? " +
@@ -394,13 +402,7 @@ public class MaterialDAO {
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    materiales.add(new Object[] {
-                        rs.getInt("id"),
-                        rs.getInt("codigo_catalogo"),
-                        rs.getString("descripcion"),
-                        rs.getInt("cantidad"),
-                        rs.getString("estado")
-                    });
+                    materiales.add(mapearFila(rs));
                 }
             }
         } catch (SQLException e) {

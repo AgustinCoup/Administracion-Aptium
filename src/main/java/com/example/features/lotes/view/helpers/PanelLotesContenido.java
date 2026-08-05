@@ -1,8 +1,10 @@
 package com.example.features.lotes.view.helpers;
 
 import com.example.ui.common.Estilos;
+import com.example.ui.common.RowTooltipTable;
 import com.example.ui.common.TableStyler;
 import com.example.ui.common.LabelFactory;
+import com.example.ui.common.dnd.TableSelectionSupport;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -12,8 +14,10 @@ import javax.swing.table.TableColumnModel;
 import java.awt.*;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import com.example.common.constants.Constantes;
+import com.example.features.lotes.model.OcupacionAutoclave;
 
 /**
  * Panel reutilizable con la lógica de gestión de lotes.
@@ -25,8 +29,8 @@ public class PanelLotesContenido extends JPanel {
     private AutoclaveTableModel modeloAutoclaves;
     private MaterialLoteTableModel modeloDisponibles;
     private MaterialLoteTableModel modeloAutoclave;
-    private JTable tablaDisponibles;
-    private JTable tablaAutoclave;
+    private RowTooltipTable tablaDisponibles;
+    private RowTooltipTable tablaAutoclave;
     private JLabel lblCapacidad;
     private JProgressBar barraCapacidad;
     private JTextField txtVolumenManual;
@@ -43,11 +47,11 @@ public class PanelLotesContenido extends JPanel {
     private static final Color COLOR_VERDE = new Color(76,  175, 80);
 
     // Anchos preferidos para las columnas de MaterialLoteTableModel:
-    // Material(0), Cantidad(1), VolumenTotal(2), Cliente(3)
+    // Material(0), Cantidad(1), Cliente(2)
     // Los minWidth se calculan dinámicamente a partir del texto del encabezado,
     // garantizando que el título siempre sea completamente legible.
-    private static final int[] COL_PREF_WIDTHS    = { 150,  65,  75,  800 };
-    private static final int[] COL_MAX_WIDTHS     = { 400, 9999, 9999, 9999 };
+    private static final int[] COL_PREF_WIDTHS    = { 150,  65,  800 };
+    private static final int[] COL_MAX_WIDTHS     = { 400, 9999, 9999 };
     private static final int   COL_HEADER_PADDING = 16; // px de margen a cada lado del texto del header
 
     public PanelLotesContenido() {
@@ -68,10 +72,10 @@ public class PanelLotesContenido extends JPanel {
         centro.add(lblDisponibles, gbc);
 
         modeloDisponibles = new MaterialLoteTableModel();
-        tablaDisponibles = new JTable(modeloDisponibles);
+        tablaDisponibles = new RowTooltipTable(modeloDisponibles);
         TableStyler.applyStandard(tablaDisponibles);
-        TableStyler.centerColumns(tablaDisponibles, 1, 2);
-        tablaDisponibles.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableStyler.centerColumns(tablaDisponibles, 1);
+        TableSelectionSupport.enableMultiSelection(tablaDisponibles);
         tablaDisponibles.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
         ajustarColumnasMateriales(tablaDisponibles);
 
@@ -87,10 +91,10 @@ public class PanelLotesContenido extends JPanel {
         centro.add(lblAutoclave, gbc);
 
         modeloAutoclave = new MaterialLoteTableModel();
-        tablaAutoclave = new JTable(modeloAutoclave);
+        tablaAutoclave = new RowTooltipTable(modeloAutoclave);
         TableStyler.applyStandard(tablaAutoclave);
-        TableStyler.centerColumns(tablaAutoclave, 1, 2);
-        tablaAutoclave.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableStyler.centerColumns(tablaAutoclave, 1);
+        TableSelectionSupport.enableMultiSelection(tablaAutoclave);
         tablaAutoclave.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
         ajustarColumnasMateriales(tablaAutoclave);
 
@@ -287,7 +291,7 @@ public class PanelLotesContenido extends JPanel {
         int capacidadTotal = extraerCapacidadTotalDelLabel();
         int volumenManual  = getVolumenManual();
         if (volumenManual >= 0 && capacidadTotal > 0) {
-            actualizarBarraCapacidad(volumenManual, capacidadTotal);
+            actualizarBarraCapacidad(new OcupacionAutoclave(volumenManual, capacidadTotal));
         }
         if (onVolumenManualChanged != null) {
             SwingUtilities.invokeLater(onVolumenManualChanged);
@@ -303,10 +307,10 @@ public class PanelLotesContenido extends JPanel {
     }
 
     /**
-     * 0 % → rojo | 1–100 % → interpolación rojo→verde | >100 % → rojo (sobrecarga)
+     * 0 % → rojo | 1–100 % → interpolación rojo→verde | sobrecarga → rojo
      */
-    private void actualizarBarraCapacidad(int capacidadUsada, int capacidadTotal) {
-        if (capacidadTotal == 0) {
+    private void actualizarBarraCapacidad(OcupacionAutoclave ocupacion) {
+        if (ocupacion.getTotal() == 0) {
             barraCapacidad.setValue(0);
             barraCapacidad.setForeground(COLOR_ROJO);
             barraCapacidad.setString("0%");
@@ -314,12 +318,12 @@ public class PanelLotesContenido extends JPanel {
             return;
         }
 
-        int porcentaje = (capacidadUsada * 100) / capacidadTotal;
+        int porcentaje = ocupacion.porcentaje();
         barraCapacidad.setValue(Math.min(porcentaje, 100));
         barraCapacidad.setString(porcentaje + "%");
 
         Color color;
-        if (porcentaje > 100) {
+        if (ocupacion.estaSobrecargado()) {
             color = COLOR_ROJO;
             lblVolumenManualPorcentaje.setForeground(COLOR_ROJO);
             lblVolumenManualPorcentaje.setText("⚠ " + porcentaje + "%");
@@ -397,14 +401,12 @@ public class PanelLotesContenido extends JPanel {
     public void setMaterialesDisponibles(List<MaterialLoteItem> materiales) { modeloDisponibles.setItems(materiales); }
     public void setMaterialesAutoclave(List<MaterialLoteItem> materiales)   { modeloAutoclave.setItems(materiales); }
 
-    public MaterialLoteItem getMaterialDisponibleSeleccionado() {
-        int row = tablaDisponibles.getSelectedRow();
-        return row < 0 ? null : modeloDisponibles.getItemAt(row);
+    public List<MaterialLoteItem> getMaterialesDisponiblesSeleccionados() {
+        return TableSelectionSupport.selectedItems(tablaDisponibles, modeloDisponibles::getItemAt);
     }
 
-    public MaterialLoteItem getMaterialAutoclaveSeleccionado() {
-        int row = tablaAutoclave.getSelectedRow();
-        return row < 0 ? null : modeloAutoclave.getItemAt(row);
+    public List<MaterialLoteItem> getMaterialesAutoclaveSeleccionados() {
+        return TableSelectionSupport.selectedItems(tablaAutoclave, modeloAutoclave::getItemAt);
     }
 
     public void setOnAutoclaveSeleccionado(Consumer<AutoclaveItem> listener) { this.onAutoclaveSeleccionado = listener; }
@@ -422,18 +424,35 @@ public class PanelLotesContenido extends JPanel {
     public JTable getTablaDisponibles() { return tablaDisponibles; }
     public JTable getTablaAutoclave()   { return tablaAutoclave; }
 
+    /** Tooltip por fila de la tabla de materiales disponibles; null = sin tooltip. */
+    public void setTooltipDisponibles(Function<MaterialLoteItem, String> textoPorItem) {
+        tablaDisponibles.setRowTooltipProvider(row -> {
+            MaterialLoteItem item = modeloDisponibles.getItemAt(row);
+            return item == null ? null : textoPorItem.apply(item);
+        });
+    }
+
+    /** Tooltip por fila de la tabla de materiales cargados; null = sin tooltip. */
+    public void setTooltipAutoclave(Function<MaterialLoteItem, String> textoPorItem) {
+        tablaAutoclave.setRowTooltipProvider(row -> {
+            MaterialLoteItem item = modeloAutoclave.getItemAt(row);
+            return item == null ? null : textoPorItem.apply(item);
+        });
+    }
+
     public void setCapacidadTexto(String texto) {
         lblCapacidad.setText(texto);
         try {
             String[] partes = texto.replace("Capacidad: ", "").split("/");
             if (partes.length == 2)
-                actualizarBarraCapacidad(Integer.parseInt(partes[0].trim()), Integer.parseInt(partes[1].trim()));
+                actualizarBarraCapacidad(new OcupacionAutoclave(
+                        Integer.parseInt(partes[0].trim()), Integer.parseInt(partes[1].trim())));
         } catch (NumberFormatException ignored) { }
     }
 
     public void setCapacidad(int capacidadUsada, int capacidadTotal) {
         lblCapacidad.setText(String.format("Capacidad: %d/%d", capacidadUsada, capacidadTotal));
-        actualizarBarraCapacidad(capacidadUsada, capacidadTotal);
+        actualizarBarraCapacidad(new OcupacionAutoclave(capacidadUsada, capacidadTotal));
     }
 
     public void mostrarAdvertencia(String mensaje) {
