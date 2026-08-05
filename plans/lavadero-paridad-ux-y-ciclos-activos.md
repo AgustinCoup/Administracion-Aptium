@@ -60,6 +60,44 @@ construcción.**
    paridad *completa*, no un efecto colateral no buscado. Como beneficio adicional
    (no el objetivo, pero corrige algo que hoy es un problema real): la lectura a
    la base deja de bloquear el EDT en cada apertura de la pantalla.
+5. **Estados de ciclo: una sola fuente de verdad, en el modelo.** Hoy
+   `CicloLavadero` guarda `estado` como un `String` recibido por constructor *y
+   además* expone `estaActivo()` derivado de `fechaFin == null`: dos fuentes
+   para el mismo hecho. Hoy no pueden discrepar, pero **por accidente** — el
+   mapper del DAO (`CicloLavaderoDAO.java:315`) deriva el estado de `fechaFin`,
+   y `SQL_TODOS` ni siquiera selecciona la columna `cl.estado`, que sí se
+   escribe en el INSERT y en `marcarFinalizado`. Basta que alguien agregue
+   `cl.estado` al SELECT para que `getEstado()` y `estaActivo()` empiecen a
+   contradecirse en silencio — y el Paso 4 usa **las dos** en la misma clase
+   (`cumpleEstado` mira `getEstado()`, `cumpleFechas` mira `estaActivo()`).
+   Se elimina el campo: `getEstado()` pasa a derivarse de `fechaFin`, y los dos
+   literales viven como constantes públicas del modelo
+   (`CicloLavadero.ESTADO_ACTIVO` / `ESTADO_FINALIZADO`), consumidas por el
+   combo del filtro, el renderer y el mapper del DAO. Esto también cierra la
+   otra mitad del problema: hoy el plan repartía los literales `"ACTIVO"` /
+   `"FINALIZADO"` por tres archivos sin ayuda del compilador (violación de OCP
+   heredada de Lotes, que tiene exactamente el mismo patrón en
+   `PantallaVerLotes.java:116` + el `switch` de `EstadoCellRenderer`). Costo: un
+   parámetro menos en los dos constructores de `CicloLavadero`, 9 sitios de
+   construcción a actualizar (3 en el DAO, 6 en tests).
+   - *Descartado — `enum`:* sería el modelo correcto, pero obligaría a cambiar
+     el tipo del combo (`CheckableComboBox<String>`), del `FilterCriteria` y del
+     renderer, que trabajan con `String` justamente por paridad con Lotes. Más
+     superficie por el mismo beneficio dentro de este alcance.
+   - *Descartado — dejar solo un comentario de advertencia:* documenta el
+     peligro sin sacarlo.
+6. **El DAO de ciclos debe propagar el fallo, no tragárselo.** El Paso 5 cablea
+   `RefrescadorPantallas` con un callback `alFallar`, pero
+   `CicloLavaderoDAO.obtenerTodosLosCiclos()` (línea 124-127) captura
+   `SQLException`, loguea y devuelve lista vacía — así que ese callback **no
+   puede dispararse nunca**, y "se cayó la BD" se ve idéntico a "no hay ciclos".
+   `LoteDAO.obtenerTodosLosLotes()` (línea 76-77) sí lanza `DatabaseException`,
+   que es de donde sale el `alFallar` funcionando de Ver Lotes. Sin este cambio
+   el Paso 5 copia el mecanismo pero no su comportamiento ante error, y su
+   criterio de salida ("arquitectura idéntica, no solo resultado equivalente")
+   sería falso. Alcance acotado a **solo** `obtenerTodosLosCiclos()`: los otros
+   dos métodos que tragan excepciones (`obtenerCiclosActivosPorLavarropas`,
+   `obtenerCiclosFinalizados`) tienen otros llamadores y quedan fuera del plan.
 
 ## Contexto arquitectónico común (leer una vez)
 
@@ -117,8 +155,17 @@ construcción.**
   19 líneas) — `recargarCache(List<T>)` (guarda + llama `aplicarFiltros()`),
   `getCache()`, `aplicarFiltros()` abstracto y **`protected`** (obligatorio
   respetar ese modificador al implementarlo).
+- **Manejo de errores en los DAO — asimétrico, y el plan depende de eso:**
+  `LoteDAO.obtenerTodosLosLotes()` lanza `DatabaseException`
+  (`common/exception/DatabaseException.java`) ante `SQLException`;
+  `CicloLavaderoDAO.obtenerTodosLosCiclos()` la loguea y devuelve lista vacía.
+  Esa diferencia es la que hace que el callback `alFallar` de
+  `RefrescadorPantallas` funcione en Lotes y sea inerte en Ciclos — ver decisión
+  de diseño #6, se corrige en el Paso 5.
 - **Estado actual de Ver Ciclos:** `CicloLavaderoDAO.SQL_TODOS` (sin `WHERE`) ya
-  trae ciclos activos e históricos — **no hay que tocar el DAO ni el service**.
+  trae ciclos activos e históricos — la consulta no se toca (el Paso 5 sí cambia
+  el manejo de excepciones de `obtenerTodosLosCiclos()`, y el Paso 4 el mapper
+  `mapearCiclo`/`mapearCicloCompleto`; el service no se toca en ningún paso).
   `VerCiclosController.filtrar(...)` (estático, package-private, línea 47-59) filtra
   por número/fechas con lógica inline (sin `FilterStrategy`). `VerCiclosController`
   hoy recibe `CicloLavaderoService` directo y lee la BD de forma síncrona **en el
@@ -159,11 +206,12 @@ Paso 2 (duplicados clasific.)   ├── independientes entre sí
 Paso 3 (RestriccionesCampo)     ┘
                                        │
                                        ▼ (Paso 4 toca PantallaVerCiclos, igual que Paso 3)
-                                  Paso 4 (filtro estado + renderer propio, Ver Ciclos)
+                                  Paso 4 (estado derivado en el modelo +
+                                       │  filtro estado + renderer propio, Ver Ciclos)
                                        │
                                        ▼ (Paso 5 reescribe VerCiclosController, ya con
                                        │  el filtrado del Paso 4 en su lugar)
-                                  Paso 5 (paridad de arquitectura de refresco)
+                                  Paso 5 (DAO que propaga + paridad de refresco)
                                        │
                                        ▼
                                   Paso 6 (verificación final)
@@ -174,8 +222,8 @@ Paso 3 (RestriccionesCampo)     ┘
 | 1 | Ctrl++/Ctrl+- en ingreso Lavadero (`PanelBolsas`) | default | 2, 3 |
 | 2 | `DuplicadoHighlighter` genérico + resaltado en Clasificación | **strongest** (API compartida, 2 llamadores existentes) | 1, 3 |
 | 3 | `RestriccionesCampo` — nuevo método decimal + aplicar en Lavadero | default | 1, 2 |
-| 4 | Filtro de estado + renderer propio en Ver Ciclos | **strongest** (nuevo patrón `FilterStrategy`, migra tests) | — (depende de 3) |
-| 5 | Paridad de arquitectura de refresco (`AbstractFilterController` + `UiCoordinator`) | **strongest** (toca la composition root, mayor blast radius de todo el plan) | — (depende de 4) |
+| 4 | Estado derivado en el modelo + filtro de estado + renderer propio en Ver Ciclos | **strongest** (nuevo patrón `FilterStrategy`, cambia el constructor de `CicloLavadero`, migra tests) | — (depende de 3) |
+| 5 | DAO que propaga el fallo + paridad de arquitectura de refresco (`AbstractFilterController` + `UiCoordinator`) | **strongest** (toca la composition root, mayor blast radius de todo el plan) | — (depende de 4) |
 | 6 | Verificación final (build completo + checklist manual) | default | — |
 
 ---
@@ -351,10 +399,35 @@ firma pública existente intacta, cero cambios en esos dos archivos.
    - combo con `setSelectedItem(null)` (o índice -1) → se ignora como "vacío",
      igual que un `JTextField` en blanco hoy.
    No hace falta tocar `PanelMaterialesTest`/`PanelMaterialesOtrosTest`: correrlos
-   solo confirma que no hubo regresión (overload de 4 args intacto).
+   solo confirma que no hubo regresión (overload de 4 args intacto) — **siempre
+   que esos tests efectivamente ejerciten `tieneDuplicados()`**, ver tarea 5.
+
+5. **Confirmar que la red de seguridad contra regresión es real, antes de dar el
+   paso por cerrado.** El riesgo de este paso no es la resolución de overloads
+   (verificada: como los overloads difieren en aridad — 4 vs. 5 argumentos — no
+   hay ambigüedad posible, los dos llamadores existentes siguen resolviendo al de
+   `List<JTextField>` sin tocar su código). El riesgo real es de implementación:
+   si al escribir la delegación (`marcar(campos, JTextField::getText,
+   normalizador, colorNormal, tooltipDuplicado)`) alguien invierte un parámetro o
+   rompe la comparación contra `COLOR_DUPLICADO`, el código compila igual pero el
+   resaltado de duplicados en ortopedias/otros deja de funcionar en runtime — un
+   bug silencioso que el compilador no atrapa y que la suite solo detecta si los
+   tests correctos existen y de verdad recorren ese camino.
+   Antes de cerrar el paso: abrir `PanelMaterialesTest.java` y
+   `PanelMaterialesOtrosTest.java` y confirmar que **al menos un test de cada
+   uno llama a `tieneDuplicados()`** y afirma sobre su resultado (`true`/`false`)
+   y/o sobre el color de fondo de los campos tras la llamada — no alcanza con que
+   la clase compile o que otros métodos estén cubiertos. Si ninguno de los dos
+   archivos ejercita ese método hoy, agregar un caso mínimo a cada uno (dos
+   materiales con el mismo código → `tieneDuplicados()` devuelve `true` y los
+   campos quedan con fondo distinto al normal) **antes** de considerar cerrado el
+   paso — de lo contrario "la suite pasa" no garantiza nada sobre el punto que
+   este paso realmente pone en riesgo.
 
 ### Verificación
 - `mvn -q -DskipTests compile`
+- Inspección manual de `PanelMaterialesTest.java`/`PanelMaterialesOtrosTest.java`
+  (tarea 5) — si hubo que agregar casos, hacerlo antes del siguiente comando.
 - `mvn -q test -Dtest=DuplicadoHighlighterTest,PanelMaterialesTest,PanelMaterialesOtrosTest`
 
 ### Criterio de salida
@@ -487,11 +560,13 @@ línea 169, getter línea 231-233) y `VerLotesController.aplicarFiltros()`
 (línea 58-70).
 
 Ver Ciclos (Lavadero) **ya trae ciclos activos** en la consulta —
-`CicloLavaderoDAO.SQL_TODOS` no tiene `WHERE` — así que no hay que tocar el DAO ni
-el service. Lo que falta es pura paridad de UI: filtro de estado + columna
-coloreada. `CicloLavadero` (`model/CicloLavadero.java`) solo tiene 2 estados
-posibles en toda la base: `"ACTIVO"` / `"FINALIZADO"` (ver `getEstado()` y
-`estaActivo() { return fechaFin == null; }`) — a diferencia de los 3 de Lotes.
+`CicloLavaderoDAO.SQL_TODOS` no tiene `WHERE` — así que **el SQL y el service no
+se tocan**; del DAO solo cambian los 3 mapeos que construyen `CicloLavadero`
+(tarea 0). Lo que falta es paridad de UI (filtro de estado + columna coloreada)
+más el saneamiento del estado en el modelo. `CicloLavadero`
+(`model/CicloLavadero.java`) solo tiene 2 estados posibles en toda la base:
+`"ACTIVO"` / `"FINALIZADO"` — a diferencia de los 3 de Lotes — y hoy los expresa
+por duplicado (campo `estado` + `estaActivo()`), lo que la tarea 0 unifica.
 
 **El renderer no se comparte (decisión de diseño #3):** en vez de mover/generalizar
 `features/lotes/view/helpers/EstadoCellRenderer.java` (que queda intacto), se crea
@@ -505,10 +580,47 @@ constructor ni el campo `cache` de `VerCiclosController`** — eso es el Paso 5.
 
 ### Tareas
 
+0. **`CicloLavadero.java` — una sola fuente de verdad para el estado**
+   (decisión de diseño #5; hacer esto **primero**, el resto de las tareas
+   consume las constantes que salen de acá):
+   - Agregar las constantes y derivar el estado:
+     ```java
+     public static final String ESTADO_ACTIVO     = "ACTIVO";
+     public static final String ESTADO_FINALIZADO = "FINALIZADO";
+
+     /** Derivado de {@code fechaFin}: no hay un estado almacenado que pueda contradecirlo. */
+     public String getEstado() {
+         return estaActivo() ? ESTADO_ACTIVO : ESTADO_FINALIZADO;
+     }
+     ```
+     (Deben ser `static final String` inicializadas con literal para poder usarse
+     como etiquetas `case` de un `switch` sobre `String` en la tarea 1.)
+   - Eliminar el campo `private final String estado;`, su asignación en el
+     constructor largo, y el parámetro `String estado` de **los dos**
+     constructores (el corto delega en el largo, actualizar esa delegación).
+   - **`CicloLavaderoDAO.java`** — quitar el argumento de estado de las 3
+     construcciones: `mapearCiclo` (línea ~299, pasaba `"ACTIVO"`),
+     `mapearCicloCompleto` (línea ~315, pasaba
+     `fechaFin == null ? "ACTIVO" : "FINALIZADO"` — exactamente la lógica que
+     ahora vive en el modelo) y `obtenerCiclosFinalizados` (línea ~106, pasaba
+     `"FINALIZADO"`; ese método filtra por `fecha_fin IS NOT NULL`, así que el
+     valor derivado coincide). No tocar el SQL: la columna `cl.estado` se sigue
+     escribiendo y sigue sin leerse.
+   - **Tests** — `CicloLavaderoTest.java` tiene 4 construcciones (líneas ~17,
+     26, 38, 55) y `VerCiclosControllerFiltrosTest.java` otras 2 (las de los
+     helpers `ciclo(...)`/`cicloActivo(...)`, que la tarea 6 migra igual):
+     quitarles el argumento. La aserción existente
+     `assertEquals("ACTIVO", ciclo.getEstado())` (`CicloLavaderoTest:50`) sigue
+     valiendo tal cual — ese ciclo se construye con `fechaFin == null`.
+     Agregar un caso nuevo: ciclo con `fechaFin` no nula → `getEstado()` devuelve
+     `ESTADO_FINALIZADO`.
+
 1. **Crear** `src/main/java/com/example/features/lavadero/view/helpers/CicloEstadoCellRenderer.java`
    (no toca `features/lotes/view/helpers/EstadoCellRenderer.java`):
    ```java
    package com.example.features.lavadero.view.helpers;
+
+   import com.example.features.lavadero.model.CicloLavadero;
 
    import javax.swing.JTable;
    import javax.swing.table.DefaultTableCellRenderer;
@@ -526,10 +638,10 @@ constructor ni el campo `cache` de `VerCiclosController`** — eso es el Paso 5.
            if (value != null && !isSelected) {
                String estado = value.toString().trim().toUpperCase();
                switch (estado) {
-                   case "ACTIVO":
+                   case CicloLavadero.ESTADO_ACTIVO:
                        c.setBackground(new Color(173, 216, 230)); // Azul claro
                        break;
-                   case "FINALIZADO":
+                   case CicloLavadero.ESTADO_FINALIZADO:
                        c.setBackground(new Color(211, 211, 211)); // Gris claro
                        break;
                    default:
@@ -620,6 +732,14 @@ constructor ni el campo `cache` de `VerCiclosController`** — eso es el Paso 5.
    actual de `VerCiclosController.filtrar` (los 9 tests existentes deben seguir
    pasando una vez migrados, ver tarea 6). `cumpleEstado` es la lógica nueva.
 
+   Que esta clase use `getEstado()` en un predicado y `estaActivo()` en otro es
+   seguro **solo gracias a la tarea 0**: después de ella `getEstado()` está
+   derivado de `fechaFin`, o sea de `estaActivo()`, así que los dos predicados
+   leen el mismo hecho. Sin la tarea 0 esto era una bomba de tiempo (decisión de
+   diseño #5). Si por algún motivo se saltea la tarea 0, `cumpleEstado` debe
+   comparar contra `c.estaActivo() ? "ACTIVO" : "FINALIZADO"`, no contra
+   `c.getEstado()`.
+
 4. **`VerCiclosController.java`** — cambios acotados a filtrado, **sin tocar
    todavía** constructor/campo `cache` (eso es el Paso 5):
    - Quitar el método estático `filtrar(...)` (su lógica se mudó al paso 3).
@@ -647,13 +767,16 @@ constructor ni el campo `cache` de `VerCiclosController`** — eso es el Paso 5.
 
 5. **`PantallaVerCiclos.java`**:
    - Importar `com.example.ui.common.CheckableComboBox`,
-     `com.example.features.lavadero.view.helpers.CicloEstadoCellRenderer`.
+     `com.example.features.lavadero.view.helpers.CicloEstadoCellRenderer`,
+     `com.example.features.lavadero.model.CicloLavadero` (para las constantes de
+     estado; la pantalla ya trabaja con ese tipo en `actualizarCiclos`).
    - Agregar campo `private CheckableComboBox<String> cmbFiltroEstado;`.
    - En `crearPanelFiltros()`, después del bloque de `lblNumero`/`txtFiltroNumero`:
      ```java
      JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
      lblEstado.setFont(Estilos.Fuentes.LABEL);
-     cmbFiltroEstado = new CheckableComboBox<>(new String[]{"ACTIVO", "FINALIZADO"});
+     cmbFiltroEstado = new CheckableComboBox<>(
+         new String[]{CicloLavadero.ESTADO_ACTIVO, CicloLavadero.ESTADO_FINALIZADO});
      cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
      cmbFiltroEstado.setPreferredSize(new Dimension(130, 25));
      ```
@@ -681,8 +804,10 @@ constructor ni el campo `cache` de `VerCiclosController`** — eso es el Paso 5.
    (si el nombre de clase pública no coincide con el nombre de archivo, no
    compila). Portar los 9 casos existentes para instanciar
    `new CicloFilterStrategy().filter(ciclos, new CicloFilterCriteria(numero, List.of(), desde, hasta))`
-   en vez de `VerCiclosController.filtrar(...)` (los helpers `ciclo(...)`/`cicloActivo(...)`
-   no cambian). Agregar 3 casos nuevos para `cumpleEstado`:
+   en vez de `VerCiclosController.filtrar(...)`. Los helpers
+   `ciclo(...)`/`cicloActivo(...)` cambian **solo** en que pierden el argumento
+   de estado del constructor (tarea 0); su firma propia y su uso en los 9 casos
+   quedan iguales. Agregar 3 casos nuevos para `cumpleEstado`:
    - `filtroEstadoActivoDevuelveSoloActivos()`
    - `filtroEstadoFinalizadoExcluyeActivos()`
    - `filtroEstadoIgnoraMayusculasMinusculas()` (o equivalente, cubriendo
@@ -690,13 +815,17 @@ constructor ni el campo `cache` de `VerCiclosController`** — eso es el Paso 5.
 
 ### Verificación
 - `mvn -q -DskipTests compile`
-- `mvn -q test -Dtest=CicloFilterStrategyTest`
+- `mvn -q test -Dtest=CicloFilterStrategyTest,CicloLavaderoTest,CicloLavaderoDAOTest`
+  (los dos últimos por el cambio de constructor de la tarea 0)
 
 ### Criterio de salida
 Ver Ciclos filtra por estado igual que Ver Lotes (multi-selección, vacío = todos);
 la tabla colorea ACTIVO (celeste) / FINALIZADO (gris) con un renderer propio de
 Lavadero; `features/lotes/**` no fue tocado; `VerCiclosController.filtrar` ya no
-existe (código muerto eliminado); suite completa en verde. Commit:
+existe (código muerto eliminado); los literales `"ACTIVO"`/`"FINALIZADO"` no
+aparecen sueltos en `features/lavadero/**` fuera de `CicloLavadero`
+(verificar con `grep -rn '"ACTIVO"\|"FINALIZADO"' src/main/java/com/example/features/lavadero/`);
+`CicloLavadero` ya no recibe el estado por constructor; suite completa en verde. Commit:
 `feat: filtro de estado y color-coding en Ver Ciclos, paridad de filtrado con Ver Lotes`.
 
 ### Rollback
@@ -727,6 +856,30 @@ directamente `List<CicloLavadero>`, y `RefrescadorPantallas<T>` es genérico, as
 que `RefrescadorPantallas<List<CicloLavadero>>` funciona sin tipos nuevos.
 
 ### Tareas
+
+0. **`CicloLavaderoDAO.obtenerTodosLosCiclos()` — propagar el fallo**
+   (decisión de diseño #6; hacer esto **antes** de cablear el refrescador, si no
+   el `alFallar` de la tarea 2 nace muerto). Reemplazar el `catch` que traga
+   (línea 124-127) por el mismo contrato que `LoteDAO.obtenerTodosLosLotes()`:
+   ```java
+   } catch (SQLException e) {
+       throw new DatabaseException("Error al obtener todos los ciclos", e);
+   }
+   ```
+   - Importar `com.example.common.exception.DatabaseException`.
+   - Quitar el `log.error(...)` de ese `catch`: `DatabaseException` lleva la
+     causa adentro y `RefrescadorPantallas` ya reporta el fallo por
+     `alFallar`; dejarlo duplicaría el registro. **No** quitar el `Logger` de la
+     clase — los otros métodos lo siguen usando.
+   - **No tocar** `obtenerCiclosActivosPorLavarropas()` ni
+     `obtenerCiclosFinalizados()`: tienen otros llamadores que hoy dependen de
+     recibir una colección vacía, y cambiarlos excede este plan.
+   - Verificación de impacto: `obtenerTodosLosCiclos()` se llama solo desde
+     `CicloLavaderoService.obtenerTodosLosCiclos()` (que delega sin capturar) y
+     de ahí solo desde `VerCiclosController`; **no existe ningún test que lo
+     ejercite** (`CicloLavaderoDAOTest` no lo cubre), así que el cambio no
+     rompe la suite. Si se quiere cobertura del camino nuevo, agregarla es
+     opcional y no bloquea el paso.
 
 1. **`VerCiclosController.java`** — reescritura:
    - Cambiar la declaración de clase a
@@ -839,12 +992,19 @@ que `RefrescadorPantallas<List<CicloLavadero>>` funciona sin tipos nuevos.
   un parpadeo breve de tabla vacía — la lectura ahora es asíncrona con debounce de
   150ms, a diferencia del bloqueo síncrono anterior). Abrir/cerrar la pantalla
   varias veces seguidas no debe mezclar ni duplicar resultados.
+- Smoke del camino de error (verifica la tarea 0, que es justamente lo que ningún
+  test cubre): con la app abierta, cortar la BD (parar el servicio MySQL o
+  desconectar la red según dónde corra) y abrir "Ver Ciclos" — debe aparecer el
+  diálogo de error de refresco, **no** una tabla vacía silenciosa. Restaurar la
+  BD y reabrir la pantalla: se puebla normalmente.
 
 ### Criterio de salida
 `VerCiclosController` extiende `AbstractFilterController<CicloLavadero>` y se
 refresca a través del mismo mecanismo `Disparador`/`RefrescadorPantallas` que
-`VerLotesController` — arquitectura idéntica, no solo resultado equivalente. La
-lectura a la base ya no bloquea el EDT. La app arranca y navega sin errores.
+`VerLotesController` — arquitectura idéntica, no solo resultado equivalente,
+incluido el camino de error: un fallo de lectura llega al usuario en vez de
+disfrazarse de "no hay ciclos". La lectura a la base ya no bloquea el EDT. La app
+arranca y navega sin errores.
 Commit: `refactor: paridad de arquitectura de refresco entre Ver Ciclos y Ver Lotes`.
 
 ### Rollback
@@ -878,6 +1038,8 @@ entorno de agente.
      defecto) funciona igual que en Ver Lotes; los ciclos activos siguen
      apareciendo aunque haya un filtro de fecha aplicado; la pantalla se puebla al
      abrirla (puede haber un parpadeo breve, es normal — lectura asíncrona nueva).
+   - **Ver Ciclos, camino de error:** con la BD caída, abrir la pantalla muestra
+     el diálogo de error de refresco, no una tabla vacía silenciosa.
    - **Arranque general de la app:** ninguna otra pantalla (Ver Lotes, Ver Equipos,
      Estado de Procesos) quedó afectada por el cambio en `UiCoordinator.java`.
 
