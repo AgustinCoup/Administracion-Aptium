@@ -3,6 +3,7 @@ package com.example.features.lavadero.view;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.view.helpers.LavarropasCardTableModel;
+import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.TableStyler;
 
 import javax.swing.*;
@@ -110,6 +111,8 @@ public class LavarropasCard extends JPanel {
         for (JComponent c : new JComponent[]{cmbJabon, txtLitrosJabon, chkSuavizante, chkPotenciador, txtLitrosTotales}) {
             c.setFont(FONT_CONFIG);
         }
+        RestriccionesCampo.soloNumerosDecimales(txtLitrosJabon);
+        RestriccionesCampo.soloNumerosDecimales(txtLitrosTotales);
 
         config.add(rowPanel("Jabón:", cmbJabon));
         config.add(rowPanel("mL Jabón:", txtLitrosJabon));

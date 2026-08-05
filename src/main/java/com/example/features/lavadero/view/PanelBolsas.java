@@ -2,6 +2,7 @@ package com.example.features.lavadero.view;
 
 import com.example.common.constants.Constantes;
 import com.example.ui.common.Estilos;
+import com.example.ui.common.Hotkeys;
 
 import javax.swing.*;
 import java.awt.*;
@@ -62,6 +63,11 @@ public class PanelBolsas extends JPanel {
             listPanel.revalidate();
             listPanel.repaint();
         });
+
+        Hotkeys.registrarMateriales(this,
+            () -> { agregarFila(); listPanel.revalidate(); listPanel.repaint(); },
+            this::eliminarUltimaFila
+        );
     }
 
     public List<BolsaRow> getFilas() {

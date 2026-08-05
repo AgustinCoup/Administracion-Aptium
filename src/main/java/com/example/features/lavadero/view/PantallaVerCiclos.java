@@ -6,6 +6,7 @@ import com.example.features.lavadero.model.CicloLavadero;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.PanelHeader;
+import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.TableStyler;
 import com.toedter.calendar.JDateChooser;
 
@@ -65,6 +66,7 @@ public class PantallaVerCiclos extends JPanel {
         lblNumero.setFont(Estilos.Fuentes.LABEL);
         txtFiltroNumero = new JTextField(4);
         txtFiltroNumero.setFont(Estilos.Fuentes.INPUT);
+        RestriccionesCampo.soloNumeros(txtFiltroNumero);
 
         JLabel lblDesde = new JLabel("Desde:");
         lblDesde.setFont(Estilos.Fuentes.LABEL);
