@@ -45,7 +45,7 @@ class AutoclaveDAOTest extends AbstractDAOTest {
 
     @Test
     void obtenerTodos_cantidadIgualASeed() {
-        // seed_autoclaves.sql inserta 8 filas
-        assertEquals(8, dao.obtenerTodos().size());
+        // V3__seeds.sql inserta 8 filas + V14__autoclave_ch9.sql agrega CH9
+        assertEquals(9, dao.obtenerTodos().size());
     }
 }

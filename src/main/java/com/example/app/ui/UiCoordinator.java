@@ -153,8 +153,9 @@ public class UiCoordinator {
         );
 
         AjustesController ajustesController = new AjustesController(
-            vista.getPantallaAjustes(), context.getClienteService());
+            vista.getPantallaAjustes(), context.getClienteService(), context.getActualizacionService());
         ajustesController.setOnMutacion(operativo);
+        ajustesController.chequearActualizacionesAlIniciar();
 
         // Primer pintado: los controllers ya no leen en su constructor, así que la
         // UI aparece vacía y se puebla cuando llega esta primera lectura. Solo el
