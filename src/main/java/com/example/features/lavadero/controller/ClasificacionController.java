@@ -61,6 +61,11 @@ public class ClasificacionController {
             return;
         }
 
+        if (panel.getPanelElementos().tieneDuplicados()) {
+            panel.mostrarError("Hay elementos repetidos.\nUnifique las filas marcadas en rojo antes de guardar.");
+            return;
+        }
+
         List<ElementoClasificacion> elementos = new ArrayList<>();
         for (ElementoFila fila : filas) {
             int elementoId = fila.cmbElemento.getItemAt(fila.cmbElemento.getSelectedIndex()).getId();

@@ -1,13 +1,16 @@
 package com.example.features.lavadero.view;
 
 import com.example.features.lavadero.model.ElementoCatalogo;
+import com.example.ui.common.DuplicadoHighlighter;
 import com.example.ui.common.Estilos;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ItemEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
 
 public class PanelElementosClasificacion extends JPanel {
 
@@ -26,6 +29,9 @@ public class PanelElementosClasificacion extends JPanel {
     private final List<ElementoFila>     filas = new ArrayList<>();
     private final JPanel                 panelFilas;
     private final List<ElementoCatalogo> catalogo;
+
+    /** Fondo original de los combos, capturado del primero que se crea. */
+    private Color colorNormal = null;
 
     public PanelElementosClasificacion(List<ElementoCatalogo> catalogo) {
         this.catalogo = catalogo;
@@ -49,6 +55,11 @@ public class PanelElementosClasificacion extends JPanel {
         for (ElementoCatalogo e : catalogo) cmb.addItem(e);
         cmb.setFont(Estilos.Fuentes.LABEL);
 
+        if (colorNormal == null) colorNormal = cmb.getBackground();
+        cmb.addItemListener(e -> {
+            if (e.getStateChange() == ItemEvent.SELECTED) tieneDuplicados();
+        });
+
         SpinnerNumberModel spinModel = new SpinnerNumberModel(1, 1, 9999, 1);
         JSpinner spn = new JSpinner(spinModel);
         spn.setFont(Estilos.Fuentes.LABEL);
@@ -62,11 +73,36 @@ public class PanelElementosClasificacion extends JPanel {
         btnX.addActionListener(e -> eliminarFila(fila));
 
         reconstruirPanel();
+        // El combo nuevo arranca en el índice 0 sin que el usuario lo toque: el
+        // ItemListener no dispara, así que el resaltado se refresca acá a mano.
+        tieneDuplicados();
     }
 
     private void eliminarFila(ElementoFila fila) {
         filas.remove(fila);
         reconstruirPanel();
+        tieneDuplicados();
+    }
+
+    /**
+     * Marca en rojo (+ tooltip) los combos que tienen elegido el mismo elemento
+     * del catálogo que otra fila, y restaura el fondo de los que no.
+     *
+     * @return true si hay al menos un elemento repetido (debe bloquearse el guardado)
+     */
+    public boolean tieneDuplicados() {
+        List<JComboBox<ElementoCatalogo>> combos = new ArrayList<>();
+        for (ElementoFila f : filas) combos.add(f.cmbElemento);
+
+        return DuplicadoHighlighter.marcar(
+            combos,
+            cmb -> {
+                Object sel = cmb.getSelectedItem();
+                return sel instanceof ElementoCatalogo e ? String.valueOf(e.getId()) : "";
+            },
+            Function.identity(),
+            colorNormal,
+            "Elemento duplicado: unifique estas filas antes de guardar.");
     }
 
     private void reconstruirPanel() {
