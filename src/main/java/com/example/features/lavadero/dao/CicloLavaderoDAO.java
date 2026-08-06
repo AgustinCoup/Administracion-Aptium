@@ -102,8 +102,7 @@ public class CicloLavaderoDAO {
                     rs.getBoolean("potenciador"),
                     rs.getBigDecimal("litros_totales"),
                     rs.getObject("fecha_inicio", LocalDateTime.class),
-                    rs.getObject("fecha_fin",    LocalDateTime.class),
-                    "FINALIZADO"
+                    rs.getObject("fecha_fin",    LocalDateTime.class)
                 ));
             }
         } catch (SQLException e) {
@@ -295,8 +294,7 @@ public class CicloLavaderoDAO {
             rs.getBoolean("potenciador"),
             rs.getBigDecimal("litros_totales"),
             rs.getObject("fecha_inicio", LocalDateTime.class),
-            null,
-            "ACTIVO"
+            null
         );
     }
 
@@ -311,8 +309,7 @@ public class CicloLavaderoDAO {
             rs.getBoolean("potenciador"),
             rs.getBigDecimal("litros_totales"),
             rs.getObject("fecha_inicio", LocalDateTime.class),
-            fechaFin,
-            fechaFin == null ? "ACTIVO" : "FINALIZADO"
+            fechaFin
         );
     }
 }

@@ -3,6 +3,8 @@ package com.example.features.lavadero.view;
 import com.example.common.constants.Constantes;
 import com.example.common.util.DateTimeDisplayUtils;
 import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.view.helpers.CicloEstadoCellRenderer;
+import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.PanelHeader;
@@ -21,10 +23,11 @@ public class PantallaVerCiclos extends JPanel {
     private final DefaultTableModel modeloTabla;
     private final JTable            tablaCiclos;
 
-    private JTextField   txtFiltroNumero;
-    private JDateChooser dateChooserDesde;
-    private JDateChooser dateChooserHasta;
-    private JButton      btnLimpiar;
+    private JTextField                txtFiltroNumero;
+    private CheckableComboBox<String> cmbFiltroEstado;
+    private JDateChooser              dateChooserDesde;
+    private JDateChooser              dateChooserHasta;
+    private JButton                   btnLimpiar;
 
     private Runnable onFiltrosChanged;
 
@@ -46,7 +49,7 @@ public class PantallaVerCiclos extends JPanel {
 
         modeloTabla = new DefaultTableModel(
             new Object[]{"ID", "Lavarropas", "Jabón", "mL Jabón",
-                         "Suavizante", "Potenciador", "mL Totales", "Inicio", "Fin"},
+                         "Suavizante", "Potenciador", "mL Totales", "Inicio", "Fin", "Estado"},
             0
         ) {
             @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -55,6 +58,7 @@ public class PantallaVerCiclos extends JPanel {
         tablaCiclos = new JTable(modeloTabla);
         TableStyler.applyStandard(tablaCiclos);
         TableStyler.centerColumns(tablaCiclos, 0, 1, 3, 4, 5, 6);
+        tablaCiclos.getColumnModel().getColumn(9).setCellRenderer(new CicloEstadoCellRenderer());
         tablaCiclos.setRowSelectionAllowed(false);
         tablaCiclos.setFillsViewportHeight(true);
 
@@ -67,6 +71,13 @@ public class PantallaVerCiclos extends JPanel {
         txtFiltroNumero = new JTextField(4);
         txtFiltroNumero.setFont(Estilos.Fuentes.INPUT);
         RestriccionesCampo.soloNumeros(txtFiltroNumero);
+
+        JLabel lblEstado = new JLabel(Constantes.Textos.FILTRO_ESTADO);
+        lblEstado.setFont(Estilos.Fuentes.LABEL);
+        cmbFiltroEstado = new CheckableComboBox<>(
+            new String[]{CicloLavadero.ESTADO_ACTIVO, CicloLavadero.ESTADO_FINALIZADO});
+        cmbFiltroEstado.setFont(Estilos.Fuentes.INPUT);
+        cmbFiltroEstado.setPreferredSize(new Dimension(130, 25));
 
         JLabel lblDesde = new JLabel("Desde:");
         lblDesde.setFont(Estilos.Fuentes.LABEL);
@@ -86,6 +97,7 @@ public class PantallaVerCiclos extends JPanel {
 
         JPanel fila = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         fila.add(lblNumero); fila.add(txtFiltroNumero);
+        fila.add(lblEstado); fila.add(cmbFiltroEstado);
         fila.add(lblDesde);  fila.add(dateChooserDesde);
         fila.add(lblHasta);  fila.add(dateChooserHasta);
         fila.add(btnLimpiar);
@@ -96,6 +108,7 @@ public class PantallaVerCiclos extends JPanel {
 
         FilterUiHelper.bindOnTextChange(this::notificarCambio, txtFiltroNumero);
         FilterUiHelper.bindOnDateChange(this::notificarCambio, dateChooserDesde, dateChooserHasta);
+        cmbFiltroEstado.setOnSelectionChange(this::notificarCambio);
 
         return panel;
     }
@@ -114,13 +127,15 @@ public class PantallaVerCiclos extends JPanel {
                 c.isPotenciador()  ? "Sí" : "No",
                 c.getLitrosTotales() != null ? c.getLitrosTotales() : "—",
                 DateTimeDisplayUtils.formatForUi(c.getFechaInicio()),
-                DateTimeDisplayUtils.formatForUi(c.getFechaFin())
+                DateTimeDisplayUtils.formatForUi(c.getFechaFin()),
+                c.getEstado()
             });
         }
     }
 
     public void limpiarFiltros() {
         txtFiltroNumero.setText("");
+        cmbFiltroEstado.clearSelection();
         dateChooserDesde.setDate(null);
         dateChooserHasta.setDate(null);
         notificarCambio();
@@ -134,6 +149,10 @@ public class PantallaVerCiclos extends JPanel {
         String t = txtFiltroNumero.getText().trim();
         if (t.isEmpty()) return null;
         try { return Integer.parseInt(t); } catch (NumberFormatException e) { return null; }
+    }
+
+    public List<String> getFiltroEstados() {
+        return cmbFiltroEstado.getSelectedItems();
     }
 
     public LocalDate getFiltroFechaDesde() {

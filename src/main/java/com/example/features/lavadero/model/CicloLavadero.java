@@ -7,6 +7,9 @@ import java.util.List;
 
 public class CicloLavadero {
 
+    public static final String ESTADO_ACTIVO     = "ACTIVO";
+    public static final String ESTADO_FINALIZADO = "FINALIZADO";
+
     private final int id;
     private final int lavarropasNumero;
     private final JabonCatalogo jabon;
@@ -16,21 +19,20 @@ public class CicloLavadero {
     private final BigDecimal litrosTotales;
     private final LocalDateTime fechaInicio;
     private final LocalDateTime fechaFin;
-    private final String estado;
     private final List<ElementoCicloItem> materiales;
 
     public CicloLavadero(int id, int lavarropasNumero, JabonCatalogo jabon,
                          BigDecimal litrosJabon, boolean suavizante, boolean potenciador,
                          BigDecimal litrosTotales,
-                         LocalDateTime fechaInicio, LocalDateTime fechaFin, String estado) {
+                         LocalDateTime fechaInicio, LocalDateTime fechaFin) {
         this(id, lavarropasNumero, jabon, litrosJabon, suavizante, potenciador, litrosTotales,
-             fechaInicio, fechaFin, estado, new ArrayList<>());
+             fechaInicio, fechaFin, new ArrayList<>());
     }
 
     public CicloLavadero(int id, int lavarropasNumero, JabonCatalogo jabon,
                          BigDecimal litrosJabon, boolean suavizante, boolean potenciador,
                          BigDecimal litrosTotales,
-                         LocalDateTime fechaInicio, LocalDateTime fechaFin, String estado,
+                         LocalDateTime fechaInicio, LocalDateTime fechaFin,
                          List<ElementoCicloItem> materiales) {
         this.id               = id;
         this.lavarropasNumero = lavarropasNumero;
@@ -41,7 +43,6 @@ public class CicloLavadero {
         this.litrosTotales    = litrosTotales;
         this.fechaInicio      = fechaInicio;
         this.fechaFin         = fechaFin;
-        this.estado           = estado;
         this.materiales       = new ArrayList<>(materiales);
     }
 
@@ -54,7 +55,11 @@ public class CicloLavadero {
     public BigDecimal getLitrosTotales()   { return litrosTotales; }
     public LocalDateTime getFechaInicio()  { return fechaInicio; }
     public LocalDateTime getFechaFin()     { return fechaFin; }
-    public String getEstado()              { return estado; }
+
+    /** Derivado de {@code fechaFin}: no hay un estado almacenado que pueda contradecirlo. */
+    public String getEstado() {
+        return estaActivo() ? ESTADO_ACTIVO : ESTADO_FINALIZADO;
+    }
 
     public List<ElementoCicloItem> getMateriales() {
         return new ArrayList<>(materiales);

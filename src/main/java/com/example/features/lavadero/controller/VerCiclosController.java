@@ -1,19 +1,21 @@
 package com.example.features.lavadero.controller;
 
+import com.example.common.util.FilterStrategy;
+import com.example.features.lavadero.controller.helpers.CicloFilterCriteria;
+import com.example.features.lavadero.controller.helpers.CicloFilterStrategy;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.view.PantallaVerCiclos;
 
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
-import java.time.LocalDate;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class VerCiclosController {
 
     private final PantallaVerCiclos pantalla;
     private final CicloLavaderoService cicloLavaderoService;
+    private final FilterStrategy<CicloLavadero, CicloFilterCriteria> filterStrategy = new CicloFilterStrategy();
 
     private List<CicloLavadero> cache = List.of();
 
@@ -37,24 +39,12 @@ public class VerCiclosController {
     }
 
     private void aplicarFiltros() {
-        Integer   numero = pantalla.getFiltroNumero();
-        LocalDate desde  = pantalla.getFiltroFechaDesde();
-        LocalDate hasta  = pantalla.getFiltroFechaHasta();
-        pantalla.actualizarCiclos(filtrar(cache, numero, desde, hasta));
-    }
-
-    // Paquete-privado para test unitario directo sin Swing.
-    static List<CicloLavadero> filtrar(List<CicloLavadero> todos,
-                                        Integer numeroLavarropas,
-                                        LocalDate desde,
-                                        LocalDate hasta) {
-        return todos.stream()
-            .filter(c -> numeroLavarropas == null
-                || c.getLavarropasNumero() == numeroLavarropas)
-            .filter(c -> desde == null || c.estaActivo()
-                || !c.getFechaFin().toLocalDate().isBefore(desde))
-            .filter(c -> hasta == null || c.estaActivo()
-                || !c.getFechaFin().toLocalDate().isAfter(hasta))
-            .collect(Collectors.toList());
+        CicloFilterCriteria criteria = new CicloFilterCriteria(
+            pantalla.getFiltroNumero(),
+            pantalla.getFiltroEstados(),
+            pantalla.getFiltroFechaDesde(),
+            pantalla.getFiltroFechaHasta()
+        );
+        pantalla.actualizarCiclos(filterStrategy.filter(cache, criteria));
     }
 }

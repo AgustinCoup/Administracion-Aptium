@@ -16,7 +16,7 @@ class CicloLavaderoTest {
     void estaActivo_cuandoFechaFinEsNull() {
         CicloLavadero ciclo = new CicloLavadero(1, 3, SKIP,
                 new BigDecimal("1.5"), false, false, null,
-                LocalDateTime.now(), null, "ACTIVO");
+                LocalDateTime.now(), null);
         assertTrue(ciclo.estaActivo());
     }
 
@@ -25,8 +25,16 @@ class CicloLavaderoTest {
         LocalDateTime fin = LocalDateTime.now();
         CicloLavadero ciclo = new CicloLavadero(1, 3, SKIP,
                 new BigDecimal("1.5"), false, false, null,
-                LocalDateTime.now().minusHours(1), fin, "FINALIZADO");
+                LocalDateTime.now().minusHours(1), fin);
         assertFalse(ciclo.estaActivo());
+    }
+
+    @Test
+    void getEstado_esFinalizado_cuandoTieneFechaFin() {
+        CicloLavadero ciclo = new CicloLavadero(1, 3, SKIP,
+                new BigDecimal("1.5"), false, false, null,
+                LocalDateTime.now().minusHours(1), LocalDateTime.now());
+        assertEquals(CicloLavadero.ESTADO_FINALIZADO, ciclo.getEstado());
     }
 
     @Test
@@ -36,7 +44,7 @@ class CicloLavaderoTest {
         BigDecimal litrosTotales = new BigDecimal("30.00");
 
         CicloLavadero ciclo = new CicloLavadero(5, 7, LIDER,
-                litrosJabon, true, true, litrosTotales, inicio, null, "ACTIVO");
+                litrosJabon, true, true, litrosTotales, inicio, null);
 
         assertEquals(5, ciclo.getId());
         assertEquals(7, ciclo.getLavarropasNumero());
@@ -47,14 +55,14 @@ class CicloLavaderoTest {
         assertEquals(0, litrosTotales.compareTo(ciclo.getLitrosTotales()));
         assertEquals(inicio, ciclo.getFechaInicio());
         assertNull(ciclo.getFechaFin());
-        assertEquals("ACTIVO", ciclo.getEstado());
+        assertEquals(CicloLavadero.ESTADO_ACTIVO, ciclo.getEstado());
     }
 
     @Test
     void getMateriales_devuelveListaDefensiva() {
         CicloLavadero ciclo = new CicloLavadero(1, 1, SKIP,
                 new BigDecimal("1.0"), false, false, null,
-                LocalDateTime.now(), null, "ACTIVO");
+                LocalDateTime.now(), null);
         ciclo.getMateriales().add(new ElementoCicloItem(1, 1, "x", 1, 0, "y"));
         assertEquals(0, ciclo.getMateriales().size());
     }
