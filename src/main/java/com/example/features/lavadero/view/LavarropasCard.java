@@ -120,7 +120,7 @@ public class LavarropasCard extends JPanel {
         chkRow.add(chkSuavizante);
         chkRow.add(chkPotenciador);
         config.add(chkRow);
-        config.add(rowPanel("mL Tot.:", txtLitrosTotales));
+        config.add(rowPanel("L Tot.:", txtLitrosTotales));
 
         txtLitrosJabon.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e)  { notificar(); }

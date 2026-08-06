@@ -3,6 +3,7 @@ package com.example.features.lavadero.view;
 import com.example.features.lavadero.model.ElementoCatalogo;
 import com.example.ui.common.DuplicadoHighlighter;
 import com.example.ui.common.Estilos;
+import com.example.ui.common.Hotkeys;
 
 import javax.swing.*;
 import java.awt.*;
@@ -48,6 +49,8 @@ public class PanelElementosClasificacion extends JPanel {
         btnAgregar.addActionListener(e -> agregarFila());
         panelBotones.add(btnAgregar);
         add(panelBotones, BorderLayout.SOUTH);
+
+        Hotkeys.registrarMateriales(this, this::agregarFila, this::eliminarUltimaFila);
     }
 
     private void agregarFila() {
@@ -76,6 +79,10 @@ public class PanelElementosClasificacion extends JPanel {
         // El combo nuevo arranca en el índice 0 sin que el usuario lo toque: el
         // ItemListener no dispara, así que el resaltado se refresca acá a mano.
         tieneDuplicados();
+    }
+
+    private void eliminarUltimaFila() {
+        if (!filas.isEmpty()) eliminarFila(filas.get(filas.size() - 1));
     }
 
     private void eliminarFila(ElementoFila fila) {

@@ -49,7 +49,7 @@ public class PantallaVerCiclos extends JPanel {
 
         modeloTabla = new DefaultTableModel(
             new Object[]{"ID", "Lavarropas", "Jabón", "mL Jabón",
-                         "Suavizante", "Potenciador", "mL Totales", "Inicio", "Fin", "Estado"},
+                         "Suavizante", "Potenciador", "L Totales", "Inicio", "Fin", "Estado"},
             0
         ) {
             @Override public boolean isCellEditable(int row, int column) { return false; }
