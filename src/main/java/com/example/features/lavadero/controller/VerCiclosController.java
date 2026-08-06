@@ -1,50 +1,48 @@
 package com.example.features.lavadero.controller;
 
+import com.example.common.util.AbstractFilterController;
 import com.example.common.util.FilterStrategy;
 import com.example.features.lavadero.controller.helpers.CicloFilterCriteria;
 import com.example.features.lavadero.controller.helpers.CicloFilterStrategy;
 import com.example.features.lavadero.model.CicloLavadero;
-import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.view.PantallaVerCiclos;
 
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.util.List;
+import java.util.Objects;
 
-public class VerCiclosController {
+public class VerCiclosController extends AbstractFilterController<CicloLavadero> {
 
     private final PantallaVerCiclos pantalla;
-    private final CicloLavaderoService cicloLavaderoService;
     private final FilterStrategy<CicloLavadero, CicloFilterCriteria> filterStrategy = new CicloFilterStrategy();
 
-    private List<CicloLavadero> cache = List.of();
-
-    public VerCiclosController(PantallaVerCiclos pantalla, CicloLavaderoService cicloLavaderoService) {
+    /** Alcance: pintar la grilla desde el refresco global. Sin I/O propia. */
+    public VerCiclosController(PantallaVerCiclos pantalla, Runnable solicitarRefresco) {
         this.pantalla = pantalla;
-        this.cicloLavaderoService = cicloLavaderoService;
+        Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
 
         pantalla.setOnFiltrosChanged(this::aplicarFiltros);
         pantalla.setOnLimpiar(pantalla::limpiarFiltros);
 
-        cargarDatos();
-
         pantalla.addComponentListener(new ComponentAdapter() {
-            @Override public void componentShown(ComponentEvent e) { cargarDatos(); }
+            @Override public void componentShown(ComponentEvent e) { solicitarRefresco.run(); }
         });
     }
 
-    public void cargarDatos() {
-        cache = cicloLavaderoService.obtenerTodosLosCiclos();
-        aplicarFiltros();
+    /** Vuelca el snapshot a la grilla. Sin I/O. */
+    public void pintar(List<CicloLavadero> ciclos) {
+        recargarCache(ciclos);
     }
 
-    private void aplicarFiltros() {
+    @Override
+    protected void aplicarFiltros() {
         CicloFilterCriteria criteria = new CicloFilterCriteria(
             pantalla.getFiltroNumero(),
             pantalla.getFiltroEstados(),
             pantalla.getFiltroFechaDesde(),
             pantalla.getFiltroFechaHasta()
         );
-        pantalla.actualizarCiclos(filterStrategy.filter(cache, criteria));
+        pantalla.actualizarCiclos(filterStrategy.filter(getCache(), criteria));
     }
 }

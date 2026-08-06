@@ -1,5 +1,6 @@
 package com.example.features.lavadero.dao;
 
+import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
@@ -121,7 +122,7 @@ public class CicloLavaderoDAO {
             }
 
         } catch (SQLException e) {
-            log.error("Error al obtener todos los ciclos", e);
+            throw new DatabaseException("Error al obtener todos los ciclos", e);
         }
         return lista;
     }

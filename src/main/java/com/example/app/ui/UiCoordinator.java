@@ -13,12 +13,14 @@ import com.example.features.lavadero.controller.CiclosController;
 import com.example.features.lavadero.controller.ClasificacionController;
 import com.example.features.lavadero.controller.LavaderoController;
 import com.example.features.lavadero.controller.VerCiclosController;
+import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.ajustes.controller.AjustesController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
 import com.example.ui.events.OnEquipoGuardadoListener;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.ui.shell.PantallaPrincipal;
+import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.JOptionPane;
 
@@ -55,15 +57,17 @@ public class UiCoordinator {
         //    y ellos necesitan poder pedirle una lectura. Se cablean después de crear
         //    ambos; hasta entonces solicitar() es un no-op.
         //
-        //    Son tres grupos con disparadores distintos, no un refresco global:
+        //    Son cuatro grupos con disparadores distintos, no un refresco global:
         //      · operativo         → cada guardado; la cola activa, sin histórico.
         //      · historial equipos → al abrir "Ver Equipos" o "Estado de procesos".
         //      · historial lotes   → al abrir "Ver Lotes".
+        //      · historial ciclos  → al abrir "Ver Ciclos".
         //    Las pantallas de consulta se releen cuando el usuario las mira; antes
         //    se releían en cada guardado incluso estando ocultas.
         Disparador operativo         = new Disparador();
         Disparador historialEquipos  = new Disparador();
         Disparador historialLotes    = new Disparador();
+        Disparador historialCiclos   = new Disparador();
 
         OnEstadosActualizadosListener refrescarEstados = operativo::solicitar;
         OnEquipoGuardadoListener      refrescarEquipos = operativo::solicitar;
@@ -107,6 +111,9 @@ public class UiCoordinator {
             context.getLoteReporteService(),
             historialLotes);
 
+        VerCiclosController verCiclosController = new VerCiclosController(
+            vista.getPantallaVerCiclos(), historialCiclos);
+
         VerEquiposController verEquiposController = new VerEquiposController(
             vista.getPantallaVerEquipos(),
             context.getEquipoOtrosService(),
@@ -131,6 +138,8 @@ public class UiCoordinator {
             cdeViewController, verEquiposController));
 
         historialLotes.cablear(crearRefrescadorHistorialLotes(verLotesController));
+
+        historialCiclos.cablear(crearRefrescadorHistorialCiclos(verCiclosController));
 
         correccionesController.setOnCambiosAplicados(operativo);
 
@@ -190,13 +199,8 @@ public class UiCoordinator {
             ciclosController.cargarDatos();
         });
 
-        VerCiclosController verCiclosController = new VerCiclosController(
-            vista.getPantallaVerCiclos(), context.getCicloLavaderoService());
-
-        vista.getPantallaLavadero().getBtnVerCiclos().addActionListener(e -> {
-            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.VER_CICLOS_LAVADERO);
-            verCiclosController.cargarDatos();
-        });
+        vista.getPantallaLavadero().getBtnVerCiclos().addActionListener(e ->
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.VER_CICLOS_LAVADERO));
 
         AjustesController ajustesController = new AjustesController(
             vista.getPantallaAjustes(), context.getClienteService(), context.getActualizacionService());
@@ -261,6 +265,17 @@ public class UiCoordinator {
 
         return new RefrescadorPantallas<>(
             "refresco-historial-lotes", lector, verLotes::pintar, this::mostrarErrorDeRefresco);
+    }
+
+    /** La pantalla que consulta el histórico de ciclos de lavado. */
+    private RefrescadorPantallas<List<CicloLavadero>> crearRefrescadorHistorialCiclos(
+        VerCiclosController verCiclos
+    ) {
+        return new RefrescadorPantallas<>(
+            "refresco-historial-ciclos",
+            context.getCicloLavaderoService()::obtenerTodosLosCiclos,
+            verCiclos::pintar,
+            this::mostrarErrorDeRefresco);
     }
 
     /**
