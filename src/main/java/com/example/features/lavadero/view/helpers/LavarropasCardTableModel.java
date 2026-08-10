@@ -11,7 +11,7 @@ import java.util.Map;
 
 public class LavarropasCardTableModel extends AbstractTableModel {
 
-    private static final String[] COLUMNAS = {"Elemento", "Cant.", "Fracción", "Ingreso #", "Cliente"};
+    private static final String[] COLUMNAS = {"Elemento", "Cant.", "Fracción", "Cliente"};
 
     private List<ElementoCicloItem> items     = new ArrayList<>();
     private Map<Integer, Integer>   fracciones = new HashMap<>();
@@ -35,15 +35,14 @@ public class LavarropasCardTableModel extends AbstractTableModel {
             case 2: return item.isEquipo() && item.getInstanciaId() != null
                         ? "1/" + fracciones.getOrDefault(item.getInstanciaId(), 1)
                         : "—";
-            case 3: return item.getIngresoId();
-            case 4: return item.getClienteNombre();
+            case 3: return item.getClienteNombre();
             default: return null;
         }
     }
 
     @Override
     public Class<?> getColumnClass(int col) {
-        return (col == 1 || col == 3) ? Integer.class : String.class;
+        return (col == 1) ? Integer.class : String.class;
     }
 
     public ElementoCicloItem getItemAt(int row) {

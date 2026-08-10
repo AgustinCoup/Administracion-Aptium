@@ -76,7 +76,7 @@ public class LavarropasCard extends JPanel {
         tabla = new JTable(tableModel);
         tabla.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         TableStyler.applyStandard(tabla);
-        TableStyler.centerColumns(tabla, 1, 3);
+        TableStyler.centerColumns(tabla, 1);
         tabla.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
         tabla.setFillsViewportHeight(true);
         scrollTabla = new JScrollPane(tabla,

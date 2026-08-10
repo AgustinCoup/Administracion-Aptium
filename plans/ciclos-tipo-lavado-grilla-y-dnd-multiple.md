@@ -15,9 +15,12 @@ para mover varios elementos entre la tabla de disponibles y los lavarropas en am
 | Tema | Decisión |
 |---|---|
 | Modelo de Tipo de Lavado | **Enum Java `TipoLavado` + columna `VARCHAR(20)`**, igual que `TipoIngresoOtros`. No tabla catálogo: las 3 opciones son fijas y no tienen ABM. |
-| Obligatoriedad | **Obligatorio, sin default en la UI.** El combo arranca vacío y `Lanzar` queda deshabilitado hasta elegirlo (mismo criterio que `mL Jabón`). Validación en `CicloLavaderoService`. Los ciclos ya existentes se backfillean con `SUCIO`. |
+| Obligatoriedad | **Obligatorio, sin default en la UI ni en la BD.** El combo arranca vacío y `Lanzar` queda deshabilitado hasta elegirlo (mismo criterio que `mL Jabón`). Validación en `CicloLavaderoService`. **No hay backfill**: en producción las migraciones `V7`–`V14` (todo lavadero) todavía no se aplicaron, así que no existe ninguna fila de `ciclos_lavadero` en ningún entorno. |
 | Devolver un equipo subdividido | **Devolver una fracción deshace la subdivisión completa**: se quitan todas las fracciones con el mismo `instanciaId` en todas las cards. Evita dejar un `1/3` huérfano inconsistente. |
 | Ver Ciclos | **Se agrega la columna "Tipo de Lavado".** *No* se agrega filtro por tipo. |
+| Semántica del tipo | **Es sólo un dato**: se elige, se guarda y se muestra. No valida nada, no condiciona el jabón ni los litros, no restringe qué se puede mezclar en un lavarropas. Si alguna vez tiene que disparar comportamiento, es otro plan. |
+| Multi-drag de equipos | **Cascada de diálogos secuenciales**, paridad exacta con Gestionar Lotes: spinner de unidades + un `EquipoSubdivisionDialog` por unidad, cancelar uno saltea sólo ese ítem. No se rediseña el diálogo para manejar la tanda entera. |
+| Arrastre card → card | **Bloqueado.** Para mover un elemento entre lavarropas hay que devolverlo a disponibles y volver a arrastrarlo. Evita tener que decidir qué pasa con una fracción de un equipo subdividido que se mueve sola. |
 
 ---
 
@@ -326,13 +329,16 @@ neutro (`onConfiguracionChanged`) evita tener dos listeners paralelos que hagan 
 
 2. **Migración** `src/main/resources/db/migration/V15__ciclo_tipo_lavado.sql`:
    ```sql
-   -- Tipo de lavado por ciclo. Los ciclos previos no tienen el dato: se backfillean con SUCIO,
-   -- que es el caso mayoritario y el más conservador operativamente.
-   ALTER TABLE ciclos_lavadero ADD COLUMN tipo_lavado VARCHAR(20) NOT NULL DEFAULT 'SUCIO';
+   -- Tipo de lavado por ciclo. Sin DEFAULT a propósito: no hay filas que backfillear
+   -- (las migraciones de lavadero V7-V14 todavía no se aplicaron en producción) y el único
+   -- INSERT sobre esta tabla es el del DAO, que siempre setea la columna. Sin DEFAULT, un
+   -- INSERT que la olvide falla ruidosamente en vez de inventar un valor.
+   ALTER TABLE ciclos_lavadero ADD COLUMN tipo_lavado VARCHAR(20) NOT NULL;
    ```
-   Una sola sentencia, sin `AFTER` (compatibilidad H2 + MySQL). El `DEFAULT` cubre el backfill de las
-   filas existentes; **no** eliminar el DEFAULT después: si se quita, un `INSERT` que olvide la
-   columna falla en runtime en vez de en compilación, y no gana nada.
+   Una sola sentencia, sin `AFTER` (compatibilidad H2 + MySQL).
+   **No editar `V10` para meter la columna ahí**, por más que no esté aplicada en producción:
+   sí está aplicada en la BD de desarrollo y en cualquier entorno local, y cambiar una migración
+   ya corrida rompe la validación de checksum de Flyway al arrancar.
 
 3. **Modelo** `CicloLavadero`: campo `final TipoLavado tipoLavado` + getter. Ajustar **ambos**
    constructores (el corto delega en el largo).
@@ -362,8 +368,10 @@ neutro (`onConfiguracionChanged`) evita tener dos listeners paralelos que hagan 
 9. **Tests:**
    - `TipoLavadoTest` (nuevo): `desdeBD` con valor válido, con minúsculas, con null, con desconocido.
    - `CicloLavaderoServiceTest`: caso `lanzarCiclo_tipoLavadoNull_lanzaValidation`.
-   - `CicloLavaderoDAOTest`: verificar que el tipo se persiste y se relee (round-trip) y que un ciclo
-     insertado sin especificarlo cae en `SUCIO` por el DEFAULT.
+   - `CicloLavaderoDAOTest`: round-trip — el tipo elegido se persiste y se relee igual, en los tres
+     caminos de lectura (`obtenerCiclosActivosPorLavarropas`, `obtenerCiclosFinalizados`,
+     `obtenerTodosLosCiclos`). Los tres tienen su propio `SELECT` y su propio mapper: es exactamente
+     donde se olvida una de las tres.
    - `CicloLavaderoTest` y `CicloFilterStrategyTest`: adaptar los constructores.
 
 ### Verificación
@@ -383,8 +391,9 @@ mvn clean package
   es la señal de que el DDL no es compatible con H2.
 - El combo arranca vacío y `Lanzar` está deshabilitado hasta elegir tipo **y** cargar mL de jabón.
 - Al pasar la card a modo activo (`setModoActivo`), el combo se oculta junto con el resto de la config.
-- **Smoke manual sobre la BD real:** lanzar un ciclo con cada uno de los 3 tipos y verificar en
-  `ciclos_lavadero.tipo_lavado`. Confirmar que los ciclos anteriores a la migración quedaron en `SUCIO`.
+- **Smoke manual sobre la BD de desarrollo:** lanzar un ciclo con cada uno de los 3 tipos y
+  verificar los valores en `ciclos_lavadero.tipo_lavado` (deben ser `LIMPIO`/`SUCIO`/`PODRIDO`,
+  el `name()`, no el nombre de UI). No hay nada que verificar sobre ciclos previos: no existen.
 
 ---
 

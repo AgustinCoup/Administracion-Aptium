@@ -8,7 +8,7 @@ import java.util.List;
 
 public class ElementoDisponibleTableModel extends AbstractTableModel {
 
-    private final String[] columnas = {"Elemento", "Disponible", "Ingreso #", "Cliente"};
+    private final String[] columnas = {"Elemento", "Disponible", "Cliente"};
     private List<ElementoCicloItem> filas = new ArrayList<>();
 
     @Override public int getRowCount()    { return filas.size(); }
@@ -21,15 +21,14 @@ public class ElementoDisponibleTableModel extends AbstractTableModel {
         switch (columnIndex) {
             case 0: return item.getElementoNombre();
             case 1: return item.getCantidadDisponible() - item.getCantidadEnCiclo();
-            case 2: return item.getIngresoId();
-            case 3: return item.getClienteNombre();
+            case 2: return item.getClienteNombre();
             default: return null;
         }
     }
 
     @Override
     public Class<?> getColumnClass(int columnIndex) {
-        return (columnIndex == 1 || columnIndex == 2) ? Integer.class : String.class;
+        return (columnIndex == 1) ? Integer.class : String.class;
     }
 
     @Override

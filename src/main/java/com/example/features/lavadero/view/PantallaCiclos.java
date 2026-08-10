@@ -40,7 +40,7 @@ public class PantallaCiclos extends JPanel {
         );
         add(header, BorderLayout.NORTH);
 
-        tablaDisponibles = buildTable(modeloDisponibles, 1, 2);
+        tablaDisponibles = buildTable(modeloDisponibles, 1);
 
         JPanel panelTop = new JPanel(new BorderLayout());
         panelTop.add(LabelFactory.createSectionLabel("Elementos disponibles para lavar"),
