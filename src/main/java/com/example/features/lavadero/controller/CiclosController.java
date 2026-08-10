@@ -2,6 +2,7 @@ package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
 import com.example.features.lavadero.controller.helpers.ElementoCicloTransferable;
+import com.example.features.lavadero.controller.helpers.StagingCiclos;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
@@ -41,7 +42,7 @@ public class CiclosController {
     private final CatalogoJabonesService catalogoJabonesService;
     private final Map<Integer, LavarropasCard> cards;
 
-    private final Map<Integer, List<ElementoCicloItem>> pendientesPorLavarropas = new HashMap<>();
+    private final StagingCiclos staging = new StagingCiclos();
     private final AtomicInteger nextInstanciaId = new AtomicInteger(1);
     private Map<Integer, CicloLavadero> ciclosActivos        = new HashMap<>();
     private List<ElementoCicloItem>     elementosDisponibles  = new ArrayList<>();
@@ -131,7 +132,7 @@ public class CiclosController {
         ciclosActivos = cicloLavaderoService.obtenerCiclosActivosPorLavarropas();
 
         List<ElementoCicloItem> dbDisponibles = cicloLavaderoService.obtenerElementosDisponiblesParaCiclo();
-        elementosDisponibles = aplicarPendientesEnDisponibles(dbDisponibles);
+        elementosDisponibles = staging.aplicarSobreDisponibles(dbDisponibles);
 
         List<Lavarropas> lavarropasLista = lavarropasService.obtenerTodos();
         lavarropasItems = new ArrayList<>();
@@ -147,7 +148,7 @@ public class CiclosController {
     }
 
     private void actualizarTodasLasCards() {
-        Map<Integer, Integer> fracciones = computarFracciones();
+        Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
         for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
             int num = entry.getKey();
             LavarropasCard card = entry.getValue();
@@ -157,8 +158,7 @@ public class CiclosController {
                 card.setModoActivo(ciclosActivos.get(num).getId());
                 card.setItems(items, Collections.emptyMap());
             } else {
-                List<ElementoCicloItem> pending =
-                    pendientesPorLavarropas.getOrDefault(num, Collections.emptyList());
+                List<ElementoCicloItem> pending = staging.pendientesDe(num);
                 card.setModoStaging();
                 card.setItems(pending, fracciones);
             }
@@ -168,56 +168,6 @@ public class CiclosController {
         pantalla.getBtnLanzarTodos().setEnabled(hayPendientes);
         pantalla.getBtnDescartarTodos().setEnabled(hayPendientes);
         pantalla.getBtnFinalizarTodos().setEnabled(!ciclosActivos.isEmpty());
-    }
-
-    private Map<Integer, Integer> computarFracciones() {
-        Map<Integer, Integer> count = new HashMap<>();
-        for (List<ElementoCicloItem> items : pendientesPorLavarropas.values()) {
-            for (ElementoCicloItem item : items) {
-                if (item.isEquipo() && item.getInstanciaId() != null) {
-                    count.merge(item.getInstanciaId(), 1, Integer::sum);
-                }
-            }
-        }
-        return count;
-    }
-
-    private List<ElementoCicloItem> aplicarPendientesEnDisponibles(List<ElementoCicloItem> dbDisponibles) {
-        Map<Integer, ElementoCicloItem> mapa = new LinkedHashMap<>();
-        for (ElementoCicloItem item : dbDisponibles) {
-            mapa.put(item.getElementoClasificacionId(), item);
-        }
-
-        Map<Integer, Integer>      regularStaged    = new HashMap<>();
-        Map<Integer, Set<Integer>> equipoInstancias = new HashMap<>();
-
-        for (List<ElementoCicloItem> pendientes : pendientesPorLavarropas.values()) {
-            for (ElementoCicloItem p : pendientes) {
-                int id = p.getElementoClasificacionId();
-                if (p.isEquipo() && p.getInstanciaId() != null) {
-                    equipoInstancias.computeIfAbsent(id, k -> new HashSet<>()).add(p.getInstanciaId());
-                } else {
-                    regularStaged.merge(id, p.getCantidadEnCiclo(), Integer::sum);
-                }
-            }
-        }
-
-        regularStaged.forEach((id, staged) -> {
-            ElementoCicloItem d = mapa.get(id);
-            if (d == null) return;
-            d.setCantidadEnCiclo(staged);
-            if (staged >= d.getCantidadDisponible()) mapa.remove(id);
-        });
-
-        equipoInstancias.forEach((id, instancias) -> {
-            int staged = instancias.size();
-            ElementoCicloItem d = mapa.get(id);
-            if (d == null) return;
-            d.setCantidadEnCiclo(staged);
-            if (staged >= d.getCantidadDisponible()) mapa.remove(id);
-        });
-
-        return new ArrayList<>(mapa.values());
     }
 
     private void configurarDnD() {
@@ -290,7 +240,7 @@ public class CiclosController {
         if (max <= 0) return;
         int k = (max == 1) ? 1 : seleccionarSubcantidad(item);
         if (k <= 0) return;
-        agregarPendiente(lavarropasNum, item, k);
+        staging.agregarRegular(lavarropasNum, item, k);
         refrescarDisponiblesYCards();
     }
 
@@ -350,42 +300,13 @@ public class CiclosController {
             );
             copia.setInstanciaId(instanciaId);
             copia.setCantidadEnCiclo(1);
-            agregarPendienteEquipo(num, copia);
+            staging.agregarFraccionEquipo(num, copia);
         }
-    }
-
-    private void agregarPendienteEquipo(int lavarropasNumero, ElementoCicloItem item) {
-        pendientesPorLavarropas
-            .computeIfAbsent(lavarropasNumero, k -> new ArrayList<>())
-            .add(item);
-    }
-
-    private void agregarPendiente(int lavarropasNumero, ElementoCicloItem origen, int cantidad) {
-        List<ElementoCicloItem> pendientes = pendientesPorLavarropas
-            .computeIfAbsent(lavarropasNumero, k -> new ArrayList<>());
-        for (ElementoCicloItem existente : pendientes) {
-            if (existente.getElementoClasificacionId() == origen.getElementoClasificacionId()
-                    && !existente.isEquipo()) {
-                existente.setCantidadEnCiclo(existente.getCantidadEnCiclo() + cantidad);
-                return;
-            }
-        }
-        ElementoCicloItem nuevo = new ElementoCicloItem(
-            origen.getElementoClasificacionId(),
-            origen.getIngresoId(),
-            origen.getElementoNombre(),
-            origen.getCantidadTotal(),
-            origen.getCantidadYaProcesada(),
-            origen.getClienteNombre(),
-            origen.getCategoria()
-        );
-        nuevo.setCantidadEnCiclo(cantidad);
-        pendientes.add(nuevo);
     }
 
     private void refrescarDisponiblesYCards() {
         List<ElementoCicloItem> dbDisponibles = cicloLavaderoService.obtenerElementosDisponiblesParaCiclo();
-        elementosDisponibles = aplicarPendientesEnDisponibles(dbDisponibles);
+        elementosDisponibles = staging.aplicarSobreDisponibles(dbDisponibles);
         pantalla.setElementosDisponibles(elementosDisponibles);
         actualizarTodasLasCards();
     }
@@ -401,8 +322,7 @@ public class CiclosController {
 
     private void ejecutarLanzamiento(int num) {
         LavarropasCard card = cards.get(num);
-        List<ElementoCicloItem> pendientes =
-            pendientesPorLavarropas.getOrDefault(num, Collections.emptyList());
+        List<ElementoCicloItem> pendientes = staging.pendientesDe(num);
         if (pendientes.isEmpty()) return;
 
         TipoLavado tipoLavado = card.getTipoLavado();
@@ -425,7 +345,7 @@ public class CiclosController {
         }
         try {
             cicloLavaderoService.lanzarCiclo(num, config, movimientos);
-            pendientesPorLavarropas.remove(num);
+            staging.limpiarLavarropas(num);
         } catch (Exception e) {
             log.error("Error al lanzar ciclo en lavarropas {}", num, e);
             pantalla.mostrarError(Constantes.Mensajes.ERROR_LANZAR_CICLO);
@@ -433,11 +353,7 @@ public class CiclosController {
     }
 
     private void lanzarTodos() {
-        List<Integer> conPendientes = pendientesPorLavarropas.entrySet().stream()
-            .filter(e -> !e.getValue().isEmpty())
-            .map(Map.Entry::getKey)
-            .sorted()
-            .collect(Collectors.toList());
+        List<Integer> conPendientes = staging.lavarropasConPendientes();
         if (conPendientes.isEmpty()) return;
         if (!pantalla.confirmar(
                 "¿Lanzar " + conPendientes.size() + " ciclo(s) de lavado?",
@@ -483,11 +399,11 @@ public class CiclosController {
     // ── Pendientes ────────────────────────────────────────────────────────────
 
     public boolean tienePendientes() {
-        return pendientesPorLavarropas.values().stream().anyMatch(l -> !l.isEmpty());
+        return staging.hayPendientes();
     }
 
     public void descartarPendientes() {
-        pendientesPorLavarropas.clear();
+        staging.limpiar();
         cargarDatos();
     }
 }
