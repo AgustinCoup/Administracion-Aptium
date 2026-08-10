@@ -3,8 +3,10 @@ package com.example.features.lavadero.controller.helpers;
 import com.example.features.lavadero.model.ElementoCicloItem;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +72,79 @@ public class StagingCiclos {
         pendientesPorLavarropas
             .computeIfAbsent(lavarropasNumero, k -> new ArrayList<>())
             .add(fraccion);
+    }
+
+    /**
+     * Baja de una selección devuelta a disponibles desde un lavarropas.
+     *
+     * <p>Cada ítem se enruta según su naturaleza: una fracción de equipo deshace la
+     * subdivisión <b>entera</b> (regla de negocio: ver {@link #quitarInstanciaEquipo});
+     * un regular se descuenta por su {@code cantidadEnCiclo} completa del lavarropas
+     * de origen. Un ítem que ya no está en el staging es un no-op.
+     */
+    public void quitar(Collection<ElementoCicloItem> seleccionados, int lavarropasOrigen) {
+        if (seleccionados == null) return;
+        for (ElementoCicloItem item : seleccionados) {
+            if (item == null) continue;
+            if (esFraccionDeEquipo(item)) quitarInstanciaEquipo(item.getInstanciaId());
+            else quitarRegular(lavarropasOrigen, item, item.getCantidadEnCiclo());
+        }
+    }
+
+    /**
+     * Descuenta {@code cantidad} unidades de la fila regular de ese lavarropas y la
+     * elimina si queda sin unidades. Simétrico de {@link #agregarRegular}: identifica
+     * la fila por {@code elementoClasificacionId}, no por identidad de objeto.
+     */
+    public void quitarRegular(int lavarropasNumero, ElementoCicloItem item, int cantidad) {
+        List<ElementoCicloItem> pendientes = pendientesPorLavarropas.get(lavarropasNumero);
+        if (pendientes == null) return;
+        for (Iterator<ElementoCicloItem> it = pendientes.iterator(); it.hasNext(); ) {
+            ElementoCicloItem existente = it.next();
+            if (esFraccionDeEquipo(existente)
+                    || existente.getElementoClasificacionId() != item.getElementoClasificacionId()) {
+                continue;
+            }
+            existente.setCantidadEnCiclo(existente.getCantidadEnCiclo() - cantidad);
+            if (existente.getCantidadEnCiclo() <= 0) it.remove();
+            break;
+        }
+        descartarSiQuedoVacio(lavarropasNumero);
+    }
+
+    /**
+     * Deshace una subdivisión completa: elimina <b>todas</b> las fracciones con ese
+     * {@code instanciaId}, en todos los lavarropas.
+     *
+     * <p>Es la regla de negocio decidida para la devolución: dejar 2 de 3 fracciones
+     * haría que las cards restantes mostraran {@code 1/3} (un dato falso) o exigiría
+     * renumerar las fracciones en cascada. Deshacer la subdivisión entera es la única
+     * semántica que no deja estados inconsistentes.
+     */
+    public void quitarInstanciaEquipo(Integer instanciaId) {
+        if (instanciaId == null) return;
+        Iterator<Map.Entry<Integer, List<ElementoCicloItem>>> it =
+            pendientesPorLavarropas.entrySet().iterator();
+        while (it.hasNext()) {
+            List<ElementoCicloItem> pendientes = it.next().getValue();
+            pendientes.removeIf(p -> esFraccionDeEquipo(p) && instanciaId.equals(p.getInstanciaId()));
+            if (pendientes.isEmpty()) it.remove();
+        }
+    }
+
+    /**
+     * En cuántos lavarropas está repartida esa instancia de equipo. Lo consume el
+     * diálogo de confirmación de la devolución, que tiene que avisar el alcance real
+     * de la baja antes de aplicarla.
+     */
+    public int lavarropasDeInstancia(Integer instanciaId) {
+        if (instanciaId == null) return 0;
+        return fraccionesPorInstancia().getOrDefault(instanciaId, 0);
+    }
+
+    private void descartarSiQuedoVacio(int lavarropasNumero) {
+        List<ElementoCicloItem> pendientes = pendientesPorLavarropas.get(lavarropasNumero);
+        if (pendientes != null && pendientes.isEmpty()) pendientesPorLavarropas.remove(lavarropasNumero);
     }
 
     /**

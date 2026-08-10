@@ -48,6 +48,14 @@ public class CiclosController {
     private List<ElementoCicloItem>     elementosDisponibles  = new ArrayList<>();
     private List<LavarropasItem>        lavarropasItems       = new ArrayList<>();
 
+    /**
+     * Lavarropas del que salió el arrastre en curso; {@code null} si no se está
+     * arrastrando desde una card. Un solo campo cubre las dos necesidades: sirve de
+     * flag anti-rebote (una card no acepta lo que salió de otra card) y de origen para
+     * la baja, sin que puedan desincronizarse entre sí.
+     */
+    private Integer lavarropasArrastre = null;
+
     public static final DataFlavor ELEMENTO_CICLO_FLAVOR = LocalObjectFlavors.forList();
 
     public CiclosController(PantallaCiclos pantalla, CicloLavaderoService cicloLavaderoService,
@@ -165,34 +173,61 @@ public class CiclosController {
         tablaDisponibles.setTransferHandler(crearHandlerDisponibles());
     }
 
-    /** La tabla de la card sólo recibe drops; arrastrar desde ella llega en S8. */
     private void configurarDnDCard(int num, LavarropasCard card) {
         if (ELEMENTO_CICLO_FLAVOR == null) return;
         JTable tabla = card.getTabla();
+        tabla.setDragEnabled(true);
         tabla.setDropMode(DropMode.ON);
         tabla.setFillsViewportHeight(true);
         tabla.setTransferHandler(crearHandlerCard(num));
     }
 
-    // ── Tabla Disponibles: ORIGEN para drag (COPY) ────────────────────────────
+    // ── Tabla Disponibles: ORIGEN para drag (COPY), DESTINO para devolver ─────
 
     private MultiRowTableTransferHandler<ElementoCicloItem> crearHandlerDisponibles() {
         return new MultiRowTableTransferHandler.Builder<ElementoCicloItem>(ELEMENTO_CICLO_FLAVOR)
             .sourceActions(TransferHandler.COPY)
             .selectionSupplier(pantalla::getElementosDisponiblesSeleccionados)
-            .canImportExtra(support -> false) // el arrastre inverso (card → disponibles) llega en S8
+            // Sólo acepta lo que salió de una card: un arrastre de disponibles a sí misma no es nada.
+            .canImportExtra(support -> lavarropasArrastre != null)
+            .onImport(items -> {
+                // exportDone corre antes que el runnable diferido: leer el origen adentro daría null.
+                Integer origen = lavarropasArrastre;
+                if (origen == null) return;
+                SwingUtilities.invokeLater(() -> devolverADisponibles(items, origen));
+            })
             .build();
     }
 
-    // ── Tabla de cada card: DESTINO para drop ─────────────────────────────────
+    // ── Tabla de cada card: DESTINO para drop, ORIGEN para devolver (MOVE) ────
 
     private MultiRowTableTransferHandler<ElementoCicloItem> crearHandlerCard(int lavarropasNum) {
         return new MultiRowTableTransferHandler.Builder<ElementoCicloItem>(ELEMENTO_CICLO_FLAVOR)
-            .sourceActions(TransferHandler.NONE)
-            .canImportExtra(support -> !ciclosActivos.containsKey(lavarropasNum))
+            .sourceActions(TransferHandler.MOVE)
+            .selectionSupplier(() -> seleccionCardParaArrastre(lavarropasNum))
+            // El arrastre card → card está bloqueado: para mover algo hay que devolverlo primero.
+            .canImportExtra(support -> !ciclosActivos.containsKey(lavarropasNum)
+                                        && lavarropasArrastre == null)
             // invokeLater: los diálogos de cantidad no deben bloquear el EDT del drop.
             .onImport(items -> SwingUtilities.invokeLater(() -> procesarDrop(items, lavarropasNum)))
+            // Reset incondicional: si sólo se reseteara en MOVE, un arrastre abortado
+            // dejaría el flag pegado y bloquearía todos los drops siguientes.
+            .onExportDone(action -> lavarropasArrastre = null)
             .build();
+    }
+
+    /**
+     * Ítems que una card entrega al arrastre, y registro del lavarropas de origen.
+     *
+     * <p>Una card con ciclo activo devuelve lista vacía: sus ítems vienen de la BD y no
+     * hay staging que dar de baja, así que el arrastre no debe ni arrancar (permitirlo
+     * daría un arrastre que "funciona" visualmente y no quita nada).
+     */
+    private List<ElementoCicloItem> seleccionCardParaArrastre(int lavarropasNum) {
+        if (ciclosActivos.containsKey(lavarropasNum)) return List.of();
+        List<ElementoCicloItem> seleccion = cards.get(lavarropasNum).getItemsSeleccionados();
+        if (!seleccion.isEmpty()) lavarropasArrastre = lavarropasNum;
+        return seleccion;
     }
 
     // ── Agregar elementos ─────────────────────────────────────────────────────
@@ -288,6 +323,41 @@ public class CiclosController {
             copia.setCantidadEnCiclo(1);
             staging.agregarFraccionEquipo(num, copia);
         }
+    }
+
+    // ── Devolver elementos a disponibles ──────────────────────────────────────
+
+    /**
+     * Baja de una tanda de elementos arrastrados de una card a la tabla de disponibles.
+     * La aritmética vive en {@link StagingCiclos}; acá sólo se confirma el alcance con
+     * el usuario y se refresca una sola vez al final.
+     */
+    private void devolverADisponibles(List<ElementoCicloItem> items, int lavarropasOrigen) {
+        if (items == null || items.isEmpty()) return;
+        if (!confirmarDeshacerSubdivisiones(items)) return;
+        staging.quitar(items, lavarropasOrigen);
+        refrescarDisponiblesYCards();
+    }
+
+    /**
+     * Devolver una fracción quita el equipo de <b>todos</b> los lavarropas en los que
+     * se repartió. Si la selección toca alguna subdivisión de más de un lavarropas hay
+     * que avisarlo antes de aplicarla; si no toca ninguna, no se pregunta nada.
+     */
+    private boolean confirmarDeshacerSubdivisiones(List<ElementoCicloItem> items) {
+        Map<Integer, Integer> repartidos = new LinkedHashMap<>();
+        for (ElementoCicloItem item : items) {
+            if (item == null || !item.isEquipo() || item.getInstanciaId() == null) continue;
+            int enCuantos = staging.lavarropasDeInstancia(item.getInstanciaId());
+            if (enCuantos > 1) repartidos.put(item.getInstanciaId(), enCuantos);
+        }
+        if (repartidos.isEmpty()) return true;
+
+        String mensaje = repartidos.size() == 1
+            ? String.format(Constantes.Mensajes.CONFIRMAR_DESHACER_SUBDIVISION,
+                            repartidos.values().iterator().next())
+            : String.format(Constantes.Mensajes.CONFIRMAR_DESHACER_SUBDIVISIONES, repartidos.size());
+        return pantalla.confirmar(mensaje, Constantes.Mensajes.TITULO_DESHACER_SUBDIVISION);
     }
 
     private void refrescarDisponiblesYCards() {

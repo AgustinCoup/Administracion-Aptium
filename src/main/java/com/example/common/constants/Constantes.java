@@ -148,6 +148,13 @@ public final class Constantes {
         public static final String ERROR_LANZAR_CICLO        = "Error al lanzar el ciclo. Intente nuevamente.";
         public static final String ERROR_FINALIZAR_CICLO     = "Error al finalizar el ciclo. Intente nuevamente.";
 
+        /** Devolver una fracción deshace la subdivisión entera: hay que avisar el alcance. */
+        public static final String TITULO_DESHACER_SUBDIVISION = "Deshacer subdivisión";
+        public static final String CONFIRMAR_DESHACER_SUBDIVISION =
+            "Este equipo está repartido en %d lavarropas. Se quitará de todos.\n¿Continuar?";
+        public static final String CONFIRMAR_DESHACER_SUBDIVISIONES =
+            "%d equipos están repartidos en varios lavarropas. Se quitarán de todos.\n¿Continuar?";
+
         // ── Actualizaciones ──────────────────────────────────────────────────
         public static final String NO_HAY_ACTUALIZACIONES        = "Ya tenés la última versión instalada.";
         public static final String TITULO_ACTUALIZACION_DISPONIBLE = "Actualización disponible";

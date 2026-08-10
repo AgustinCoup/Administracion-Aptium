@@ -254,4 +254,123 @@ class StagingCiclosTest {
     void pendientesDe_lavarropasSinNada_devuelveListaVacia() {
         assertTrue(staging.pendientesDe(5).isEmpty());
     }
+
+    // ── Baja: devolución de una card a la tabla de disponibles ────────────────
+
+    @Test
+    void quitar_regularCompleto_desapareceDeLosPendientes() {
+        staging.agregarRegular(1, regular(7, "Sábana", 10), 3);
+        List<ElementoCicloItem> seleccion = staging.pendientesDe(1);
+
+        staging.quitar(seleccion, 1);
+
+        assertTrue(staging.pendientesDe(1).isEmpty());
+    }
+
+    @Test
+    void quitarRegular_bajaParcial_dejaLaFilaConElResto() {
+        ElementoCicloItem sabana = regular(7, "Sábana", 10);
+        staging.agregarRegular(1, sabana, 5);
+
+        staging.quitarRegular(1, sabana, 2);
+
+        assertEquals(1, staging.pendientesDe(1).size());
+        assertEquals(3, staging.pendientesDe(1).get(0).getCantidadEnCiclo());
+        assertEquals(3, staging.cantidadStaged(sabana));
+    }
+
+    @Test
+    void quitar_soloAfectaAlLavarropasDeOrigen() {
+        ElementoCicloItem sabana = regular(7, "Sábana", 10);
+        staging.agregarRegular(1, sabana, 3);
+        staging.agregarRegular(2, sabana, 4);
+
+        staging.quitar(staging.pendientesDe(1), 1);
+
+        assertTrue(staging.pendientesDe(1).isEmpty());
+        assertEquals(4, staging.pendientesDe(2).get(0).getCantidadEnCiclo());
+    }
+
+    @Test
+    void quitar_unaFraccionDeEquipoRepartidoEnTres_lasQuitaDeLasTresCards() {
+        ElementoCicloItem eq = equipo(20, "Caja instrumental", 3);
+        staging.agregarFraccionEquipo(1, fraccion(eq, 42));
+        staging.agregarFraccionEquipo(2, fraccion(eq, 42));
+        staging.agregarFraccionEquipo(3, fraccion(eq, 42));
+
+        // Se devuelve la fracción del lavarropas 2: se deshace la subdivisión entera.
+        staging.quitar(staging.pendientesDe(2), 2);
+
+        assertTrue(staging.pendientesDe(1).isEmpty());
+        assertTrue(staging.pendientesDe(2).isEmpty());
+        assertTrue(staging.pendientesDe(3).isEmpty());
+    }
+
+    @Test
+    void quitar_fraccionDeEquipo_noTocaOtrasInstanciasDelMismoElemento() {
+        ElementoCicloItem eq = equipo(20, "Caja instrumental", 5);
+        staging.agregarFraccionEquipo(1, fraccion(eq, 500));
+        staging.agregarFraccionEquipo(2, fraccion(eq, 500));
+        staging.agregarFraccionEquipo(1, fraccion(eq, 501));
+
+        staging.quitarInstanciaEquipo(500);
+
+        assertEquals(1, staging.pendientesDe(1).size());
+        assertEquals(501, staging.pendientesDe(1).get(0).getInstanciaId());
+        assertTrue(staging.pendientesDe(2).isEmpty());
+    }
+
+    @Test
+    void quitar_itemQueYaNoEsta_esNoOp() {
+        staging.agregarRegular(1, regular(7, "Sábana", 10), 2);
+        ElementoCicloItem ausente = regular(99, "Fantasma", 5);
+        ausente.setCantidadEnCiclo(1);
+
+        assertDoesNotThrow(() -> staging.quitar(List.of(ausente), 1));
+        assertDoesNotThrow(() -> staging.quitar(List.of(ausente), 8));
+        assertDoesNotThrow(() -> staging.quitarInstanciaEquipo(1234));
+
+        assertEquals(1, staging.pendientesDe(1).size(), "Lo que estaba cargado sigue igual");
+    }
+
+    @Test
+    void hayPendientes_vuelveAFalseDespuesDeQuitarTodo() {
+        ElementoCicloItem eq = equipo(20, "Caja instrumental", 3);
+        staging.agregarRegular(1, regular(7, "Sábana", 10), 2);
+        staging.agregarFraccionEquipo(2, fraccion(eq, 42));
+        staging.agregarFraccionEquipo(3, fraccion(eq, 42));
+
+        staging.quitar(staging.pendientesDe(1), 1);
+        staging.quitar(staging.pendientesDe(2), 2);
+
+        assertFalse(staging.hayPendientes());
+        assertTrue(staging.lavarropasConPendientes().isEmpty());
+    }
+
+    @Test
+    void aplicarSobreDisponibles_despuesDeUnaBaja_muestraElItemConSuCantidadCompleta() {
+        staging.agregarRegular(1, regular(7, "Sábana", 4), 4);
+        // Con las 4 unidades staged el ítem desaparecía de disponibles.
+        assertTrue(staging.aplicarSobreDisponibles(new ArrayList<>(List.of(regular(7, "Sábana", 4)))).isEmpty());
+
+        staging.quitar(staging.pendientesDe(1), 1);
+
+        List<ElementoCicloItem> resultado =
+                staging.aplicarSobreDisponibles(new ArrayList<>(List.of(regular(7, "Sábana", 4))));
+
+        assertEquals(1, resultado.size());
+        assertEquals(0, buscar(resultado, 7).getCantidadEnCiclo());
+        assertEquals(4, buscar(resultado, 7).getCantidadDisponible());
+    }
+
+    @Test
+    void lavarropasDeInstancia_cuentaLasCardsQueContienenLaInstancia() {
+        ElementoCicloItem eq = equipo(20, "Caja instrumental", 3);
+        staging.agregarFraccionEquipo(1, fraccion(eq, 42));
+        staging.agregarFraccionEquipo(2, fraccion(eq, 42));
+
+        assertEquals(2, staging.lavarropasDeInstancia(42));
+        assertEquals(0, staging.lavarropasDeInstancia(43), "Instancia inexistente → 0");
+        assertEquals(0, staging.lavarropasDeInstancia(null), "Un regular no tiene instancia");
+    }
 }
