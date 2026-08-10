@@ -20,6 +20,14 @@ import java.util.List;
 
 public class PantallaVerCiclos extends JPanel {
 
+    private static final String[] COLUMNAS = {
+        "ID", "Lavarropas", "Tipo de Lavado", "Jabón", "mL Jabón",
+        "Suavizante", "Potenciador", "L Totales", "Inicio", "Fin", "Estado"
+    };
+
+    /** Derivado del array: agregar una columna antes de "Estado" no vuelve a romper el renderer. */
+    private static final int COL_ESTADO = List.of(COLUMNAS).indexOf("Estado");
+
     private final DefaultTableModel modeloTabla;
     private final JTable            tablaCiclos;
 
@@ -47,18 +55,14 @@ public class PantallaVerCiclos extends JPanel {
         panelNorte.add(crearPanelFiltros(), BorderLayout.SOUTH);
         add(panelNorte, BorderLayout.NORTH);
 
-        modeloTabla = new DefaultTableModel(
-            new Object[]{"ID", "Lavarropas", "Jabón", "mL Jabón",
-                         "Suavizante", "Potenciador", "L Totales", "Inicio", "Fin", "Estado"},
-            0
-        ) {
+        modeloTabla = new DefaultTableModel(COLUMNAS, 0) {
             @Override public boolean isCellEditable(int row, int column) { return false; }
         };
 
         tablaCiclos = new JTable(modeloTabla);
         TableStyler.applyStandard(tablaCiclos);
-        TableStyler.centerColumns(tablaCiclos, 0, 1, 3, 4, 5, 6);
-        tablaCiclos.getColumnModel().getColumn(9).setCellRenderer(new CicloEstadoCellRenderer());
+        TableStyler.centerColumns(tablaCiclos, 0, 1, 2, 4, 5, 6, 7);
+        tablaCiclos.getColumnModel().getColumn(COL_ESTADO).setCellRenderer(new CicloEstadoCellRenderer());
         tablaCiclos.setRowSelectionAllowed(false);
         tablaCiclos.setFillsViewportHeight(true);
 
@@ -121,6 +125,7 @@ public class PantallaVerCiclos extends JPanel {
             modeloTabla.addRow(new Object[]{
                 c.getId(),
                 c.getLavarropasNumero(),
+                c.getTipoLavado().getNombre(),
                 c.getJabon().getNombre(),
                 c.getLitrosJabon(),
                 c.isSuavizante()   ? "Sí" : "No",
