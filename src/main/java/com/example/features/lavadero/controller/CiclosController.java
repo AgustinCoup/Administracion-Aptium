@@ -3,6 +3,7 @@ package com.example.features.lavadero.controller;
 import com.example.common.constants.Constantes;
 import com.example.features.lavadero.controller.helpers.ElementoCicloTransferable;
 import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
@@ -403,15 +404,13 @@ public class CiclosController {
             pendientesPorLavarropas.getOrDefault(num, Collections.emptyList());
         if (pendientes.isEmpty()) return;
 
-        JabonCatalogo jabon       = card.getJabon();
-        BigDecimal litrosJabon    = card.getLitrosJabon();
+        BigDecimal litrosJabon = card.getLitrosJabon();
         if (litrosJabon == null) {
             pantalla.mostrarError("Lavarropas #" + num + ": ingrese los mililitros de jabón.");
             return;
         }
-        boolean    suavizante    = card.isSuavizante();
-        boolean    potenciador   = card.isPotenciador();
-        BigDecimal litrosTotales = card.getLitrosTotales();
+        ConfiguracionCiclo config = new ConfiguracionCiclo(
+            card.getJabon(), litrosJabon, card.isSuavizante(), card.isPotenciador(), card.getLitrosTotales());
 
         List<ElementoCicloMovimiento> movimientos = new ArrayList<>();
         for (ElementoCicloItem item : pendientes) {
@@ -419,7 +418,7 @@ public class CiclosController {
                 item.getElementoClasificacionId(), item.getCantidadEnCiclo()));
         }
         try {
-            cicloLavaderoService.lanzarCiclo(num, jabon, litrosJabon, suavizante, potenciador, litrosTotales, movimientos);
+            cicloLavaderoService.lanzarCiclo(num, config, movimientos);
             pendientesPorLavarropas.remove(num);
         } catch (Exception e) {
             log.error("Error al lanzar ciclo en lavarropas {}", num, e);

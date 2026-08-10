@@ -2,6 +2,7 @@ package com.example.features.lavadero.service;
 
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
+import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,42 +47,49 @@ class CicloLavaderoServiceTest {
     @Test
     void lanzarCiclo_lavarropasNumeroMenorA1_lanzaValidation() {
         assertThrows(ValidationException.class, () ->
-            service.lanzarCiclo(0, SKIP, new BigDecimal("1.5"), false, false, null, movimientosValidos()));
+            service.lanzarCiclo(0, configValida(), movimientosValidos()));
         verifyNoInteractions(dao);
     }
 
     @Test
     void lanzarCiclo_lavarropasNumeroMayorA13_lanzaValidation() {
         assertThrows(ValidationException.class, () ->
-            service.lanzarCiclo(14, SKIP, new BigDecimal("1.5"), false, false, null, movimientosValidos()));
+            service.lanzarCiclo(14, configValida(), movimientosValidos()));
+        verifyNoInteractions(dao);
+    }
+
+    @Test
+    void lanzarCiclo_configNull_lanzaValidation() {
+        assertThrows(ValidationException.class, () ->
+            service.lanzarCiclo(1, null, movimientosValidos()));
         verifyNoInteractions(dao);
     }
 
     @Test
     void lanzarCiclo_jabonNull_lanzaValidation() {
         assertThrows(ValidationException.class, () ->
-            service.lanzarCiclo(1, null, new BigDecimal("1.5"), false, false, null, movimientosValidos()));
+            service.lanzarCiclo(1, config(null, new BigDecimal("1.5")), movimientosValidos()));
         verifyNoInteractions(dao);
     }
 
     @Test
     void lanzarCiclo_litrosJabonCero_lanzaValidation() {
         assertThrows(ValidationException.class, () ->
-            service.lanzarCiclo(1, SKIP, BigDecimal.ZERO, false, false, null, movimientosValidos()));
+            service.lanzarCiclo(1, config(SKIP, BigDecimal.ZERO), movimientosValidos()));
         verifyNoInteractions(dao);
     }
 
     @Test
     void lanzarCiclo_litrosJabonNegativo_lanzaValidation() {
         assertThrows(ValidationException.class, () ->
-            service.lanzarCiclo(1, SKIP, new BigDecimal("-1"), false, false, null, movimientosValidos()));
+            service.lanzarCiclo(1, config(SKIP, new BigDecimal("-1")), movimientosValidos()));
         verifyNoInteractions(dao);
     }
 
     @Test
     void lanzarCiclo_movimientosVacios_lanzaValidation() {
         assertThrows(ValidationException.class, () ->
-            service.lanzarCiclo(1, SKIP, new BigDecimal("1.5"), false, false, null, Collections.emptyList()));
+            service.lanzarCiclo(1, configValida(), Collections.emptyList()));
         verifyNoInteractions(dao);
     }
 
@@ -89,7 +97,7 @@ class CicloLavaderoServiceTest {
     void lanzarCiclo_cantidadCeroEnMovimiento_lanzaValidation() {
         List<ElementoCicloMovimiento> mov = List.of(new ElementoCicloMovimiento(1, 0));
         assertThrows(ValidationException.class, () ->
-            service.lanzarCiclo(1, SKIP, new BigDecimal("1.5"), false, false, null, mov));
+            service.lanzarCiclo(1, configValida(), mov));
         verifyNoInteractions(dao);
     }
 
@@ -97,15 +105,16 @@ class CicloLavaderoServiceTest {
 
     @Test
     void lanzarCiclo_datosValidos_delegaADAO() {
-        service.lanzarCiclo(1, SKIP, new BigDecimal("1.5"), false, false, null, movimientosValidos());
-        verify(dao).lanzarCiclo(eq(1), eq(SKIP), any(), eq(false), eq(false), isNull(), anyList());
+        service.lanzarCiclo(1, configValida(), movimientosValidos());
+        verify(dao).lanzarCiclo(eq(1), eq(configValida()), anyList());
     }
 
     @Test
     void lanzarCiclo_conSuavizanteYPotenciadorYLitrosTotales_delegaADAO() {
-        BigDecimal litrosTotales = new BigDecimal("30.00");
-        service.lanzarCiclo(7, LIDER, new BigDecimal("2.0"), true, true, litrosTotales, movimientosValidos());
-        verify(dao).lanzarCiclo(eq(7), eq(LIDER), any(), eq(true), eq(true), eq(litrosTotales), anyList());
+        ConfiguracionCiclo config = new ConfiguracionCiclo(
+            LIDER, new BigDecimal("2.0"), true, true, new BigDecimal("30.00"));
+        service.lanzarCiclo(7, config, movimientosValidos());
+        verify(dao).lanzarCiclo(eq(7), eq(config), anyList());
     }
 
     // ── finalizarCiclo — validaciones ────────────────────────────────────────
@@ -144,5 +153,13 @@ class CicloLavaderoServiceTest {
 
     private List<ElementoCicloMovimiento> movimientosValidos() {
         return List.of(new ElementoCicloMovimiento(1, 3));
+    }
+
+    private ConfiguracionCiclo configValida() {
+        return config(SKIP, new BigDecimal("1.5"));
+    }
+
+    private ConfiguracionCiclo config(JabonCatalogo jabon, BigDecimal litrosJabon) {
+        return new ConfiguracionCiclo(jabon, litrosJabon, false, false, null);
     }
 }

@@ -2,6 +2,7 @@ package com.example.features.lavadero.dao;
 
 import com.example.AbstractDAOTest;
 import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
@@ -67,7 +68,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     void lanzarCiclo_insertaEnAmbosTablas() throws SQLException {
         List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 3));
 
-        dao.lanzarCiclo(1, jabon, new BigDecimal("1.50"), false, false, null, movimientos);
+        dao.lanzarCiclo(1, config(new BigDecimal("1.50")), movimientos);
 
         assertEquals(1, contarFilas("ciclos_lavadero"));
         assertEquals(1, contarFilas("elementos_ciclo_lavadero"));
@@ -76,7 +77,8 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     @Test
     void lanzarCiclo_cicloActivoPorLavarropas_apareceMapeado() {
         List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 3));
-        dao.lanzarCiclo(2, jabon, new BigDecimal("2.00"), true, true, new BigDecimal("40.00"), movimientos);
+        dao.lanzarCiclo(2, new ConfiguracionCiclo(
+            jabon, new BigDecimal("2.00"), true, true, new BigDecimal("40.00")), movimientos);
 
         Map<Integer, CicloLavadero> activos = dao.obtenerCiclosActivosPorLavarropas();
 
@@ -103,7 +105,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     @Test
     void disponibles_excluyeElementoTotalmenteProcesado() {
         List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 10));
-        dao.lanzarCiclo(1, jabon, new BigDecimal("1.5"), false, false, null, movimientos);
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
 
         List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
 
@@ -113,7 +115,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     @Test
     void disponibles_incluyeElementoParcialmenteProcesado() {
         List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 4));
-        dao.lanzarCiclo(1, jabon, new BigDecimal("1.5"), false, false, null, movimientos);
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
 
         List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
 
@@ -127,7 +129,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     @Test
     void finalizarCiclo_marcaFechaFinYEstado() throws SQLException {
         List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 5));
-        dao.lanzarCiclo(1, jabon, new BigDecimal("1.5"), false, false, null, movimientos);
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
         int cicloId = lastInsertIdDeCiclos();
 
         dao.finalizarCiclo(cicloId);
@@ -139,7 +141,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     @Test
     void finalizarCiclo_marcaIngresoLavadoCuandoTodoProcesado() throws SQLException {
         List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 10));
-        dao.lanzarCiclo(1, jabon, new BigDecimal("1.5"), false, false, null, movimientos);
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
         int cicloId = lastInsertIdDeCiclos();
 
         dao.finalizarCiclo(cicloId);
@@ -150,7 +152,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     @Test
     void finalizarCiclo_noMarcaLavadoCuandoProcesadoParcial() throws SQLException {
         List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 5));
-        dao.lanzarCiclo(1, jabon, new BigDecimal("1.5"), false, false, null, movimientos);
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
         int cicloId = lastInsertIdDeCiclos();
 
         dao.finalizarCiclo(cicloId);
@@ -159,6 +161,10 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    private ConfiguracionCiclo config(BigDecimal litrosJabon) {
+        return new ConfiguracionCiclo(jabon, litrosJabon, false, false, null);
+    }
 
     private int lastInsertId() throws SQLException {
         try (Connection conn = ConnectionPool.getConnection();

@@ -2,6 +2,7 @@ package com.example.features.lavadero.dao;
 
 import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
@@ -10,7 +11,6 @@ import com.example.infrastructure.db.TransactionalConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.math.BigDecimal;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -149,12 +149,11 @@ public class CicloLavaderoDAO {
         return lista;
     }
 
-    public void lanzarCiclo(int lavarropasNumero, JabonCatalogo jabon, BigDecimal litrosJabon,
-                             boolean suavizante, boolean potenciador, BigDecimal litrosTotales,
+    public void lanzarCiclo(int lavarropasNumero, ConfiguracionCiclo config,
                              List<ElementoCicloMovimiento> movimientos) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
-            int cicloId = insertarCiclo(conn, lavarropasNumero, jabon, litrosJabon, suavizante, potenciador, litrosTotales);
+            int cicloId = insertarCiclo(conn, lavarropasNumero, config);
             insertarMovimientos(conn, cicloId, movimientos);
             tx.commit();
         } catch (SQLException e) {
@@ -178,16 +177,15 @@ public class CicloLavaderoDAO {
 
     // ── privados ─────────────────────────────────────────────────────────────
 
-    private int insertarCiclo(Connection conn, int lavarropasNumero, JabonCatalogo jabon,
-                               BigDecimal litrosJabon, boolean suavizante, boolean potenciador,
-                               BigDecimal litrosTotales) throws SQLException {
+    private int insertarCiclo(Connection conn, int lavarropasNumero,
+                               ConfiguracionCiclo config) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(SQL_INSERTAR_CICLO, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, lavarropasNumero);
-            ps.setInt(2, jabon.getId());
-            ps.setBigDecimal(3, litrosJabon);
-            ps.setBoolean(4, suavizante);
-            ps.setBoolean(5, potenciador);
-            if (litrosTotales != null) ps.setBigDecimal(6, litrosTotales);
+            ps.setInt(2, config.jabon().getId());
+            ps.setBigDecimal(3, config.litrosJabon());
+            ps.setBoolean(4, config.suavizante());
+            ps.setBoolean(5, config.potenciador());
+            if (config.litrosTotales() != null) ps.setBigDecimal(6, config.litrosTotales());
             else ps.setNull(6, Types.DECIMAL);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {

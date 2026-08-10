@@ -4,9 +4,9 @@ import com.example.common.constants.Constantes;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
-import com.example.features.lavadero.model.JabonCatalogo;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -29,17 +29,20 @@ public class CicloLavaderoService {
         return dao.obtenerElementosDisponiblesParaCiclo();
     }
 
-    public void lanzarCiclo(int lavarropasNumero, JabonCatalogo jabon, BigDecimal litrosJabon,
-                             boolean suavizante, boolean potenciador, BigDecimal litrosTotales,
+    public void lanzarCiclo(int lavarropasNumero, ConfiguracionCiclo config,
                              List<ElementoCicloMovimiento> movimientos) {
         ValidationException.Builder v = ValidationException.builder();
 
         v.addErrorIf(lavarropasNumero < 1 || lavarropasNumero > Constantes.Lavadero.CANTIDAD_LAVARROPAS,
             "El número de lavarropas debe estar entre 1 y " + Constantes.Lavadero.CANTIDAD_LAVARROPAS + ".");
-        v.addErrorIf(jabon == null,
-            "Debe seleccionar un jabón.");
-        v.addErrorIf(litrosJabon == null || litrosJabon.compareTo(BigDecimal.ZERO) <= 0,
-            "Los mililitros de jabón deben ser mayores a cero.");
+        v.addErrorIf(config == null,
+            "Debe configurar el ciclo.");
+        if (config != null) {
+            v.addErrorIf(config.jabon() == null,
+                "Debe seleccionar un jabón.");
+            v.addErrorIf(config.litrosJabon() == null || config.litrosJabon().compareTo(BigDecimal.ZERO) <= 0,
+                "Los mililitros de jabón deben ser mayores a cero.");
+        }
         v.addErrorIf(movimientos == null || movimientos.isEmpty(),
             "Debe agregar al menos un elemento al ciclo.");
 
@@ -52,7 +55,7 @@ public class CicloLavaderoService {
 
         v.throwIfHasErrors();
 
-        dao.lanzarCiclo(lavarropasNumero, jabon, litrosJabon, suavizante, potenciador, litrosTotales, movimientos);
+        dao.lanzarCiclo(lavarropasNumero, config, movimientos);
     }
 
     public List<CicloLavadero> obtenerCiclosFinalizados() {
