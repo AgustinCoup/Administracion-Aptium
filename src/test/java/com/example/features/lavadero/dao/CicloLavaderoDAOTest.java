@@ -6,6 +6,7 @@ import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.TipoLavado;
 import com.example.infrastructure.db.ConnectionPool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -78,7 +80,8 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     void lanzarCiclo_cicloActivoPorLavarropas_apareceMapeado() {
         List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 3));
         dao.lanzarCiclo(2, new ConfiguracionCiclo(
-            jabon, new BigDecimal("2.00"), true, true, new BigDecimal("40.00")), movimientos);
+            TipoLavado.LIMPIO, jabon, new BigDecimal("2.00"), true, true, new BigDecimal("40.00")),
+            movimientos);
 
         Map<Integer, CicloLavadero> activos = dao.obtenerCiclosActivosPorLavarropas();
 
@@ -89,6 +92,56 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         assertTrue(ciclo.isSuavizante());
         assertTrue(ciclo.isPotenciador());
         assertTrue(ciclo.estaActivo());
+    }
+
+    // ── tipo de lavado ───────────────────────────────────────────────────────
+    // Los tres caminos de lectura tienen su propio SELECT: si uno se olvida de la columna,
+    // sólo lo detecta un round-trip por cada uno.
+
+    @Test
+    void tipoLavado_sePersisteElName_yNoElNombreDeUi() throws SQLException {
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), movimientos(3));
+
+        assertEquals("PODRIDO", tipoLavadoPersistido());
+    }
+
+    @Test
+    void tipoLavado_roundTrip_enCiclosActivos() {
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.LIMPIO),  movimientos(1));
+        dao.lanzarCiclo(2, config(new BigDecimal("1.5"), TipoLavado.SUCIO),   movimientos(1));
+        dao.lanzarCiclo(3, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), movimientos(1));
+
+        Map<Integer, CicloLavadero> activos = dao.obtenerCiclosActivosPorLavarropas();
+
+        assertEquals(TipoLavado.LIMPIO,  activos.get(1).getTipoLavado());
+        assertEquals(TipoLavado.SUCIO,   activos.get(2).getTipoLavado());
+        assertEquals(TipoLavado.PODRIDO, activos.get(3).getTipoLavado());
+    }
+
+    @Test
+    void tipoLavado_roundTrip_enCiclosFinalizados() throws SQLException {
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), movimientos(1));
+        dao.finalizarCiclo(lastInsertIdDeCiclos());
+
+        List<CicloLavadero> finalizados = dao.obtenerCiclosFinalizados();
+
+        assertEquals(1, finalizados.size());
+        assertEquals(TipoLavado.PODRIDO, finalizados.get(0).getTipoLavado());
+    }
+
+    @Test
+    void tipoLavado_roundTrip_enTodosLosCiclos() throws SQLException {
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.LIMPIO), movimientos(1));
+        dao.finalizarCiclo(lastInsertIdDeCiclos());
+        dao.lanzarCiclo(2, config(new BigDecimal("1.5"), TipoLavado.SUCIO), movimientos(1));
+
+        Map<Integer, TipoLavado> porLavarropas = new HashMap<>();
+        for (CicloLavadero c : dao.obtenerTodosLosCiclos()) {
+            porLavarropas.put(c.getLavarropasNumero(), c.getTipoLavado());
+        }
+
+        assertEquals(TipoLavado.LIMPIO, porLavarropas.get(1));
+        assertEquals(TipoLavado.SUCIO,  porLavarropas.get(2));
     }
 
     // ── obtenerElementosDisponiblesParaCiclo ─────────────────────────────────
@@ -162,8 +215,26 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
+    private List<ElementoCicloMovimiento> movimientos(int cantidad) {
+        return List.of(new ElementoCicloMovimiento(elementoClasifId, cantidad));
+    }
+
     private ConfiguracionCiclo config(BigDecimal litrosJabon) {
-        return new ConfiguracionCiclo(jabon, litrosJabon, false, false, null);
+        return config(litrosJabon, TipoLavado.SUCIO);
+    }
+
+    private ConfiguracionCiclo config(BigDecimal litrosJabon, TipoLavado tipoLavado) {
+        return new ConfiguracionCiclo(tipoLavado, jabon, litrosJabon, false, false, null);
+    }
+
+    private String tipoLavadoPersistido() throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                     "SELECT tipo_lavado FROM ciclos_lavadero ORDER BY id DESC LIMIT 1")) {
+            rs.next();
+            return rs.getString(1);
+        }
     }
 
     private int lastInsertId() throws SQLException {

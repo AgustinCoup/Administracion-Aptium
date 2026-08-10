@@ -8,6 +8,7 @@ import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.Lavarropas;
+import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.LavarropasService;
@@ -87,7 +88,7 @@ public class CiclosController {
                 if (card.estaActivo()) finalizarCiclo(num);
                 else lanzarCiclo(num);
             });
-            card.setOnLitrosJabonChanged(() -> card.actualizarBtnAccion());
+            card.setOnConfiguracionChanged(() -> card.actualizarBtnAccion());
         }
 
         pantalla.getBtnLanzarTodos().addActionListener(e -> lanzarTodos());
@@ -404,13 +405,18 @@ public class CiclosController {
             pendientesPorLavarropas.getOrDefault(num, Collections.emptyList());
         if (pendientes.isEmpty()) return;
 
+        TipoLavado tipoLavado = card.getTipoLavado();
+        if (tipoLavado == null) {
+            pantalla.mostrarError("Lavarropas #" + num + ": seleccione el tipo de lavado.");
+            return;
+        }
         BigDecimal litrosJabon = card.getLitrosJabon();
         if (litrosJabon == null) {
             pantalla.mostrarError("Lavarropas #" + num + ": ingrese los mililitros de jabón.");
             return;
         }
-        ConfiguracionCiclo config = new ConfiguracionCiclo(
-            card.getJabon(), litrosJabon, card.isSuavizante(), card.isPotenciador(), card.getLitrosTotales());
+        ConfiguracionCiclo config = new ConfiguracionCiclo(tipoLavado, card.getJabon(), litrosJabon,
+            card.isSuavizante(), card.isPotenciador(), card.getLitrosTotales());
 
         List<ElementoCicloMovimiento> movimientos = new ArrayList<>();
         for (ElementoCicloItem item : pendientes) {

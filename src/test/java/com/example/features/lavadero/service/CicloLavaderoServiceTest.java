@@ -5,6 +5,7 @@ import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.TipoLavado;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -73,6 +74,15 @@ class CicloLavaderoServiceTest {
     }
 
     @Test
+    void lanzarCiclo_tipoLavadoNull_lanzaValidation() {
+        ConfiguracionCiclo sinTipo = new ConfiguracionCiclo(
+            null, SKIP, new BigDecimal("1.5"), false, false, null);
+        assertThrows(ValidationException.class, () ->
+            service.lanzarCiclo(1, sinTipo, movimientosValidos()));
+        verifyNoInteractions(dao);
+    }
+
+    @Test
     void lanzarCiclo_litrosJabonCero_lanzaValidation() {
         assertThrows(ValidationException.class, () ->
             service.lanzarCiclo(1, config(SKIP, BigDecimal.ZERO), movimientosValidos()));
@@ -112,7 +122,7 @@ class CicloLavaderoServiceTest {
     @Test
     void lanzarCiclo_conSuavizanteYPotenciadorYLitrosTotales_delegaADAO() {
         ConfiguracionCiclo config = new ConfiguracionCiclo(
-            LIDER, new BigDecimal("2.0"), true, true, new BigDecimal("30.00"));
+            TipoLavado.PODRIDO, LIDER, new BigDecimal("2.0"), true, true, new BigDecimal("30.00"));
         service.lanzarCiclo(7, config, movimientosValidos());
         verify(dao).lanzarCiclo(eq(7), eq(config), anyList());
     }
@@ -160,6 +170,6 @@ class CicloLavaderoServiceTest {
     }
 
     private ConfiguracionCiclo config(JabonCatalogo jabon, BigDecimal litrosJabon) {
-        return new ConfiguracionCiclo(jabon, litrosJabon, false, false, null);
+        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, litrosJabon, false, false, null);
     }
 }

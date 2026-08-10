@@ -12,6 +12,7 @@ public class CicloLavadero {
 
     private final int id;
     private final int lavarropasNumero;
+    private final TipoLavado tipoLavado;
     private final JabonCatalogo jabon;
     private final BigDecimal litrosJabon;
     private final boolean suavizante;
@@ -21,21 +22,22 @@ public class CicloLavadero {
     private final LocalDateTime fechaFin;
     private final List<ElementoCicloItem> materiales;
 
-    public CicloLavadero(int id, int lavarropasNumero, JabonCatalogo jabon,
+    public CicloLavadero(int id, int lavarropasNumero, TipoLavado tipoLavado, JabonCatalogo jabon,
                          BigDecimal litrosJabon, boolean suavizante, boolean potenciador,
                          BigDecimal litrosTotales,
                          LocalDateTime fechaInicio, LocalDateTime fechaFin) {
-        this(id, lavarropasNumero, jabon, litrosJabon, suavizante, potenciador, litrosTotales,
-             fechaInicio, fechaFin, new ArrayList<>());
+        this(id, lavarropasNumero, tipoLavado, jabon, litrosJabon, suavizante, potenciador,
+             litrosTotales, fechaInicio, fechaFin, new ArrayList<>());
     }
 
-    public CicloLavadero(int id, int lavarropasNumero, JabonCatalogo jabon,
+    public CicloLavadero(int id, int lavarropasNumero, TipoLavado tipoLavado, JabonCatalogo jabon,
                          BigDecimal litrosJabon, boolean suavizante, boolean potenciador,
                          BigDecimal litrosTotales,
                          LocalDateTime fechaInicio, LocalDateTime fechaFin,
                          List<ElementoCicloItem> materiales) {
         this.id               = id;
         this.lavarropasNumero = lavarropasNumero;
+        this.tipoLavado       = tipoLavado;
         this.jabon            = jabon;
         this.litrosJabon      = litrosJabon;
         this.suavizante       = suavizante;
@@ -48,6 +50,7 @@ public class CicloLavadero {
 
     public int getId()                     { return id; }
     public int getLavarropasNumero()       { return lavarropasNumero; }
+    public TipoLavado getTipoLavado()      { return tipoLavado; }
     public JabonCatalogo getJabon()        { return jabon; }
     public BigDecimal getLitrosJabon()     { return litrosJabon; }
     public boolean isSuavizante()          { return suavizante; }

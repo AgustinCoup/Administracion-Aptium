@@ -14,7 +14,7 @@ class CicloLavaderoTest {
 
     @Test
     void estaActivo_cuandoFechaFinEsNull() {
-        CicloLavadero ciclo = new CicloLavadero(1, 3, SKIP,
+        CicloLavadero ciclo = new CicloLavadero(1, 3, TipoLavado.SUCIO, SKIP,
                 new BigDecimal("1.5"), false, false, null,
                 LocalDateTime.now(), null);
         assertTrue(ciclo.estaActivo());
@@ -23,7 +23,7 @@ class CicloLavaderoTest {
     @Test
     void noEstaActivo_cuandoTieneFechaFin() {
         LocalDateTime fin = LocalDateTime.now();
-        CicloLavadero ciclo = new CicloLavadero(1, 3, SKIP,
+        CicloLavadero ciclo = new CicloLavadero(1, 3, TipoLavado.SUCIO, SKIP,
                 new BigDecimal("1.5"), false, false, null,
                 LocalDateTime.now().minusHours(1), fin);
         assertFalse(ciclo.estaActivo());
@@ -31,7 +31,7 @@ class CicloLavaderoTest {
 
     @Test
     void getEstado_esFinalizado_cuandoTieneFechaFin() {
-        CicloLavadero ciclo = new CicloLavadero(1, 3, SKIP,
+        CicloLavadero ciclo = new CicloLavadero(1, 3, TipoLavado.SUCIO, SKIP,
                 new BigDecimal("1.5"), false, false, null,
                 LocalDateTime.now().minusHours(1), LocalDateTime.now());
         assertEquals(CicloLavadero.ESTADO_FINALIZADO, ciclo.getEstado());
@@ -43,11 +43,12 @@ class CicloLavaderoTest {
         BigDecimal litrosJabon = new BigDecimal("2.00");
         BigDecimal litrosTotales = new BigDecimal("30.00");
 
-        CicloLavadero ciclo = new CicloLavadero(5, 7, LIDER,
+        CicloLavadero ciclo = new CicloLavadero(5, 7, TipoLavado.PODRIDO, LIDER,
                 litrosJabon, true, true, litrosTotales, inicio, null);
 
         assertEquals(5, ciclo.getId());
         assertEquals(7, ciclo.getLavarropasNumero());
+        assertEquals(TipoLavado.PODRIDO, ciclo.getTipoLavado());
         assertEquals(LIDER, ciclo.getJabon());
         assertEquals(0, litrosJabon.compareTo(ciclo.getLitrosJabon()));
         assertTrue(ciclo.isSuavizante());
@@ -60,7 +61,7 @@ class CicloLavaderoTest {
 
     @Test
     void getMateriales_devuelveListaDefensiva() {
-        CicloLavadero ciclo = new CicloLavadero(1, 1, SKIP,
+        CicloLavadero ciclo = new CicloLavadero(1, 1, TipoLavado.LIMPIO, SKIP,
                 new BigDecimal("1.0"), false, false, null,
                 LocalDateTime.now(), null);
         ciclo.getMateriales().add(new ElementoCicloItem(1, 1, "x", 1, 0, "y"));

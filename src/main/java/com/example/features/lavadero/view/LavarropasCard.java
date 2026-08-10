@@ -2,6 +2,7 @@ package com.example.features.lavadero.view;
 
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.view.helpers.LavarropasCardTableModel;
 import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.TableStyler;
@@ -32,6 +33,7 @@ public class LavarropasCard extends JPanel {
     private final JLabel lblTitulo;
     private final JLabel lblEstado  = new JLabel("[LIBRE]");
 
+    private final JComboBox<TipoLavado>    cmbTipoLavado    = new JComboBox<>(TipoLavado.values());
     private final JComboBox<JabonCatalogo> cmbJabon         = new JComboBox<>();
     private final JTextField              txtLitrosJabon   = new JTextField(4);
     private final JCheckBox               chkSuavizante    = new JCheckBox("Suavizante");
@@ -49,7 +51,7 @@ public class LavarropasCard extends JPanel {
     private boolean collapsed   = false;
 
     private Runnable onAccion;
-    private Runnable onLitrosJabonChanged;
+    private Runnable onConfiguracionChanged;
 
     public LavarropasCard(int numero) {
         this.numero    = numero;
@@ -108,12 +110,18 @@ public class LavarropasCard extends JPanel {
         config.setLayout(new BoxLayout(config, BoxLayout.Y_AXIS));
         config.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
-        for (JComponent c : new JComponent[]{cmbJabon, txtLitrosJabon, chkSuavizante, chkPotenciador, txtLitrosTotales}) {
+        for (JComponent c : new JComponent[]{cmbTipoLavado, cmbJabon, txtLitrosJabon,
+                                            chkSuavizante, chkPotenciador, txtLitrosTotales}) {
             c.setFont(FONT_CONFIG);
         }
         RestriccionesCampo.soloNumerosDecimales(txtLitrosJabon);
         RestriccionesCampo.soloNumerosDecimales(txtLitrosTotales);
 
+        // Obligatorio y sin default: arranca vacío para forzar una elección explícita.
+        cmbTipoLavado.setSelectedItem(null);
+        cmbTipoLavado.addActionListener(e -> notificarConfiguracionChanged());
+
+        config.add(rowPanel("Tipo:", cmbTipoLavado));
         config.add(rowPanel("Jabón:", cmbJabon));
         config.add(rowPanel("mL Jabón:", txtLitrosJabon));
         JPanel chkRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 1));
@@ -123,15 +131,17 @@ public class LavarropasCard extends JPanel {
         config.add(rowPanel("L Tot.:", txtLitrosTotales));
 
         txtLitrosJabon.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e)  { notificar(); }
-            @Override public void removeUpdate(DocumentEvent e)  { notificar(); }
-            @Override public void changedUpdate(DocumentEvent e) { notificar(); }
-            private void notificar() {
-                if (onLitrosJabonChanged != null) SwingUtilities.invokeLater(onLitrosJabonChanged);
-            }
+            @Override public void insertUpdate(DocumentEvent e)  { notificarConfiguracionChanged(); }
+            @Override public void removeUpdate(DocumentEvent e)  { notificarConfiguracionChanged(); }
+            @Override public void changedUpdate(DocumentEvent e) { notificarConfiguracionChanged(); }
         });
 
         return config;
+    }
+
+    /** Un solo canal para todos los campos obligatorios de la config (mL de jabón y tipo). */
+    private void notificarConfiguracionChanged() {
+        if (onConfiguracionChanged != null) SwingUtilities.invokeLater(onConfiguracionChanged);
     }
 
     private static JPanel rowPanel(String labelText, JComponent field) {
@@ -231,6 +241,9 @@ public class LavarropasCard extends JPanel {
 
     // ── Config getters ────────────────────────────────────────────────────────
 
+    /** Puede ser {@code null}: el combo arranca sin selección y el tipo es obligatorio. */
+    public TipoLavado getTipoLavado() { return (TipoLavado) cmbTipoLavado.getSelectedItem(); }
+
     public JabonCatalogo getJabon()  { return (JabonCatalogo) cmbJabon.getSelectedItem(); }
 
     public void setJabones(java.util.List<JabonCatalogo> jabones) {
@@ -265,14 +278,14 @@ public class LavarropasCard extends JPanel {
 
     // ── Listeners ────────────────────────────────────────────────────────────
 
-    public void setOnAccion(Runnable r)             { this.onAccion = r; }
-    public void setOnLitrosJabonChanged(Runnable r) { this.onLitrosJabonChanged = r; }
+    public void setOnAccion(Runnable r)               { this.onAccion = r; }
+    public void setOnConfiguracionChanged(Runnable r) { this.onConfiguracionChanged = r; }
 
     public void actualizarBtnAccion() {
         if (activo) {
             btnAccion.setEnabled(true);
         } else {
-            btnAccion.setEnabled(tieneItems() && getLitrosJabon() != null);
+            btnAccion.setEnabled(tieneItems() && getLitrosJabon() != null && getTipoLavado() != null);
         }
     }
 }

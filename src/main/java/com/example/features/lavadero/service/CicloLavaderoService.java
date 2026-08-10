@@ -38,6 +38,8 @@ public class CicloLavaderoService {
         v.addErrorIf(config == null,
             "Debe configurar el ciclo.");
         if (config != null) {
+            v.addErrorIf(config.tipoLavado() == null,
+                "Debe seleccionar el tipo de lavado.");
             v.addErrorIf(config.jabon() == null,
                 "Debe seleccionar un jabón.");
             v.addErrorIf(config.litrosJabon() == null || config.litrosJabon().compareTo(BigDecimal.ZERO) <= 0,

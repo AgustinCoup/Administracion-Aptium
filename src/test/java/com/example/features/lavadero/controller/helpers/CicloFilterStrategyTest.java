@@ -2,6 +2,7 @@ package com.example.features.lavadero.controller.helpers;
 
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.TipoLavado;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -132,7 +133,7 @@ public class CicloFilterStrategyTest {
 
     private CicloLavadero ciclo(int id, int lavarropas, LocalDateTime fechaFin) {
         return new CicloLavadero(
-            id, lavarropas, SKIP,
+            id, lavarropas, TipoLavado.SUCIO, SKIP,
             new BigDecimal("1.5"), false, false, null,
             BASE.minusDays(7), fechaFin
         );
@@ -140,7 +141,7 @@ public class CicloFilterStrategyTest {
 
     private CicloLavadero cicloActivo(int id, int lavarropas) {
         return new CicloLavadero(
-            id, lavarropas, SKIP,
+            id, lavarropas, TipoLavado.SUCIO, SKIP,
             new BigDecimal("1.5"), false, false, null,
             BASE.minusDays(1), null
         );
