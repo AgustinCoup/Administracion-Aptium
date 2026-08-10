@@ -1,7 +1,6 @@
 package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
-import com.example.features.lavadero.controller.helpers.ElementoCicloTransferable;
 import com.example.features.lavadero.controller.helpers.StagingCiclos;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
@@ -17,13 +16,14 @@ import com.example.features.lavadero.view.EquipoSubdivisionDialog;
 import com.example.features.lavadero.view.LavarropasCard;
 import com.example.features.lavadero.view.PantallaCiclos;
 import com.example.features.lavadero.view.helpers.LavarropasItem;
+import com.example.ui.common.dnd.LocalObjectFlavors;
+import com.example.ui.common.dnd.MultiRowTableTransferHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.Transferable;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.math.BigDecimal;
@@ -48,19 +48,7 @@ public class CiclosController {
     private List<ElementoCicloItem>     elementosDisponibles  = new ArrayList<>();
     private List<LavarropasItem>        lavarropasItems       = new ArrayList<>();
 
-    public static final DataFlavor ELEMENTO_CICLO_FLAVOR;
-
-    static {
-        DataFlavor flavor = null;
-        try {
-            flavor = new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType
-                + ";class=\"" + ElementoCicloItem.class.getName() + "\"");
-        } catch (ClassNotFoundException e) {
-            LoggerFactory.getLogger(CiclosController.class)
-                .error("No se pudo registrar DataFlavor para DnD de ciclos", e);
-        }
-        ELEMENTO_CICLO_FLAVOR = flavor;
-    }
+    public static final DataFlavor ELEMENTO_CICLO_FLAVOR = LocalObjectFlavors.forList();
 
     public CiclosController(PantallaCiclos pantalla, CicloLavaderoService cicloLavaderoService,
                              LavarropasService lavarropasService,
@@ -82,9 +70,7 @@ public class CiclosController {
             int num = entry.getKey();
             LavarropasCard card = entry.getValue();
             card.setJabones(jabones);
-            card.getTabla().setDropMode(DropMode.ON);
-            card.getTabla().setFillsViewportHeight(true);
-            card.getTabla().setTransferHandler(new CicloTransferHandler(num));
+            configurarDnDCard(num, card);
             card.setOnAccion(() -> {
                 if (card.estaActivo()) finalizarCiclo(num);
                 else lanzarCiclo(num);
@@ -176,87 +162,87 @@ public class CiclosController {
         tablaDisponibles.setDragEnabled(true);
         tablaDisponibles.setDropMode(DropMode.ON);
         tablaDisponibles.setFillsViewportHeight(true);
-        tablaDisponibles.setTransferHandler(new DisponiblesTransferHandler());
+        tablaDisponibles.setTransferHandler(crearHandlerDisponibles());
     }
 
-    // ── DisponiblesTransferHandler ────────────────────────────────────────────
-
-    private class DisponiblesTransferHandler extends TransferHandler {
-        @Override public int getSourceActions(JComponent c) { return COPY; }
-
-        @Override
-        protected Transferable createTransferable(JComponent c) {
-            ElementoCicloItem item = pantalla.getElementoDisponibleSeleccionado();
-            if (item == null) return null;
-            return new ElementoCicloTransferable(item, ELEMENTO_CICLO_FLAVOR);
-        }
-
-        @Override public boolean canImport(TransferSupport support) { return false; }
+    /** La tabla de la card sólo recibe drops; arrastrar desde ella llega en S8. */
+    private void configurarDnDCard(int num, LavarropasCard card) {
+        if (ELEMENTO_CICLO_FLAVOR == null) return;
+        JTable tabla = card.getTabla();
+        tabla.setDropMode(DropMode.ON);
+        tabla.setFillsViewportHeight(true);
+        tabla.setTransferHandler(crearHandlerCard(num));
     }
 
-    // ── CicloTransferHandler (uno por lavarropas) ─────────────────────────────
+    // ── Tabla Disponibles: ORIGEN para drag (COPY) ────────────────────────────
 
-    private class CicloTransferHandler extends TransferHandler {
-        private final int lavarropasNum;
+    private MultiRowTableTransferHandler<ElementoCicloItem> crearHandlerDisponibles() {
+        return new MultiRowTableTransferHandler.Builder<ElementoCicloItem>(ELEMENTO_CICLO_FLAVOR)
+            .sourceActions(TransferHandler.COPY)
+            .selectionSupplier(pantalla::getElementosDisponiblesSeleccionados)
+            .canImportExtra(support -> false) // el arrastre inverso (card → disponibles) llega en S8
+            .build();
+    }
 
-        CicloTransferHandler(int num) { this.lavarropasNum = num; }
+    // ── Tabla de cada card: DESTINO para drop ─────────────────────────────────
 
-        @Override public int getSourceActions(JComponent c) { return NONE; }
-
-        @Override
-        public boolean canImport(TransferSupport support) {
-            if (!support.isDrop()) return false;
-            if (!support.isDataFlavorSupported(ELEMENTO_CICLO_FLAVOR)) return false;
-            if (ciclosActivos.containsKey(lavarropasNum)) return false;
-            support.setShowDropLocation(true);
-            return true;
-        }
-
-        @Override
-        public boolean importData(TransferSupport support) {
-            if (!canImport(support)) return false;
-            try {
-                ElementoCicloItem item = (ElementoCicloItem) support.getTransferable()
-                    .getTransferData(ELEMENTO_CICLO_FLAVOR);
-                if (item.isEquipo()) {
-                    SwingUtilities.invokeLater(() -> procesarDropEquipo(item, lavarropasNum));
-                } else {
-                    SwingUtilities.invokeLater(() -> procesarDropRegular(item, lavarropasNum));
-                }
-                return true;
-            } catch (Exception e) {
-                log.error("Error al procesar drop en lavarropas {}", lavarropasNum, e);
-                SwingUtilities.invokeLater(() ->
-                    pantalla.mostrarAdvertencia(Constantes.Mensajes.ERROR_GUARDAR_DATOS));
-                return false;
-            }
-        }
+    private MultiRowTableTransferHandler<ElementoCicloItem> crearHandlerCard(int lavarropasNum) {
+        return new MultiRowTableTransferHandler.Builder<ElementoCicloItem>(ELEMENTO_CICLO_FLAVOR)
+            .sourceActions(TransferHandler.NONE)
+            .canImportExtra(support -> !ciclosActivos.containsKey(lavarropasNum))
+            // invokeLater: los diálogos de cantidad no deben bloquear el EDT del drop.
+            .onImport(items -> SwingUtilities.invokeLater(() -> procesarDrop(items, lavarropasNum)))
+            .build();
     }
 
     // ── Agregar elementos ─────────────────────────────────────────────────────
 
-    private void procesarDropRegular(ElementoCicloItem item, int lavarropasNum) {
-        int max = item.getCantidadDisponible() - item.getCantidadEnCiclo();
-        if (max <= 0) return;
-        int k = (max == 1) ? 1 : seleccionarSubcantidad(item);
-        if (k <= 0) return;
-        staging.agregarRegular(lavarropasNum, item, k);
-        refrescarDisponiblesYCards();
-    }
-
-    private void procesarDropEquipo(ElementoCicloItem item, int lavarropasNum) {
-        int max = item.getCantidadDisponible() - item.getCantidadEnCiclo();
-        if (max <= 0) return;
-        int k = (max == 1) ? 1 : seleccionarSubcantidad(item);
-        if (k <= 0) return;
-        for (int unidad = 1; unidad <= k; unidad++) {
-            abrirDialogoSubdivisionUnidad(item, lavarropasNum, unidad, k);
+    /**
+     * Alta de una tanda de elementos en un lavarropas. Por cada ítem se abre su
+     * diálogo <b>en secuencia</b>; cancelar uno saltea sólo ese ítem y sigue con el
+     * resto.
+     *
+     * <p>El refresco va una sola vez al final, no dentro de cada alta: recalcula la
+     * {@code cantidadEnCiclo} de los ítems que el propio bucle todavía está usando.
+     */
+    private void procesarDrop(List<ElementoCicloItem> items, int lavarropasNum) {
+        if (items == null || items.isEmpty()) return;
+        for (ElementoCicloItem item : items) {
+            if (item == null) continue;
+            if (item.isEquipo()) procesarDropEquipo(item, lavarropasNum);
+            else                 procesarDropRegular(item, lavarropasNum);
         }
         refrescarDisponiblesYCards();
     }
 
-    private int seleccionarSubcantidad(ElementoCicloItem item) {
-        int max = item.getCantidadDisponible() - item.getCantidadEnCiclo();
+    private void procesarDropRegular(ElementoCicloItem item, int lavarropasNum) {
+        int max = disponibleParaRepartir(item);
+        if (max <= 0) return;
+        int k = (max == 1) ? 1 : seleccionarSubcantidad(item, max);
+        if (k <= 0) return;
+        staging.agregarRegular(lavarropasNum, item, k);
+    }
+
+    private void procesarDropEquipo(ElementoCicloItem item, int lavarropasNum) {
+        int max = disponibleParaRepartir(item);
+        if (max <= 0) return;
+        int k = (max == 1) ? 1 : seleccionarSubcantidad(item, max);
+        if (k <= 0) return;
+        for (int unidad = 1; unidad <= k; unidad++) {
+            abrirDialogoSubdivisionUnidad(item, lavarropasNum, unidad, k);
+        }
+    }
+
+    /**
+     * Unidades del elemento que todavía se pueden repartir. Se calcula contra el
+     * staging y no contra el {@code cantidadEnCiclo} del ítem arrastrado, que sólo
+     * se actualiza en el refresco: dentro de una tanda de drops ya está viejo.
+     */
+    private int disponibleParaRepartir(ElementoCicloItem item) {
+        return item.getCantidadDisponible() - staging.cantidadStaged(item);
+    }
+
+    private int seleccionarSubcantidad(ElementoCicloItem item, int max) {
         JSpinner sp = new JSpinner(new SpinnerNumberModel(1, 1, max, 1));
         sp.setEditor(new JSpinner.NumberEditor(sp, "0"));
         JPanel panel = new JPanel(new GridBagLayout());

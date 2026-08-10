@@ -7,6 +7,7 @@ import com.example.ui.common.Estilos;
 import com.example.ui.common.LabelFactory;
 import com.example.ui.common.PanelHeader;
 import com.example.ui.common.TableStyler;
+import com.example.ui.common.dnd.TableSelectionSupport;
 
 import javax.swing.*;
 import java.awt.*;
@@ -112,7 +113,7 @@ public class PantallaCiclos extends JPanel {
 
     private JTable buildTable(javax.swing.table.AbstractTableModel model, int... centeredCols) {
         JTable t = new JTable(model);
-        t.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableSelectionSupport.enableMultiSelection(t);
         TableStyler.applyStandard(t);
         TableStyler.centerColumns(t, centeredCols);
         t.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
@@ -133,9 +134,9 @@ public class PantallaCiclos extends JPanel {
 
     public JTable getTablaDisponibles() { return tablaDisponibles; }
 
-    public ElementoCicloItem getElementoDisponibleSeleccionado() {
-        int row = tablaDisponibles.getSelectedRow();
-        return row >= 0 ? modeloDisponibles.getItemAt(row) : null;
+    /** Elementos de las filas seleccionadas en la tabla de disponibles (origen del DnD). */
+    public List<ElementoCicloItem> getElementosDisponiblesSeleccionados() {
+        return TableSelectionSupport.selectedItems(tablaDisponibles, modeloDisponibles::getItemAt);
     }
 
     // ── Cards ─────────────────────────────────────────────────────────────────

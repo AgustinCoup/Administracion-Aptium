@@ -122,36 +122,65 @@ public class StagingCiclos {
             mapa.put(item.getElementoClasificacionId(), item);
         }
 
-        Map<Integer, Integer>      regularStaged    = new HashMap<>();
-        Map<Integer, Set<Integer>> equipoInstancias = new HashMap<>();
+        regularStagedPorElemento().forEach((id, staged) -> descontar(mapa, id, staged));
+        instanciasEquipoPorElemento().forEach((id, inst) -> descontar(mapa, id, inst.size()));
 
+        return new ArrayList<>(mapa.values());
+    }
+
+    private static void descontar(Map<Integer, ElementoCicloItem> mapa, int id, int staged) {
+        ElementoCicloItem disponible = mapa.get(id);
+        if (disponible == null) return;
+        disponible.setCantidadEnCiclo(staged);
+        if (staged >= disponible.getCantidadDisponible()) mapa.remove(id);
+    }
+
+    /**
+     * Cuántas unidades de este elemento ya están repartidas en el staging, con la
+     * misma aritmética que {@link #aplicarSobreDisponibles}: los equipos cuentan por
+     * instancias, los regulares por suma de cantidades.
+     *
+     * <p>Es la fuente de verdad para saber cuánto queda por repartir: el
+     * {@code cantidadEnCiclo} del ítem arrastrado sólo se actualiza en el refresco,
+     * así que dentro de una tanda de drops múltiples ya está desactualizado.
+     */
+    public int cantidadStaged(ElementoCicloItem item) {
+        int id = item.getElementoClasificacionId();
+        return item.isEquipo()
+            ? instanciasEquipoPorElemento().getOrDefault(id, Set.of()).size()
+            : regularStagedPorElemento().getOrDefault(id, 0);
+    }
+
+    /** {@code elementoClasificacionId → suma de cantidades staged} de los no-equipos. */
+    private Map<Integer, Integer> regularStagedPorElemento() {
+        Map<Integer, Integer> staged = new HashMap<>();
         for (List<ElementoCicloItem> pendientes : pendientesPorLavarropas.values()) {
             for (ElementoCicloItem p : pendientes) {
-                int id = p.getElementoClasificacionId();
-                if (p.isEquipo() && p.getInstanciaId() != null) {
-                    equipoInstancias.computeIfAbsent(id, k -> new HashSet<>()).add(p.getInstanciaId());
-                } else {
-                    regularStaged.merge(id, p.getCantidadEnCiclo(), Integer::sum);
+                if (!esFraccionDeEquipo(p)) {
+                    staged.merge(p.getElementoClasificacionId(), p.getCantidadEnCiclo(), Integer::sum);
                 }
             }
         }
+        return staged;
+    }
 
-        regularStaged.forEach((id, staged) -> {
-            ElementoCicloItem d = mapa.get(id);
-            if (d == null) return;
-            d.setCantidadEnCiclo(staged);
-            if (staged >= d.getCantidadDisponible()) mapa.remove(id);
-        });
+    /** {@code elementoClasificacionId → instanciaIds} de las fracciones de equipo staged. */
+    private Map<Integer, Set<Integer>> instanciasEquipoPorElemento() {
+        Map<Integer, Set<Integer>> instancias = new HashMap<>();
+        for (List<ElementoCicloItem> pendientes : pendientesPorLavarropas.values()) {
+            for (ElementoCicloItem p : pendientes) {
+                if (esFraccionDeEquipo(p)) {
+                    instancias.computeIfAbsent(p.getElementoClasificacionId(), k -> new HashSet<>())
+                        .add(p.getInstanciaId());
+                }
+            }
+        }
+        return instancias;
+    }
 
-        equipoInstancias.forEach((id, instancias) -> {
-            int staged = instancias.size();
-            ElementoCicloItem d = mapa.get(id);
-            if (d == null) return;
-            d.setCantidadEnCiclo(staged);
-            if (staged >= d.getCantidadDisponible()) mapa.remove(id);
-        });
-
-        return new ArrayList<>(mapa.values());
+    /** Un equipo sin {@code instanciaId} no se repartió por subdivisión: cuenta como regular. */
+    private static boolean esFraccionDeEquipo(ElementoCicloItem item) {
+        return item.isEquipo() && item.getInstanciaId() != null;
     }
 
     /** {@code true} si algún lavarropas tiene elementos cargados sin lanzar. */

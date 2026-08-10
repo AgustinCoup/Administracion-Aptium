@@ -160,6 +160,54 @@ class StagingCiclosTest {
         assertEquals(0, buscar(resultado, 7).getCantidadEnCiclo(), "El ítem presente queda intacto");
     }
 
+    // ── cantidadStaged: cuánto queda por repartir durante una tanda de drops ──
+
+    @Test
+    void cantidadStaged_sinNadaCargado_esCero() {
+        assertEquals(0, staging.cantidadStaged(regular(7, "Sábana", 10)));
+    }
+
+    @Test
+    void cantidadStaged_regularEnVariosLavarropas_sumaLasCantidades() {
+        ElementoCicloItem sabana = regular(7, "Sábana", 10);
+        staging.agregarRegular(1, sabana, 3);
+        staging.agregarRegular(2, sabana, 4);
+
+        assertEquals(7, staging.cantidadStaged(sabana));
+    }
+
+    @Test
+    void cantidadStaged_equipoRepartido_cuentaInstancias_noFracciones() {
+        ElementoCicloItem eq = equipo(9, "Caja de trauma", 5);
+        // Una instancia partida en dos lavarropas + otra instancia entera: 2 unidades.
+        staging.agregarFraccionEquipo(1, fraccion(eq, 500));
+        staging.agregarFraccionEquipo(2, fraccion(eq, 500));
+        staging.agregarFraccionEquipo(3, fraccion(eq, 501));
+
+        assertEquals(2, staging.cantidadStaged(eq));
+    }
+
+    @Test
+    void cantidadStaged_noMezclaElementosDistintos() {
+        staging.agregarRegular(1, regular(7, "Sábana", 10), 3);
+
+        assertEquals(0, staging.cantidadStaged(regular(8, "Toalla", 10)));
+    }
+
+    /**
+     * El caso que rompía el drop múltiple: tras la primera alta, el ítem arrastrado
+     * sigue con {@code cantidadEnCiclo} viejo (sólo se actualiza en el refresco),
+     * pero el staging ya sabe la verdad.
+     */
+    @Test
+    void cantidadStaged_esIndependienteDelCantidadEnCicloDelItemArrastrado() {
+        ElementoCicloItem arrastrado = regular(7, "Sábana", 10);
+        staging.agregarRegular(1, arrastrado, 4);
+
+        assertEquals(0, arrastrado.getCantidadEnCiclo());
+        assertEquals(4, staging.cantidadStaged(arrastrado));
+    }
+
     @Test
     void hayPendientes_reflejaElEstado() {
         assertFalse(staging.hayPendientes());

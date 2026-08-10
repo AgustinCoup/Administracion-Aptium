@@ -6,6 +6,7 @@ import com.example.features.lotes.controller.helpers.AgrupadorIngresosLote;
 import com.example.features.lotes.controller.helpers.ConstructorMaterialesDisponibles;
 import com.example.features.lotes.controller.helpers.EstadoStaging;
 import com.example.features.lotes.controller.helpers.ReconciliadorPendientes;
+import com.example.ui.common.dnd.LocalObjectFlavors;
 import com.example.ui.common.dnd.MultiRowTableTransferHandler;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.features.autoclaves.model.Autoclave;
@@ -83,18 +84,7 @@ public class LotesController {
     private boolean arrastrandoDesdeAutoclave = false;
 
     // DataFlavor que transporta la List<MaterialLoteItem> arrastrada en la misma JVM
-    public static final DataFlavor MATERIAL_LOTE_FLAVOR;
-
-    static {
-        DataFlavor flavor = null;
-        try {
-            flavor = new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType +
-                    ";class=\"" + java.util.List.class.getName() + "\"");
-        } catch (ClassNotFoundException e) {
-            log.error("No se pudo registrar el DataFlavor para drag-and-drop", e);
-        }
-        MATERIAL_LOTE_FLAVOR = flavor;
-    }
+    public static final DataFlavor MATERIAL_LOTE_FLAVOR = LocalObjectFlavors.forList();
 
     /**
      * Alcance: ciclo de vida del lote (lanzar, finalizar, marcar fallo). Los

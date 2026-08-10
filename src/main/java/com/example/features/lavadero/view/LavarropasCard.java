@@ -6,6 +6,7 @@ import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.view.helpers.LavarropasCardTableModel;
 import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.TableStyler;
+import com.example.ui.common.dnd.TableSelectionSupport;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -76,7 +77,7 @@ public class LavarropasCard extends JPanel {
 
         // Center: table
         tabla = new JTable(tableModel);
-        tabla.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableSelectionSupport.enableMultiSelection(tabla);
         TableStyler.applyStandard(tabla);
         TableStyler.centerColumns(tabla, 1);
         tabla.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
@@ -275,6 +276,11 @@ public class LavarropasCard extends JPanel {
     // ── DnD ──────────────────────────────────────────────────────────────────
 
     public JTable getTabla() { return tabla; }
+
+    /** Ítems de las filas seleccionadas en la tabla de la card. */
+    public List<ElementoCicloItem> getItemsSeleccionados() {
+        return TableSelectionSupport.selectedItems(tabla, tableModel::getItemAt);
+    }
 
     // ── Listeners ────────────────────────────────────────────────────────────
 
