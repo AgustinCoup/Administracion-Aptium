@@ -1,5 +1,6 @@
 package com.example.features.lavadero.service;
 
+import com.example.common.constants.Constantes;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.model.CicloLavadero;
@@ -33,8 +34,8 @@ public class CicloLavaderoService {
                              List<ElementoCicloMovimiento> movimientos) {
         ValidationException.Builder v = ValidationException.builder();
 
-        v.addErrorIf(lavarropasNumero < 1 || lavarropasNumero > 13,
-            "El número de lavarropas debe estar entre 1 y 13.");
+        v.addErrorIf(lavarropasNumero < 1 || lavarropasNumero > Constantes.Lavadero.CANTIDAD_LAVARROPAS,
+            "El número de lavarropas debe estar entre 1 y " + Constantes.Lavadero.CANTIDAD_LAVARROPAS + ".");
         v.addErrorIf(jabon == null,
             "Debe seleccionar un jabón.");
         v.addErrorIf(litrosJabon == null || litrosJabon.compareTo(BigDecimal.ZERO) <= 0,

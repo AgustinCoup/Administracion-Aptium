@@ -47,30 +47,7 @@ public class PantallaCiclos extends JPanel {
             BorderLayout.NORTH);
         panelTop.add(scroll(tablaDisponibles), BorderLayout.CENTER);
 
-        // GridBagLayout con fill=HORIZONTAL y weighty=0: cada card conserva su propio
-        // preferred height (no se estira verticalmente) y se alinea al tope de su celda.
-        // Cuando todos los cards de una fila están contraídos la fila mide ~28px.
-        JPanel panelCards = new JPanel(new GridBagLayout());
-        panelCards.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill    = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 0.25;
-        gbc.weighty = 0.0;
-        gbc.anchor  = GridBagConstraints.NORTH;
-        gbc.insets  = new Insets(4, 4, 4, 4);
-
-        for (int i = 1; i <= 13; i++) {
-            gbc.gridx = (i - 1) % 4;
-            gbc.gridy = (i - 1) / 4;
-            LavarropasCard card = new LavarropasCard(i);
-            cards.put(i, card);
-            panelCards.add(card, gbc);
-        }
-        // Relleno para las tres posiciones vacías de la última fila (13 en col 0, rest vacío)
-        gbc.gridx = 1; gbc.gridy = 3; panelCards.add(new JPanel(), gbc);
-        gbc.gridx = 2; gbc.gridy = 3; panelCards.add(new JPanel(), gbc);
-        gbc.gridx = 3; gbc.gridy = 3; panelCards.add(new JPanel(), gbc);
+        JPanel panelCards = construirGrillaDeCards();
 
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
             panelTop,
@@ -90,6 +67,47 @@ public class PantallaCiclos extends JPanel {
         panelBotones.add(btnLanzarTodos);
         panelBotones.add(btnFinalizarTodos);
         add(panelBotones, BorderLayout.SOUTH);
+    }
+
+    /**
+     * Grilla de cards de lavarropas, de {@code LAVARROPAS_POR_FILA} por fila.
+     *
+     * <p>GridBagLayout con fill=HORIZONTAL y weighty=0: cada card conserva su propio
+     * preferred height (no se estira verticalmente) y se alinea al tope de su celda.
+     * Cuando todos los cards de una fila están contraídos la fila mide ~28px.</p>
+     */
+    private JPanel construirGrillaDeCards() {
+        final int porFila = Constantes.Lavadero.LAVARROPAS_POR_FILA;
+        final int total   = Constantes.Lavadero.CANTIDAD_LAVARROPAS;
+
+        JPanel panelCards = new JPanel(new GridBagLayout());
+        panelCards.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill    = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0 / porFila;
+        gbc.weighty = 0.0;
+        gbc.anchor  = GridBagConstraints.NORTH;
+        gbc.insets  = new Insets(4, 4, 4, 4);
+
+        for (int i = 1; i <= total; i++) {
+            gbc.gridx = (i - 1) % porFila;
+            gbc.gridy = (i - 1) / porFila;
+            LavarropasCard card = new LavarropasCard(i);
+            cards.put(i, card);
+            panelCards.add(card, gbc);
+        }
+
+        // Relleno de las celdas vacías de la última fila: sin ellos las cards de esa fila
+        // se estirarían para ocupar todo el ancho en vez de conservar el de su columna.
+        int sobrantes  = (porFila - total % porFila) % porFila;
+        int ultimaFila = (total - 1) / porFila;
+        for (int c = 0; c < sobrantes; c++) {
+            gbc.gridx = porFila - sobrantes + c;
+            gbc.gridy = ultimaFila;
+            panelCards.add(new JPanel(), gbc);
+        }
+        return panelCards;
     }
 
     private JTable buildTable(javax.swing.table.AbstractTableModel model, int... centeredCols) {

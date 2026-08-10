@@ -289,6 +289,18 @@ public final class Constantes {
     }
 
     /**
+     * Constantes del lavadero (cantidad de lavarropas y su disposición en pantalla).
+     */
+    public static final class Lavadero {
+        /** Cantidad de lavarropas del lavadero. Constante de negocio: valida el número de ciclo. */
+        public static final int CANTIDAD_LAVARROPAS = 13;
+        /** Cards de lavarropas por fila en la grilla de la pantalla Ciclos. */
+        public static final int LAVARROPAS_POR_FILA = 3;
+
+        private Lavadero() {}
+    }
+
+    /**
      * Textos reutilizables de UI (labels, cabeceras, placeholders).
      */
     public static final class Textos {
