@@ -1,4 +1,4 @@
-package com.example.features.equipos.ortopedias.service;
+﻿package com.example.features.equipos.ortopedias.service;
 
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ValidationException;
@@ -39,7 +39,7 @@ class EquipoCorreccionServiceTest {
         service = new EquipoCorreccionService(equipoDAO, materialDAO, auditoriaDAO, catalogoDAO);
     }
 
-    // ── Constructor ──────────────────────────────────────────────────────────
+    // â”€â”€ Constructor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void constructor_equipoDAONull_lanzaIllegalArgument() {
@@ -65,7 +65,7 @@ class EquipoCorreccionServiceTest {
             () -> new EquipoCorreccionService(equipoDAO, materialDAO, auditoriaDAO, null));
     }
 
-    // ── modificarCantidadMaterial — validaciones ──────────────────────────────
+    // â”€â”€ modificarCantidadMaterial â€” validaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void modificarCantidad_equipoIdNull_lanzaValidation() {
@@ -130,15 +130,15 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(materialDAO.obtenerCantidad(2)).thenReturn(3);
 
-        boolean resultado = service.modificarCantidadMaterial(1, 2, 5, "corrección");
+        boolean resultado = service.modificarCantidadMaterial(1, 2, 5, "correcciÃ³n");
 
         assertTrue(resultado);
         verify(materialDAO).actualizarCantidad(2, 5);
         verify(auditoriaDAO).registrarCambio(eq(1), eq(2), eq("MODIFICACION_CANTIDAD"),
-            eq("cantidad"), eq("3"), eq("5"), eq("corrección"), eq("ORTOPEDIA"));
+            eq("cantidad"), eq("3"), eq("5"), eq("correcciÃ³n"), eq("ORTOPEDIA"));
     }
 
-    // ── modificarCodigoMaterial — validaciones ────────────────────────────────
+    // â”€â”€ modificarCodigoMaterial â€” validaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void modificarCodigo_equipoIdNull_lanzaValidation() {
@@ -179,7 +179,7 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(materialDAO.obtenerMaterial(1)).thenReturn(
             new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
-        when(catalogoDAO.obtenerDescripcion(200)).thenReturn(null);
+        when(catalogoDAO.obtenerDescripcionVigente(200)).thenReturn(null);
 
         assertThrows(ValidationException.class,
             () -> service.modificarCodigoMaterial(1, 1, 200, "motivo"));
@@ -190,7 +190,7 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(materialDAO.obtenerMaterial(1)).thenReturn(
             new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
-        when(catalogoDAO.obtenerDescripcion(200)).thenReturn("DescNueva");
+        when(catalogoDAO.obtenerDescripcionVigente(200)).thenReturn("DescNueva");
 
         boolean resultado = service.modificarCodigoMaterial(1, 1, 200, "motivo");
 
@@ -200,7 +200,7 @@ class EquipoCorreccionServiceTest {
             eq("codigo_catalogo"), anyString(), anyString(), eq("motivo"), eq("ORTOPEDIA"));
     }
 
-    // ── eliminarEquipo ────────────────────────────────────────────────────────
+    // â”€â”€ eliminarEquipo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void eliminarEquipo_equipoIdNull_lanzaValidation() {
@@ -253,14 +253,14 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(e);
         when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
             any(), any(), any(), anyString(), anyString())).thenReturn(true);
-        // El DELETE no toca ninguna fila (o falla): el service no debe reportar éxito.
+        // El DELETE no toca ninguna fila (o falla): el service no debe reportar Ã©xito.
         when(equipoDAO.eliminar("1")).thenReturn(false);
 
         assertThrows(DatabaseException.class,
             () -> service.eliminarEquipo(1, "motivo"));
     }
 
-    // ── eliminarMaterial ──────────────────────────────────────────────────────
+    // â”€â”€ eliminarMaterial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void eliminarMaterial_equipoIdNull_lanzaValidation() {
@@ -304,7 +304,7 @@ class EquipoCorreccionServiceTest {
         verify(materialDAO).eliminarMaterialesPorCodigo(1, 100);
     }
 
-    // ── agregarMaterialAEquipo ────────────────────────────────────────────────
+    // â”€â”€ agregarMaterialAEquipo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void agregarMaterial_equipoIdNull_lanzaValidation() {
@@ -346,7 +346,7 @@ class EquipoCorreccionServiceTest {
     @Test
     void agregarMaterial_codigoNoExisteEnCatalogo_lanzaValidation() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
-        when(catalogoDAO.obtenerDescripcion(100)).thenReturn(null);
+        when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn(null);
 
         assertThrows(ValidationException.class,
             () -> service.agregarMaterialAEquipo(1, 100, 2, "motivo"));
@@ -355,15 +355,15 @@ class EquipoCorreccionServiceTest {
     @Test
     void agregarMaterial_valido_insertaYAudita() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
-        when(catalogoDAO.obtenerDescripcion(100)).thenReturn("Guante");
+        when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn("Guante");
         when(materialDAO.agregarMaterial(1, 100, 2)).thenReturn(99);
 
-        assertTrue(service.agregarMaterialAEquipo(1, 100, 2, "reposición"));
+        assertTrue(service.agregarMaterialAEquipo(1, 100, 2, "reposiciÃ³n"));
         verify(auditoriaDAO).registrarCambio(eq(1), eq(99), eq("ADICION_MATERIAL"),
-            eq("material_nuevo"), isNull(), eq("2"), eq("reposición"), eq("ORTOPEDIA"));
+            eq("material_nuevo"), isNull(), eq("2"), eq("reposiciÃ³n"), eq("ORTOPEDIA"));
     }
 
-    // ── consultas ─────────────────────────────────────────────────────────────
+    // â”€â”€ consultas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void obtenerEquiposNuevos_delegaADAO() {
@@ -380,17 +380,17 @@ class EquipoCorreccionServiceTest {
 
     @Test
     void obtenerDescripcionMaterial_delegaADAO() {
-        when(catalogoDAO.obtenerDescripcion(100)).thenReturn("Guante");
+        when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn("Guante");
         assertEquals("Guante", service.obtenerDescripcionMaterial(100));
     }
 
     @Test
     void obtenerDescripcionMaterial_daoLanzaException_retornaNull() {
-        when(catalogoDAO.obtenerDescripcion(100)).thenThrow(new DatabaseException("error BD"));
+        when(catalogoDAO.obtenerDescripcionVigente(100)).thenThrow(new DatabaseException("error BD"));
         assertNull(service.obtenerDescripcionMaterial(100));
     }
 
-    // ── helpers ──────────────────────────────────────────────────────────────
+    // â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private Equipo equipoConEstado(EstadoEquipo estado) {
         Equipo e = new Equipo();
@@ -401,3 +401,4 @@ class EquipoCorreccionServiceTest {
         return e;
     }
 }
+

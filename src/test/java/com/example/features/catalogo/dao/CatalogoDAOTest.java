@@ -46,11 +46,30 @@ class CatalogoDAOTest extends AbstractDAOTest {
         assertNull(dao.obtenerDescripcion(99999));
     }
 
+    // ── obtenerDescripcionVigente ─────────────────────────────────────────────
+
+    @Test
+    void obtenerDescripcionVigente_codigoVigente_retornaDescripcion() {
+        assertEquals("TORNILLERA", dao.obtenerDescripcionVigente(400));
+    }
+
+    @Test
+    void obtenerDescripcionVigente_codigoDadoDeBaja_retornaNull() {
+        // el 414 quedó fuera del listado oficial: no debe poder cargarse
+        assertNull(dao.obtenerDescripcionVigente(414));
+    }
+
+    @Test
+    void obtenerDescripcion_codigoDadoDeBaja_sigueResolviendoElHistorico() {
+        // la fila sobrevive para que los materiales ya guardados no queden huérfanos
+        assertNotNull(dao.obtenerDescripcion(414));
+    }
+
     // ── obtenerVolumen ────────────────────────────────────────────────────────
 
     @Test
     void obtenerVolumen_codigoExistente_retornaVolumen() {
-        // código 400 "Tornillera" tiene volumen 15 (seed)
+        // código 400 "TORNILLERA" tiene volumen 15 (seed)
         assertEquals(15, dao.obtenerVolumen(400));
     }
 
@@ -65,7 +84,7 @@ class CatalogoDAOTest extends AbstractDAOTest {
     void obtenerTodasLasDescripciones_retornaMapaNonEmpty() {
         Map<Integer, String> mapa = dao.obtenerTodasLasDescripciones();
         assertFalse(mapa.isEmpty());
-        assertEquals("Tornillera", mapa.get(400));
+        assertEquals("TORNILLERA", mapa.get(400));
     }
 
     // ── obtenerTodosLosVolumenes ──────────────────────────────────────────────
