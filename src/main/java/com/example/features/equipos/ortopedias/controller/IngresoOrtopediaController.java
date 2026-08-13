@@ -22,7 +22,7 @@ import com.example.ui.events.OnEquipoGuardadoListener;
 import java.awt.CardLayout;
 import javax.swing.JPanel;
 
-public class OrthopediaInputController extends EquipoInputControllerBase<PantallaIngresoOrtopedia> {
+public class IngresoOrtopediaController extends EquipoInputControllerBase<PantallaIngresoOrtopedia> {
 
     private final GestorValidacionFormulario gestorValidacion;
     private final ConstructorEquipo          constructorEquipo;
@@ -42,7 +42,7 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
      * Alcance: alta de un ingreso de ortopedia, con autocompletado contra el
      * catálogo de códigos, profesionales e instituciones.
      */
-    public OrthopediaInputController(PantallaIngresoOrtopedia panel,
+    public IngresoOrtopediaController(PantallaIngresoOrtopedia panel,
                                      ClienteService clienteService,
                                      CatalogoService catalogoService,
                                      ProfesionalService profesionalService,

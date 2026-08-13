@@ -1,4 +1,4 @@
-package com.example.features.equipos.ortopedias.controller;
+package com.example.features.equipos.common.controller;
 
 import java.util.ArrayList;
 import java.util.HashMap;

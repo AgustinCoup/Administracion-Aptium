@@ -7,7 +7,7 @@ import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 /**
  * Interfaz común para todos los equipos que participan en el flujo de estados.
  *
- * Permite que {@link com.example.features.equipos.ortopedias.controller.RegistrarEstadoController},
+ * Permite que {@link com.example.features.equipos.common.controller.RegistrarEstadoController},
  * {@link com.example.features.equipos.ortopedias.view.helpers.EquipoTableModel} y demás componentes
  * compartidos operen de forma uniforme sobre equipos de ortopedia y de "otros".
  *

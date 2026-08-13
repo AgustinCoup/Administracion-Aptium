@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * Implementa {@link EquipoRegistrableInterface} para participar de forma transparente
- * en {@link com.example.features.equipos.ortopedias.controller.RegistrarEstadoController}
+ * en {@link com.example.features.equipos.common.controller.RegistrarEstadoController}
  * junto con equipos de ortopedia.
  */
 public class EquipoOtros implements EquipoRegistrableInterface {

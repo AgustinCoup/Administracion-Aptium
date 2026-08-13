@@ -1,4 +1,4 @@
-package com.example.features.equipos.ortopedias.controller;
+package com.example.features.equipos.common.controller;
 
 import com.example.app.ui.DatosOperativos;
 import com.example.common.constants.Constantes;

@@ -11,7 +11,7 @@ import com.example.features.equipos.ortopedias.view.PantallaIngresoOrtopedia;
  * Responsabilidad: Mapear datos de la Vista hacia el Modelo.
  * 
  * Separación de responsabilidades:
- * - OrthopediaInputController solo coordina, no mapea
+ * - IngresoOrtopediaController solo coordina, no mapea
  * - Esta clase contiene toda la lógica de conversión (Vista → Modelo)
  */
 public class ConstructorEquipo {

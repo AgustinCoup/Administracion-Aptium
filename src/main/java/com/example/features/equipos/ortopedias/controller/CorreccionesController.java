@@ -23,9 +23,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 
-public class CorreccionsController {
+public class CorreccionesController {
 
-    private static final Logger log = LoggerFactory.getLogger(CorreccionsController.class);
+    private static final Logger log = LoggerFactory.getLogger(CorreccionesController.class);
 
     private final PantallaCorrecciones        panel;
     private final EquipoCorreccionService     correccionService;
@@ -40,7 +40,7 @@ public class CorreccionsController {
      * Alcance: correcciones auditadas sobre equipos de ortopedia y "otros", más
      * el autocompletado del catálogo de "otros" en el formulario de corrección.
      */
-    public CorreccionsController(PantallaCorrecciones panel,
+    public CorreccionesController(PantallaCorrecciones panel,
                                  EquipoCorreccionService correccionService,
                                  EquipoOtrosCorreccionService otrosService,
                                  CatalogoOtrosService catalogoOtrosService) {

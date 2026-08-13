@@ -21,10 +21,10 @@ import org.mockito.ArgumentCaptor;
  * {@code pintar()} es 100% hilo de UI y sin I/O, así que se puede verificar
  * con un {@link HistorialEquipos} fabricado y sin base de datos.
  */
-class CDEViewControllerTest {
+class EstadoProcesosControllerTest {
 
     private PantallaVerCDEv2  panel;
-    private CDEViewController controller;
+    private EstadoProcesosController controller;
 
     @BeforeEach
     void setUp() {
@@ -33,7 +33,7 @@ class CDEViewControllerTest {
         when(panel.getFiltroInstitucion()).thenReturn("");
         when(panel.getFiltroEstados()).thenReturn(List.of());
 
-        controller = new CDEViewController(panel, () -> { });
+        controller = new EstadoProcesosController(panel, () -> { });
     }
 
     @Test

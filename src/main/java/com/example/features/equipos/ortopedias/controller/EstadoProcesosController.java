@@ -29,13 +29,13 @@ import com.example.features.equipos.ortopedias.view.PantallaVerCDEv2;
  * {@link PantallaVerCDEv2#aplicarFiltroInicial()}, un filtro de la vista que el
  * usuario puede sacar.
  */
-public class CDEViewController extends AbstractFilterController<EquipoRegistrableInterface> {
+public class EstadoProcesosController extends AbstractFilterController<EquipoRegistrableInterface> {
 
     private final PantallaVerCDEv2     panel;
     private final FilterStrategy<EquipoRegistrableInterface, CdeFilterCriteria> filterStrategy;
 
     /** Alcance: solo pintar la tabla unificada; los datos llegan del histórico de equipos. */
-    public CDEViewController(PantallaVerCDEv2 panel, Runnable solicitarRefresco) {
+    public EstadoProcesosController(PantallaVerCDEv2 panel, Runnable solicitarRefresco) {
         this.panel          = panel;
         this.filterStrategy = new CdeFilterStrategy();
         Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");

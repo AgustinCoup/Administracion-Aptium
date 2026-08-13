@@ -2,11 +2,11 @@ package com.example.app.ui;
 
 import com.example.app.AppContext;
 import com.example.common.constants.Constantes;
-import com.example.features.equipos.ortopedias.controller.CDEViewController;
-import com.example.features.equipos.ortopedias.controller.CorreccionsController;
-import com.example.features.equipos.ortopedias.controller.EquiposParaEntregarController;
-import com.example.features.equipos.ortopedias.controller.OrthopediaInputController;
-import com.example.features.equipos.ortopedias.controller.RegistrarEstadoController;
+import com.example.features.equipos.ortopedias.controller.EstadoProcesosController;
+import com.example.features.equipos.ortopedias.controller.CorreccionesController;
+import com.example.features.equipos.common.controller.EquiposParaEntregarController;
+import com.example.features.equipos.ortopedias.controller.IngresoOrtopediaController;
+import com.example.features.equipos.common.controller.RegistrarEstadoController;
 import com.example.features.equipos.controller.VerEquiposController;
 import com.example.features.equipos.otros.controller.OtrosInputController;
 import com.example.features.lavadero.controller.CiclosController;
@@ -30,7 +30,7 @@ import javax.swing.JOptionPane;
  * Responsabilidades:
  * - Instanciar cada controller con su vista y los servicios que necesita.
  * - Delegar inyecciones que un controller no puede hacerse a sí mismo
- *   (p. ej. inicializar PantallaAuditoria desde CorreccionsController).
+ *   (p. ej. inicializar PantallaAuditoria desde CorreccionesController).
  * - Cablear los listeners de navegación entre pantallas.
  * - Construir el Runnable de refresco global que cada controller dispara al modificar datos.
  *
@@ -74,7 +74,7 @@ public class UiCoordinator {
 
         // ── Controllers ──────────────────────────────────────────────────────
 
-        CDEViewController cdeViewController = new CDEViewController(
+        EstadoProcesosController cdeViewController = new EstadoProcesosController(
             vista.getPantallaVerCDEv2(), historialEquipos);
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
@@ -94,7 +94,7 @@ public class UiCoordinator {
                 refrescarEstados,
                 operativo);
 
-        CorreccionsController correccionesController = new CorreccionsController(
+        CorreccionesController correccionesController = new CorreccionesController(
             vista.getPantallaCorrecciones(),
             context.getEquipoCorreccionService(),
             context.getEquipoOtrosCorreccionService(),
@@ -143,7 +143,7 @@ public class UiCoordinator {
 
         correccionesController.setOnCambiosAplicados(operativo);
 
-        new OrthopediaInputController(
+        new IngresoOrtopediaController(
             vista.getPanelIngresoOrtopedia(),
             context.getClienteService(),
             context.getCatalogoService(),
@@ -239,7 +239,7 @@ public class UiCoordinator {
 
     /** Las dos pantallas que consultan el histórico de equipos. */
     private RefrescadorPantallas<HistorialEquipos> crearRefrescadorHistorialEquipos(
-        CDEViewController cde,
+        EstadoProcesosController cde,
         VerEquiposController verEquipos
     ) {
         LectorHistorialEquipos lector = new LectorHistorialEquipos(

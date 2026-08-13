@@ -38,7 +38,7 @@ public class MaterialTableModel extends AbstractTableModel {
 
     /**
      * Retorna el material en la fila indicada como {@link MaterialRegistrableInterface}.
-     * Usado por {@link com.example.features.equipos.controller.RegistrarEstadoController}
+     * Usado por {@link com.example.features.equipos.common.controller.RegistrarEstadoController}
      * para obtener el material seleccionado.
      */
     public MaterialRegistrableInterface getMaterialAt(int row) {
