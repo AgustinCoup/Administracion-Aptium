@@ -114,9 +114,9 @@ public class EquipoCorreccionService {
             int    codigoAnterior      = materialActual.codigo();
             String descripcionAnterior = materialActual.descripcion();
 
-            String descripcionNueva = catalogoDAO.obtenerDescripcion(codigoNuevo);
+            String descripcionNueva = catalogoDAO.obtenerDescripcionVigente(codigoNuevo);
             if (descripcionNueva == null) {
-                throw new ValidationException("El código de catálogo " + codigoNuevo + " no existe");
+                throw new ValidationException("El código de catálogo " + codigoNuevo + " no existe o fue dado de baja");
             }
 
             materialDAO.actualizarCodigo(materialId, codigoNuevo);
@@ -262,9 +262,9 @@ public class EquipoCorreccionService {
             throw new ValidationException("El equipo no está en estado 'Nuevo' y no puede ser modificado");
         }
 
-        String descripcion = catalogoDAO.obtenerDescripcion(codigoCatalogo);
+        String descripcion = catalogoDAO.obtenerDescripcionVigente(codigoCatalogo);
         if (descripcion == null) {
-            throw new ValidationException("El código de catálogo " + codigoCatalogo + " no existe");
+            throw new ValidationException("El código de catálogo " + codigoCatalogo + " no existe o fue dado de baja");
         }
 
         try {
@@ -331,10 +331,13 @@ public class EquipoCorreccionService {
         }
     }
 
-    /** Obtiene la descripción de un material del catálogo por su código. */
+    /**
+     * Obtiene la descripción de un código del catálogo para autocompletar una
+     * corrección. Los códigos dados de baja se reportan como desconocidos.
+     */
     public String obtenerDescripcionMaterial(int codigo) {
         try {
-            return catalogoDAO.obtenerDescripcion(codigo);
+            return catalogoDAO.obtenerDescripcionVigente(codigo);
         } catch (DatabaseException e) {
             log.error("Error al obtener descripción del material con código {}", codigo, e);
             return null;

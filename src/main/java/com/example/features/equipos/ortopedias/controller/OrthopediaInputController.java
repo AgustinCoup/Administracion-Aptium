@@ -56,7 +56,7 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
         this.institucionService = institucionService;
         this.equipoService      = equipoService;
 
-        CatalogoLookup catalogoLookup = codigo -> catalogoService.obtenerDescripcion(codigo) != null;
+        CatalogoLookup catalogoLookup = codigo -> catalogoService.obtenerDescripcionVigente(codigo) != null;
         this.gestorValidacion  = new GestorValidacionFormulario(panel, catalogoLookup);
         this.constructorEquipo = new ConstructorEquipo(panel);
 
@@ -66,7 +66,7 @@ public class OrthopediaInputController extends EquipoInputControllerBase<Pantall
 
     private void inicializarEventosEspecificos() {
         panel.getPanelMateriales().setOnNumeroChangedListener((codigo, campoDescripcion) -> {
-            String descripcion = catalogoService.obtenerDescripcion(codigo);
+            String descripcion = catalogoService.obtenerDescripcionVigente(codigo);
             campoDescripcion.setText(
                 descripcion != null ? descripcion : Constantes.Mensajes.AUTOCOMPLETE_DESCONOCIDO);
         });

@@ -179,7 +179,7 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(materialDAO.obtenerMaterial(1)).thenReturn(
             new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
-        when(catalogoDAO.obtenerDescripcion(200)).thenReturn(null);
+        when(catalogoDAO.obtenerDescripcionVigente(200)).thenReturn(null);
 
         assertThrows(ValidationException.class,
             () -> service.modificarCodigoMaterial(1, 1, 200, "motivo"));
@@ -190,7 +190,7 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(materialDAO.obtenerMaterial(1)).thenReturn(
             new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
-        when(catalogoDAO.obtenerDescripcion(200)).thenReturn("DescNueva");
+        when(catalogoDAO.obtenerDescripcionVigente(200)).thenReturn("DescNueva");
 
         boolean resultado = service.modificarCodigoMaterial(1, 1, 200, "motivo");
 
@@ -346,7 +346,7 @@ class EquipoCorreccionServiceTest {
     @Test
     void agregarMaterial_codigoNoExisteEnCatalogo_lanzaValidation() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
-        when(catalogoDAO.obtenerDescripcion(100)).thenReturn(null);
+        when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn(null);
 
         assertThrows(ValidationException.class,
             () -> service.agregarMaterialAEquipo(1, 100, 2, "motivo"));
@@ -355,7 +355,7 @@ class EquipoCorreccionServiceTest {
     @Test
     void agregarMaterial_valido_insertaYAudita() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
-        when(catalogoDAO.obtenerDescripcion(100)).thenReturn("Guante");
+        when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn("Guante");
         when(materialDAO.agregarMaterial(1, 100, 2)).thenReturn(99);
 
         assertTrue(service.agregarMaterialAEquipo(1, 100, 2, "reposición"));
@@ -380,13 +380,13 @@ class EquipoCorreccionServiceTest {
 
     @Test
     void obtenerDescripcionMaterial_delegaADAO() {
-        when(catalogoDAO.obtenerDescripcion(100)).thenReturn("Guante");
+        when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn("Guante");
         assertEquals("Guante", service.obtenerDescripcionMaterial(100));
     }
 
     @Test
     void obtenerDescripcionMaterial_daoLanzaException_retornaNull() {
-        when(catalogoDAO.obtenerDescripcion(100)).thenThrow(new DatabaseException("error BD"));
+        when(catalogoDAO.obtenerDescripcionVigente(100)).thenThrow(new DatabaseException("error BD"));
         assertNull(service.obtenerDescripcionMaterial(100));
     }
 
@@ -401,3 +401,4 @@ class EquipoCorreccionServiceTest {
         return e;
     }
 }
+

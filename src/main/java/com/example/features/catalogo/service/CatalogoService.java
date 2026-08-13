@@ -64,6 +64,23 @@ public class CatalogoService {
     }
 
     /**
+     * Obtiene la descripción de un material sólo si el código está vigente.
+     * Los flujos de carga de materiales deben usar este método: un código dado
+     * de baja se comporta como inexistente y no puede asignarse a un equipo.
+     *
+     * @param codigo Código del material
+     * @return Descripción del material, null si no existe o no está vigente
+     */
+    public String obtenerDescripcionVigente(int codigo) {
+        try {
+            return catalogoDAO.obtenerDescripcionVigente(codigo);
+        } catch (Exception e) {
+            log.error("Error al obtener descripción vigente del material: {}", codigo, e);
+            return null;
+        }
+    }
+
+    /**
      * Obtiene el volumen de un material específico.
      *
      * @param codigo Código del material
