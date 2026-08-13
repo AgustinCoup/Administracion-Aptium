@@ -59,7 +59,7 @@ class MaterialDAOTest extends AbstractDAOTest {
         assertEquals((int) materialId,     datos.id());
         assertEquals((int) equipo.getId(), datos.equipoId());
         assertEquals(400,                  datos.codigo());
-        assertEquals("Tornillera",         datos.descripcion());  // join con catalogo
+        assertEquals("TORNILLERA",         datos.descripcion());  // join con catalogo
         assertEquals(3,                    datos.cantidad());
     }
 

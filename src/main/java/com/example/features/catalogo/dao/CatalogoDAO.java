@@ -69,6 +69,35 @@ public class CatalogoDAO implements DAO<String, Integer> {
     }
 
     /**
+     * Obtiene la descripción de un material sólo si el código está vigente.
+     *
+     * <p>Es la consulta que deben usar los flujos de <b>carga</b> de materiales:
+     * un código dado de baja (vigente = FALSE) se comporta como inexistente y
+     * por lo tanto no puede asignarse a un equipo nuevo. Los materiales ya
+     * guardados con ese código conservan su descripción, que se resuelve por
+     * JOIN en los DAOs de equipos y lotes, no por este método.
+     *
+     * @param codigo Código del material
+     * @return Descripción del material, o null si no existe o no está vigente
+     */
+    public String obtenerDescripcionVigente(int codigo) {
+        String sql = "SELECT descripcion FROM catalogo_descripciones WHERE codigo = ? AND vigente = TRUE";
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, codigo);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                return rs.getString("descripcion");
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al obtener descripción vigente para código: " + codigo, e);
+        }
+        return null;
+    }
+
+    /**
      * Obtiene el volumen de un material por su código.
      *
      * @param codigo Código del material

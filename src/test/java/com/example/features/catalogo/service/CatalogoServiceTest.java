@@ -59,6 +59,22 @@ class CatalogoServiceTest {
         assertNull(service.obtenerDescripcion(400));
     }
 
+    // ── obtenerDescripcionVigente ─────────────────────────────────────────────
+
+    @Test
+    void obtenerDescripcionVigente_codigoDadoDeBaja_retornaNull() {
+        when(dao.obtenerDescripcionVigente(414)).thenReturn(null);
+
+        assertNull(service.obtenerDescripcionVigente(414));
+    }
+
+    @Test
+    void obtenerDescripcionVigente_daoLanzaExcepcion_retornaNull() {
+        when(dao.obtenerDescripcionVigente(400)).thenThrow(new RuntimeException("DB error"));
+
+        assertNull(service.obtenerDescripcionVigente(400));
+    }
+
     // ── obtenerVolumen ────────────────────────────────────────────────────────
 
     @Test
