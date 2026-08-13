@@ -1,4 +1,4 @@
-﻿package com.example.features.equipos.ortopedias.service;
+package com.example.features.equipos.ortopedias.service;
 
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ValidationException;
@@ -39,7 +39,7 @@ class EquipoCorreccionServiceTest {
         service = new EquipoCorreccionService(equipoDAO, materialDAO, auditoriaDAO, catalogoDAO);
     }
 
-    // â”€â”€ Constructor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Constructor ──────────────────────────────────────────────────────────
 
     @Test
     void constructor_equipoDAONull_lanzaIllegalArgument() {
@@ -65,7 +65,7 @@ class EquipoCorreccionServiceTest {
             () -> new EquipoCorreccionService(equipoDAO, materialDAO, auditoriaDAO, null));
     }
 
-    // â”€â”€ modificarCantidadMaterial â€” validaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── modificarCantidadMaterial — validaciones ──────────────────────────────
 
     @Test
     void modificarCantidad_equipoIdNull_lanzaValidation() {
@@ -130,15 +130,15 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(materialDAO.obtenerCantidad(2)).thenReturn(3);
 
-        boolean resultado = service.modificarCantidadMaterial(1, 2, 5, "correcciÃ³n");
+        boolean resultado = service.modificarCantidadMaterial(1, 2, 5, "corrección");
 
         assertTrue(resultado);
         verify(materialDAO).actualizarCantidad(2, 5);
         verify(auditoriaDAO).registrarCambio(eq(1), eq(2), eq("MODIFICACION_CANTIDAD"),
-            eq("cantidad"), eq("3"), eq("5"), eq("correcciÃ³n"), eq("ORTOPEDIA"));
+            eq("cantidad"), eq("3"), eq("5"), eq("corrección"), eq("ORTOPEDIA"));
     }
 
-    // â”€â”€ modificarCodigoMaterial â€” validaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── modificarCodigoMaterial — validaciones ────────────────────────────────
 
     @Test
     void modificarCodigo_equipoIdNull_lanzaValidation() {
@@ -200,7 +200,7 @@ class EquipoCorreccionServiceTest {
             eq("codigo_catalogo"), anyString(), anyString(), eq("motivo"), eq("ORTOPEDIA"));
     }
 
-    // â”€â”€ eliminarEquipo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── eliminarEquipo ────────────────────────────────────────────────────────
 
     @Test
     void eliminarEquipo_equipoIdNull_lanzaValidation() {
@@ -253,14 +253,14 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(e);
         when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
             any(), any(), any(), anyString(), anyString())).thenReturn(true);
-        // El DELETE no toca ninguna fila (o falla): el service no debe reportar Ã©xito.
+        // El DELETE no toca ninguna fila (o falla): el service no debe reportar éxito.
         when(equipoDAO.eliminar("1")).thenReturn(false);
 
         assertThrows(DatabaseException.class,
             () -> service.eliminarEquipo(1, "motivo"));
     }
 
-    // â”€â”€ eliminarMaterial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── eliminarMaterial ──────────────────────────────────────────────────────
 
     @Test
     void eliminarMaterial_equipoIdNull_lanzaValidation() {
@@ -304,7 +304,7 @@ class EquipoCorreccionServiceTest {
         verify(materialDAO).eliminarMaterialesPorCodigo(1, 100);
     }
 
-    // â”€â”€ agregarMaterialAEquipo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── agregarMaterialAEquipo ────────────────────────────────────────────────
 
     @Test
     void agregarMaterial_equipoIdNull_lanzaValidation() {
@@ -358,12 +358,12 @@ class EquipoCorreccionServiceTest {
         when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn("Guante");
         when(materialDAO.agregarMaterial(1, 100, 2)).thenReturn(99);
 
-        assertTrue(service.agregarMaterialAEquipo(1, 100, 2, "reposiciÃ³n"));
+        assertTrue(service.agregarMaterialAEquipo(1, 100, 2, "reposición"));
         verify(auditoriaDAO).registrarCambio(eq(1), eq(99), eq("ADICION_MATERIAL"),
-            eq("material_nuevo"), isNull(), eq("2"), eq("reposiciÃ³n"), eq("ORTOPEDIA"));
+            eq("material_nuevo"), isNull(), eq("2"), eq("reposición"), eq("ORTOPEDIA"));
     }
 
-    // â”€â”€ consultas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── consultas ─────────────────────────────────────────────────────────────
 
     @Test
     void obtenerEquiposNuevos_delegaADAO() {
@@ -390,7 +390,7 @@ class EquipoCorreccionServiceTest {
         assertNull(service.obtenerDescripcionMaterial(100));
     }
 
-    // â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── helpers ──────────────────────────────────────────────────────────────
 
     private Equipo equipoConEstado(EstadoEquipo estado) {
         Equipo e = new Equipo();

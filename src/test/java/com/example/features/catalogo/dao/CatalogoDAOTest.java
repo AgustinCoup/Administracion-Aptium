@@ -2,6 +2,8 @@ package com.example.features.catalogo.dao;
 
 import com.example.AbstractDAOTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -63,6 +65,28 @@ class CatalogoDAOTest extends AbstractDAOTest {
     void obtenerDescripcion_codigoDadoDeBaja_sigueResolviendoElHistorico() {
         // la fila sobrevive para que los materiales ya guardados no queden huérfanos
         assertNotNull(dao.obtenerDescripcion(414));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {406, 409, 418, 420})
+    void obtenerDescripcionVigente_codigoCompuestoRetirado_retornaNull(int codigo) {
+        // los compuestos se desdoblaron en códigos nuevos: no se asignan más
+        assertNull(dao.obtenerDescripcionVigente(codigo));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {406, 409, 418, 420})
+    void obtenerDescripcion_codigoCompuestoRetirado_conservaElTextoOriginal(int codigo) {
+        // el historial no se re-etiqueta: la descripción vieja sigue intacta bajo (LEGACY)
+        assertTrue(dao.obtenerDescripcion(codigo).startsWith("(LEGACY) "));
+    }
+
+    @Test
+    void obtenerDescripcionVigente_reemplazosDeLosCompuestos_sonAsignables() {
+        assertEquals("MAKITA", dao.obtenerDescripcionVigente(431));
+        assertEquals("INSTRUMENTAL PEQUEÑO", dao.obtenerDescripcionVigente(432));
+        assertEquals("CLAVOS", dao.obtenerDescripcionVigente(433));
+        assertEquals("TORNILLO", dao.obtenerDescripcionVigente(434));
     }
 
     // ── obtenerVolumen ────────────────────────────────────────────────────────
