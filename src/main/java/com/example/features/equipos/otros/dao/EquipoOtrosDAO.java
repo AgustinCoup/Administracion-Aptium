@@ -89,120 +89,130 @@ public class EquipoOtrosDAO {
         try {
             conn = ConnectionPool.getConnection();
             conn.setAutoCommit(false);
-
-            // 1. Insertar encabezado
-            String sqlEquipo =
-                "INSERT INTO equipo_otros " +
-                "(nro_cliente, estado, requiere_lavado, requiere_empaque, " +
-                " tipo_ingreso, remito_cantidad, remito_observaciones) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?)";
-
-            int equipoId;
-            try (PreparedStatement ps = conn.prepareStatement(sqlEquipo, Statement.RETURN_GENERATED_KEYS)) {
-                ps.setInt   (1, equipo.getNroCliente());
-                ps.setString(2, equipo.getEstado().getNombre());
-                ps.setBoolean(3, equipo.isRequiereLavado());
-                ps.setBoolean(4, equipo.isRequiereEmpaque());
-                ps.setString(5, equipo.getTipoIngreso().getNombre());
-
-                if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
-                    ps.setInt(6, equipo.getRemitoCantidad());
-                    String obs = equipo.getRemitoObservaciones();
-                    if (obs != null && !obs.isBlank()) ps.setString(7, obs);
-                    else                               ps.setNull(7, Types.VARCHAR);
-                } else {
-                    ps.setNull(6, Types.INTEGER);
-                    ps.setNull(7, Types.VARCHAR);
-                }
-
-                ps.executeUpdate();
-                try (ResultSet rs = ps.getGeneratedKeys()) {
-                    if (rs.next()) {
-                        equipoId = rs.getInt(1);
-                        equipo.setId(equipoId);
-                    } else {
-                        throw new SQLException("No se generó ID para equipo_otros");
-                    }
-                }
-            }
-
-            // 2a. Modo REMITO: generar y persistir remito_id
-            if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
-                String fechaHoy = LocalDate.now().format(FMT_REMITO);
-                int secuencial;
-                try (PreparedStatement psCount = conn.prepareStatement(
-                        "SELECT COUNT(*) FROM equipo_otros WHERE remito_id LIKE ?")) {
-                    psCount.setString(1, fechaHoy + "-%");
-                    try (ResultSet rsCount = psCount.executeQuery()) {
-                        secuencial = rsCount.next() ? rsCount.getInt(1) + 1 : 1;
-                    }
-                }
-                String remitoId = fechaHoy + "-" + secuencial;
-                equipo.setRemitoId(remitoId);
-
-                String sqlRem = "UPDATE equipo_otros SET remito_id = ? WHERE id = ?";
-                try (PreparedStatement ps = conn.prepareStatement(sqlRem)) {
-                    ps.setString(1, remitoId);
-                    ps.setInt   (2, equipoId);
-                    ps.executeUpdate();
-                }
-                log.info("Remito generado: {}", remitoId);
-
-            // 2b. Modo DETALLES: insertar materiales con sus movimientos
-            } else {
-                String sqlMat =
-                    "INSERT INTO equipo_otros_materiales " +
-                    "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
-                    "VALUES (?, ?, ?, ?, ?)";
-                String sqlMov =
-                    "INSERT INTO otros_material_movimientos " +
-                    "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
-                    "VALUES (?, ?, ?, ?, ?)";
-
-                try (PreparedStatement psMat = conn.prepareStatement(sqlMat, Statement.RETURN_GENERATED_KEYS);
-                     PreparedStatement psMov = conn.prepareStatement(sqlMov)) {
-
-                    for (MaterialOtros mat : equipo.getMateriales()) {
-                        int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, mat.getDescripcion());
-                        mat.setCatalogoOtrosId(catalogoId);
-
-                        psMat.setInt   (1, equipoId);
-                        psMat.setInt   (2, catalogoId);
-                        psMat.setString(3, mat.getDescripcion());
-                        psMat.setInt   (4, mat.getCantidad());
-                        psMat.setString(5, mat.getEstado().getNombre());
-                        psMat.executeUpdate();
-
-                        int materialId;
-                        try (ResultSet rsMat = psMat.getGeneratedKeys()) {
-                            if (rsMat.next()) {
-                                materialId = rsMat.getInt(1);
-                                mat.setId(materialId);
-                            } else {
-                                throw new SQLException("No se generó ID para equipo_otros_materiales");
-                            }
-                        }
-
-                        psMov.setInt   (1, materialId);
-                        psMov.setInt   (2, equipoId);
-                        psMov.setInt   (3, mat.getCantidad());
-                        psMov.setNull  (4, Types.VARCHAR);
-                        psMov.setString(5, mat.getEstado().getNombre());
-                        psMov.executeUpdate();
-                    }
-                }
-            }
-
+            int equipoId = guardar(conn, equipo);
             conn.commit();
             log.info("EquipoOtros guardado: ID={}, tipo={}", equipoId, equipo.getTipoIngreso());
             return true;
-
         } catch (SQLException e) {
             rollback(conn, e);
             return false;
         } finally {
             close(conn);
         }
+    }
+
+    /**
+     * Persiste un equipo "otros" dentro de una transacción ya abierta por el llamador.
+     * No commitea ni cierra: eso es responsabilidad de quien abrió la conexión.
+     * Propaga SQLException para que el llamador pueda abortar toda la transacción.
+     *
+     * @return id generado de equipo_otros (también seteado en el modelo)
+     */
+    public int guardar(Connection conn, EquipoOtros equipo) throws SQLException {
+        // 1. Insertar encabezado
+        String sqlEquipo =
+            "INSERT INTO equipo_otros " +
+            "(nro_cliente, estado, requiere_lavado, requiere_empaque, " +
+            " tipo_ingreso, remito_cantidad, remito_observaciones) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+        int equipoId;
+        try (PreparedStatement ps = conn.prepareStatement(sqlEquipo, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt   (1, equipo.getNroCliente());
+            ps.setString(2, equipo.getEstado().getNombre());
+            ps.setBoolean(3, equipo.isRequiereLavado());
+            ps.setBoolean(4, equipo.isRequiereEmpaque());
+            ps.setString(5, equipo.getTipoIngreso().getNombre());
+
+            if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
+                ps.setInt(6, equipo.getRemitoCantidad());
+                String obs = equipo.getRemitoObservaciones();
+                if (obs != null && !obs.isBlank()) ps.setString(7, obs);
+                else                               ps.setNull(7, Types.VARCHAR);
+            } else {
+                ps.setNull(6, Types.INTEGER);
+                ps.setNull(7, Types.VARCHAR);
+            }
+
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) {
+                    equipoId = rs.getInt(1);
+                    equipo.setId(equipoId);
+                } else {
+                    throw new SQLException("No se generó ID para equipo_otros");
+                }
+            }
+        }
+
+        // 2a. Modo REMITO: generar y persistir remito_id
+        if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
+            String fechaHoy = LocalDate.now().format(FMT_REMITO);
+            int secuencial;
+            try (PreparedStatement psCount = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM equipo_otros WHERE remito_id LIKE ?")) {
+                psCount.setString(1, fechaHoy + "-%");
+                try (ResultSet rsCount = psCount.executeQuery()) {
+                    secuencial = rsCount.next() ? rsCount.getInt(1) + 1 : 1;
+                }
+            }
+            String remitoId = fechaHoy + "-" + secuencial;
+            equipo.setRemitoId(remitoId);
+
+            String sqlRem = "UPDATE equipo_otros SET remito_id = ? WHERE id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(sqlRem)) {
+                ps.setString(1, remitoId);
+                ps.setInt   (2, equipoId);
+                ps.executeUpdate();
+            }
+            log.info("Remito generado: {}", remitoId);
+
+        // 2b. Modo DETALLES: insertar materiales con sus movimientos
+        } else {
+            String sqlMat =
+                "INSERT INTO equipo_otros_materiales " +
+                "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
+                "VALUES (?, ?, ?, ?, ?)";
+            String sqlMov =
+                "INSERT INTO otros_material_movimientos " +
+                "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
+                "VALUES (?, ?, ?, ?, ?)";
+
+            try (PreparedStatement psMat = conn.prepareStatement(sqlMat, Statement.RETURN_GENERATED_KEYS);
+                 PreparedStatement psMov = conn.prepareStatement(sqlMov)) {
+
+                for (MaterialOtros mat : equipo.getMateriales()) {
+                    int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, mat.getDescripcion());
+                    mat.setCatalogoOtrosId(catalogoId);
+
+                    psMat.setInt   (1, equipoId);
+                    psMat.setInt   (2, catalogoId);
+                    psMat.setString(3, mat.getDescripcion());
+                    psMat.setInt   (4, mat.getCantidad());
+                    psMat.setString(5, mat.getEstado().getNombre());
+                    psMat.executeUpdate();
+
+                    int materialId;
+                    try (ResultSet rsMat = psMat.getGeneratedKeys()) {
+                        if (rsMat.next()) {
+                            materialId = rsMat.getInt(1);
+                            mat.setId(materialId);
+                        } else {
+                            throw new SQLException("No se generó ID para equipo_otros_materiales");
+                        }
+                    }
+
+                    psMov.setInt   (1, materialId);
+                    psMov.setInt   (2, equipoId);
+                    psMov.setInt   (3, mat.getCantidad());
+                    psMov.setNull  (4, Types.VARCHAR);
+                    psMov.setString(5, mat.getEstado().getNombre());
+                    psMov.executeUpdate();
+                }
+            }
+        }
+
+        return equipoId;
     }
 
     // ── Lectura ───────────────────────────────────────────────────────────────

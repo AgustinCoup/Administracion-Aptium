@@ -7,9 +7,13 @@ import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
+import com.example.infrastructure.db.ConnectionPool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -372,5 +376,34 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
         remito.setTipoIngreso(TipoIngresoOtros.REMITO);
         remito.setRemitoCantidad(cantidad);
         return remito;
+    }
+
+    // ── guardar(Connection, EquipoOtros) ────────────────────────────────────────
+
+    @Test
+    void guardarConConnection_rollbackDelLlamador_noDejaFilas() throws SQLException {
+        EquipoOtros equipo = new EquipoOtros();
+        equipo.setNroCliente(1);
+        equipo.setTipoIngreso(TipoIngresoOtros.DETALLES);
+        equipo.agregarMaterial(new MaterialOtros("TestDescMat Rollback", 2));
+
+        int equipoId;
+        try (Connection conn = ConnectionPool.getConnection()) {
+            conn.setAutoCommit(false);
+            equipoId = dao.guardar(conn, equipo);
+            conn.rollback();
+        }
+
+        assertTrue(equipoId > 0);
+        assertTrue(dao.obtenerTodos().stream().noneMatch(e -> e.getId().equals(equipoId)));
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM equipo_otros_materiales WHERE equipo_otros_id = ?")) {
+            ps.setInt(1, equipoId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(0, rs.getInt(1));
+            }
+        }
     }
 }
