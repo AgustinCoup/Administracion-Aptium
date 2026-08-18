@@ -5,6 +5,7 @@ import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
+import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.infrastructure.db.ConnectionPool;
@@ -69,7 +70,7 @@ public class CicloLavaderoDAO {
         "JOIN ingresos_lavadero il            ON il.id  = ecl.ingreso_id " +
         "JOIN clientes c                      ON c.id   = il.cliente_id " +
         "LEFT JOIN elementos_ciclo_lavadero eci ON eci.elemento_clasificacion_id = ecl.id " +
-        "WHERE il.estado = 'CLASIFICADO' " +
+        "WHERE il.estado = '" + EstadoIngresoLavadero.CLASIFICADO + "' " +
         "GROUP BY ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, c.nombre, cel.categoria " +
         "HAVING ya_procesada < ecl.cantidad " +
         "ORDER BY il.id, cel.nombre";
@@ -234,7 +235,7 @@ public class CicloLavaderoDAO {
             "WHERE ecl.ingreso_id = ? " +
             "GROUP BY ecl.ingreso_id " +
             "HAVING procesado >= total";
-        String sqlMarcar = "UPDATE ingresos_lavadero SET estado = 'LAVADO' WHERE id = ?";
+        String sqlMarcar = "UPDATE ingresos_lavadero SET estado = '" + EstadoIngresoLavadero.LAVADO + "' WHERE id = ?";
         try (PreparedStatement psVerificar = conn.prepareStatement(sqlVerificar);
              PreparedStatement psMarcar   = conn.prepareStatement(sqlMarcar)) {
             for (int ingresoId : ingresoIds) {

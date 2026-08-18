@@ -1,6 +1,7 @@
 package com.example.features.lavadero.dao;
 
 import com.example.features.lavadero.model.ElementoClasificacion;
+import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.infrastructure.db.TransactionalConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +29,7 @@ public class ClasificacionLavaderoDAO {
                 ps.executeBatch();
             }
             try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE ingresos_lavadero SET estado = 'CLASIFICADO' WHERE id = ?")) {
+                    "UPDATE ingresos_lavadero SET estado = '" + EstadoIngresoLavadero.CLASIFICADO + "' WHERE id = ?")) {
                 ps.setInt(1, ingresoId);
                 ps.executeUpdate();
             }
