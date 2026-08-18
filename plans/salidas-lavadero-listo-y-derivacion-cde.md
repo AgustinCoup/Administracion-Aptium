@@ -23,7 +23,11 @@ equipo "Otros"*, reflejado inmediatamente en las pantallas operativas.
 | Estado inicial en CDE | **`NUEVO` con `requiereLavado = false`.** La máquina de estados ya contempla el salto: `calcularSiguienteEstado(NUEVO, false, true)` devuelve `EMPAQUETADO`. No se toca nada del flujo de CDE. |
 | Persistencia | **Tabla única `salidas_lavadero`.** Una fila por cantidad marcada Listo, con `destino`/`equipo_otros_id`/`fecha_salida` en NULL hasta que se derive. Queda trazado qué ciclo lavó cada cosa y a qué ingreso de CDE fue a parar. |
 | Reversión | **Sólo se puede desmarcar "Listo" mientras la salida no tenga destino.** Una vez derivada (a CDE o fuera del flujo) es definitiva: deshacer un ingreso de CDE ya creado puede chocar con un equipo ya loteado o avanzado de estado. |
-| Cliente del ingreso en CDE | **Siempre el del ingreso de lavadero.** No se elige nada; por eso se agrupa por cliente al derivar. |
+| Cliente del ingreso en CDE | **Se elige al derivar: el cliente original o APTIUM.** Un mismo material puede entrar al CDE conservando su cliente o a nombre de APTIUM. La elección es **por operación**, no por fila: todas las salidas seleccionadas van del mismo modo. |
+| Cómo se elige | **Un solo botón "Ingresar al CDE" que abre un diálogo con las dos opciones y confirma en el mismo paso.** La derivación ya requería confirmación por ser irreversible, así que se fusionan los dos diálogos: un clic, una decisión explícita, y el panel derecho se queda con 3 botones. |
+| Cómo se registra | **`destino = 'CDE_OTROS'` en los dos casos.** No se distingue en `salidas_lavadero` cómo se asignó el cliente; el dato queda en el `nro_cliente` del `equipo_otros` creado. Consecuencia: la elección es una **acción de UI**, no un destino persistido — por eso `AccionSalida` y `DestinoSalida` son dos enums distintos (ver Paso 1). |
+| Cliente APTIUM | **Ya existe en la tabla `clientes` con ese nombre.** Se resuelve **por nombre**, nunca por id hardcodeado (depende del `AUTO_INCREMENT`). La migración deja igual un `INSERT IGNORE` por si una BD de desarrollo no lo tiene. |
+| Agrupación con APTIUM | Se sigue agrupando por **cliente asignado**, así que derivar a APTIUM salidas de tres clientes distintos produce **un solo** `equipo_otros` a nombre de APTIUM. Sale gratis del diseño: no hay una regla de agrupación aparte. |
 | Estado del ingreso de lavadero | **Nuevo valor `FINALIZADO`.** Cuando todas las cantidades clasificadas de un ingreso tienen destino asignado, `ingresos_lavadero.estado` pasa de `LAVADO` a `FINALIZADO`, con el mismo patrón que ya usa `CicloLavaderoDAO` para pasar a `LAVADO`. |
 | Salida "fuera del flujo" | **Sin motivo ni observación.** Es la salida normal: la ropa se devuelve al cliente. |
 
@@ -221,6 +225,12 @@ CREATE INDEX idx_salidas_destino        ON salidas_lavadero (destino);
 
 No hace falta DDL para `FINALIZADO`: `ingresos_lavadero.estado` ya es `VARCHAR(20)`.
 
+> **Regla de migraciones, sin excepciones:** una migración ya escrita **no se toca nunca más**, ni
+> siquiera dentro de este mismo plan. Si un paso posterior necesita otro cambio de BD, crea una
+> migración nueva con el número siguiente. Por eso la siembra del cliente APTIUM que hace falta en el
+> Paso 5 va en `V18`, y no se agrega acá aunque en este momento `V17` todavía no se haya aplicado en
+> ningún lado.
+
 2. **`features/lavadero/model/EstadoIngresoLavadero.java`** — enum `PENDIENTE`, `CLASIFICADO`,
    `LAVADO`, `FINALIZADO`. Se persiste `name()`. Incluir `desdeBD(String)` con el mismo criterio
    defensivo que `TipoLavado.desdeBD` (log a WARN + default `PENDIENTE` ante valor nulo o desconocido).
@@ -231,14 +241,45 @@ No hace falta DDL para `FINALIZADO`: `ingresos_lavadero.estado` ya es `VARCHAR(2
    todavía", que es un estado legítimo. Por eso `desdeBD(null)` devuelve `null` (no un default) y
    así está documentado en el Javadoc.
 
-4. Reemplazar los literales de estado en `ClasificacionLavaderoDAO` y `CicloLavaderoDAO` por
+4. **`features/lavadero/model/AccionSalida.java`** — lo que el operador **elige**, que no es lo mismo
+   que lo que se **guarda**:
+
+```java
+/**
+ * Qué decide hacer el operador con un conjunto de salidas listas.
+ *
+ * <p>No confundir con {@link DestinoSalida}, que es lo que se persiste en
+ * {@code salidas_lavadero.destino}: dos acciones distintas pueden guardar el mismo destino.
+ * Derivar al CDE conservando el cliente y derivar al CDE a nombre de APTIUM son dos acciones
+ * con el mismo destino registrado {@code CDE_OTROS}; lo que las diferencia queda en el
+ * {@code nro_cliente} del ingreso creado, no en la salida.
+ */
+public enum AccionSalida {
+    FUERA_DE_FLUJO(DestinoSalida.FUERA_DE_FLUJO, "Sale del flujo"),
+    CDE_CLIENTE   (DestinoSalida.CDE_OTROS,      "Ingresa al CDE con su cliente"),
+    CDE_APTIUM    (DestinoSalida.CDE_OTROS,      "Ingresa al CDE como APTIUM");
+
+    private final DestinoSalida destinoPersistido;
+    private final String        nombre;
+    // getters
+}
+```
+
+Es la pieza que evita el atajo feo: sin este enum, la elección "cliente original o APTIUM" tendría que
+viajar como un parámetro suelto por toda la cadena (`derivar(destino, seleccion, ¿boolean esAptium?)`),
+ensuciando también al destino "fuera del flujo", al que no le importa. Con `AccionSalida` el registry
+del Paso 5 se indexa por acción y cada acción tiene su derivador ya configurado.
+
+5. Reemplazar los literales de estado en `ClasificacionLavaderoDAO` y `CicloLavaderoDAO` por
    concatenación del enum (`... SET estado = '" + EstadoIngresoLavadero.CLASIFICADO + "'`). Son
    constantes de compilación, no entrada de usuario: no hay riesgo de inyección. **No** tocar las
    migraciones ya aplicadas.
 
-5. Tests:
+6. Tests:
    - `EstadoIngresoLavaderoTest` y `DestinoSalidaTest`: `desdeBD` con valor válido, minúsculas,
      desconocido y `null`.
+   - `AccionSalidaTest`: cada acción devuelve el `DestinoSalida` esperado, y **las dos acciones de
+     CDE devuelven `CDE_OTROS`** (es la aserción que documenta la decisión de no distinguirlas en BD).
 
 ### Verificación
 
@@ -254,7 +295,8 @@ que si `V17` es incompatible con H2 fallan ahí.
 ### Criterio de salida
 
 - [ ] `V17__salidas_lavadero.sql` existe y los tests de DAO de lavadero pasan (prueba de que H2 la aplica).
-- [ ] `EstadoIngresoLavadero` y `DestinoSalida` existen con sus tests.
+- [ ] `EstadoIngresoLavadero`, `DestinoSalida` y `AccionSalida` existen con sus tests.
+- [ ] La migración `V17` **no** siembra el cliente APTIUM (eso es `V18`, en el Paso 5).
 - [ ] `grep -rn "'CLASIFICADO'\|'LAVADO'\|'PENDIENTE'" src/main/java` no devuelve nada.
 - [ ] Los invariantes 1-8 se cumplen.
 - [ ] Commit: `feat: tabla salidas_lavadero y enums de estado/destino de lavadero`
@@ -489,7 +531,7 @@ Reglas del ingreso que se crea (decididas con el usuario):
 
 | Campo | Valor | Por qué |
 |---|---|---|
-| `nroCliente` | el `clienteId` de las salidas del grupo | el cliente viaja con el elemento |
+| `nroCliente` | **lo que decida el `AsignadorClienteCDE`**: el `clienteId` de la salida, o el de APTIUM | es lo único que varía entre las dos acciones de CDE |
 | `tipoIngreso` | `DETALLES` | conserva qué elemento es cada cosa |
 | `estado` | `NUEVO` (el default del constructor) | — |
 | `requiereLavado` | **`false`** | ya se lavó; `calcularSiguienteEstado(NUEVO, false, true)` → `EMPAQUETADO` |
@@ -502,36 +544,64 @@ lavadas en dos ciclos distintos). Se **suman en un solo `MaterialOtros`**: es lo
 
 ### Tareas
 
-1. **`features/lavadero/controller/helpers/ConstructorIngresoCDE.java`** — clase plana, sin estado:
+1. **`features/lavadero/controller/helpers/AsignadorClienteCDE.java`** — la única variación entre
+   derivar "con su cliente" y derivar "como APTIUM":
+
+```java
+/** Bajo qué cliente entra al CDE una salida de lavadero. */
+@FunctionalInterface
+public interface AsignadorClienteCDE {
+
+    int clientePara(SalidaLista salida);
+
+    /** Conserva el cliente que trajo la ropa. */
+    AsignadorClienteCDE CLIENTE_ORIGINAL = SalidaLista::clienteId;
+}
+```
+
+La implementación de APTIUM necesita resolver el id por nombre contra la BD, así que **no** vive acá:
+es `AsignadorClienteAptium` y se define en el Paso 5, junto con su migración de siembra.
+
+2. **`features/lavadero/controller/helpers/ConstructorIngresoCDE.java`** — clase plana, sin estado:
 
 ```java
 /**
  * Arma los ingresos de CDE que corresponden a un conjunto de salidas listas.
  *
- * <p>Agrupa por cliente (un {@link EquipoOtros} por cliente) y, dentro de cada cliente,
- * unifica las salidas del mismo elemento sumando cantidades.
+ * <p>Agrupa por el cliente que decide el {@link AsignadorClienteCDE} (un {@link EquipoOtros}
+ * por cliente asignado) y, dentro de cada grupo, unifica las salidas del mismo elemento
+ * sumando cantidades. Con el asignador de APTIUM todas las salidas caen en el mismo grupo,
+ * vengan del cliente que vengan: la agrupación no necesita una regla aparte.
  *
  * <p>Sin dependencias de Swing ni de JDBC: es lógica de armado y se testea sola.
  */
 public final class ConstructorIngresoCDE {
 
-    /** @return un ingreso por cliente, en orden estable por clienteId */
-    public List<EquipoOtros> construir(List<SalidaLista> salidas) { ... }
-
-    /** Qué salidas alimentaron cada ingreso, para poder estampar equipo_otros_id después. */
-    public Map<Integer, List<Integer>> salidaIdsPorCliente(List<SalidaLista> salidas) { ... }
+    /** @param asignador de dónde sale el nro_cliente de cada ingreso */
+    public IngresosCDE construir(List<SalidaLista> salidas, AsignadorClienteCDE asignador) { ... }
 }
+
+/**
+ * Los ingresos armados y de qué salidas salió cada uno.
+ * Van juntos a propósito: se calculan en una sola pasada y no pueden desincronizarse.
+ */
+public record IngresosCDE(List<EquipoOtros> ingresos, Map<EquipoOtros, List<Integer>> salidaIds) { }
 ```
 
-*(Si al implementar resulta más limpio devolver un único record `IngresosCDE(List<EquipoOtros>,
-Map<...>)` en una sola pasada, hacerlo: lo que no puede pasar es recorrer y agrupar dos veces con dos
-criterios que se puedan desincronizar.)*
+El asignador es un **parámetro del método**, no del constructor: `ConstructorIngresoCDE` sigue siendo
+una sola instancia sin estado, y quien elige la variante es el derivador que la llama.
 
-2. **Tests `ConstructorIngresoCDETest`** (sin BD, sin Swing):
+3. **Tests `ConstructorIngresoCDETest`** (sin BD, sin Swing). Salvo aclaración, con
+   `CLIENTE_ORIGINAL`:
    - Una salida de un cliente → un ingreso con un material, cantidad correcta.
    - Tres salidas de dos clientes → dos ingresos, cada uno con el material de su cliente.
    - Dos salidas del mismo cliente y mismo elemento → **un** material con la suma.
    - Dos salidas del mismo cliente y distinto elemento → un ingreso con dos materiales.
+   - **Con un asignador que devuelve siempre 99:** tres salidas de tres clientes distintos → **un
+     solo** ingreso con `nroCliente == 99` y los tres materiales. Es el test de la variante APTIUM,
+     sin necesitar la BD.
+   - **Con un asignador que devuelve siempre 99:** dos salidas de clientes distintos pero del mismo
+     elemento → **un** material con la suma (la unificación es por grupo, no por cliente original).
    - Todo ingreso creado tiene `tipoIngreso == DETALLES`, `requiereLavado == false`,
      `requiereEmpaque == true`, `estado == NUEVO`.
    - **Test de la regla de negocio real:** para cada ingreso construido,
@@ -587,40 +657,63 @@ verificar con un `SELECT` si ya está todo cubierto y recién ahí hacer el `UPD
 ```java
 /**
  * Qué hace la aplicación con un conjunto de salidas de lavadero ya listas.
- * Una implementación por {@link DestinoSalida}.
+ * Una instancia por {@link AccionSalida}.
  *
  * <p>Recibe la {@link Connection} de la transacción abierta por {@code SalidaLavaderoDAO}:
  * lo que el derivador escriba y el estampado del destino tienen que ser atómicos.
  */
 public interface DerivadorSalidas {
 
-    DestinoSalida destino();
+    /** La acción que este derivador atiende. El destino a persistir sale de ella. */
+    AccionSalida accion();
 
     /**
      * @return equipo_otros creado para cada salida (salidaId → equipoOtrosId).
-     *         Vacío si este destino no genera nada en el CDE.
+     *         Vacío si esta acción no genera nada en el CDE.
      */
     Map<Integer, Integer> derivar(Connection conn, List<SalidaLista> salidas) throws SQLException;
 }
 ```
 
-2. **`DerivadorFueraDeFlujo`** — `destino()` devuelve `FUERA_DE_FLUJO`; `derivar` devuelve
-   `Map.of()`. Sin estado, sin dependencias. Existe para que el orquestador no tenga un `if` sobre el
-   enum.
+Se indexa por **acción** y no por destino porque las dos variantes de CDE comparten el destino
+persistido (`CDE_OTROS`) y se diferencian sólo en el cliente que asignan: un mapa por destino no
+podría tener las dos.
 
-3. **`DerivadorIngresoCDE(ConstructorIngresoCDE, EquipoOtrosDAO)`** — arma los ingresos por cliente,
-   los persiste con `equipoOtrosDAO.guardar(conn, equipo)` y devuelve el mapa
-   `salidaId → equipoOtrosId`. Loguea a INFO qué ingreso se creó para qué cliente y con cuántos
-   elementos.
+2. **`DerivadorFueraDeFlujo`** — `accion()` devuelve `FUERA_DE_FLUJO`; `derivar` devuelve `Map.of()`.
+   Sin estado, sin dependencias. Existe para que el orquestador no tenga un `if` sobre el enum.
 
-4. **`SalidaLavaderoDAO.derivar(DerivadorSalidas derivador, List<SalidaLista> salidas)`**:
+3. **`AsignadorClienteAptium(ClienteDAO)`** — resuelve el id de APTIUM **por nombre**, nunca
+   hardcodeado (depende del `AUTO_INCREMENT`). Usa `clienteDAO.buscarPorNombre(...)` y se queda con la
+   coincidencia **exacta** (`equalsIgnoreCase`), porque ese método busca por coincidencia parcial y
+   "APTIUM" podría traer varias filas. Resuelve una vez y cachea el id. **Si no encuentra el cliente,
+   lanza `ResourceNotFoundException`** con un mensaje que diga qué falta y cómo arreglarlo: derivar en
+   silencio a un cliente equivocado sería mucho peor que fallar.
+   El nombre vive en `Constantes.Lavadero.CLIENTE_APTIUM = "APTIUM"`.
+
+4. **Migración `V18__cliente_aptium.sql`** — una migración **nueva**, no un agregado a `V17`:
+
+```sql
+-- El cliente bajo el que se derivan al CDE los materiales que no conservan su cliente original.
+-- En producción ya existe; esto es para las BD de desarrollo y para los tests.
+-- clientes.nombre es UNIQUE desde V4, así que INSERT IGNORE es idempotente.
+INSERT IGNORE INTO clientes (nombre) VALUES ('APTIUM');
+```
+
+5. **`DerivadorIngresoCDE(AccionSalida, ConstructorIngresoCDE, AsignadorClienteCDE, EquipoOtrosDAO)`**
+   — **una sola clase, dos instancias**: `(CDE_CLIENTE, …, CLIENTE_ORIGINAL, …)` y
+   `(CDE_APTIUM, …, asignadorAptium, …)`. Arma los ingresos con el asignador que le tocó, los persiste
+   con `equipoOtrosDAO.guardar(conn, equipo)` y devuelve el mapa `salidaId → equipoOtrosId`. Loguea a
+   INFO qué ingreso se creó, para qué cliente y con cuántos elementos.
+   No hay dos clases casi iguales: lo único que cambia entre las variantes es el asignador.
+
+6. **`SalidaLavaderoDAO.derivar(DerivadorSalidas derivador, List<SalidaLista> salidas)`**:
 
 ```
 try (TransactionalConnection tx = TransactionalConnection.begin()) {
     conn = tx.get();
     1. verificarSinDestino(conn, salidaIds)      // relee destino IS NULL; si falta alguna → BusinessException
     2. Map<Integer,Integer> equipos = derivador.derivar(conn, salidas);
-    3. estamparDestino(conn, salidaIds, derivador.destino(), equipos);
+    3. estamparDestino(conn, salidaIds, derivador.accion().destinoPersistido(), equipos);
          UPDATE salidas_lavadero
             SET destino = ?, equipo_otros_id = ?, fecha_salida = NOW()
           WHERE id = ? AND destino IS NULL
@@ -636,7 +729,7 @@ try (TransactionalConnection tx = TransactionalConnection.begin()) {
 El paso 1 (releer antes de escribir) es lo que impide derivar dos veces desde una pantalla no
 refrescada; el `AND destino IS NULL` del paso 3 es el cinturón además de los tirantes.
 
-5. **`finalizarIngresosCompletos(Connection, Set<Integer> ingresoIds)`** — por cada ingreso:
+7. **`finalizarIngresosCompletos(Connection, Set<Integer> ingresoIds)`** — por cada ingreso:
 
 ```sql
 SELECT (SELECT COALESCE(SUM(ecl.cantidad), 0)
@@ -651,13 +744,20 @@ SELECT (SELECT COALESCE(SUM(ecl.cantidad), 0)
 
 Si `derivado >= total` → `UPDATE ingresos_lavadero SET estado = '<FINALIZADO>' WHERE id = ?`.
 
-6. **Tests `SalidaLavaderoDerivacionTest`** (H2, ingreso + clasificación + ciclo finalizado + salidas
+8. **Tests `SalidaLavaderoDerivacionTest`** (H2, ingreso + clasificación + ciclo finalizado + salidas
    listas como fixture):
-   - Derivar a `FUERA_DE_FLUJO`: las salidas quedan con destino y `equipo_otros_id` NULL; **no** se
+   - Derivar con `FUERA_DE_FLUJO`: las salidas quedan con destino y `equipo_otros_id` NULL; **no** se
      creó ninguna fila en `equipo_otros`.
-   - Derivar a `CDE_OTROS`: se creó **un** `equipo_otros` por cliente, con `requiere_lavado = 0`,
-     `tipo_ingreso = 'DETALLES'` y un `equipo_otros_materiales` por elemento; las salidas apuntan a él.
-   - Derivar dos clientes de una → dos ingresos distintos, cada salida apuntando al suyo.
+   - Derivar con `CDE_CLIENTE`: se creó **un** `equipo_otros` por cliente, con `requiere_lavado = 0`,
+     `tipo_ingreso = 'DETALLES'` y un `equipo_otros_materiales` por elemento; las salidas apuntan a él,
+     y su `nro_cliente` es el del ingreso de lavadero.
+   - Derivar con `CDE_APTIUM` salidas de **dos clientes distintos** → **un solo** `equipo_otros` cuyo
+     `nro_cliente` es el id de APTIUM resuelto por nombre, con los materiales de los dos.
+   - Las dos acciones de CDE dejan `salidas_lavadero.destino = 'CDE_OTROS'`: en la salida **no** se
+     distingue cuál se usó (es la decisión tomada; el test la fija).
+   - `AsignadorClienteAptium` con la tabla `clientes` sin APTIUM → `ResourceNotFoundException`, y la
+     transacción no deja nada escrito.
+   - Derivar dos clientes de una con `CDE_CLIENTE` → dos ingresos distintos, cada salida apuntando al suyo.
    - Derivar una salida **ya derivada** → `BusinessException` y **nada** cambia (ni salidas ni `equipo_otros`).
    - **Atomicidad:** con un `EquipoOtrosDAO` que lanza `SQLException` al guardar, `derivar` falla y
      `salidas_lavadero` queda intacta (destino sigue NULL). Es el test que justifica todo el paso 3.
@@ -680,7 +780,11 @@ mvn test
 
 ### Criterio de salida
 
-- [ ] `DerivadorSalidas` con dos implementaciones; ningún `switch`/`if` sobre `DestinoSalida` en el DAO.
+- [ ] `DerivadorSalidas` con **dos clases y tres instancias** (una por `AccionSalida`); ningún
+      `switch`/`if` sobre `AccionSalida` ni sobre `DestinoSalida` en el DAO.
+- [ ] `V18__cliente_aptium.sql` es una migración nueva; `V17` quedó **sin tocar** desde el Paso 1.
+- [ ] El id de APTIUM se resuelve por nombre; `grep -rn "CLIENTE_APTIUM" src/main/java` no muestra
+      ningún id numérico hardcodeado.
 - [ ] Existe el test de atomicidad (fallo al crear el ingreso ⇒ salidas intactas) y está en verde.
 - [ ] Existen los tres tests de `FINALIZADO` (parcial / completo / completado después).
 - [ ] Los invariantes 1-8 se cumplen; en particular, **cero JDBC fuera de `dao/`**.
@@ -698,9 +802,9 @@ La capa que consume el controller. En este repo un service **sólo valida y dele
 `CicloLavaderoService` como molde exacto (constructor con null-check, `ValidationException.builder()`,
 delegación al DAO, cero JDBC).
 
-La elección del derivador según el destino es un `Map<DestinoSalida, DerivadorSalidas>` armado en
-`AppContext` a partir de las implementaciones (`toMap(DerivadorSalidas::destino, d -> d)`). El service
-no conoce las clases concretas: recibe la colección y busca. Agregar un destino no lo modifica.
+La elección del derivador según la acción es un `Map<AccionSalida, DerivadorSalidas>` armado en el
+propio service a partir de la colección que recibe (`toMap(DerivadorSalidas::accion, d -> d)`). El
+service no conoce las clases concretas: recibe la lista y busca. Agregar una acción no lo modifica.
 
 ### Tareas
 
@@ -710,9 +814,9 @@ no conoce las clases concretas: recibe la colección y busca. Agregar un destino
 public SalidaLavaderoService(SalidaLavaderoDAO dao, List<DerivadorSalidas> derivadores)
 ```
 
-Construye el mapa por destino y **falla en el constructor** si falta un derivador para algún valor del
-enum o si hay dos para el mismo destino. Un destino sin derivador es un bug de cableado: tiene que
-explotar al arrancar la app, no cuando el operador hace clic.
+Construye el mapa por acción y **falla en el constructor** si falta un derivador para algún valor de
+`AccionSalida` o si hay dos para la misma acción. Una acción sin derivador es un bug de cableado:
+tiene que explotar al arrancar la app, no cuando el operador hace clic.
 
 API:
 
@@ -721,7 +825,7 @@ List<ElementoLavadoPendiente> obtenerLavadosPendientesDeListo();
 List<SalidaLista>             obtenerListasSinDestino();
 void marcarListo(List<MarcaListo> marcas);
 void volverALavado(int salidaId);
-void derivar(DestinoSalida destino, List<SalidaLista> seleccion);
+void derivar(AccionSalida accion, List<SalidaLista> seleccion);
 ```
 
 `MarcaListo` lleva el `ElementoLavadoPendiente` completo (no sólo el id) para poder validar sin
@@ -736,16 +840,18 @@ Validaciones con `ValidationException.builder()`:
 - `marcarListo`: lista nula o vacía / alguna marca con item nulo / cantidad ≤ 0 / cantidad > pendiente
   (el mensaje de error nombra el elemento, el cliente y el lavarropas, no el id) / dos marcas del
   mismo `elementoCicloId` en la misma lista.
-- `derivar`: destino nulo / selección nula o vacía / cantidad ≤ 0 en alguna salida.
+- `derivar`: acción nula / selección nula o vacía / cantidad ≤ 0 en alguna salida.
 - `volverALavado`: `salidaId <= 0`.
 
 2. **Tests `SalidaLavaderoServiceTest`** (Mockito, DAO mockeado):
    - Cada validación lanza `ValidationException` con el mensaje esperado y **no** llega al DAO
      (`verifyNoInteractions`).
    - El camino feliz delega con los argumentos correctos.
-   - `derivar(CDE_OTROS, ...)` llama al DAO con el derivador cuyo `destino()` es `CDE_OTROS`.
-   - Constructor con la lista de derivadores incompleta → `IllegalArgumentException`.
-   - Constructor con dos derivadores del mismo destino → `IllegalArgumentException`.
+   - `derivar(CDE_CLIENTE, ...)` y `derivar(CDE_APTIUM, ...)` llaman al DAO con derivadores
+     **distintos**, cada uno con la `accion()` que corresponde. Es el test que prueba que las dos
+     variantes no se confunden pese a compartir el destino persistido.
+   - Constructor con la lista de derivadores incompleta (falta `CDE_APTIUM`) → `IllegalArgumentException`.
+   - Constructor con dos derivadores de la misma acción → `IllegalArgumentException`.
 
 ### Verificación
 
@@ -803,8 +909,12 @@ son indistinguibles y el operador no sabe cuál está marcando.
      `Botones.INGRESAR_A_CDE = "Ingresar al CDE"`
    - `Textos.TABLA_LAVADOS_TITULO = "Lavados — pendientes de secado y doblado"`,
      `Textos.TABLA_LISTOS_TITULO = "Listos — pendientes de destino"`
-   - `Mensajes.CONFIRMAR_DERIVAR_CDE` y `Mensajes.CONFIRMAR_SALE_DEL_FLUJO` (texto de confirmación;
-     ambas acciones son irreversibles, así que van con `JOptionPane.showConfirmDialog`).
+   - `Mensajes.CONFIRMAR_SALE_DEL_FLUJO` (irreversible → `JOptionPane.showConfirmDialog`).
+   - `Mensajes.ELEGIR_CLIENTE_CDE` — el texto del diálogo de derivación al CDE, que **pregunta y
+     confirma en un solo paso**: "Se van a derivar N elemento(s) al CDE. ¿A nombre de quién ingresan?"
+     Las dos opciones salen de `AccionSalida.CDE_CLIENTE.getNombre()` y
+     `AccionSalida.CDE_APTIUM.getNombre()`, así que el texto de los botones no se duplica en `Constantes`.
+   - `Constantes.Lavadero.CLIENTE_APTIUM = "APTIUM"` (lo usa el Paso 5; si el Paso 5 ya se ejecutó, ya está).
 
 2. **`view/helpers/ElementoLavadoTableModel.java`** — columnas `Elemento | Pendiente | Cliente |
    Lavarropas | Lavado el`. Calcado de `ElementoDisponibleTableModel`: `setItems(List<...>)`,
@@ -834,6 +944,11 @@ son indistinguibles y el operador no sabe cuál está marcando.
      `getSeleccionListos()` → `List<SalidaLista>`.
    - `refrescar(List<ElementoLavadoPendiente>, List<SalidaLista>)`.
    - `mostrarError` / `mostrarInfo` / `confirmar(String)` calcados de `PantallaClasificacionLavadero`.
+   - **`AccionSalida elegirAccionCde(int cantidadFilas)`** — un `JOptionPane.showOptionDialog` con las
+     dos opciones de CDE y Cancelar; devuelve la `AccionSalida` elegida o **`null` si se canceló**.
+     Es presentación pura (arma un diálogo y traduce el índice del botón), así que puede vivir en la
+     vista sin romper la regla de "cero lógica": no decide nada, sólo pregunta. El controller es quien
+     interpreta el `null` como "no hacer nada".
 
 5. **`PantallaLavadero`**: agregar `btnSalidas` con su getter. Con 5 botones, `GridLayout(2, 2, 15, 0)`
    ya no alcanza → pasar a `new GridLayout(0, 3, 15, 10)` (dos filas: 3 + 2). El botón nuevo va
@@ -908,17 +1023,34 @@ public SalidasLavaderoController(PantallaSalidasLavadero pantalla,
 - `marcarListo()`: valida que haya selección, llama al service, recarga, sin diálogo de éxito (es una
   acción de alta frecuencia; el feedback es que la fila se mueve de tabla).
 - `volverALavado()`: idem, sobre la selección de la derecha (una fila a la vez).
-- `saleDelFlujo()` e `ingresarACde()`: `confirmar(...)` primero — son irreversibles —, después
-  `service.derivar(destino, seleccion)`, recargar, y **sólo en `CDE_OTROS`** disparar
-  `refrescoOperativo.run()`. Mostrar un `mostrarInfo` con el resumen ("Se crearon 2 ingresos en el CDE").
+- `saleDelFlujo()`: `confirmar(...)` — es irreversible —, después `service.derivar(FUERA_DE_FLUJO,
+  seleccion)` y recargar. **No** dispara el refresco: en el CDE no cambió nada.
+- `ingresarACde()`: `pantalla.elegirAccionCde(seleccion.size())`; si devuelve `null` (cancelado) no
+  pasa nada. Si no, `service.derivar(accion, seleccion)`, recargar y disparar
+  `refrescoOperativo.run()`. Ese diálogo **es** la confirmación: no se pide una segunda.
+  Después, `mostrarInfo` con el resumen, que tiene que decir **a nombre de quién** entraron
+  ("Se creó 1 ingreso en el CDE a nombre de APTIUM" / "Se crearon 2 ingresos en el CDE").
 - Manejo de errores: `ValidationException` → `mostrarError(String.join("\n", ex.getValidationErrors()))`;
   `BusinessException` → `mostrarError(ex.getMessage())` **y recargar** (el mensaje siempre es
   "tu pantalla está vieja", así que recargar es parte de la respuesta).
 
-2. **`AppContext`**: construir `SalidaLavaderoDAO`, `ConstructorIngresoCDE`, los dos derivadores
-   (`DerivadorIngresoCDE` recibe el `EquipoOtrosDAO` que ya se construye ahí) y
-   `SalidaLavaderoService`; agregar el campo, el parámetro del constructor, el null-check y el getter,
-   siguiendo el bloque de lavadero (líneas 181-195, 211-215, 276-293).
+2. **`AppContext`**: construir `SalidaLavaderoDAO`, `ConstructorIngresoCDE`,
+   `AsignadorClienteAptium` (recibe el `ClienteDAO` que ya se construye ahí) y los **tres**
+   derivadores — `DerivadorFueraDeFlujo`, y dos `DerivadorIngresoCDE` que sólo se diferencian en la
+   acción y el asignador:
+
+```java
+List<DerivadorSalidas> derivadores = List.of(
+    new DerivadorFueraDeFlujo(),
+    new DerivadorIngresoCDE(AccionSalida.CDE_CLIENTE, constructorIngresoCDE,
+                            AsignadorClienteCDE.CLIENTE_ORIGINAL, equipoOtrosDAO),
+    new DerivadorIngresoCDE(AccionSalida.CDE_APTIUM, constructorIngresoCDE,
+                            new AsignadorClienteAptium(clienteDAO), equipoOtrosDAO));
+```
+
+   Después `SalidaLavaderoService`; agregar el campo, el parámetro del constructor, el null-check y el
+   getter, siguiendo el bloque de lavadero (líneas 181-195, 211-215, 276-293). Esta lista es **el
+   único lugar** donde se decide qué acciones existen.
 
 3. **`UiCoordinator`**: instanciar el controller pasándole `context.getSalidaLavaderoService()` y el
    `Disparador operativo`, y cablear el botón del menú:
@@ -935,8 +1067,11 @@ vista.getPantallaLavadero().getBtnSalidas().addActionListener(e -> {
 
 4. **Tests `SalidasLavaderoControllerTest`** (Mockito sobre el service y la pantalla, como
    `EstadoProcesosControllerTest`):
-   - Derivar a `CDE_OTROS` dispara el `Runnable` de refresco **exactamente una vez**.
+   - Derivar al CDE dispara el `Runnable` de refresco **exactamente una vez**.
    - Derivar a `FUERA_DE_FLUJO` **no** lo dispara (nada cambió en CDE).
+   - El diálogo devuelve `CDE_CLIENTE` → el service recibe `CDE_CLIENTE`; devuelve `CDE_APTIUM` → el
+     service recibe `CDE_APTIUM`.
+   - El diálogo devuelve `null` (cancelado) → **nada** llega al service y no se dispara el refresco.
    - Sin selección, ninguna acción llega al service y se muestra el error.
    - Con **una** fila seleccionada, el service recibe una `MarcaListo` con la cantidad del spinner.
    - Con **tres** filas seleccionadas, el service recibe **un solo** llamado con tres `MarcaListo`,
@@ -959,15 +1094,24 @@ mvn clean package
 3. Ciclos: arrastrar los dos elementos a un lavarropas, lanzar y finalizar el ciclo.
 4. Salidas: aparecen las dos filas. Marcar 4 Batas como Listo → izquierda queda en 6, derecha muestra 4.
 5. "Volver a Lavado" sobre esas 4 → vuelve a 10. Rehacer el marcado con las 10 y con los 5 Toallón.
-6. Seleccionar las Batas → "Ingresar al CDE" → confirmar.
-7. **Sin salir de la app**: Esterilización → Registrar estado → el ingreso del cliente aparece con
-   10 Batas y el siguiente estado ofrecido es **Empaquetado** (no Lavando).
-8. Volver a Salidas → seleccionar los Toallón → "Sale del flujo" → confirmar. La tabla derecha queda vacía.
-9. Verificar en BD: `SELECT estado FROM ingresos_lavadero WHERE id = <el del paso 1>` → `FINALIZADO`.
+6. Seleccionar las Batas → "Ingresar al CDE" → en el diálogo elegir **"Ingresa al CDE con su cliente"**.
+7. **Sin salir de la app**: Esterilización → Registrar estado → el ingreso aparece a nombre del
+   cliente original con 10 Batas y el siguiente estado ofrecido es **Empaquetado** (no Lavando).
+8. Volver a Salidas → seleccionar los Toallón → "Ingresar al CDE" → esta vez elegir **"Ingresa al CDE
+   como APTIUM"**. En Registrar estado el ingreso nuevo figura a nombre de **APTIUM**, no del cliente.
+9. Repetir con un segundo ingreso de **otro** cliente y derivar a APTIUM las salidas de los dos
+   clientes **en una sola operación**: tiene que crearse **un solo** ingreso de APTIUM con los
+   elementos de ambos.
+10. "Sale del flujo" con lo que quede. La tabla derecha queda vacía.
+11. Verificar en BD:
+    - `SELECT estado FROM ingresos_lavadero WHERE id = <el del paso 1>` → `FINALIZADO`.
+    - `SELECT DISTINCT destino FROM salidas_lavadero` → sólo `CDE_OTROS` y `FUERA_DE_FLUJO`
+      (las dos variantes de CDE **no** se distinguen acá; eso es lo esperado).
 
 ### Criterio de salida
 
-- [ ] El flujo completo del smoke manual funciona, incluido el punto 7 (reflejo inmediato) y el 9.
+- [ ] El flujo completo del smoke manual funciona, incluidos el punto 7 (reflejo inmediato), el 8
+      (variante APTIUM), el 9 (dos clientes en un solo ingreso de APTIUM) y el 11.
 - [ ] Ninguna consulta a BD ocurre en el EDT (arrancar con `-Daptium.edt.strict=true` y navegar la
       pantalla nueva sin que explote).
 - [ ] `SalidasLavaderoControllerTest` en verde.
@@ -999,7 +1143,10 @@ el ciclo de vida del ingreso de lavadero y un puente entre dos features que ante
 
 2. **`CLAUDE.md`**:
    - Sección "Ortopedias vs. Otros": nota de que un ingreso "Otros" puede nacer de dos lugares —
-     carga manual o derivación desde Lavadero — y que el segundo entra con `requiereLavado = false`.
+     carga manual o derivación desde Lavadero — que el segundo entra con `requiereLavado = false`, y
+     que puede quedar a nombre del cliente original **o de APTIUM** según lo que se elija al derivar.
+   - Aclarar la distinción `AccionSalida` (lo que el operador elige) vs `DestinoSalida` (lo que se
+     persiste): dos acciones distintas guardan el mismo destino, y esa asimetría es deliberada.
    - Sección nueva o ampliación de la de lavadero con el ciclo de vida completo del ingreso:
      `PENDIENTE → CLASIFICADO → LAVADO → FINALIZADO`, y la aclaración de que "Listo" (secado y
      doblado) vive por cantidad en `salidas_lavadero`, no en el ingreso.
@@ -1040,8 +1187,9 @@ Modo directo, un commit por paso sobre `ConexionConCDE`: `git revert <sha>` alca
 2, 4, 5, 6, 7, 8 y 9.
 
 Dos excepciones:
-- **Paso 1:** revertir el commit borra la migración `V17`, pero la tabla ya creada sigue en la BD de
-  desarrollo y en el historial de Flyway. Hay que hacer además
-  `DROP TABLE salidas_lavadero;` y borrar la fila de `flyway_schema_history`.
+- **Pasos 1 y 5 (las migraciones):** revertir el commit borra el archivo `.sql`, pero lo que ya se
+  aplicó sigue en la BD y en `flyway_schema_history`. Para el Paso 1 hay que hacer además
+  `DROP TABLE salidas_lavadero;` y borrar su fila del historial. La `V18` del Paso 5 sólo agrega un
+  cliente: **no** borrarlo si ya se usó en alguna derivación, y en producción ya existía de antes.
 - **Paso 3:** es un refactor del que dependen los pasos 5 en adelante. Revertirlo aislado rompe la
   compilación; hay que revertir del 5 para arriba primero.
