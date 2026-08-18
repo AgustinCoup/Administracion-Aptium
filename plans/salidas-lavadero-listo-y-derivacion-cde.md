@@ -385,7 +385,9 @@ El de listas sin destino tiene que hacer el mismo recorrido hacia atrás (`sl �
 
 `marcarListo` recibe **la selección entera** y la resuelve en **una sola transacción**: por cada
 marca hace el `SELECT` del saldo actual de ese `elemento_ciclo_id` y **sólo si `saldo >= cantidad`**
-inserta. Si alguna falla, lanza `BusinessException` y **no se inserta ninguna** — marcar 8 filas y que
+inserta. Ese `SELECT` exige además `cl.fecha_fin IS NOT NULL` (añadido al ejecutar): una tanda de un
+ciclo todavía activo no está lavada, no devuelve fila y se trata como saldo cero, en vez de colarse
+por no estar en la pantalla de la que salió. Si alguna falla, lanza `BusinessException` y **no se inserta ninguna** — marcar 8 filas y que
 entren 5 sin aviso sería peor que no marcar nada. El mensaje tiene que ser accionable e identificar la
 fila culpable ("Batas (Hosp. A, lavarropas 4) ya no tiene 10 disponibles. Refrescá la pantalla.").
 Sin este chequeo, dos marcados seguidos sobre un snapshot viejo dejan la tabla sobregirada.
@@ -393,10 +395,17 @@ Sin este chequeo, dos marcados seguidos sobre un snapshot viejo dejan la tabla s
 `volverALavado` hace `DELETE FROM salidas_lavadero WHERE id = ? AND destino IS NULL`; si afecta 0
 filas lanza `BusinessException` (o la salida ya se derivó, o ya no existe).
 
-3. **Errores:** este DAO **no** traga excepciones. Un fallo de SQL en la lectura lanza
-   `DataAccessException`; en la escritura, `DatabaseException`. (Los DAOs viejos del lavadero loguean y
-   devuelven lista vacía; ese comportamiento es deuda y no se replica — ver
-   `plans/hallazgos-arquitectura-pendientes.md`.)
+3. **Errores:** este DAO **no** traga excepciones. Un fallo de SQL lanza `DatabaseException`, tanto en
+   lectura como en escritura. (Los DAOs viejos del lavadero loguean y devuelven lista vacía; ese
+   comportamiento es deuda y no se replica — ver `plans/hallazgos-arquitectura-pendientes.md`.)
+
+   > **Corrección aplicada al ejecutar (2026-08-18):** el plan nombraba `DataAccessException` y
+   > `BusinessException`, que **no existían** en el repo. Decidido con el usuario:
+   > - `BusinessException extends ApplicationException` **se creó** (`common/exception/`). Es el
+   >   vocabulario que usan también los pasos 5, 7, 8 y 9, y ahora es un tipo real.
+   > - `DataAccessException` **no** se creó: los fallos de SQL de lectura usan `DatabaseException`,
+   >   igual que `CicloLavaderoDAO.obtenerTodosLosCiclos()`. Nadie catchea lectura y escritura por
+   >   separado, así que el segundo tipo no aportaba nada.
 
 4. **Tests** `SalidaLavaderoDAOTest` (H2, mismo armado que `CicloLavaderoDAOTest`):
    - Un elemento de un ciclo **activo** no aparece como pendiente de Listo.
