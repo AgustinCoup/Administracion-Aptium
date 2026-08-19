@@ -1190,6 +1190,20 @@ pantalla de Salidas" a los archivos correctos usando sólo el mapa.
   pasos 3 y 5 son los que tienen supuestos más fuertes; si alguno se cae, el diseño de la derivación
   hay que rediscutirlo, no parchearlo.
 
+### Mutaciones aplicadas
+
+- **2026-08-19 — `ConstructorIngresoCDE` y compañía se mudan de `controller/helpers/` a
+  `dao/derivadores/`.** El Paso 4 las ubicó en `features/lavadero/controller/helpers/` por analogía
+  con `ConstructorEquipo`, pero al cerrar el Paso 5 quedó claro que la analogía no se sostiene:
+  `ConstructorEquipo` lee un `JPanel` y lo llama un controller, mientras que `ConstructorIngresoCDE`
+  no lo usa ningún controller — su único consumidor es `DerivadorIngresoCDE`, que vive en `dao/`.
+  Eso dejaba un import `dao → controller`, al revés del flujo `model → dao → service →
+  view/controller`. Se movieron `AsignadorClienteCDE`, `ConstructorIngresoCDE` e `IngresosCDE` (con
+  su test) junto a los derivadores. Sin cambios de comportamiento: sólo `package` e `import`, y
+  `mvn test` sigue en 861 verdes. **Consecuencia para los pasos que faltan:** el Paso 8 tiene que
+  importar `AsignadorClienteCDE.CLIENTE_ORIGINAL` y `ConstructorIngresoCDE` desde
+  `features.lavadero.dao.derivadores`, no desde `controller.helpers`.
+
 ## Rollback
 
 Modo directo, un commit por paso sobre `ConexionConCDE`: `git revert <sha>` alcanza para los pasos

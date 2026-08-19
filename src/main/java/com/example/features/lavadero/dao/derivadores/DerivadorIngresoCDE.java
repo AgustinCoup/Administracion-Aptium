@@ -2,9 +2,6 @@ package com.example.features.lavadero.dao.derivadores;
 
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.equipos.otros.model.EquipoOtros;
-import com.example.features.lavadero.controller.helpers.AsignadorClienteCDE;
-import com.example.features.lavadero.controller.helpers.ConstructorIngresoCDE;
-import com.example.features.lavadero.controller.helpers.IngresosCDE;
 import com.example.features.lavadero.model.AccionSalida;
 import com.example.features.lavadero.model.SalidaLista;
 import org.slf4j.Logger;

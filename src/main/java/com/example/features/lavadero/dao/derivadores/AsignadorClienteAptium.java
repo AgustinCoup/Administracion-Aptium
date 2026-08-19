@@ -4,7 +4,6 @@ import com.example.common.constants.Constantes;
 import com.example.common.exception.ResourceNotFoundException;
 import com.example.features.clientes.dao.ClienteDAO;
 import com.example.features.clientes.model.Cliente;
-import com.example.features.lavadero.controller.helpers.AsignadorClienteCDE;
 import com.example.features.lavadero.model.SalidaLista;
 
 import java.util.Objects;
@@ -17,10 +16,9 @@ import java.util.Objects;
  * está, esto falla con {@link ResourceNotFoundException}: derivar en silencio a un cliente
  * equivocado sería mucho peor que no derivar.
  *
- * <p>Vive junto a los derivadores y no junto a {@link AsignadorClienteCDE} a propósito: su
- * hermano {@code CLIENTE_ORIGINAL} es una lambda sobre el propio registro, mientras que este
- * consulta la BD a través de un DAO. Los helpers de {@code controller/} son lógica plana sin
- * dependencias de infraestructura.
+ * <p>A diferencia de su hermano {@link AsignadorClienteCDE#CLIENTE_ORIGINAL}, que es una lambda
+ * sobre el propio registro, este necesita un DAO. Es la razón por la que el asignador es una
+ * interfaz y no un campo del {@code SalidaLista}.
  */
 public final class AsignadorClienteAptium implements AsignadorClienteCDE {
 

@@ -1,4 +1,4 @@
-package com.example.features.lavadero.controller.helpers;
+package com.example.features.lavadero.dao.derivadores;
 
 import com.example.features.lavadero.model.SalidaLista;
 
