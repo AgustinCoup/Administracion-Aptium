@@ -12,6 +12,7 @@ import com.example.features.equipos.otros.controller.OtrosInputController;
 import com.example.features.lavadero.controller.CiclosController;
 import com.example.features.lavadero.controller.ClasificacionController;
 import com.example.features.lavadero.controller.LavaderoController;
+import com.example.features.lavadero.controller.SalidasLavaderoController;
 import com.example.features.lavadero.controller.VerCiclosController;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.ajustes.controller.AjustesController;
@@ -201,6 +202,16 @@ public class UiCoordinator {
 
         vista.getPantallaLavadero().getBtnVerCiclos().addActionListener(e ->
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.VER_CICLOS_LAVADERO));
+
+        // Derivar al CDE crea ingresos en la cola operativa: por eso este controller recibe
+        // el disparador `operativo` y no `refrescarEquipos`.
+        SalidasLavaderoController salidasController = new SalidasLavaderoController(
+            vista.getPantallaSalidasLavadero(), context.getSalidaLavaderoService(), operativo);
+
+        vista.getPantallaLavadero().getBtnSalidas().addActionListener(e -> {
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.SALIDAS_LAVADERO);
+            salidasController.cargarDatos();
+        });
 
         AjustesController ajustesController = new AjustesController(
             vista.getPantallaAjustes(), context.getClienteService(), context.getActualizacionService());

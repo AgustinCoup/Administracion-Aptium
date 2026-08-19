@@ -160,6 +160,23 @@ public final class Constantes {
         public static final String ELEGIR_CLIENTE_CDE =
             "Se van a derivar %d elemento(s) al CDE. ¿A nombre de quién ingresan?";
 
+        public static final String SIN_SELECCION_LAVADOS =
+            "Seleccioná al menos una tanda lavada.";
+        public static final String SIN_SELECCION_LISTOS =
+            "Seleccioná al menos una salida lista.";
+        public static final String VOLVER_A_LAVADO_UNA_SOLA =
+            "Volvé a Lavado de a una salida por vez.";
+
+        /**
+         * Resumen de la derivación. Dice a nombre de quién entraron: es lo único que
+         * distingue las dos acciones de CDE una vez hecha, porque el destino persistido
+         * es el mismo para las dos.
+         */
+        public static final String RESUMEN_CDE_UN_INGRESO =
+            "Se creó 1 ingreso en el CDE a nombre de %s.";
+        public static final String RESUMEN_CDE_VARIOS_INGRESOS =
+            "Se crearon %d ingresos en el CDE, uno por cliente.";
+
         /** Devolver una fracción deshace la subdivisión entera: hay que avisar el alcance. */
         public static final String TITULO_DESHACER_SUBDIVISION = "Deshacer subdivisión";
         public static final String CONFIRMAR_DESHACER_SUBDIVISION =

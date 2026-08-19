@@ -38,14 +38,25 @@ import com.example.features.lavadero.dao.IngresoLavaderoDAO;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.dao.LavarropasDAO;
 import com.example.features.lavadero.dao.CatalogoJabonesDAO;
+import com.example.features.lavadero.dao.SalidaLavaderoDAO;
+import com.example.features.lavadero.dao.derivadores.AsignadorClienteAptium;
+import com.example.features.lavadero.dao.derivadores.AsignadorClienteCDE;
+import com.example.features.lavadero.dao.derivadores.ConstructorIngresoCDE;
+import com.example.features.lavadero.dao.derivadores.DerivadorFueraDeFlujo;
+import com.example.features.lavadero.dao.derivadores.DerivadorIngresoCDE;
+import com.example.features.lavadero.dao.derivadores.DerivadorSalidas;
+import com.example.features.lavadero.model.AccionSalida;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.ClasificacionLavaderoService;
 import com.example.features.lavadero.service.LavarropasService;
 import com.example.features.lavadero.service.LavaderoService;
+import com.example.features.lavadero.service.SalidaLavaderoService;
 import com.example.features.equipos.ortopedias.service.EquipoReporteService;
 import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
 import com.example.features.lotes.service.LoteReporteService;
+
+import java.util.List;
 
 public class AppContext {
 
@@ -67,6 +78,7 @@ public class AppContext {
     private final LavarropasService lavarropasService;
     private final CicloLavaderoService   cicloLavaderoService;
     private final CatalogoJabonesService catalogoJabonesService;
+    private final SalidaLavaderoService  salidaLavaderoService;
     private final LoteReporteService loteReporteService;
     private final EquipoReporteService equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
@@ -92,6 +104,7 @@ public class AppContext {
         LavarropasService lavarropasService,
         CicloLavaderoService cicloLavaderoService,
         CatalogoJabonesService catalogoJabonesService,
+        SalidaLavaderoService salidaLavaderoService,
         LoteReporteService loteReporteService,
         EquipoReporteService equipoReporteService,
         EquipoOtrosReporteService equipoOtrosReporteService,
@@ -106,7 +119,8 @@ public class AppContext {
             || equipoOtrosCorreccionService == null || lavaderoService == null
             || clasificacionLavaderoService == null
             || lavarropasService == null || cicloLavaderoService == null
-            || catalogoJabonesService == null || loteReporteService == null
+            || catalogoJabonesService == null || salidaLavaderoService == null
+            || loteReporteService == null
             || equipoReporteService == null || equipoOtrosReporteService == null
             || actualizacionService == null || versionInfo == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
@@ -130,6 +144,7 @@ public class AppContext {
         this.lavarropasService       = lavarropasService;
         this.cicloLavaderoService    = cicloLavaderoService;
         this.catalogoJabonesService  = catalogoJabonesService;
+        this.salidaLavaderoService   = salidaLavaderoService;
         this.loteReporteService = loteReporteService;
         this.equipoReporteService = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
@@ -194,6 +209,19 @@ public class AppContext {
         CatalogoJabonesDAO catalogoJabonesDAO = new CatalogoJabonesDAO();
         CatalogoJabonesService catalogoJabonesService = new CatalogoJabonesService(catalogoJabonesDAO);
 
+        // Las tres acciones de salida del lavadero. Esta lista es el unico lugar donde se
+        // decide que acciones existen: agregar un destino nuevo es una entrada mas aca.
+        SalidaLavaderoDAO salidaLavaderoDAO = new SalidaLavaderoDAO();
+        ConstructorIngresoCDE constructorIngresoCDE = new ConstructorIngresoCDE();
+        List<DerivadorSalidas> derivadores = List.of(
+            new DerivadorFueraDeFlujo(),
+            new DerivadorIngresoCDE(AccionSalida.CDE_CLIENTE, constructorIngresoCDE,
+                                    AsignadorClienteCDE.CLIENTE_ORIGINAL, equipoOtrosDAO),
+            new DerivadorIngresoCDE(AccionSalida.CDE_APTIUM, constructorIngresoCDE,
+                                    new AsignadorClienteAptium(clienteDAO), equipoOtrosDAO));
+        SalidaLavaderoService salidaLavaderoService =
+            new SalidaLavaderoService(salidaLavaderoDAO, derivadores);
+
         return new AppContext(
             equipoService,
             catalogoService,
@@ -213,6 +241,7 @@ public class AppContext {
             lavarropasService,
             cicloLavaderoService,
             catalogoJabonesService,
+            salidaLavaderoService,
             loteReporteService,
             equipoReporteService,
             equipoOtrosReporteService,
@@ -291,6 +320,10 @@ public class AppContext {
 
     public CatalogoJabonesService getCatalogoJabonesService() {
         return catalogoJabonesService;
+    }
+
+    public SalidaLavaderoService getSalidaLavaderoService() {
+        return salidaLavaderoService;
     }
 
     public LoteReporteService getLoteReporteService() {
