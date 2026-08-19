@@ -1,7 +1,8 @@
 # Brief — Las fracciones de `Equipo*` tienen que existir en la base
 
-**Estado:** diagnóstico cerrado, diseño **abierto**. Todavía **no es un plan ejecutable**: faltan
-cuatro decisiones (§4). Cuando estén tomadas, esto se convierte en un blueprint multi-sesión.
+**Estado:** diagnóstico cerrado, diseño **abierto**. Todavía **no es un plan ejecutable**: la decisión
+**A** está cerrada (§4) y faltan **B, C y D**. Cuando estén tomadas, esto se convierte en un
+blueprint multi-sesión.
 
 **Origen:** observaciones 5 y 6 del smoke manual del Paso 8 de
 [`salidas-lavadero-listo-y-derivacion-cde.md`](salidas-lavadero-listo-y-derivacion-cde.md) (2026-08-19).
@@ -65,16 +66,30 @@ que todas sus partes estén lavadas.**
 > Al salir generan **una** fila de Salidas y **un** elemento en el ingreso del CDE.
 > **No aparece en Salidas hasta que las N partes pasaron por un ciclo finalizado.**
 
-## 4. Las cuatro decisiones que faltan
+## 4. Decisiones
 
-**A — Dónde vive la identidad de la instancia.**
-Recomendado: **tabla propia** `instancias_equipo_ciclo (id, elemento_clasificacion_id, total_partes)`
-+ columna `instancia_equipo_id INT NULL` en `elementos_ciclo_lavadero`. La alternativa (sólo la
-columna, sin tabla) obliga a inferir `total_partes` contando filas, y contar filas es justamente lo
-que no se puede hacer si el ciclo se lanza en varias tandas. `total_partes` explícito es lo que
-permite responder "¿ya están todas lavadas?" sin adivinar.
+### A — ¿Hace falta persistir la identidad de la instancia?  ✅ CERRADA (2026-08-19): **sí**
 
-**B — Cuándo se crea la instancia, si las partes se lanzan en momentos distintos.**
+El usuario objetó, con razón, que "las fracciones no tienen por qué existir en la base". Se evaluaron
+las tres formas de arreglarlo y se descartaron dos:
+
+**El hecho de fondo:** hoy la base no puede distinguir *un equipo repartido en 4 lavarropas* de
+*4 equipos enteros, uno por lavarropas*. Los dos son 4 filas de `cantidad = 1` sobre el mismo
+`elemento_clasificacion_id`. Cualquier arreglo tiene que volverlos distinguibles o hacer que uno de
+los dos sea imposible.
+
+| Opción | Qué hace | Veredicto |
+|---|---|---|
+| **1 — No guardar nada nuevo** | Persistir el equipo una sola vez, en el ciclo del primer lavarropas, e ignorar los demás | **Descartada.** El sistema deja de saber que el equipo también está en los lavarropas 2-4: no puede esperar a que todas las partes estén lavadas (requisito de §3) y la card del lavarropas 3 no muestra lo que tiene adentro |
+| **2 — Una columna, sin identidad** | `partes INT NOT NULL DEFAULT 1`; consumo `SUM(cantidad * 1.0 / partes)`; Salidas agrupa por `(elemento_clasificacion_id, partes)` | **Descartada.** Sería la más barata —una migración de una línea, sin tocar el staging ni los diálogos— pero exige que dos equipos de la misma línea nunca se repartan distinto. **El usuario confirmó (2026-08-19) que sí pueden**: uno entero en un lavarropas y otro partido entre dos es un caso real. Ahí el par `(elemento_clasificacion_id, partes)` mezcla equipos **en silencio** |
+| **3 — Identidad persistida** | Tabla `instancias_equipo_ciclo (id, elemento_clasificacion_id, total_partes)` + columna `instancia_equipo_id INT NULL` en `elementos_ciclo_lavadero` | **Elegida.** Es la única que sobrevive al caso mezclado |
+
+Dentro de la Opción 3, la **tabla** (y no sólo una columna con un id suelto) es lo que permite guardar
+`total_partes` explícito. Sin ese dato hay que inferirlo contando filas, y contar filas es justamente
+lo que no se puede hacer si las partes se lanzan en tandas distintas — que es la decisión **B**.
+
+### B — Cuándo se crea la instancia, si las partes se lanzan en momentos distintos.  ⬜ abierta
+
 Hoy se puede lanzar el lavarropas 1 y dejar las otras 3 fracciones en el staging (o descartarlas).
 Dos caminos:
 1. **Persistir la instancia al confirmar la subdivisión.** Registra la intención completa, pero mete
@@ -84,13 +99,15 @@ Dos caminos:
    instancia dentro de esa transacción. El staging sigue siendo efímero y la base nunca ve una
    instancia a medio nacer. **Recomendado**, a costa de una restricción operativa nueva.
 
-**C — Qué pasa con la aritmética de `cantidad`.**
+### C — Qué pasa con la aritmética de `cantidad`.  ⬜ abierta
+
 Recomendado: la fila-fracción conserva `cantidad = 1` y lo que cambia es **cómo se suma**:
 `SUM(cantidad)` de las filas sin instancia **+** `COUNT(DISTINCT instancia_equipo_id)`. Poner
 `cantidad = 0` en las fracciones sería más simple de sumar pero rompe `SQL_ELEMENTOS_DE_CICLO`, que
 muestra esa cantidad en la card, y haría aparecer "0" en pantalla.
 
-**D — Qué se hace con los datos ya escritos.**
+### D — Qué se hace con los datos ya escritos.  ⬜ abierta
+
 Hay bases (al menos la de desarrollo) con `ya_procesada > ecl.cantidad`, y posiblemente ingresos ya
 derivados al CDE con equipos multiplicados. ¿La migración intenta repararlos —imposible sin saber qué
 filas eran fracciones de la misma instancia—, se limpian a mano, o la base de desarrollo se resetea?
