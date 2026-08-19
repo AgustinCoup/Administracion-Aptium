@@ -11,6 +11,7 @@ public class PantallaLavadero extends JPanel {
 
     private JButton btnClasificar;
     private JButton btnCiclos;
+    private JButton btnSalidas;
     private JButton btnVerCiclos;
 
     public PantallaLavadero(CardLayout navegador, JPanel contenedor) {
@@ -24,7 +25,7 @@ public class PantallaLavadero extends JPanel {
         );
         add(header, BorderLayout.NORTH);
 
-        JPanel panelBotones = new JPanel(new GridLayout(2, 2, 15, 0));
+        JPanel panelBotones = new JPanel(new GridLayout(0, 3, 15, 10));
         panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
 
         JButton btnIngresar = new JButton(Constantes.Botones.INGRESAR);
@@ -38,17 +39,22 @@ public class PantallaLavadero extends JPanel {
         btnCiclos = new JButton(Constantes.Botones.CICLOS);
         btnCiclos.setFont(Estilos.Fuentes.BOTON);
 
+        btnSalidas = new JButton(Constantes.Botones.SALIDAS);
+        btnSalidas.setFont(Estilos.Fuentes.BOTON);
+
         btnVerCiclos = new JButton(Constantes.Botones.VER_CICLOS);
         btnVerCiclos.setFont(Estilos.Fuentes.BOTON);
 
         panelBotones.add(btnIngresar);
         panelBotones.add(btnClasificar);
         panelBotones.add(btnCiclos);
+        panelBotones.add(btnSalidas);
         panelBotones.add(btnVerCiclos);
         add(panelBotones, BorderLayout.CENTER);
     }
 
     public JButton getBtnClasificar() { return btnClasificar; }
     public JButton getBtnCiclos()     { return btnCiclos; }
+    public JButton getBtnSalidas()    { return btnSalidas; }
     public JButton getBtnVerCiclos()  { return btnVerCiclos; }
 }

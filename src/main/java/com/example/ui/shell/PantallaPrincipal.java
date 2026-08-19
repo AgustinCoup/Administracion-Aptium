@@ -19,6 +19,7 @@ import com.example.features.lavadero.view.PantallaClasificacionLavadero;
 import com.example.features.lavadero.view.PantallaCiclos;
 import com.example.features.lavadero.view.PantallaIngresoLavadero;
 import com.example.features.lavadero.view.PantallaLavadero;
+import com.example.features.lavadero.view.PantallaSalidasLavadero;
 import com.example.features.lavadero.view.PantallaVerCiclos;
 import com.example.features.ajustes.view.PantallaAjustes;
 import com.example.features.lotes.view.PantallaLotes;
@@ -52,6 +53,7 @@ public class PantallaPrincipal extends JFrame {
     private final PantallaClasificacionLavadero clasificacionLavadero;
     private final PantallaCiclos                pantallaCiclos;
     private final PantallaVerCiclos             pantallaVerCiclos;
+    private final PantallaSalidasLavadero       pantallaSalidasLavadero;
     private final PantallaAjustes               pantallaAjustes;
 
     public PantallaPrincipal(VersionInfo versionInfo) {
@@ -97,6 +99,7 @@ public class PantallaPrincipal extends JFrame {
         clasificacionLavadero = new PantallaClasificacionLavadero(navegador, contenedor);
         pantallaCiclos        = new PantallaCiclos(navegador, contenedor);
         pantallaVerCiclos     = new PantallaVerCiclos(navegador, contenedor);
+        pantallaSalidasLavadero = new PantallaSalidasLavadero(navegador, contenedor);
         pantallaAjustes       = new PantallaAjustes(navegador, contenedor);
         // ── Registrar en el CardLayout ────────────────────────────────────────
         contenedor.add(menu,                Constantes.Pantallas.MENU_PRINCIPAL);
@@ -118,6 +121,7 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(clasificacionLavadero, Constantes.Pantallas.CLASIFICACION_LAVADERO);
         contenedor.add(pantallaCiclos,        Constantes.Pantallas.CICLOS_LAVADERO);
         contenedor.add(pantallaVerCiclos,     Constantes.Pantallas.VER_CICLOS_LAVADERO);
+        contenedor.add(pantallaSalidasLavadero, Constantes.Pantallas.SALIDAS_LAVADERO);
         contenedor.add(pantallaAjustes,       Constantes.Pantallas.AJUSTES);
         add(contenedor);
     }
@@ -139,6 +143,7 @@ public class PantallaPrincipal extends JFrame {
     public PantallaClasificacionLavadero getPantallaClasificacionLavadero() { return clasificacionLavadero; }
     public PantallaCiclos                getPantallaCiclos()                { return pantallaCiclos; }
     public PantallaVerCiclos             getPantallaVerCiclos()             { return pantallaVerCiclos; }
+    public PantallaSalidasLavadero       getPantallaSalidasLavadero()       { return pantallaSalidasLavadero; }
     public PantallaAjustes             getPantallaAjustes()            { return pantallaAjustes; }
     public CardLayout                  getNavegador()                  { return navegador; }
     public JPanel                      getContenedor()                 { return contenedor; }

@@ -35,6 +35,7 @@ public final class Constantes {
         public static final String CLASIFICACION_LAVADERO = "CLASIFICACION_LAVADERO";
         public static final String CICLOS_LAVADERO       = "CICLOS_LAVADERO";
         public static final String VER_CICLOS_LAVADERO  = "VER_CICLOS_LAVADERO";
+        public static final String SALIDAS_LAVADERO     = "SALIDAS_LAVADERO";
         public static final String AJUSTES              = "AJUSTES";
 
         private Pantallas() {}
@@ -148,6 +149,17 @@ public final class Constantes {
         public static final String ERROR_LANZAR_CICLO        = "Error al lanzar el ciclo. Intente nuevamente.";
         public static final String ERROR_FINALIZAR_CICLO     = "Error al finalizar el ciclo. Intente nuevamente.";
 
+        // ── Salidas de Lavadero ───────────────────────────────────────────────
+        public static final String CONFIRMAR_SALE_DEL_FLUJO =
+            "¿Confirmar que esta ropa sale del flujo y se devuelve al cliente? Esta acción es irreversible.";
+        /**
+         * Pregunta y confirma en un solo paso: las opciones del diálogo salen de
+         * {@code AccionSalida.CDE_CLIENTE.getNombre()} y {@code AccionSalida.CDE_APTIUM.getNombre()},
+         * así que el texto de los botones no se duplica acá.
+         */
+        public static final String ELEGIR_CLIENTE_CDE =
+            "Se van a derivar %d elemento(s) al CDE. ¿A nombre de quién ingresan?";
+
         /** Devolver una fracción deshace la subdivisión entera: hay que avisar el alcance. */
         public static final String TITULO_DESHACER_SUBDIVISION = "Deshacer subdivisión";
         public static final String CONFIRMAR_DESHACER_SUBDIVISION =
@@ -193,6 +205,7 @@ public final class Constantes {
         public static final String CLASIFICACION_LAVADERO = "CLASIFICACIÓN LAVADERO";
         public static final String CICLOS_LAVADERO       = "CICLOS DE LAVADO";
         public static final String VER_CICLOS_LAVADERO  = "CICLOS FINALIZADOS";
+        public static final String SALIDAS_LAVADERO     = "SALIDAS DE LAVADERO";
         public static final String AJUSTES              = "Ajustes";
 
         private Titulos() {}
@@ -246,6 +259,11 @@ public final class Constantes {
         public static final String DESCARTAR_TODOS  = "Descartar";
         public static final String AJUSTES               = "Ajustes";
         public static final String BUSCAR_ACTUALIZACIONES = "Buscar actualizaciones";
+        public static final String SALIDAS          = "Salidas";
+        public static final String MARCAR_LISTO     = "Marcar Listo";
+        public static final String VOLVER_A_LAVADO  = "Volver a Lavado";
+        public static final String SALE_DEL_FLUJO   = "Sale del flujo";
+        public static final String INGRESAR_A_CDE   = "Ingresar al CDE";
 
         private Botones() {}
     }
@@ -394,6 +412,20 @@ public final class Constantes {
         public static final String LABEL_OBSERVACIONES = "Observaciones:";
         /** Tooltip del campo readonly de remito. */
         public static final String TOOLTIP_REMITO_ID   = "Generado automáticamente al guardar: fecha-id";
+
+        // ── Salidas de Lavadero ───────────────────────────────────────────────
+        public static final String TABLA_LAVADOS_TITULO = "Lavados — pendientes de secado y doblado";
+        public static final String TABLA_LISTOS_TITULO  = "Listos — pendientes de destino";
+        public static final String COLUMNA_ELEMENTO      = "Elemento";
+        public static final String COLUMNA_PENDIENTE     = "Pendiente";
+        public static final String COLUMNA_LAVARROPAS    = "Lavarropas";
+        public static final String COLUMNA_LAVADO_EL     = "Lavado el";
+        public static final String COLUMNA_LISTO_EL      = "Listo el";
+        public static final String LABEL_CANTIDAD        = "Cantidad:";
+        /** Consecuencia operativa de que una salida se derive entera: hay que escribirla en la pantalla. */
+        public static final String AYUDA_SALIDA_ENTERA =
+            "Una salida se deriva entera. Si una parte va al CDE y otra no, "
+            + "volvela a Lavado y marcala en dos tandas.";
 
         private Textos() {}
     }
