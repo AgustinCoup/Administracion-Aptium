@@ -303,6 +303,12 @@ public final class Constantes {
         public static final int CANTIDAD_LAVARROPAS = 13;
         /** Cards de lavarropas por fila en la grilla de la pantalla Ciclos. */
         public static final int LAVARROPAS_POR_FILA = 3;
+        /**
+         * Nombre del cliente bajo el que se ingresan al CDE las salidas que no conservan su
+         * cliente original. Se resuelve por nombre contra la tabla {@code clientes}: el id
+         * depende del {@code AUTO_INCREMENT} y no se puede hardcodear.
+         */
+        public static final String CLIENTE_APTIUM = "APTIUM";
 
         private Lavadero() {}
     }

@@ -2,7 +2,10 @@ package com.example.features.lavadero.dao;
 
 import com.example.common.exception.BusinessException;
 import com.example.common.exception.DatabaseException;
+import com.example.features.lavadero.dao.derivadores.DerivadorSalidas;
+import com.example.features.lavadero.model.DestinoSalida;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
+import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.MarcaListo;
 import com.example.features.lavadero.model.SalidaLista;
 import com.example.infrastructure.db.ConnectionPool;
@@ -12,9 +15,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * JDBC de {@code salidas_lavadero}: qué está lavado y pendiente de secado/doblado, y el
@@ -96,6 +103,37 @@ public class SalidaLavaderoDAO {
 
     private static final String SQL_BORRAR_SALIDA_SIN_DESTINO =
         "DELETE FROM salidas_lavadero WHERE id = ? AND destino IS NULL";
+
+    /** Existe y sigue sin destino. Releído dentro de la transacción, antes de escribir nada. */
+    private static final String SQL_SIGUE_SIN_DESTINO =
+        "SELECT 1 FROM salidas_lavadero WHERE id = ? AND destino IS NULL";
+
+    /**
+     * El {@code AND destino IS NULL} es redundante con la relectura previa y está a propósito:
+     * si igual no afecta ninguna fila, el conteo lo detecta y la transacción entera se cae.
+     */
+    private static final String SQL_ESTAMPAR_DESTINO =
+        "UPDATE salidas_lavadero SET destino = ?, equipo_otros_id = ?, fecha_salida = NOW() " +
+        "WHERE id = ? AND destino IS NULL";
+
+    /**
+     * Cuánto clasificó un ingreso y cuánto de eso ya salió con destino asignado.
+     *
+     * <p>El total sale de la clasificación y no de los ciclos: un ingreso está terminado cuando
+     * todo lo que se clasificó tiene destino, no cuando todo lo que se lavó lo tiene.</p>
+     */
+    private static final String SQL_TOTAL_Y_DERIVADO_DEL_INGRESO =
+        "SELECT (SELECT COALESCE(SUM(ecl.cantidad), 0) " +
+        "          FROM elementos_clasificacion_lavadero ecl " +
+        "         WHERE ecl.ingreso_id = ?)                                          AS total, " +
+        "       (SELECT COALESCE(SUM(sl.cantidad), 0) " +
+        "          FROM salidas_lavadero sl " +
+        "          JOIN elementos_ciclo_lavadero eci           ON eci.id  = sl.elemento_ciclo_id " +
+        "          JOIN elementos_clasificacion_lavadero ecl2  ON ecl2.id = eci.elemento_clasificacion_id " +
+        "         WHERE ecl2.ingreso_id = ? AND sl.destino IS NOT NULL)              AS derivado";
+
+    private static final String SQL_FINALIZAR_INGRESO =
+        "UPDATE ingresos_lavadero SET estado = '" + EstadoIngresoLavadero.FINALIZADO + "' WHERE id = ?";
 
     // ── lectura ──────────────────────────────────────────────────────────────
 
@@ -215,7 +253,105 @@ public class SalidaLavaderoDAO {
         }
     }
 
+    /**
+     * Le asigna destino definitivo a una selección de salidas listas, en una sola transacción.
+     *
+     * <p>Lo que el derivador cree en otra feature (el ingreso de CDE) y el estampado del destino
+     * acá tienen que ser atómicos: si el ingreso se crea y el destino no se estampa, la misma
+     * ropa se puede volver a derivar y entra dos veces al CDE; si se estampa y el ingreso no se
+     * crea, la ropa desaparece del circuito. Por eso el derivador recibe <b>esta</b>
+     * {@link Connection} en vez de abrir la suya.</p>
+     *
+     * <p>El destino se relee antes de escribir nada: la pantalla trabaja sobre un snapshot y
+     * derivar es irreversible, así que una selección vieja tiene que fallar entera y no derivar
+     * de nuevo lo que ya salió.</p>
+     *
+     * @throws BusinessException si la selección está vacía o si alguna salida ya tiene destino.
+     *                           No queda nada escrito.
+     */
+    public void derivar(DerivadorSalidas derivador, List<SalidaLista> salidas) {
+        if (salidas == null || salidas.isEmpty()) {
+            throw new BusinessException("No hay ninguna salida para derivar.");
+        }
+
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            verificarSinDestino(conn, salidas);
+
+            Map<Integer, Integer> equipoPorSalida = derivador.derivar(conn, salidas);
+            estamparDestino(conn, salidas, derivador.accion().getDestinoPersistido(), equipoPorSalida);
+
+            Set<Integer> ingresoIds = salidas.stream().map(SalidaLista::ingresoId).collect(Collectors.toSet());
+            finalizarIngresosCompletos(conn, ingresoIds);
+
+            tx.commit();
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al derivar las salidas de lavadero", e);
+        }
+    }
+
     // ── privados ─────────────────────────────────────────────────────────────
+
+    /** Ninguna salida de la selección puede tener destino ya asignado. */
+    private void verificarSinDestino(Connection conn, List<SalidaLista> salidas) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_SIGUE_SIN_DESTINO)) {
+            for (SalidaLista salida : salidas) {
+                ps.setInt(1, salida.salidaId());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        throw new BusinessException(
+                            salida.elementoNombre() + " (" + salida.clienteNombre()
+                            + ") ya tiene un destino asignado o dejó de existir, así que no se "
+                            + "derivó nada. Refrescá la pantalla.");
+                    }
+                }
+            }
+        }
+    }
+
+    /** Estampa destino, fecha y el ingreso de CDE creado (si la acción creó alguno). */
+    private void estamparDestino(Connection conn,
+                                 List<SalidaLista> salidas,
+                                 DestinoSalida destino,
+                                 Map<Integer, Integer> equipoPorSalida) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_ESTAMPAR_DESTINO)) {
+            for (SalidaLista salida : salidas) {
+                Integer equipoOtrosId = equipoPorSalida.get(salida.salidaId());
+                ps.setString(1, destino.name());
+                if (equipoOtrosId != null) ps.setInt(2, equipoOtrosId);
+                else                       ps.setNull(2, Types.INTEGER);
+                ps.setInt(3, salida.salidaId());
+                if (ps.executeUpdate() != 1) {
+                    throw new SQLException(
+                        "No se pudo estampar el destino de la salida " + salida.salidaId()
+                        + ": dejó de estar sin destino durante la derivación");
+                }
+            }
+        }
+    }
+
+    /**
+     * Pasa a FINALIZADO los ingresos cuya clasificación ya salió entera.
+     *
+     * <p>Mismo patrón que {@code CicloLavaderoDAO.actualizarEstadoIngresosAfectados}: por cada
+     * ingreso tocado se pregunta si ya está todo cubierto y recién ahí se actualiza.</p>
+     */
+    private void finalizarIngresosCompletos(Connection conn, Set<Integer> ingresoIds) throws SQLException {
+        if (ingresoIds.isEmpty()) return;
+        try (PreparedStatement psVerificar = conn.prepareStatement(SQL_TOTAL_Y_DERIVADO_DEL_INGRESO);
+             PreparedStatement psFinalizar = conn.prepareStatement(SQL_FINALIZAR_INGRESO)) {
+            for (int ingresoId : ingresoIds) {
+                psVerificar.setInt(1, ingresoId);
+                psVerificar.setInt(2, ingresoId);
+                try (ResultSet rs = psVerificar.executeQuery()) {
+                    if (rs.next() && rs.getInt("derivado") >= rs.getInt("total")) {
+                        psFinalizar.setInt(1, ingresoId);
+                        psFinalizar.executeUpdate();
+                    }
+                }
+            }
+        }
+    }
 
     private void validarMarcas(List<MarcaListo> marcas) {
         if (marcas == null || marcas.isEmpty()) {
