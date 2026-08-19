@@ -13,6 +13,7 @@ Queda solo **#6**.
 | #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
 | #3 `AppModel` | hecho (2026-07-23) — **disuelto** | sin commitear |
 | #6 concurrencia / EDT | **pendiente** — plan escrito en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | — |
+| #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | **pendiente** — brief en [`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md) | — |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -199,6 +200,26 @@ históricos**. Sin cancelación: dos refrescos rápidos pueden aplicar resultado
 **Fix (dirección):** estandarizar en `SwingWorker` (o un helper propio), sacar todo acceso a BD
 del EDT, y agregar cancelación/debounce al refresco global. Es el hallazgo de más trabajo y el
 que conviene planificar con cuidado (toca varios controllers y el flujo de refresco).
+
+---
+
+## #7 — La subdivisión de `Equipo*` no se persiste  (ALTO — agregado 2026-08-19)
+
+**Qué:** cuando un `Equipo*` se reparte entre varios lavarropas, el `instanciaId` que agrupa sus
+fracciones es un `AtomicInteger` en memoria de `CiclosController` (línea 46) y no viaja a la base:
+`ElementoCicloMovimiento` no lo lleva y `elementos_ciclo_lavadero` no tiene dónde guardarlo.
+
+**Por qué es problema:** un equipo de cantidad 1 repartido en 4 lavarropas escribe 4 filas de
+`cantidad = 1` contra una línea de clasificación de cantidad 1 → `SQL_DISPONIBLES` calcula
+`ya_procesada = 4 > 1`. El `HAVING` esconde el síntoma, así que la inconsistencia es invisible hasta
+que otra feature suma esas filas. La pantalla de Salidas (rama `ConexionConCDE`) es la primera que lo
+hace, y multiplica por 4 lo que manda al CDE.
+
+**Encontrado por:** el smoke manual del Paso 8 de `salidas-lavadero-listo-y-derivacion-cde.md`.
+No es deuda de ese plan: es anterior, del plan de ciclos.
+
+**Diagnóstico completo, semántica confirmada con el usuario y decisiones pendientes:**
+[`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md).
 
 ---
 

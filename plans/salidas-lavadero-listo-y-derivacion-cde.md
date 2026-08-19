@@ -1129,9 +1129,309 @@ mvn clean package
 
 ---
 
+> **Los pasos 7.5 a 8.7 nacieron del smoke manual del Paso 8 (2026-08-19).** Ninguno es un bug
+> del código del Paso 8: el smoke no encontró nada mal en el controller ni en el cableado. Son
+> tres decisiones del plan que no sobrevivieron al uso real (7.5 y 8.5) y dos arreglos de la
+> pantalla de Ciclos que el smoke destapó y el usuario decidió traer adelante (8.6 y 8.7).
+> El triage completo, incluidas las dos observaciones que **no** se arreglan acá, está en
+> [Mutaciones aplicadas](#mutaciones-aplicadas).
+
+# Paso 7.5 — El menú de Lavadero con 5 botones
+
+**Modelo:** por defecto · **Depende de:** Paso 7 (ya commiteado) · **Paralelo con:** 8.5, 8.6, 8.7
+
+### Contexto
+
+El Paso 7 decidió `new GridLayout(0, 3, 15, 10)` para acomodar el quinto botón: dos filas de 3 + 2.
+El código hace exactamente eso ([`PantallaLavadero.java:28`](../src/main/java/com/example/features/lavadero/view/PantallaLavadero.java#L28)),
+y el resultado es una fila de tres botones y una de dos que quedan estirados y descentrados debajo.
+La decisión fue tomada sobre un dibujo ASCII, no sobre la pantalla.
+
+Los otros menús de la app son la referencia de qué se ve bien acá: hay que mirarlos antes de elegir,
+no inventar un layout nuevo para esta pantalla sola.
+
+### Tareas
+
+1. Mirar cómo resuelven el problema los menús que ya existen (`PantallaEsterilizacion`,
+   `PantallaPrincipal`, el propio menú raíz) y **copiar el que mejor se vea con 5 opciones**.
+   Alternativas razonables, en orden de preferencia:
+   - `GridLayout(0, 1)` de 5 filas dentro de un contenedor de ancho fijo y centrado — es el patrón de
+     menú vertical y no depende de que la cantidad de botones sea múltiplo de nada.
+   - `GridLayout(0, 2)` con 5 botones (3 + 2) y el último ocupando las dos columnas vía `GridBagLayout`.
+2. **Cero literales nuevos fuera de `Constantes`** (invariante 5). Si el layout necesita medidas,
+   van a `Estilos.Espaciados`, no hardcodeadas en la pantalla.
+3. No tocar el orden de los botones: `Ingresar → Clasificar → Ciclos → Salidas → Ver Ciclos` es el
+   orden del flujo real y esa parte de la decisión del Paso 7 sigue siendo correcta.
+
+### Verificación
+
+```bash
+mvn clean package -q
+```
+
+Smoke: `java -jar target/aptium.jar` → Lavadero. Los 5 botones se ven parejos y el menú no queda
+visualmente distinto de los otros menús de la app (abrirlos y compararlos).
+
+### Criterio de salida
+
+- [ ] El menú de Lavadero se ve consistente con el resto de los menús de la app.
+- [ ] `PantallaLavadero` no tiene literales de texto ni medidas hardcodeadas.
+- [ ] Los invariantes 1-8 se cumplen.
+- [ ] Commit: `fix: el menú de Lavadero acomoda sus 5 opciones`
+
+---
+
+# Paso 8.5 — Drag and drop entre las dos tablas de Salidas
+
+**Modelo:** el más fuerte · **Depende de:** Paso 8 (commiteado) · **Paralelo con:** 7.5, 8.6, 8.7
+
+### Contexto
+
+El Paso 7 resolvió el movimiento entre tablas con botones + un `JSpinner` de cantidad. Funciona, pero
+**es la única pantalla de la app donde mover cosas de un lado a otro no se hace arrastrando**: Ciclos
+(disponibles ↔ cards) y Lotes (materiales ↔ lote) ya usan DnD multi-fila, con la infraestructura
+compartida `MultiRowTableTransferHandler` + `LocalObjectFlavors.forList()`. La decisión de botones no
+estaba mal en abstracto; está mal **en esta app**, y el costo de la inconsistencia lo paga el operador.
+
+**Decisión tomada con el usuario (2026-08-19):** el DnD **reemplaza** al spinner. Al soltar se pregunta
+la cantidad con un diálogo, y si se arrastran varias filas los diálogos van **en cadena**, uno por
+fila. Es exactamente la mecánica que el operador ya conoce de Ciclos
+(`CiclosController.seleccionarSubcantidad` + `abrirDialogoSubdivisionUnidad`, que también encadena un
+diálogo por unidad).
+
+**Los botones se quedan.** El DnD es aditivo: sacarlos dejaría la pantalla inoperable con teclado y
+sin ninguna pista visible de qué se puede hacer. Botón y drop tienen que ejecutar **el mismo código**;
+si divergen, el bug aparece en el camino que nadie prueba.
+
+**Punto que no se negocia:** todas las marcas de una tanda —vengan de un drop de 4 filas o del botón
+con 4 filas seleccionadas— se acumulan en **una sola** `List<MarcaListo>` y se mandan en **un solo**
+llamado al service. El todo-o-nada lo garantiza la transacción del DAO (invariante 8 y decisión del
+Paso 2), no el controller. Un bucle de N llamados rompería esa garantía en silencio.
+
+### El problema de la dirección inversa
+
+Hoy `volverALavado` es de a una salida por vez: `SalidaLavaderoService.volverALavado(int salidaId)`,
+y el controller directamente rechaza la multi-selección con
+`Constantes.Mensajes.VOLVER_A_LAVADO_UNA_SOLA`. Arrastrar N filas de derecha a izquierda con N
+llamados sucesivos dejaría el mismo agujero que el Paso 2 cerró del otro lado: 4 filas arrastradas,
+2 revertidas, error en la tercera, y la pantalla en un estado que nadie pidió.
+
+Por eso este paso **agrega la variante transaccional en lote**, simétrica de `marcarListo`:
+
+```java
+// SalidaLavaderoDAO
+void volverALavado(List<Integer> salidaIds);   // una sola transacción; si alguna ya tiene destino,
+                                               // lanza BusinessException y no se borra ninguna
+```
+
+El método de a uno se conserva delegando en el nuevo con `List.of(id)`, para no tocar a sus llamadores.
+
+### Tareas
+
+1. **`SalidaLavaderoDAO`**: `volverALavado(List<Integer>)` en una transacción
+   (`TransactionalConnection`), mismo molde que `marcarListo`. Cada `DELETE ... WHERE id = ? AND
+   destino IS NULL` tiene que afectar 1 fila; si alguno afecta 0, `BusinessException` con el mensaje
+   accionable que identifique **cuál** salida falló, y rollback de todas.
+2. **`SalidaLavaderoService`**: exponer `volverALavado(List<SalidaLista>)` con su validación
+   (`ValidationException.builder()`: lista no vacía, sin ids repetidos). Cero JDBC (invariante 3).
+3. **`view/DistribucionCantidadDialog.java`** (nuevo, en `lavadero/view/`): el diálogo de "cuántas de
+   estas N marcás Listo". Presentación pura, mismo rol que `EquipoSubdivisionDialog`. Recibe nombre
+   del elemento, cliente, lavarropas y máximo; devuelve la cantidad elegida o **0 si se canceló**.
+   Incluye la checkbox **"Todas (N)"** del Paso 8.7 desde el vamos — es el mismo widget.
+   Todos sus textos en `Constantes`.
+4. **`PantallaSalidasLavadero`**:
+   - **Eliminar** el `JSpinner` y sus tres métodos (`getSpnCantidad`, `setMaximoCantidad`,
+     `setSpinnerHabilitado`), y el `JLabel` de ayuda del spinner si queda huérfano.
+   - `setDragEnabled(true)` + `setDropMode(DropMode.ON)` + `MultiRowTableTransferHandler` en las dos
+     tablas, con el `DataFlavor` de `LocalObjectFlavors.forList()`. Una tabla **no** acepta lo que
+     salió de sí misma (el flag anti-rebote de `CiclosController.lavarropasArrastre` es el precedente).
+   - Los handlers se **cablean desde el controller**, como en Ciclos: la vista expone las tablas, no
+     decide qué pasa al soltar. La vista sigue sin `addActionListener` ni llamadas al service.
+5. **`SalidasLavaderoController`**:
+   - `marcarListo(List<ElementoLavadoPendiente>)` como **único** camino: lo llaman el botón (con
+     `getSeleccionLavados()`) y el drop (con las filas arrastradas). Para cada fila, si
+     `cantidadPendiente() == 1` no pregunta nada; si no, abre `DistribucionCantidadDialog`.
+     Cancelar un diálogo **saltea esa fila y sigue con la siguiente** (mismo criterio que
+     `procesarDropRegular`, que con `k <= 0` simplemente no agrega). Si al final no quedó ninguna
+     marca, **no** se llama al service.
+   - `volverALavado(List<SalidaLista>)`: idem, un solo llamado al nuevo método del service. Se borra
+     el rechazo de multi-selección y `Constantes.Mensajes.VOLVER_A_LAVADO_UNA_SOLA` queda sin uso →
+     se elimina.
+   - `sincronizarSpinner()` y `cantidadDelSpinner()` desaparecen con el spinner, y con ellos el
+     `ListSelectionListener` de la tabla izquierda.
+   - Las escrituras siguen yendo por `TareaUI` a través del helper `ejecutar(...)` que ya existe. Los
+     diálogos se abren **antes** de `ejecutar(...)`, en el EDT; el service se llama con la lista ya
+     armada.
+6. **Tests `SalidasLavaderoControllerTest`** — reemplazar los dos casos del spinner y agregar:
+   - Un drop de 3 filas produce **un solo** llamado a `marcarListo` con 3 `MarcaListo`.
+   - Cancelar el diálogo de la fila del medio → el service recibe 2 marcas, no 3.
+   - Cancelar **todos** los diálogos → el service no se llama.
+   - Una fila con `cantidadPendiente() == 1` no abre diálogo.
+   - Botón y drop con la misma selección producen llamados idénticos al service.
+   - Un drop de 3 filas de derecha a izquierda → **un solo** `volverALavado` con los 3 ids.
+7. **Tests `SalidaLavaderoDAOTest`**: `volverALavado` de 3 salidas sin destino las revierte todas;
+   con la del medio ya derivada → `BusinessException` y **las tres siguen existiendo**.
+
+> **Tamaño:** este paso toca dao + service + view + controller y ronda el límite de ~400 líneas del
+> protocolo de mutación. Si al ejecutarlo se pasa, partirlo en **8.5.a** (el `volverALavado` en lote:
+> DAO + service + sus tests) y **8.5.b** (el DnD: vista + diálogo + controller), en ese orden.
+
+### Verificación
+
+```bash
+mvn test -Dtest=SalidasLavaderoControllerTest+SalidaLavaderoDAOTest
+mvn test
+mvn clean package
+```
+
+Smoke manual (`java -Daptium.edt.strict=true -jar target/aptium.jar`):
+
+1. Arrastrar **una** fila de Lavados a Listos con pendiente 10 → pide cantidad → marcar 4. Izquierda 6,
+   derecha 4.
+2. Arrastrar **tres** filas juntas → tres diálogos en cadena; cancelar el segundo → entran la primera
+   y la tercera, la segunda queda intacta.
+3. Arrastrar una fila con pendiente 1 → no pregunta nada.
+4. Arrastrar **dos** filas de Listos de vuelta a Lavados → las dos vuelven, sin diálogo.
+5. El botón "Marcar Listo" con la misma selección se comporta igual que el arrastre.
+6. Ninguna consulta a BD en el EDT (el flag `-Daptium.edt.strict=true` no dispara).
+
+### Criterio de salida
+
+- [ ] Las dos tablas mueven filas por arrastre, en las dos direcciones, de a una o varias.
+- [ ] Toda tanda de marcado y toda tanda de reversión es **un solo** llamado al service.
+- [ ] El `JSpinner` ya no existe en la pantalla ni en el controller.
+- [ ] `PantallaSalidasLavadero` sigue sin lógica (ni un `addActionListener`).
+- [ ] Los invariantes 1-8 se cumplen.
+- [ ] Commit: `feat: drag and drop entre las tablas de Salidas de Lavadero`
+
+---
+
+# Paso 8.6 — Ciclos: las cards no arrastran configuración entre visitas
+
+**Modelo:** por defecto · **Depende de:** nada · **Paralelo con:** 7.5, 8.5, 8.7
+
+### Contexto
+
+**Esto es deuda preexistente de la pantalla de Ciclos, no de este plan.** El smoke la destapó y el
+usuario decidió traerla adelante en vez de mandarla al backlog.
+
+Diagnóstico verificado: `cargarDatos()` **sí** se llama al entrar a Ciclos
+([`UiCoordinator.java:200`](../src/main/java/com/example/app/ui/UiCoordinator.java#L200)) y **sí**
+repinta los ítems de cada card. Lo que nunca se resetea es la **configuración**: tipo de lavado,
+jabón, mililitros, suavizante, potenciador y litros totales son widgets de `LavarropasCard` que se
+completan una vez y no los toca nadie más. `LavarropasCard` no tiene ningún método de reset. Entonces
+el operador entra, configura, se va, vuelve, y la card le ofrece la configuración del lavado anterior
+como si fuera la de este — con el riesgo de lanzar un ciclo con el jabón y los mililitros equivocados.
+
+El staging de elementos **no** es el problema: al volver ya está vacío, porque el guard de salida
+(`setGuardVolver(this::tienePendientes, ..., this::descartarPendientes)`) lo descarta.
+
+### Por qué no alcanza con resetear en `cargarDatos()`
+
+`cargarDatos()` se llama también después de lanzar, de finalizar y de devolver elementos a
+disponibles. Resetear ahí borraría la configuración **mientras el operador está cargando el
+lavarropas de al lado**. El reset tiene que engancharse a **abrir la pantalla**, que es un evento
+distinto.
+
+### Tareas
+
+1. **`LavarropasCard.resetConfiguracion()`**: deja los widgets de configuración en su estado inicial
+   (tipo de lavado sin elegir, jabón sin elegir, ml y litros vacíos, checkboxes destildadas) y llama
+   a `actualizarBtnAccion()` para que el botón refleje que ya no está configurada.
+2. **`CiclosController.abrirPantalla()`** (público, nuevo): resetea la configuración de **las cards
+   que no tienen ciclo activo** y después llama a `cargarDatos()`. Una card en modo activo muestra el
+   ciclo que está corriendo: pisarle la configuración sería mentir sobre lo que hay adentro del
+   lavarropas.
+3. **`UiCoordinator`**: el listener del botón "Ciclos" pasa a llamar `ciclosController.abrirPantalla()`
+   en vez de `cargarDatos()`. `cargarDatos()` queda como lo que siempre fue: recargar datos, sin
+   efectos sobre lo que el operador tipeó.
+4. **Test:** verificar primero si `LavarropasCard` se puede construir en headless (el repo ya tiene
+   `EquipoSubdivisionDialogTest`, así que hay precedente de tests sobre clases de `view/`). Si sí,
+   `LavarropasCardTest`: configurar la card, llamar `resetConfiguracion()`, y comprobar que
+   `getTipoLavado()`, `getJabon()`, `getLitrosJabon()` y `getLitrosTotales()` vuelven a null/vacío y
+   las checkboxes a `false`. Si no corre en headless, **decirlo en el commit** y cubrirlo sólo con el
+   smoke — no inventar una abstracción para poder testear tres setters.
+
+### Verificación
+
+```bash
+mvn test
+mvn clean package -q
+```
+
+Smoke: Lavadero → Ciclos → configurar el lavarropas 2 (tipo, jabón, 500 ml, suavizante) → Volver →
+Ciclos otra vez. La card 2 está **en blanco**. Repetir con un ciclo **activo** en el lavarropas 3: al
+volver a entrar, la card 3 sigue mostrando su ciclo tal cual.
+
+### Criterio de salida
+
+- [ ] Entrar a Ciclos siempre presenta las cards libres sin configurar.
+- [ ] Las cards con ciclo activo no se tocan.
+- [ ] Lanzar, finalizar y devolver elementos **no** borran la configuración de las demás cards.
+- [ ] Los invariantes 1-8 se cumplen.
+- [ ] Commit: `fix: las cards de Ciclos no conservan la configuración de la visita anterior`
+
+---
+
+# Paso 8.7 — Ciclos: "todas las unidades" en el diálogo de distribución
+
+**Modelo:** por defecto · **Depende de:** nada · **Paralelo con:** 7.5, 8.5, 8.6
+
+### Contexto
+
+También es una mejora sobre la pantalla de Ciclos, fuera del alcance original de este plan, traída
+adelante por decisión del usuario.
+
+El diálogo es el "¿Cuántas unidades distribuís ahora?" de
+[`CiclosController.seleccionarSubcantidad`](../src/main/java/com/example/features/lavadero/controller/CiclosController.java#L279-L297):
+un `JSpinner` que arranca en 1 aunque haya 40 disponibles. El caso más frecuente —"todas"— es el que
+más clics cuesta. Es el mismo gesto que ya existe en varios diálogos del CDE.
+
+Además el diálogo está **armado con Swing dentro del controller**, que es el smell que el repo evita
+en todas partes (`EquipoSubdivisionDialog` es el precedente correcto: diálogo propio en `view/`, con
+su test).
+
+### Tareas
+
+1. **Extraer `view/DistribucionUnidadesDialog.java`** del método `seleccionarSubcantidad`: mismo
+   contenido, misma firma de resultado (cantidad elegida, o **0 si se canceló**), calcado del molde de
+   `EquipoSubdivisionDialog`. `CiclosController` pasa a instanciarlo y leer el resultado.
+2. **Checkbox "Todas (N)"**: tildarla lleva el spinner al máximo y lo deshabilita; destildarla lo
+   vuelve a habilitar en el valor que tenía. Es el mismo widget que consume el Paso 8.5 en
+   `DistribucionCantidadDialog` — si los dos diálogos terminan siendo el mismo, **unificarlos** y
+   anotarlo como mutación; si no, que al menos compartan la constante del texto.
+3. **Literales a `Constantes`** (invariante 5): el título del diálogo, "Unidades:", "Todas (%d)",
+   "Confirmar" y "Cancelar" salen del código y van a `Constantes.Textos` / `Constantes.Botones`.
+   `EquipoSubdivisionDialog` tiene los mismos literales hardcodeados; **arreglarlos también**, es el
+   archivo de al lado y el mismo commit.
+4. **Test `DistribucionUnidadesDialogTest`**: si corre en headless (ver Paso 8.6), que tildar la
+   checkbox deje el spinner en el máximo y destildarla lo restaure. Si no, extraer esa regla a un
+   método estático y testear ese.
+
+### Verificación
+
+```bash
+mvn test
+mvn clean package -q
+```
+
+Smoke: Ciclos → arrastrar un elemento con 40 disponibles a un lavarropas → el diálogo ofrece
+"Todas (40)" → tildar → confirmar → las 40 quedan en la card.
+
+### Criterio de salida
+
+- [ ] El diálogo de unidades vive en `view/`, no dentro de `CiclosController`.
+- [ ] "Todas (N)" funciona en los dos sentidos (tildar y destildar).
+- [ ] Ningún literal de UI en `CiclosController`, `DistribucionUnidadesDialog` ni
+      `EquipoSubdivisionDialog`.
+- [ ] Los invariantes 1-8 se cumplen.
+- [ ] Commit: `feat: el diálogo de distribución de unidades permite elegir todas`
+
+---
+
 # Paso 9 — Documentación
 
-**Modelo:** por defecto · **Depende de:** Paso 8
+**Modelo:** por defecto · **Depende de:** Pasos 8, 7.5, 8.5, 8.6, 8.7 y el plan de fracciones
 
 ### Contexto
 
@@ -1160,7 +1460,13 @@ el ciclo de vida del ingreso de lavadero y un puente entre dos features que ante
      `PENDIENTE → CLASIFICADO → LAVADO → FINALIZADO`, y la aclaración de que "Listo" (secado y
      doblado) vive por cantidad en `salidas_lavadero`, no en el ingreso.
 
-3. Actualizar el índice de memoria del proyecto con el estado final de este plan.
+3. Si para entonces ya se ejecutó [`plans/fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md),
+   documentar también que un `Equipo*` repartido en varios lavarropas es **una sola** unidad y que no
+   aparece en Salidas hasta que todas sus partes están lavadas. Si todavía no se ejecutó, **decirlo
+   explícitamente** en `docs/MAPA.md` §7: la pantalla de Salidas cuenta de más los `Equipo*` y ese es
+   un defecto conocido, no una sorpresa a descubrir.
+
+4. Actualizar el índice de memoria del proyecto con el estado final de este plan.
 
 ### Verificación
 
@@ -1203,6 +1509,28 @@ pantalla de Salidas" a los archivos correctos usando sólo el mapa.
   `mvn test` sigue en 861 verdes. **Consecuencia para los pasos que faltan:** el Paso 8 tiene que
   importar `AsignadorClienteCDE.CLIENTE_ORIGINAL` y `ConstructorIngresoCDE` desde
   `features.lavadero.dao.derivadores`, no desde `controller.helpers`.
+
+- **2026-08-19 — Pasos 7.5, 8.5, 8.6 y 8.7, del smoke manual del Paso 8.** El smoke (11 puntos,
+  `-Daptium.edt.strict=true`) dejó 6 observaciones. Triage, con la evidencia de cada una:
+
+  | Obs | Clase | Destino | Evidencia |
+  |---|---|---|---|
+  | Menú de Lavadero antiestético con 5 botones | decisión del plan que falló | **Paso 7.5** | El Paso 7 pidió `GridLayout(0,3,15,10)` y `PantallaLavadero.java:28` lo hace |
+  | Checkbox "todas" en el diálogo de distribución de Ciclos | mejora fuera de alcance, traída adelante por el usuario | **Paso 8.7** | `CiclosController.seleccionarSubcantidad` no es código de este plan |
+  | DnD entre las tablas de Salidas | decisión del plan que falló | **Paso 8.5** | El Paso 7 eligió botones + spinner; Ciclos y Lotes ya usan `MultiRowTableTransferHandler` |
+  | Cards de Ciclos con configuración de visitas previas | deuda preexistente, traída adelante por el usuario | **Paso 8.6** | `cargarDatos()` sí se llama al entrar y sí repinta ítems; `LavarropasCard` no tiene reset de configuración |
+  | Se pierde la fracción al lanzar un ciclo | deuda preexistente, **fuera de este plan** | [`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md) | `instanciaId` es un `AtomicInteger` en memoria (`CiclosController.java:46`); `ElementoCicloMovimiento` sólo lleva `(elementoClasificacionId, cantidad)` y `elementos_ciclo_lavadero` (V10) no tiene columna de instancia |
+  | Salidas multiplica los `Equipo*` | consecuencia de la anterior | idem | El Paso 2 asumió "una fila de `elementos_ciclo_lavadero` = una tanda", cierto para elementos regulares y falso para equipos subdivididos |
+
+  **Ninguna observación fue un bug del código del Paso 8.** El controller, el cableado y las
+  constantes hacen lo que el paso pedía; su criterio de salida se cumple y se commitea tal cual, con
+  los arreglos encima como commits `fix:`/`feat:` separados.
+
+  **Las dos últimas no se arreglan en este plan** y no son un `N.5`: la causa raíz está aguas arriba
+  del alcance (persistencia de los ciclos), la corrección necesita migración, cambio de modelo,
+  reparación de datos ya escritos y decisiones de dominio que no se pueden tomar de paso. Se van a un
+  plan propio. **Consecuencia que hay que tener presente hasta que ese plan se ejecute: derivar un
+  `Equipo*` subdividido al CDE crea de más.**
 
 ## Rollback
 
