@@ -228,6 +228,22 @@ public class LavarropasCard extends JPanel {
     public boolean estaActivo()     { return activo; }
     public Integer getCicloActivo() { return cicloActivo; }
 
+    /**
+     * Deja la configuración (tipo de lavado, jabón, mililitros, suavizante, potenciador,
+     * litros totales) en su estado inicial. Se llama al abrir la pantalla, no en cada
+     * refresco: pisar esto durante un lanzamiento borraría lo que el operador está
+     * tipeando en otra card.
+     */
+    public void resetConfiguracion() {
+        cmbTipoLavado.setSelectedItem(null);
+        cmbJabon.setSelectedIndex(-1);
+        txtLitrosJabon.setText("");
+        chkSuavizante.setSelected(false);
+        chkPotenciador.setSelected(false);
+        txtLitrosTotales.setText("");
+        actualizarBtnAccion();
+    }
+
     // ── Datos ────────────────────────────────────────────────────────────────
 
     public void setItems(List<ElementoCicloItem> items, Map<Integer, Integer> fracciones) {

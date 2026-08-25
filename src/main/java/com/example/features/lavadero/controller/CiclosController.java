@@ -122,6 +122,22 @@ public class CiclosController {
         });
     }
 
+    /**
+     * Punto de entrada al abrir la pantalla: resetea la configuración de las cards
+     * libres (una card con ciclo activo no se toca, muestra lo que hay adentro del
+     * lavarropas) y recién después carga los datos. {@link #cargarDatos()} solo no
+     * alcanza porque también se llama tras lanzar/finalizar/devolver, y resetear ahí
+     * borraría lo que el operador está tipeando en otra card.
+     */
+    public void abrirPantalla() {
+        for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
+            if (!ciclosActivos.containsKey(entry.getKey())) {
+                entry.getValue().resetConfiguracion();
+            }
+        }
+        cargarDatos();
+    }
+
     public void cargarDatos() {
         ciclosActivos = cicloLavaderoService.obtenerCiclosActivosPorLavarropas();
 

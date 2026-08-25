@@ -197,7 +197,7 @@ public class UiCoordinator {
 
         vista.getPantallaLavadero().getBtnCiclos().addActionListener(e -> {
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.CICLOS_LAVADERO);
-            ciclosController.cargarDatos();
+            ciclosController.abrirPantalla();
         });
 
         vista.getPantallaLavadero().getBtnVerCiclos().addActionListener(e ->
