@@ -1275,6 +1275,9 @@ El método de a uno se conserva delegando en el nuevo con `List.of(id)`, para no
 > **Tamaño:** este paso toca dao + service + view + controller y ronda el límite de ~400 líneas del
 > protocolo de mutación. Si al ejecutarlo se pasa, partirlo en **8.5.a** (el `volverALavado` en lote:
 > DAO + service + sus tests) y **8.5.b** (el DnD: vista + diálogo + controller), en ese orden.
+>
+> **Ejecutado así (2026-08-25):** 8.5.a en `681e0d7` (141 líneas) y 8.5.b en `48ac8b0` (268).
+> Ver [Mutaciones aplicadas](#mutaciones-aplicadas) para las dos correcciones de diseño.
 
 ### Verificación
 
@@ -1298,11 +1301,17 @@ Smoke manual (`java -Daptium.edt.strict=true -jar target/aptium.jar`):
 ### Criterio de salida
 
 - [ ] Las dos tablas mueven filas por arrastre, en las dos direcciones, de a una o varias.
-- [ ] Toda tanda de marcado y toda tanda de reversión es **un solo** llamado al service.
-- [ ] El `JSpinner` ya no existe en la pantalla ni en el controller.
-- [ ] `PantallaSalidasLavadero` sigue sin lógica (ni un `addActionListener`).
-- [ ] Los invariantes 1-8 se cumplen.
-- [ ] Commit: `feat: drag and drop entre las tablas de Salidas de Lavadero`
+      *(pendiente del smoke manual)*
+- [x] Toda tanda de marcado y toda tanda de reversión es **un solo** llamado al service.
+      Verificado por `marcarListo_dropDeTresFilas_unSoloLlamadoConTresMarcas` y
+      `volverALavado_dropDeTresFilas_unSoloLlamado`, y garantizado abajo por la transacción del DAO
+      (`volverALavado_siLaDelMedioYaTieneDestino_lanzaYLasTresSiguenExistiendo`).
+- [x] El `JSpinner` ya no existe en la pantalla ni en el controller.
+- [x] `PantallaSalidasLavadero` sigue sin lógica (ni un `addActionListener`).
+- [x] Los invariantes 1-8 se cumplen: `mvn clean package` sin warnings nuevos, `mvn test` en 918
+      verdes sin modificar tests existentes para que pasen, cero JDBC en `service/`, cero Swing en
+      `model/dao/service/`, y ningún literal de UI fuera de `Constantes`.
+- [x] Commits: `681e0d7` (8.5.a) y `48ac8b0` (8.5.b).
 
 ---
 
@@ -1531,6 +1540,35 @@ pantalla de Salidas" a los archivos correctos usando sólo el mapa.
   reparación de datos ya escritos y decisiones de dominio que no se pueden tomar de paso. Se van a un
   plan propio. **Consecuencia que hay que tener presente hasta que ese plan se ejecute: derivar un
   `Equipo*` subdividido al CDE crea de más.**
+
+- **2026-08-25 — El Paso 8.5 se parte en `8.5.a` y `8.5.b`.** El paso tocaba dao + service + view +
+  controller y el diff completo iba a superar el límite de ~400 líneas del protocolo, así que se
+  ejecutó en dos commits, en el orden que el propio paso preveía:
+  - **8.5.a** (`681e0d7`, 141 líneas) — `volverALavado(List<Integer>)` transaccional en el DAO,
+    `volverALavado(List<SalidaLista>)` en el service, y sus tests. Sin tocar la UI.
+  - **8.5.b** (`48ac8b0`, 268 líneas) — el DnD: vista, diálogo, controller y tests.
+
+  Dos correcciones aplicadas al ejecutar:
+  - **El diálogo no se duplica: se generaliza el que ya existe.** El paso pedía un
+    `DistribucionCantidadDialog` nuevo "con la checkbox *Todas (N)* del Paso 8.7 — es el mismo
+    widget". Como el 8.7 ya se había ejecutado y dejó `DistribucionUnidadesDialog` haciendo
+    exactamente eso, crear la clase nueva habría duplicado ~85 líneas de spinner + checkbox
+    condenadas a divergir. Decidido con el usuario: el diálogo pasa a tener constructor privado y
+    dos fábricas — `paraCiclos(...)` (texto intacto) y `paraSalidas(...)`, que agrega el lavarropas
+    al encabezado. Un solo widget, sin cambios de comportamiento en Ciclos.
+  - **`setDragEnabled`/`setDropMode` los declara la vista; el controller sólo instala el
+    `TransferHandler`.** El paso los ponía a los cuatro en el controller, pero
+    `JTable.setDragEnabled(true)` lanza `HeadlessException`, y los tests del repo corren headless
+    (Ciclos lo esquiva por accidente: configura su DnD desde un `ComponentListener` que en test
+    nunca dispara). El reparto respeta igual la regla del paso — la vista declara que sus tablas
+    arrastran y reciben, el controller decide qué significa soltar algo —, y de paso el
+    controller queda construible en test.
+
+  Además, `marcarListo(List)` y `volverALavado(List)` del controller quedaron **visibles en el
+  paquete**: un drop no se puede simular sin entorno gráfico (`TransferSupport` no tiene
+  constructor público para drops), así que el test ejercita el camino del arrastre llamándolos
+  directamente. Y `SalidaLavaderoService.volverALavado(int)` se eliminó al quedar sin uso; el
+  atajo de a uno sobrevive sólo en el DAO, como pedía el paso.
 
 ## Rollback
 
