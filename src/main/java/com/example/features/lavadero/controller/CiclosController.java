@@ -452,6 +452,7 @@ public class CiclosController {
         if (ciclo == null) return;
         try {
             cicloLavaderoService.finalizarCiclo(ciclo.getId());
+            cards.get(num).resetConfiguracion();
         } catch (Exception e) {
             log.error("Error al finalizar ciclo {}", ciclo.getId(), e);
             pantalla.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_CICLO);
