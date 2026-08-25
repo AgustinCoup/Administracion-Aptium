@@ -13,7 +13,7 @@ Queda solo **#6**.
 | #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
 | #3 `AppModel` | hecho (2026-07-23) — **disuelto** | sin commitear |
 | #6 concurrencia / EDT | **pendiente** — plan escrito en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | — |
-| #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | **pendiente** — brief en [`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md) | — |
+| #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | **pendiente de ejecución** — decisiones cerradas, blueprint de 9 pasos en [`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md) | — |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -218,7 +218,13 @@ hace, y multiplica por 4 lo que manda al CDE.
 **Encontrado por:** el smoke manual del Paso 8 de `salidas-lavadero-listo-y-derivacion-cde.md`.
 No es deuda de ese plan: es anterior, del plan de ciclos.
 
-**Diagnóstico completo, semántica confirmada con el usuario y decisiones pendientes:**
+**Estado (2026-08-25):** diagnóstico y las cuatro decisiones de diseño (identidad persistida,
+lanzamiento conjunto de equipos repartidos, aritmética de la cantidad, datos ya sucios) cerradas con el
+usuario. El brief se convirtió en un blueprint ejecutable de 9 pasos, con una migración `V19` (identidad
+de instancia) y una `V20` (Salidas agrupa por instancia) — ninguna migración existente se toca. Falta
+ejecutarlo.
+
+**Diagnóstico completo, decisiones cerradas y blueprint paso a paso:**
 [`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md).
 
 ---
