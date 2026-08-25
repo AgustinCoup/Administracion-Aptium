@@ -224,6 +224,7 @@ public final class Constantes {
         public static final String VER_CICLOS_LAVADERO  = "CICLOS FINALIZADOS";
         public static final String SALIDAS_LAVADERO     = "SALIDAS DE LAVADERO";
         public static final String AJUSTES              = "Ajustes";
+        public static final String DISTRIBUCION_UNIDADES = "¿Cuántas unidades distribuís ahora?";
 
         private Titulos() {}
     }
@@ -238,6 +239,7 @@ public final class Constantes {
         public static final String SI                     = "Sí";
         public static final String NO                     = "No";
         public static final String CANCELAR               = "Cancelar";
+        public static final String CONFIRMAR              = "Confirmar";
         public static final String VER                    = "Ver";
         public static final String REGISTRAR              = "Registrar";
         public static final String INGRESAR               = "Ingresar";
@@ -443,6 +445,18 @@ public final class Constantes {
         public static final String AYUDA_SALIDA_ENTERA =
             "Una salida se deriva entera. Si una parte va al CDE y otra no, "
             + "volvela a Lavado y marcala en dos tandas.";
+
+        // ── Diálogos de distribución de unidades (Ciclos) ───────────────────────
+        public static final String LABEL_UNIDADES         = "Unidades:";
+        public static final String CHECK_TODAS_N           = "Todas (%d)";
+        public static final String FORMATO_ITEM_DISPONIBLE = "<html><b>%s</b> — %s (disponibles: %d)</html>";
+
+        // ── EquipoSubdivisionDialog ──────────────────────────────────────────────
+        public static final String FORMATO_TITULO_SUBDIVIDIR = "Subdividir: %s";
+        public static final String FORMATO_TITULO_UNIDAD_DE  = "Unidad %d de %d — %s";
+        public static final String FORMATO_LABEL_SUBDIVIDIR  = "<html><b>Subdividir:</b> %s — %s</html>";
+        public static final String FORMATO_LAVARROPAS_NUM    = "Lavarropas #%d";
+        public static final String FORMATO_FRACCION          = "Fracción: %s";
 
         private Textos() {}
     }

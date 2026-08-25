@@ -12,6 +12,7 @@ import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.LavarropasService;
+import com.example.features.lavadero.view.DistribucionUnidadesDialog;
 import com.example.features.lavadero.view.EquipoSubdivisionDialog;
 import com.example.features.lavadero.view.LavarropasCard;
 import com.example.features.lavadero.view.PantallaCiclos;
@@ -294,22 +295,11 @@ public class CiclosController {
     }
 
     private int seleccionarSubcantidad(ElementoCicloItem item, int max) {
-        JSpinner sp = new JSpinner(new SpinnerNumberModel(1, 1, max, 1));
-        sp.setEditor(new JSpinner.NumberEditor(sp, "0"));
-        JPanel panel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 5, 4, 5);
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
-        panel.add(new JLabel("<html><b>" + item.getElementoNombre()
-            + "</b> — " + item.getClienteNombre() + " (disponibles: " + max + ")</html>"), gbc);
-        gbc.gridy = 1; gbc.gridwidth = 1;
-        panel.add(new JLabel("Unidades:"), gbc);
-        gbc.gridx = 1;
-        panel.add(sp, gbc);
-        int res = JOptionPane.showConfirmDialog(pantalla, panel,
-            "¿Cuántas unidades distribuís ahora?", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
-        return res == JOptionPane.OK_OPTION ? (Integer) sp.getValue() : 0;
+        Frame frame = (Frame) SwingUtilities.getWindowAncestor(pantalla);
+        DistribucionUnidadesDialog dlg = new DistribucionUnidadesDialog(
+            frame, item.getElementoNombre(), item.getClienteNombre(), max);
+        dlg.setVisible(true);
+        return dlg.getCantidad();
     }
 
     private void abrirDialogoSubdivisionUnidad(ElementoCicloItem equipo, int preSelected,
