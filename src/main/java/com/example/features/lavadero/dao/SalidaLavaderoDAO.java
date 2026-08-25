@@ -101,6 +101,20 @@ public class SalidaLavaderoDAO {
     private static final String SQL_INSERTAR_SALIDA =
         "INSERT INTO salidas_lavadero (elemento_ciclo_id, cantidad, fecha_listo) VALUES (?, ?, NOW())";
 
+    /**
+     * Salida sin destino donde acumular lo que se marque de esta tanda, si ya hay una.
+     *
+     * <p>Se resuelve en dos sentencias (buscar el id, después sumar) y no con un {@code UPDATE}
+     * con subconsulta sobre la misma tabla: MySQL no lo permite. {@code MIN(id)} elige siempre
+     * la misma fila, así que datos viejos con más de una duplicada no se multiplican.</p>
+     */
+    private static final String SQL_SALIDA_ABIERTA_DE_TANDA =
+        "SELECT MIN(id) AS id FROM salidas_lavadero WHERE elemento_ciclo_id = ? AND destino IS NULL";
+
+    /** La fecha pasa a ser la del último agregado: es cuándo quedó listo todo lo que hay ahí. */
+    private static final String SQL_SUMAR_A_SALIDA =
+        "UPDATE salidas_lavadero SET cantidad = cantidad + ?, fecha_listo = NOW() WHERE id = ?";
+
     private static final String SQL_BORRAR_SALIDA_SIN_DESTINO =
         "DELETE FROM salidas_lavadero WHERE id = ? AND destino IS NULL";
 
@@ -211,6 +225,8 @@ public class SalidaLavaderoDAO {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
             try (PreparedStatement psSaldo    = conn.prepareStatement(SQL_SALDO_PENDIENTE);
+                 PreparedStatement psAbierta  = conn.prepareStatement(SQL_SALIDA_ABIERTA_DE_TANDA);
+                 PreparedStatement psSumar    = conn.prepareStatement(SQL_SUMAR_A_SALIDA);
                  PreparedStatement psInsertar = conn.prepareStatement(SQL_INSERTAR_SALIDA)) {
                 for (MarcaListo marca : marcas) {
                     int elementoCicloId = marca.item().elementoCicloId();
@@ -218,9 +234,7 @@ public class SalidaLavaderoDAO {
                     if (marca.cantidad() > disponible) {
                         throw new BusinessException(mensajeSaldoInsuficiente(marca, disponible));
                     }
-                    psInsertar.setInt(1, elementoCicloId);
-                    psInsertar.setInt(2, marca.cantidad());
-                    psInsertar.executeUpdate();
+                    acumularOInsertar(psAbierta, psSumar, psInsertar, elementoCicloId, marca.cantidad());
                 }
             }
             tx.commit();
@@ -387,6 +401,42 @@ public class SalidaLavaderoDAO {
                     "La cantidad a marcar como Listo de " + describir(marca.item())
                     + " tiene que ser mayor que cero.");
             }
+        }
+    }
+
+    /**
+     * Suma la cantidad a la salida sin destino que ya tenga esa tanda, o crea una si no hay.
+     *
+     * <p>Marcar 4 y después 3 de la misma tanda tiene que dar <b>una</b> salida de 7 y no dos
+     * filas: para el operador es la misma ropa, doblada en dos ratos. Como consecuencia, las
+     * cantidades de una tanda ya no se pueden despachar a destinos distintos — se deriva todo
+     * junto.</p>
+     *
+     * <p>Sólo se acumula sobre salidas sin destino: una ya derivada es definitiva, así que lo
+     * que se marque después arranca una salida nueva.</p>
+     */
+    private void acumularOInsertar(PreparedStatement psAbierta, PreparedStatement psSumar,
+                                   PreparedStatement psInsertar, int elementoCicloId,
+                                   int cantidad) throws SQLException {
+        Integer salidaAbierta = salidaAbiertaDe(psAbierta, elementoCicloId);
+        if (salidaAbierta != null) {
+            psSumar.setInt(1, cantidad);
+            psSumar.setInt(2, salidaAbierta);
+            psSumar.executeUpdate();
+            return;
+        }
+        psInsertar.setInt(1, elementoCicloId);
+        psInsertar.setInt(2, cantidad);
+        psInsertar.executeUpdate();
+    }
+
+    /** Id de la salida sin destino de esa tanda, o {@code null} si todavía no hay ninguna. */
+    private Integer salidaAbiertaDe(PreparedStatement psAbierta, int elementoCicloId) throws SQLException {
+        psAbierta.setInt(1, elementoCicloId);
+        try (ResultSet rs = psAbierta.executeQuery()) {
+            if (!rs.next()) return null;
+            int id = rs.getInt("id");
+            return rs.wasNull() ? null : id;
         }
     }
 

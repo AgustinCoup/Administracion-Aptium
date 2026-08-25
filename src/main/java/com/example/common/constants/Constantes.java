@@ -441,8 +441,8 @@ public final class Constantes {
         public static final String COLUMNA_LISTO_EL      = "Listo el";
         /** Consecuencia operativa de que una salida se derive entera: hay que escribirla en la pantalla. */
         public static final String AYUDA_SALIDA_ENTERA =
-            "Una salida se deriva entera. Si una parte va al CDE y otra no, "
-            + "volvela a Lavado y marcala en dos tandas.";
+            "Lo que se marca Listo de una misma tanda se acumula en una sola salida, "
+            + "y esa salida se deriva entera a un único destino.";
         /** El arrastre es el camino principal, pero no se ve: hay que nombrarlo. */
         public static final String AYUDA_ARRASTRE_SALIDAS =
             "Arrastrá filas de una tabla a la otra, o usá los botones.";

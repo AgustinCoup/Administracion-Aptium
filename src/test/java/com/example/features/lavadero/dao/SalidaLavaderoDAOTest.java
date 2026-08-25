@@ -265,6 +265,36 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         assertEquals(0, contarFilas("salidas_lavadero"));
     }
 
+    /** Doblar la misma tanda en dos ratos es la misma ropa: una sola salida, no dos filas. */
+    @Test
+    void marcarListo_dosVecesSobreLaMismaTanda_acumulaEnUnaSolaSalida() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 3)));
+
+        assertEquals(1, contarFilas("salidas_lavadero"));
+        List<SalidaLista> listas = dao.obtenerListasSinDestino();
+        assertEquals(1, listas.size());
+        assertEquals(7, listas.get(0).cantidad());
+        assertEquals(3, unicoPendiente().cantidadPendiente());
+    }
+
+    /** Una salida ya derivada es definitiva: lo que se marque después arranca una nueva. */
+    @Test
+    void marcarListo_sobreUnaTandaYaDerivada_creaUnaSalidaNueva() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+        asignarDestino(dao.obtenerListasSinDestino().get(0).salidaId());
+
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 3)));
+
+        assertEquals(2, contarFilas("salidas_lavadero"));
+        List<SalidaLista> sinDestino = dao.obtenerListasSinDestino();
+        assertEquals(1, sinDestino.size());
+        assertEquals(3, sinDestino.get(0).cantidad());
+    }
+
     @Test
     void marcarListo_conSeleccionVacia_lanza() {
         assertThrows(BusinessException.class, () -> dao.marcarListo(List.of()));

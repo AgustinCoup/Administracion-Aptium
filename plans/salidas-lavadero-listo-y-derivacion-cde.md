@@ -16,7 +16,7 @@ equipo "Otros"*, reflejado inmediatamente en las pantallas operativas.
 |---|---|
 | Granularidad del "Listo" | **Parcial por cantidad.** Cada fila lavada muestra su cantidad pendiente y un spinner: se marcan N de M. Consistente con cómo los ciclos ya reparten una línea de clasificación en varias tandas. |
 | Marcado de varias filas a la vez | **Multi-selección con "marcar todo lo pendiente".** Con **una** fila seleccionada el spinner marca una cantidad parcial; con **varias**, el botón marca el total pendiente de cada una. Cubre "terminé de doblar todo este ingreso" sin meter el concepto de "ingreso" en una pantalla que trabaja por elemento. Todo el marcado va en **una sola transacción**: o entran todas las filas o ninguna. |
-| Granularidad al derivar | **La salida se deriva entera; no se parte.** Si al doblar se marcaron 10 Batas como una tanda, esas 10 van todas al mismo destino. Para separarlas hay que "Volver a Lavado" y remarcar en dos tandas. **Consecuencia operativa a comunicar en la UI:** conviene marcar Listo en las tandas en que se piensa despachar. |
+| Granularidad al derivar | **La salida se deriva entera; no se parte.** Si al doblar se marcaron 10 Batas como una tanda, esas 10 van todas al mismo destino. ~~Para separarlas hay que "Volver a Lavado" y remarcar en dos tandas.~~ **Revisado el 2026-08-25 (ver [Mutaciones aplicadas](#mutaciones-aplicadas)):** todo lo que se marca Listo de una misma tanda se acumula en **una sola** salida, así que remarcar en dos tandas ya no las separa. Una tanda lavada = una salida = un destino. |
 | Identificación de una fila | Elemento solo no alcanza: el operador necesita saber **de qué cliente es, en qué lavarropas y cuándo se lavó**. Ambas tablas muestran cliente, lavarropas y fecha de fin de ciclo, no sólo el nombre del elemento. |
 | Forma de la pantalla | **Una sola pantalla con dos tablas.** Izquierda: *Lavados (pendientes de secado y doblado)*. Derecha: *Listos (pendientes de destino)*. Un solo botón nuevo en el menú de Lavadero. |
 | Cómo se arma el ingreso en CDE | **Un `equipo_otros` por cliente, tipo `DETALLES`**, con un `MaterialOtros` por elemento (descripción = nombre del elemento de lavadero, cantidad = la derivada). La entrada en `catalogo_otros` se auto-crea, igual que en el ingreso manual de Otros. |
@@ -1569,6 +1569,30 @@ pantalla de Salidas" a los archivos correctos usando sólo el mapa.
   constructor público para drops), así que el test ejercita el camino del arrastre llamándolos
   directamente. Y `SalidaLavaderoService.volverALavado(int)` se eliminó al quedar sin uso; el
   atajo de a uno sobrevive sólo en el DAO, como pedía el paso.
+
+- **2026-08-25 — Marcar Listo acumula: una tanda lavada es una sola salida.** Del smoke del 8.5.
+  Marcar 4 y después 3 de la misma tanda dejaba **dos filas** en la tabla derecha. Era el
+  comportamiento que el plan había decidido a propósito el 13/08 — dos unidades de despacho
+  independientes, con "Volver a Lavado y remarcar en dos tandas" como forma de separarlas —, pero
+  al verlo funcionando el usuario lo rechazó: para el operador es la misma ropa doblada en dos
+  ratos, y dos filas idénticas en pantalla se leen como un bug.
+
+  `SalidaLavaderoDAO.marcarListo` ahora suma sobre la salida **sin destino** que ya tenga esa tanda
+  y sólo inserta si no hay ninguna, siguiendo el patrón de
+  `EquipoMaterialHelper.unificarMaterialesDuplicados` (agrupar por clave y sumar cantidades), pero
+  sin su parte pesada: acá no hay movimientos que reasignar. Se resuelve en dos sentencias — buscar
+  el id, después sumar — porque MySQL no acepta un `UPDATE` con subconsulta sobre la misma tabla.
+  Una salida ya derivada es definitiva, así que lo que se marque después arranca una salida nueva.
+
+  **Lo que se pierde:** ya no se puede mandar una parte de una tanda al CDE y otra fuera del flujo.
+  Decidido con el usuario, sabiendo el costo. El texto `AYUDA_SALIDA_ENTERA` se reescribió para
+  decir lo que la pantalla hace ahora. Si en algún momento hace falta despachar parcialmente, el
+  camino es preguntar la cantidad **al derivar** y partir la salida ahí — un paso propio, porque
+  toca `derivar`, el DAO transaccional, los derivadores y el diálogo de CDE.
+
+  **Datos existentes:** las salidas sin destino ya duplicadas siguen duplicadas; se unifican
+  volviéndolas a Lavado y remarcándolas. No se agregó migración de reparación: son filas
+  transitorias por naturaleza.
 
 ## Rollback
 
