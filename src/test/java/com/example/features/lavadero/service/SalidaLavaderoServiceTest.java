@@ -129,6 +129,35 @@ class SalidaLavaderoServiceTest {
         verify(dao).volverALavado(5);
     }
 
+    // ── volverALavado en lote ────────────────────────────────────────────────
+
+    @Test
+    void volverALavado_listaNula_lanzaValidation() {
+        assertThrows(ValidationException.class, () -> service.volverALavado((List<SalidaLista>) null));
+        verifyNoInteractions(dao);
+    }
+
+    @Test
+    void volverALavado_listaVacia_lanzaValidation() {
+        assertThrows(ValidationException.class, () -> service.volverALavado(List.<SalidaLista>of()));
+        verifyNoInteractions(dao);
+    }
+
+    @Test
+    void volverALavado_idsRepetidos_lanzaValidation() {
+        assertThrows(ValidationException.class,
+            () -> service.volverALavado(List.of(lista(7, 3), lista(7, 2))));
+        verifyNoInteractions(dao);
+    }
+
+    @Test
+    void volverALavado_variasSalidas_delegaConUnSoloLlamadoYSusIds() {
+        service.volverALavado(List.of(lista(7, 3), lista(9, 2), lista(11, 1)));
+
+        verify(dao).volverALavado(List.of(7, 9, 11));
+        verify(dao, never()).volverALavado(anyInt());
+    }
+
     // ── derivar — validaciones ───────────────────────────────────────────────
 
     @Test

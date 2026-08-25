@@ -334,6 +334,36 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         assertThrows(BusinessException.class, () -> dao.volverALavado(999_999));
     }
 
+    // ── volverALavado en lote ────────────────────────────────────────────────
+
+    @Test
+    void volverALavado_deTresSalidasSinDestino_lasRevierteTodas() throws SQLException {
+        List<Integer> ids = tresSalidasListas();
+
+        dao.volverALavado(ids);
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+        assertTrue(dao.obtenerListasSinDestino().isEmpty());
+        assertEquals(3, dao.obtenerLavadosPendientesDeListo().size());
+    }
+
+    /** El todo-o-nada de la dirección inversa: la primera era reversible y tampoco se borra. */
+    @Test
+    void volverALavado_siLaDelMedioYaTieneDestino_lanzaYLasTresSiguenExistiendo() throws SQLException {
+        List<Integer> ids = tresSalidasListas();
+        asignarDestino(ids.get(1));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> dao.volverALavado(ids));
+
+        assertTrue(ex.getMessage().contains(String.valueOf(ids.get(1))), ex.getMessage());
+        assertEquals(3, contarFilas("salidas_lavadero"));
+    }
+
+    @Test
+    void volverALavado_conSeleccionVacia_lanza() {
+        assertThrows(BusinessException.class, () -> dao.volverALavado(List.of()));
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private ElementoCicloMovimiento movimiento(int clasificacionId, int cantidad) {
@@ -349,6 +379,16 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
     private void lanzarYFinalizar(int lavarropas, ElementoCicloMovimiento... movimientos) throws SQLException {
         lanzarCiclo(lavarropas, movimientos);
         ciclosDao.finalizarCiclo(ultimoCicloId());
+    }
+
+    /** Tres elementos distintos lavados en el mismo ciclo y marcados Listo enteros. */
+    private List<Integer> tresSalidasListas() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10), movimiento(clasifB, 6), movimiento(clasifC, 4));
+        dao.marcarListo(List.of(
+            new MarcaListo(pendientePorElemento(nombreA), 10),
+            new MarcaListo(pendientePorElemento(nombreB), 6),
+            new MarcaListo(pendientePorElemento(nombreC), 4)));
+        return dao.obtenerListasSinDestino().stream().map(SalidaLista::salidaId).toList();
     }
 
     private ElementoLavadoPendiente unicoPendiente() {

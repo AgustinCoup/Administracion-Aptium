@@ -93,6 +93,31 @@ public class SalidaLavaderoService {
         dao.volverALavado(salidaId);
     }
 
+    /**
+     * Devuelve a Lavado la selección entera. Una sola firma para el botón y para el arrastre:
+     * los dos mandan la tanda completa y el todo-o-nada lo garantiza la transacción del DAO,
+     * no un bucle de llamados de a uno.
+     */
+    public void volverALavado(List<SalidaLista> salidas) {
+        ValidationException.Builder v = ValidationException.builder();
+        v.addErrorIf(salidas == null || salidas.isEmpty(), "No hay ninguna salida seleccionada.");
+
+        if (salidas != null) {
+            Set<Integer> salidasVistas = new HashSet<>();
+            for (SalidaLista salida : salidas) {
+                v.addErrorIf(salida == null, "Hay una salida sin datos en la selección.");
+                if (salida == null) continue;
+
+                v.addErrorIf(salida.salidaId() <= 0, "ID de salida inválido.");
+                v.addErrorIf(!salidasVistas.add(salida.salidaId()),
+                    describir(salida) + " está repetida en la selección.");
+            }
+        }
+
+        v.throwIfHasErrors();
+        dao.volverALavado(salidas.stream().map(SalidaLista::salidaId).toList());
+    }
+
     /** Deriva la selección al destino que le corresponde a {@code accion}, en una sola transacción. */
     public void derivar(AccionSalida accion, List<SalidaLista> seleccion) {
         ValidationException.Builder v = ValidationException.builder();
@@ -113,5 +138,10 @@ public class SalidaLavaderoService {
     private String describir(ElementoLavadoPendiente item) {
         return item.elementoNombre() + " (" + item.clienteNombre()
              + ", lavarropas " + item.lavarropasNumero() + ")";
+    }
+
+    private String describir(SalidaLista salida) {
+        return salida.elementoNombre() + " (" + salida.clienteNombre()
+             + ", lavarropas " + salida.lavarropasNumero() + ")";
     }
 }

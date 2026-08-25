@@ -230,26 +230,50 @@ public class SalidaLavaderoDAO {
     }
 
     /**
-     * Devuelve una salida al estado "lavado, sin doblar" borrándola.
-     *
-     * <p>Sólo se puede mientras no tenga destino: una vez derivada es definitiva.</p>
+     * Devuelve una salida al estado "lavado, sin doblar". Atajo del método en lote.
      *
      * @throws BusinessException si la salida ya se derivó o ya no existe.
      */
     public void volverALavado(int salidaId) {
+        volverALavado(List.of(salidaId));
+    }
+
+    /**
+     * Devuelve al estado "lavado, sin doblar" la selección entera, en una sola transacción:
+     * o vuelven todas o no vuelve ninguna.
+     *
+     * <p>Simétrico de {@link #marcarListo(List)} y por el mismo motivo: revertir cuatro filas
+     * arrastradas y que la tercera falle dejaría dos revertidas y dos no, un estado que nadie
+     * pidió y que la pantalla no muestra como parcial.</p>
+     *
+     * <p>Sólo se puede mientras la salida no tenga destino: una vez derivada es definitiva. El
+     * {@code AND destino IS NULL} del {@code DELETE} hace las dos cosas a la vez — filtra y
+     * detecta —, así que no hace falta releer antes.</p>
+     *
+     * @throws BusinessException si la selección está vacía o si alguna salida ya se derivó o
+     *                           dejó de existir. En todos los casos no se borra ninguna fila.
+     */
+    public void volverALavado(List<Integer> salidaIds) {
+        if (salidaIds == null || salidaIds.isEmpty()) {
+            throw new BusinessException("No hay ninguna salida para volver a Lavado.");
+        }
+
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
             try (PreparedStatement ps = conn.prepareStatement(SQL_BORRAR_SALIDA_SIN_DESTINO)) {
-                ps.setInt(1, salidaId);
-                if (ps.executeUpdate() == 0) {
-                    throw new BusinessException(
-                        "Esa salida ya no se puede volver a Lavado: o ya se le asignó un destino, "
-                        + "o dejó de existir. Refrescá la pantalla.");
+                for (Integer salidaId : salidaIds) {
+                    if (salidaId == null || salidaId <= 0) {
+                        throw new BusinessException("Hay una salida sin identificar en la selección.");
+                    }
+                    ps.setInt(1, salidaId);
+                    if (ps.executeUpdate() == 0) {
+                        throw new BusinessException(mensajeNoRevertible(salidaId));
+                    }
                 }
             }
             tx.commit();
         } catch (SQLException e) {
-            throw new DatabaseException("Error al volver a Lavado la salida " + salidaId, e);
+            throw new DatabaseException("Error al volver a Lavado las salidas de lavadero", e);
         }
     }
 
@@ -372,6 +396,15 @@ public class SalidaLavaderoDAO {
         try (ResultSet rs = psSaldo.executeQuery()) {
             return rs.next() ? rs.getInt("pendiente") : 0;
         }
+    }
+
+    /**
+     * Identifica la salida por id: es lo único que llega hasta acá, y el nombre del elemento
+     * no distinguiría dos tandas iguales del mismo cliente. Lo accionable es refrescar.
+     */
+    private String mensajeNoRevertible(int salidaId) {
+        return "La salida #" + salidaId + " ya no se puede volver a Lavado: o ya se le asignó un "
+             + "destino, o dejó de existir. No se revirtió ninguna. Refrescá la pantalla.";
     }
 
     private String mensajeSaldoInsuficiente(MarcaListo marca, int disponible) {
