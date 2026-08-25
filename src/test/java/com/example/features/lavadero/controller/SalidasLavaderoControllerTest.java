@@ -18,9 +18,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import javax.swing.JButton;
-import javax.swing.JSpinner;
 import javax.swing.JTable;
-import javax.swing.SpinnerNumberModel;
 import javax.swing.table.DefaultTableModel;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,7 +29,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -62,10 +59,10 @@ class SalidasLavaderoControllerTest {
     private final JButton btnVolverALavado = new JButton();
     private final JButton btnSaleDelFlujo  = new JButton();
     private final JButton btnIngresarACde  = new JButton();
-    private final JSpinner spnCantidad     = new JSpinner(new SpinnerNumberModel(1, 1, 999, 1));
 
-    /** Tres filas vacías: sólo existen para poder mover la selección y disparar el listener. */
+    /** Reales: el controller les instala su {@code TransferHandler} al construirse. */
     private final JTable tablaLavados = new JTable(new DefaultTableModel(3, 1));
+    private final JTable tablaListos  = new JTable(new DefaultTableModel(3, 1));
 
     private SalidasLavaderoController controller;
 
@@ -75,8 +72,8 @@ class SalidasLavaderoControllerTest {
         when(pantalla.getBtnVolverALavado()).thenReturn(btnVolverALavado);
         when(pantalla.getBtnSaleDelFlujo()).thenReturn(btnSaleDelFlujo);
         when(pantalla.getBtnIngresarACde()).thenReturn(btnIngresarACde);
-        when(pantalla.getSpnCantidad()).thenReturn(spnCantidad);
         when(pantalla.getTablaLavados()).thenReturn(tablaLavados);
+        when(pantalla.getTablaListos()).thenReturn(tablaListos);
         when(pantalla.getSeleccionLavados()).thenReturn(List.of());
         when(pantalla.getSeleccionListos()).thenReturn(List.of());
 
@@ -169,48 +166,80 @@ class SalidasLavaderoControllerTest {
             .mostrarInfo("Se crearon 2 ingresos en el CDE, uno por cliente.");
     }
 
-    // ── Marcar Listo ─────────────────────────────────────────────────────────
+    // ── Marcar Listo: la cantidad se pregunta fila por fila ──────────────────
 
     @Test
-    @DisplayName("con una fila, el service recibe la cantidad del spinner")
-    void marcarListo_unaFila_usaLaCantidadDelSpinner() {
-        ElementoLavadoPendiente item = lavado(11, 10, 0);
-        when(pantalla.getSeleccionLavados()).thenReturn(List.of(item));
+    @DisplayName("un drop de tres filas es un solo llamado con las tres marcas")
+    void marcarListo_dropDeTresFilas_unSoloLlamadoConTresMarcas() {
+        ElementoLavadoPendiente uno  = lavado(11, 10, 2);   // pendiente 8
+        ElementoLavadoPendiente dos  = lavado(12, 5, 0);    // pendiente 5
+        ElementoLavadoPendiente tres = lavado(13, 8, 5);    // pendiente 3
+        when(pantalla.pedirCantidadListo(uno)).thenReturn(8);
+        when(pantalla.pedirCantidadListo(dos)).thenReturn(2);
+        when(pantalla.pedirCantidadListo(tres)).thenReturn(3);
 
-        tablaLavados.setRowSelectionInterval(0, 0);
+        controller.marcarListo(List.of(uno, dos, tres));
 
-        // Antes del click: después, la recarga vuelve a sincronizar el spinner.
-        verify(pantalla, atLeastOnce()).setMaximoCantidad(10);
-        verify(pantalla, atLeastOnce()).setSpinnerHabilitado(true);
-
-        spnCantidad.setValue(4);
-        btnMarcarListo.doClick();
-
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<MarcaListo>> captor = ArgumentCaptor.forClass(List.class);
-        verify(service, timeout(ESPERA_MS)).marcarListo(captor.capture());
-        assertEquals(List.of(new MarcaListo(item, 4)), captor.getValue());
+        verify(service, timeout(ESPERA_MS)).marcarListo(
+            List.of(new MarcaListo(uno, 8), new MarcaListo(dos, 2), new MarcaListo(tres, 3)));
+        verify(service, timeout(ESPERA_MS).times(1)).marcarListo(anyList());
     }
 
     @Test
-    @DisplayName("con tres filas, un solo llamado con el pendiente entero de cada una y sin spinner")
-    void marcarListo_variasFilas_marcaElPendienteEnteroDeCadaUna() {
-        ElementoLavadoPendiente uno  = lavado(11, 10, 2);
+    @DisplayName("cancelar el diálogo de la fila del medio deja pasar las otras dos")
+    void marcarListo_cancelarLaDelMedio_marcaLasOtrasDos() {
+        ElementoLavadoPendiente uno  = lavado(11, 10, 0);
         ElementoLavadoPendiente dos  = lavado(12, 5, 0);
-        ElementoLavadoPendiente tres = lavado(13, 8, 8 - 3);
-        when(pantalla.getSeleccionLavados()).thenReturn(List.of(uno, dos, tres));
+        ElementoLavadoPendiente tres = lavado(13, 8, 0);
+        when(pantalla.pedirCantidadListo(uno)).thenReturn(4);
+        when(pantalla.pedirCantidadListo(dos)).thenReturn(0);   // cancelado
+        when(pantalla.pedirCantidadListo(tres)).thenReturn(8);
 
-        tablaLavados.setRowSelectionInterval(0, 2);
-        verify(pantalla, atLeastOnce()).setSpinnerHabilitado(false);
+        controller.marcarListo(List.of(uno, dos, tres));
+
+        verify(service, timeout(ESPERA_MS)).marcarListo(
+            List.of(new MarcaListo(uno, 4), new MarcaListo(tres, 8)));
+    }
+
+    @Test
+    @DisplayName("cancelar todos los diálogos no llama al service")
+    void marcarListo_cancelarTodos_noLlamaAlService() {
+        when(pantalla.pedirCantidadListo(any())).thenReturn(0);
+
+        controller.marcarListo(List.of(lavado(11, 10, 0), lavado(12, 5, 0)));
+
+        verify(service, never()).marcarListo(anyList());
+    }
+
+    @Test
+    @DisplayName("una fila con una sola unidad pendiente no abre diálogo")
+    void marcarListo_pendienteUno_noPregunta() {
+        ElementoLavadoPendiente item = lavado(11, 10, 9);   // pendiente 1
+
+        controller.marcarListo(List.of(item));
+
+        verify(pantalla, never()).pedirCantidadListo(any());
+        verify(service, timeout(ESPERA_MS)).marcarListo(List.of(new MarcaListo(item, 1)));
+    }
+
+    @Test
+    @DisplayName("el botón y el arrastre con la misma selección producen el mismo llamado")
+    void marcarListo_botonYArrastre_producenLlamadosIdenticos() {
+        ElementoLavadoPendiente item = lavado(11, 10, 0);
+        when(pantalla.getSeleccionLavados()).thenReturn(List.of(item));
+        when(pantalla.pedirCantidadListo(item)).thenReturn(4);
 
         btnMarcarListo.doClick();
+        verify(service, timeout(ESPERA_MS).times(1)).marcarListo(anyList());
+        controller.marcarListo(List.of(item));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<MarcaListo>> captor = ArgumentCaptor.forClass(List.class);
-        verify(service, timeout(ESPERA_MS)).marcarListo(captor.capture());
-        assertEquals(
-            List.of(new MarcaListo(uno, 8), new MarcaListo(dos, 5), new MarcaListo(tres, 3)),
-            captor.getValue());
+        verify(service, timeout(ESPERA_MS).times(2)).marcarListo(captor.capture());
+
+        List<List<MarcaListo>> llamados = captor.getAllValues();
+        assertEquals(List.of(new MarcaListo(item, 4)), llamados.get(0));
+        assertEquals(llamados.get(0), llamados.get(1));
     }
 
     // ── Guardas y errores ────────────────────────────────────────────────────
@@ -224,7 +253,7 @@ class SalidasLavaderoControllerTest {
         btnIngresarACde.doClick();
 
         verify(service, never()).marcarListo(anyList());
-        verify(service, never()).volverALavado(anyInt());
+        verify(service, never()).volverALavado(anyList());
         verify(service, never()).derivar(any(), anyList());
         verify(pantalla, never()).elegirAccionCde(anyInt());
         verify(pantalla).mostrarError("Seleccioná al menos una tanda lavada.");
@@ -261,26 +290,29 @@ class SalidasLavaderoControllerTest {
     // ── Volver a Lavado ──────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("volver a Lavado es de a una salida por vez")
-    void volverALavado_variasFilas_avisaYNoLlamaAlService() {
-        when(pantalla.getSeleccionListos()).thenReturn(List.of(
-            salida(1, 7, "Clinica Norte"), salida(2, 7, "Clinica Norte")));
+    @DisplayName("un drop de tres filas de vuelta a Lavados es un solo llamado con las tres")
+    void volverALavado_dropDeTresFilas_unSoloLlamado() {
+        List<SalidaLista> seleccion = List.of(
+            salida(1, 7, "Clinica Norte"), salida(2, 7, "Clinica Norte"), salida(3, 9, "Sanatorio Sur"));
 
-        btnVolverALavado.doClick();
+        controller.volverALavado(seleccion);
 
-        verify(service, never()).volverALavado(anyInt());
-        verify(pantalla).mostrarError("Volvé a Lavado de a una salida por vez.");
+        verify(service, timeout(ESPERA_MS)).volverALavado(seleccion);
+        verify(service, timeout(ESPERA_MS).times(1)).volverALavado(anyList());
+        verify(pantalla, never()).pedirCantidadListo(any());
+        verify(refrescoOperativo, never()).run();
     }
 
     @Test
-    @DisplayName("volver a Lavado con una fila le pasa su id al service")
-    void volverALavado_unaFila_pasaElId() {
-        when(pantalla.getSeleccionListos()).thenReturn(List.of(salida(42, 7, "Clinica Norte")));
+    @DisplayName("el botón manda la selección entera, sin límite de una fila")
+    void volverALavado_boton_mandaLaSeleccionEntera() {
+        List<SalidaLista> seleccion = List.of(
+            salida(42, 7, "Clinica Norte"), salida(43, 7, "Clinica Norte"));
+        when(pantalla.getSeleccionListos()).thenReturn(seleccion);
 
         btnVolverALavado.doClick();
 
-        verify(service, timeout(ESPERA_MS)).volverALavado(42);
-        verify(refrescoOperativo, never()).run();
+        verify(service, timeout(ESPERA_MS)).volverALavado(seleccion);
     }
 
     // ── Carga ────────────────────────────────────────────────────────────────

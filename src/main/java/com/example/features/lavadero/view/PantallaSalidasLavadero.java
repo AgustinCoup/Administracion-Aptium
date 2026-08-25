@@ -30,7 +30,6 @@ public class PantallaSalidasLavadero extends JPanel {
     private final JTable tablaLavados;
     private final JTable tablaListos;
 
-    private final JSpinner spnCantidad = new JSpinner(new SpinnerNumberModel(1, 1, 1, 1));
     private final JButton  btnMarcarListo    = new JButton(Constantes.Botones.MARCAR_LISTO);
     private final JButton  btnVolverALavado  = new JButton(Constantes.Botones.VOLVER_A_LAVADO);
     private final JButton  btnSaleDelFlujo   = new JButton(Constantes.Botones.SALE_DEL_FLUJO);
@@ -62,15 +61,16 @@ public class PantallaSalidasLavadero extends JPanel {
             BorderLayout.NORTH);
         panel.add(scroll(tablaLavados), BorderLayout.CENTER);
 
-        spnCantidad.setFont(Estilos.Fuentes.LABEL);
-        spnCantidad.setEnabled(false);
         btnMarcarListo.setFont(Estilos.Fuentes.BOTON);
+        JLabel ayuda = new JLabel(Constantes.Textos.AYUDA_ARRASTRE_SALIDAS);
+        ayuda.setFont(Estilos.Fuentes.LABEL);
 
-        JPanel south = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        JPanel south = new JPanel(new BorderLayout());
         south.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
-        south.add(new JLabel(Constantes.Textos.LABEL_CANTIDAD));
-        south.add(spnCantidad);
-        south.add(btnMarcarListo);
+        south.add(ayuda, BorderLayout.NORTH);
+        JPanel botones = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        botones.add(btnMarcarListo);
+        south.add(botones, BorderLayout.CENTER);
         panel.add(south, BorderLayout.SOUTH);
         return panel;
     }
@@ -100,12 +100,19 @@ public class PantallaSalidasLavadero extends JPanel {
         return panel;
     }
 
+    /**
+     * Las dos tablas arrastran y reciben. Qué significa soltar algo en cada una lo decide el
+     * controller instalando su {@code TransferHandler}: acá sólo se declara que se puede.
+     */
     private JTable buildTable(javax.swing.table.AbstractTableModel model, int... centeredCols) {
         JTable t = new JTable(model);
         TableSelectionSupport.enableMultiSelection(t);
         TableStyler.applyStandard(t);
         TableStyler.centerColumns(t, centeredCols);
         t.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+        t.setDragEnabled(true);
+        t.setDropMode(DropMode.ON);
+        t.setFillsViewportHeight(true);
         return t;
     }
 
@@ -133,19 +140,6 @@ public class PantallaSalidasLavadero extends JPanel {
         return TableSelectionSupport.selectedItems(tablaListos, modeloListos::getItemAt);
     }
 
-    // ── Spinner de cantidad ──────────────────────────────────────────────────
-
-    public JSpinner getSpnCantidad() { return spnCantidad; }
-
-    public void setMaximoCantidad(int maximo) {
-        int valor = Math.min((Integer) spnCantidad.getValue(), Math.max(maximo, 1));
-        spnCantidad.setModel(new SpinnerNumberModel(valor, 1, Math.max(maximo, 1), 1));
-    }
-
-    public void setSpinnerHabilitado(boolean habilitado) {
-        spnCantidad.setEnabled(habilitado);
-    }
-
     // ── Botones ──────────────────────────────────────────────────────────────
 
     public JButton getBtnMarcarListo()   { return btnMarcarListo; }
@@ -154,6 +148,20 @@ public class PantallaSalidasLavadero extends JPanel {
     public JButton getBtnIngresarACde()  { return btnIngresarACde; }
 
     // ── Diálogos ─────────────────────────────────────────────────────────────
+
+    /**
+     * Cuántas unidades de una tanda lavada se marcan Listo.
+     *
+     * @return la cantidad elegida, o {@code 0} si se canceló.
+     */
+    public int pedirCantidadListo(ElementoLavadoPendiente item) {
+        DistribucionUnidadesDialog dialogo = DistribucionUnidadesDialog.paraSalidas(
+            (Frame) SwingUtilities.getWindowAncestor(this),
+            item.elementoNombre(), item.clienteNombre(), item.lavarropasNumero(),
+            item.cantidadPendiente());
+        dialogo.setVisible(true);
+        return dialogo.getCantidad();
+    }
 
     /**
      * Pregunta y confirma en un solo paso a nombre de quién ingresan las salidas al CDE.

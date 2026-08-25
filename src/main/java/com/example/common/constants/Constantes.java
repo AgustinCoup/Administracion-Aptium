@@ -164,8 +164,6 @@ public final class Constantes {
             "Seleccioná al menos una tanda lavada.";
         public static final String SIN_SELECCION_LISTOS =
             "Seleccioná al menos una salida lista.";
-        public static final String VOLVER_A_LAVADO_UNA_SOLA =
-            "Volvé a Lavado de a una salida por vez.";
 
         /**
          * Resumen de la derivación. Dice a nombre de quién entraron: es lo único que
@@ -225,6 +223,7 @@ public final class Constantes {
         public static final String SALIDAS_LAVADERO     = "SALIDAS DE LAVADERO";
         public static final String AJUSTES              = "Ajustes";
         public static final String DISTRIBUCION_UNIDADES = "¿Cuántas unidades distribuís ahora?";
+        public static final String CANTIDAD_A_MARCAR_LISTO = "¿Cuántas marcás Listo?";
 
         private Titulos() {}
     }
@@ -440,16 +439,20 @@ public final class Constantes {
         public static final String COLUMNA_LAVARROPAS    = "Lavarropas";
         public static final String COLUMNA_LAVADO_EL     = "Lavado el";
         public static final String COLUMNA_LISTO_EL      = "Listo el";
-        public static final String LABEL_CANTIDAD        = "Cantidad:";
         /** Consecuencia operativa de que una salida se derive entera: hay que escribirla en la pantalla. */
         public static final String AYUDA_SALIDA_ENTERA =
             "Una salida se deriva entera. Si una parte va al CDE y otra no, "
             + "volvela a Lavado y marcala en dos tandas.";
+        /** El arrastre es el camino principal, pero no se ve: hay que nombrarlo. */
+        public static final String AYUDA_ARRASTRE_SALIDAS =
+            "Arrastrá filas de una tabla a la otra, o usá los botones.";
 
-        // ── Diálogos de distribución de unidades (Ciclos) ───────────────────────
+        // ── Diálogo de distribución de unidades (Ciclos y Salidas) ─────────────
         public static final String LABEL_UNIDADES         = "Unidades:";
         public static final String CHECK_TODAS_N           = "Todas (%d)";
         public static final String FORMATO_ITEM_DISPONIBLE = "<html><b>%s</b> — %s (disponibles: %d)</html>";
+        public static final String FORMATO_ITEM_LAVADO     =
+            "<html><b>%s</b> — %s<br>lavarropas %d · disponibles: %d</html>";
 
         // ── EquipoSubdivisionDialog ──────────────────────────────────────────────
         public static final String FORMATO_TITULO_SUBDIVIDIR = "Subdividir: %s";

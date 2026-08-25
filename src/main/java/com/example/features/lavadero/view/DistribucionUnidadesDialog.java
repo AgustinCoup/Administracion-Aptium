@@ -6,9 +6,14 @@ import javax.swing.*;
 import java.awt.*;
 
 /**
- * "¿Cuántas unidades distribuís ahora?" — spinner acotado al máximo disponible, con un
- * checkbox "Todas (N)" para saltar el caso más frecuente (repartir todo) sin tipear.
+ * "¿Cuántas de estas N?" — spinner acotado al máximo disponible, con un checkbox
+ * "Todas (N)" para saltar el caso más frecuente (repartir todo) sin tipear.
  * Molde: {@link EquipoSubdivisionDialog}.
+ *
+ * <p>Lo usan dos pantallas que hacen la misma pregunta sobre cosas distintas: Ciclos, al
+ * repartir un elemento disponible entre lavarropas, y Salidas, al marcar Listo una tanda
+ * ya lavada. Sólo cambian el título y la línea que identifica el ítem, así que las dos
+ * variantes son fábricas y no clases: un solo widget que no puede divergir.</p>
  *
  * <p>Resultado: la cantidad elegida, o 0 si se canceló.
  */
@@ -20,13 +25,33 @@ public class DistribucionUnidadesDialog extends JDialog {
     private int cantidad = 0;
     private int ultimoValorManual = 1;
 
-    public DistribucionUnidadesDialog(Frame parent, String elementoNombre, String clienteNombre, int max) {
-        super(parent, Constantes.Titulos.DISTRIBUCION_UNIDADES, true);
+    /** Reparto de un elemento disponible entre lavarropas (Ciclos). */
+    public static DistribucionUnidadesDialog paraCiclos(Frame parent, String elementoNombre,
+                                                        String clienteNombre, int max) {
+        return new DistribucionUnidadesDialog(parent, Constantes.Titulos.DISTRIBUCION_UNIDADES,
+            String.format(Constantes.Textos.FORMATO_ITEM_DISPONIBLE, elementoNombre, clienteNombre, max),
+            max);
+    }
+
+    /**
+     * Marcado parcial de una tanda lavada (Salidas). Muestra además el lavarropas: el
+     * nombre del elemento no distingue dos tandas del mismo cliente lavadas por separado.
+     */
+    public static DistribucionUnidadesDialog paraSalidas(Frame parent, String elementoNombre,
+                                                          String clienteNombre, int lavarropasNumero,
+                                                          int max) {
+        return new DistribucionUnidadesDialog(parent, Constantes.Titulos.CANTIDAD_A_MARCAR_LISTO,
+            String.format(Constantes.Textos.FORMATO_ITEM_LAVADO,
+                          elementoNombre, clienteNombre, lavarropasNumero, max),
+            max);
+    }
+
+    private DistribucionUnidadesDialog(Frame parent, String titulo, String encabezado, int max) {
+        super(parent, titulo, true);
         this.max = max;
         setLayout(new BorderLayout(5, 5));
 
-        add(new JLabel(String.format(Constantes.Textos.FORMATO_ITEM_DISPONIBLE,
-                elementoNombre, clienteNombre, max), SwingConstants.CENTER), BorderLayout.NORTH);
+        add(new JLabel(encabezado, SwingConstants.CENTER), BorderLayout.NORTH);
 
         spinner = new JSpinner(new SpinnerNumberModel(1, 1, max, 1));
         spinner.setEditor(new JSpinner.NumberEditor(spinner, "0"));

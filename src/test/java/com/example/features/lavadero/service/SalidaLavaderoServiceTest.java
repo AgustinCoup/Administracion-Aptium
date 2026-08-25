@@ -118,28 +118,14 @@ class SalidaLavaderoServiceTest {
     // ── volverALavado — validaciones ─────────────────────────────────────────
 
     @Test
-    void volverALavado_idCeroONegativo_lanzaValidation() {
-        assertThrows(ValidationException.class, () -> service.volverALavado(0));
-        verifyNoInteractions(dao);
-    }
-
-    @Test
-    void volverALavado_idValido_delegaADAO() {
-        service.volverALavado(5);
-        verify(dao).volverALavado(5);
-    }
-
-    // ── volverALavado en lote ────────────────────────────────────────────────
-
-    @Test
     void volverALavado_listaNula_lanzaValidation() {
-        assertThrows(ValidationException.class, () -> service.volverALavado((List<SalidaLista>) null));
+        assertThrows(ValidationException.class, () -> service.volverALavado(null));
         verifyNoInteractions(dao);
     }
 
     @Test
     void volverALavado_listaVacia_lanzaValidation() {
-        assertThrows(ValidationException.class, () -> service.volverALavado(List.<SalidaLista>of()));
+        assertThrows(ValidationException.class, () -> service.volverALavado(List.of()));
         verifyNoInteractions(dao);
     }
 
@@ -149,6 +135,8 @@ class SalidaLavaderoServiceTest {
             () -> service.volverALavado(List.of(lista(7, 3), lista(7, 2))));
         verifyNoInteractions(dao);
     }
+
+    // ── volverALavado — camino feliz ─────────────────────────────────────────
 
     @Test
     void volverALavado_variasSalidas_delegaConUnSoloLlamadoYSusIds() {

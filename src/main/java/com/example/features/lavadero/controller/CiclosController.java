@@ -296,7 +296,7 @@ public class CiclosController {
 
     private int seleccionarSubcantidad(ElementoCicloItem item, int max) {
         Frame frame = (Frame) SwingUtilities.getWindowAncestor(pantalla);
-        DistribucionUnidadesDialog dlg = new DistribucionUnidadesDialog(
+        DistribucionUnidadesDialog dlg = DistribucionUnidadesDialog.paraCiclos(
             frame, item.getElementoNombre(), item.getClienteNombre(), max);
         dlg.setVisible(true);
         return dlg.getCantidad();

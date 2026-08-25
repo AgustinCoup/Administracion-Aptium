@@ -86,13 +86,6 @@ public class SalidaLavaderoService {
         dao.marcarListo(marcas);
     }
 
-    public void volverALavado(int salidaId) {
-        ValidationException.Builder v = ValidationException.builder();
-        v.addErrorIf(salidaId <= 0, "ID de salida inválido.");
-        v.throwIfHasErrors();
-        dao.volverALavado(salidaId);
-    }
-
     /**
      * Devuelve a Lavado la selección entera. Una sola firma para el botón y para el arrastre:
      * los dos mandan la tanda completa y el todo-o-nada lo garantiza la transacción del DAO,
