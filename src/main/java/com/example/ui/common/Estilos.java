@@ -95,9 +95,12 @@ public final class Estilos {
         public static final Insets INSETS_INPUT = new Insets(2, 6, 2, 6);
         
         // Márgenes para botones en paneles compactos
-        public static final Border BORDE_BOTONES = 
+        public static final Border BORDE_BOTONES =
             BorderFactory.createEmptyBorder(20, 50, 50, 50);
-        
+
+        // Separación vertical entre los botones de un menú en columna
+        public static final int SEPARACION_MENU = 15;
+
         private Espaciados() {}
     }
     
@@ -114,6 +117,10 @@ public final class Estilos {
         
         // Altura de filas en tablas
         public static final int ALTURA_FILA_TABLA = 30;
+
+        // Ancho de la columna de botones de un menú vertical.
+        // Equivale al ancho de un botón de los menús en grilla 2x2.
+        public static final int ANCHO_MENU = 560;
         
         // Ancho de un TextFields pequeño (para números)
         public static int calcularAnchoNumero(int caracteres) {

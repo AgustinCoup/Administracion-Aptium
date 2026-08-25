@@ -25,32 +25,44 @@ public class PantallaLavadero extends JPanel {
         );
         add(header, BorderLayout.NORTH);
 
-        JPanel panelBotones = new JPanel(new GridLayout(0, 3, 15, 10));
-        panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
+        // Menú en columna: con 5 opciones una grilla deja una fila incompleta,
+        // así que todos los botones van uno debajo del otro, del mismo tamaño.
+        JPanel columna = new JPanel(new GridLayout(0, 1, 0, Estilos.Espaciados.SEPARACION_MENU));
 
-        JButton btnIngresar = new JButton(Constantes.Botones.INGRESAR);
-        btnIngresar.setFont(Estilos.Fuentes.BOTON);
+        JButton btnIngresar = crearBoton(Constantes.Botones.INGRESAR);
         btnIngresar.addActionListener(
             e -> navegador.show(contenedor, Constantes.Pantallas.INGRESO_LAVADERO));
 
-        btnClasificar = new JButton(Constantes.Botones.CLASIFICAR);
-        btnClasificar.setFont(Estilos.Fuentes.BOTON);
+        btnClasificar = crearBoton(Constantes.Botones.CLASIFICAR);
+        btnCiclos     = crearBoton(Constantes.Botones.CICLOS);
+        btnSalidas    = crearBoton(Constantes.Botones.SALIDAS);
+        btnVerCiclos  = crearBoton(Constantes.Botones.VER_CICLOS);
 
-        btnCiclos = new JButton(Constantes.Botones.CICLOS);
-        btnCiclos.setFont(Estilos.Fuentes.BOTON);
+        columna.add(btnIngresar);
+        columna.add(btnClasificar);
+        columna.add(btnCiclos);
+        columna.add(btnSalidas);
+        columna.add(btnVerCiclos);
 
-        btnSalidas = new JButton(Constantes.Botones.SALIDAS);
-        btnSalidas.setFont(Estilos.Fuentes.BOTON);
+        // Ancho fijo para que los botones no se estiren de borde a borde;
+        // a lo alto ocupan todo el panel, como los botones de los otros menús.
+        columna.setPreferredSize(
+            new Dimension(Estilos.Dimensiones.ANCHO_MENU, columna.getPreferredSize().height));
 
-        btnVerCiclos = new JButton(Constantes.Botones.VER_CICLOS);
-        btnVerCiclos.setFont(Estilos.Fuentes.BOTON);
+        GridBagConstraints restricciones = new GridBagConstraints();
+        restricciones.fill = GridBagConstraints.VERTICAL;
+        restricciones.weighty = 1;
 
-        panelBotones.add(btnIngresar);
-        panelBotones.add(btnClasificar);
-        panelBotones.add(btnCiclos);
-        panelBotones.add(btnSalidas);
-        panelBotones.add(btnVerCiclos);
+        JPanel panelBotones = new JPanel(new GridBagLayout());
+        panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
+        panelBotones.add(columna, restricciones);
         add(panelBotones, BorderLayout.CENTER);
+    }
+
+    private static JButton crearBoton(String texto) {
+        JButton boton = new JButton(texto);
+        boton.setFont(Estilos.Fuentes.BOTON);
+        return boton;
     }
 
     public JButton getBtnClasificar() { return btnClasificar; }
