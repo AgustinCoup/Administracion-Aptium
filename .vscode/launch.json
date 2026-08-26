@@ -6,7 +6,8 @@
             "name": "App",
             "request": "launch",
             "mainClass": "com.example.app.App",
-            "projectName": "Administracion-Aptium"
+            "projectName": "Administracion-Aptium",
+            "cwd": "${workspaceFolder}"
         },
         {
             "type": "java",
@@ -15,7 +16,8 @@
             "mainClass": "com.example.App",
             "projectName": "Administracion-Aptium",
             "preLaunchTask": "maven: clean compile",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
