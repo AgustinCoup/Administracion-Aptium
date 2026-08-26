@@ -376,13 +376,79 @@ public class CiclosController {
     // ── Lanzar / Finalizar ────────────────────────────────────────────────────
 
     private void lanzarCiclo(int num) {
+        String bloqueo = motivoBloqueoPorInstanciaRepartida(num);
+        if (bloqueo != null) { pantalla.mostrarError(bloqueo); return; }
         if (!pantalla.confirmar(Constantes.Mensajes.CONFIRMAR_LANZAR_CICLO,
                 Constantes.Mensajes.TITULO_LANZAR_LOTE)) return;
-        ejecutarLanzamiento(num);
+        Map<Integer, Integer> instancias = resolverInstancias(List.of(num));
+        ejecutarLanzamiento(num, instancias);
         cargarDatos();
     }
 
-    private void ejecutarLanzamiento(int num) {
+    /**
+     * {@code null} si el lavarropas se puede lanzar solo; mensaje accionable si alguna de sus
+     * fracciones pertenece a un equipo repartido en más de un lavarropas (decisión B del
+     * blueprint de fracciones de equipo: esos grupos sólo lanzan con "Lanzar Todos", para poder
+     * validar que todas sus cards tengan config completa antes de crear la instancia en BD).
+     */
+    private String motivoBloqueoPorInstanciaRepartida(int num) {
+        Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
+        for (ElementoCicloItem item : staging.pendientesDe(num)) {
+            if (item.isEquipo() && item.getInstanciaId() != null
+                    && fracciones.getOrDefault(item.getInstanciaId(), 1) > 1) {
+                return String.format(Constantes.Mensajes.BLOQUEO_LANZAR_INSTANCIA_REPARTIDA,
+                    num, item.getElementoNombre());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Ninguna fracción de un grupo repartido lanza si a alguna de sus cards le falta config: no
+     * tiene sentido crear la instancia y lanzar la mitad del grupo mientras el resto espera.
+     * Lavarropas sin fracciones repartidas no entran en esta validación (conservan el
+     * comportamiento actual: se saltean individualmente si les falta config).
+     */
+    private String validarConfigDeGruposRepartidos(List<Integer> conPendientes) {
+        Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
+        for (int num : conPendientes) {
+            LavarropasCard card = cards.get(num);
+            for (ElementoCicloItem item : staging.pendientesDe(num)) {
+                if (!item.isEquipo() || item.getInstanciaId() == null) continue;
+                if (fracciones.getOrDefault(item.getInstanciaId(), 1) <= 1) continue;
+                if (card.getTipoLavado() == null || card.getLitrosJabon() == null) {
+                    return String.format(Constantes.Mensajes.FALTA_CONFIG_GRUPO_REPARTIDO,
+                        num, item.getElementoNombre());
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Crea en la BD la instancia de cada equipo pendiente en estos lavarropas (una por
+     * {@code instanciaId} de staging, con el {@code total_partes} real) y devuelve el mapeo
+     * staging → BD que {@link #ejecutarLanzamiento} necesita para construir los movimientos.
+     * Equipos sin repartir (una sola fracción) también pasan por acá: su instancia se crea igual,
+     * con {@code total_partes = 1} (ver §4 del blueprint).
+     */
+    private Map<Integer, Integer> resolverInstancias(List<Integer> lavarropasEnEsteLanzamiento) {
+        Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
+        Map<Integer, Integer> resultado = new HashMap<>();
+        for (int num : lavarropasEnEsteLanzamiento) {
+            for (ElementoCicloItem item : staging.pendientesDe(num)) {
+                if (!item.isEquipo() || item.getInstanciaId() == null) continue;
+                int stagingId = item.getInstanciaId();
+                if (resultado.containsKey(stagingId)) continue;
+                int totalPartes = fracciones.getOrDefault(stagingId, 1);
+                int dbId = cicloLavaderoService.crearInstanciaEquipo(item.getElementoClasificacionId(), totalPartes);
+                resultado.put(stagingId, dbId);
+            }
+        }
+        return resultado;
+    }
+
+    private void ejecutarLanzamiento(int num, Map<Integer, Integer> instancias) {
         LavarropasCard card = cards.get(num);
         List<ElementoCicloItem> pendientes = staging.pendientesDe(num);
         if (pendientes.isEmpty()) return;
@@ -402,8 +468,19 @@ public class CiclosController {
 
         List<ElementoCicloMovimiento> movimientos = new ArrayList<>();
         for (ElementoCicloItem item : pendientes) {
-            movimientos.add(new ElementoCicloMovimiento(
-                item.getElementoClasificacionId(), item.getCantidadEnCiclo()));
+            if (item.isEquipo() && item.getInstanciaId() != null) {
+                Integer instanciaDbId = instancias.get(item.getInstanciaId());
+                if (instanciaDbId == null) {
+                    throw new IllegalStateException("No se resolvió la instancia de equipo para "
+                        + item.getElementoNombre() + " (staging id " + item.getInstanciaId()
+                        + ") en lavarropas #" + num);
+                }
+                movimientos.add(new ElementoCicloMovimiento(
+                    item.getElementoClasificacionId(), item.getCantidadEnCiclo(), instanciaDbId));
+            } else {
+                movimientos.add(new ElementoCicloMovimiento(
+                    item.getElementoClasificacionId(), item.getCantidadEnCiclo()));
+            }
         }
         try {
             cicloLavaderoService.lanzarCiclo(num, config, movimientos);
@@ -417,11 +494,14 @@ public class CiclosController {
     private void lanzarTodos() {
         List<Integer> conPendientes = staging.lavarropasConPendientes();
         if (conPendientes.isEmpty()) return;
+        String faltaConfig = validarConfigDeGruposRepartidos(conPendientes);
+        if (faltaConfig != null) { pantalla.mostrarError(faltaConfig); return; }
         if (!pantalla.confirmar(
                 "¿Lanzar " + conPendientes.size() + " ciclo(s) de lavado?",
                 Constantes.Mensajes.TITULO_LANZAR_LOTE)) return;
+        Map<Integer, Integer> instancias = resolverInstancias(conPendientes);
         for (int num : conPendientes) {
-            ejecutarLanzamiento(num);
+            ejecutarLanzamiento(num, instancias);
         }
         cargarDatos();
     }

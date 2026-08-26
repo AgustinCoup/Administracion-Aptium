@@ -149,6 +149,13 @@ public final class Constantes {
         public static final String ERROR_LANZAR_CICLO        = "Error al lanzar el ciclo. Intente nuevamente.";
         public static final String ERROR_FINALIZAR_CICLO     = "Error al finalizar el ciclo. Intente nuevamente.";
 
+        /** Bloqueo de "Lanzar" individual: la fracción de este lavarropas es de un equipo repartido en más de uno. */
+        public static final String BLOQUEO_LANZAR_INSTANCIA_REPARTIDA =
+            "Lavarropas #%d tiene una fracción de %s repartida en otros lavarropas. Usá \"Lanzar Todos\".";
+        /** "Lanzar Todos" no lanza nada de un grupo repartido si falta config en alguna de sus cards. */
+        public static final String FALTA_CONFIG_GRUPO_REPARTIDO =
+            "Lavarropas #%d: falta configurar %s (jabón y tipo de lavado) antes de lanzar el grupo repartido.";
+
         // ── Salidas de Lavadero ───────────────────────────────────────────────
         public static final String CONFIRMAR_SALE_DEL_FLUJO =
             "¿Confirmar que esta ropa sale del flujo y se devuelve al cliente? Esta acción es irreversible.";
