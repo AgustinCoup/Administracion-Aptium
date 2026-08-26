@@ -43,6 +43,15 @@ class ElementoLavadoTableModelTest {
     }
 
     @Test
+    void getValueAt_lavarropasConVariasPartes_seMuestraTalCual() {
+        ElementoLavadoPendiente item = new ElementoLavadoPendiente(null, 1, "1, 2, 3, 4",
+            100, 5, "Hosp. A", "Camilla", 1, 0, LocalDateTime.of(2026, 8, 12, 14, 30));
+        model.setItems(List.of(item));
+
+        assertEquals("1, 2, 3, 4", model.getValueAt(0, 3));
+    }
+
+    @Test
     void isCellEditable_siempreFalse() {
         model.setItems(List.of(item()));
         assertFalse(model.isCellEditable(0, 0));

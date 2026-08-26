@@ -872,12 +872,13 @@ reales generados por los Pasos 3 y 5).
 
 ### Criterio de salida
 
-- [ ] Los tres consumidores de `lavarropasNumero()` migrados a `lavarropas()`.
-- [ ] `ElementoLavadoTableModelTest`/`SalidaListaTableModelTest` actualizados y en verde, con el caso
-      de lista multi-lavarropas.
-- [ ] `mvn clean package -q` compila sin errores — cierra la ventana de build roto abierta en el
+- [x] Los tres consumidores de `lavarropasNumero()` migrados a `lavarropas()` — ya lo hizo el rename
+      mecánico mínimo del Paso 4/5; verificado con grep que no queda ningún `.lavarropasNumero()`.
+- [x] `ElementoLavadoTableModelTest`/`SalidaListaTableModelTest` actualizados y en verde, con el caso
+      de lista multi-lavarropas agregado en esta sesión.
+- [x] `mvn clean package -q` compila sin errores — cierra la ventana de build roto abierta en el
       Paso 4.
-- [ ] Commit: `feat: la vista de Salidas muestra los lavarropas de una instancia repartida`
+- [x] Commit: `feat: la vista de Salidas muestra los lavarropas de una instancia repartida`
 
 ---
 

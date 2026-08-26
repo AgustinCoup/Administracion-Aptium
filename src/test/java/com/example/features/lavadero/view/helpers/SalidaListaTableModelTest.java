@@ -44,6 +44,15 @@ class SalidaListaTableModelTest {
     }
 
     @Test
+    void getValueAt_lavarropasConVariasPartes_seMuestraTalCual() {
+        SalidaLista item = new SalidaLista(1, null, 10, "1, 2, 3, 4", 100, 5, "Hosp. A", "Camilla",
+            1, LocalDateTime.of(2026, 8, 12, 14, 30), LocalDateTime.of(2026, 8, 12, 16, 0));
+        model.setItems(List.of(item));
+
+        assertEquals("1, 2, 3, 4", model.getValueAt(0, 3));
+    }
+
+    @Test
     void isCellEditable_siempreFalse() {
         model.setItems(List.of(item()));
         assertFalse(model.isCellEditable(0, 0));
