@@ -31,15 +31,15 @@ class SalidaListaTableModelTest {
         assertEquals("Batas", model.getValueAt(0, 0));
         assertEquals(4, model.getValueAt(0, 1));
         assertEquals("Hosp. A", model.getValueAt(0, 2));
-        assertEquals(4, model.getValueAt(0, 3));
+        assertEquals("4", model.getValueAt(0, 3));
         assertEquals("12/08/2026 14:30", model.getValueAt(0, 4));
         assertEquals("12/08/2026 16:00", model.getValueAt(0, 5));
     }
 
     @Test
-    void getColumnClass_columnasNumericasSonInteger() {
+    void getColumnClass_columnaCantidadEsIntegerYLavarropasEsString() {
         assertEquals(Integer.class, model.getColumnClass(1));
-        assertEquals(Integer.class, model.getColumnClass(3));
+        assertEquals(String.class, model.getColumnClass(3));
         assertEquals(String.class, model.getColumnClass(0));
     }
 
@@ -57,7 +57,7 @@ class SalidaListaTableModelTest {
     }
 
     private SalidaLista item() {
-        return new SalidaLista(1, 10, 4, 100, 5, "Hosp. A", "Batas",
+        return new SalidaLista(1, 10, null, "4", 100, 5, "Hosp. A", "Batas",
             4, LocalDateTime.of(2026, 8, 12, 14, 30), LocalDateTime.of(2026, 8, 12, 16, 0));
     }
 }

@@ -35,7 +35,7 @@ public class SalidaListaTableModel extends AbstractTableModel {
             case 0: return item.elementoNombre();
             case 1: return item.cantidad();
             case 2: return item.clienteNombre();
-            case 3: return item.lavarropasNumero();
+            case 3: return item.lavarropas();
             case 4: return item.fechaFinCiclo() != null ? item.fechaFinCiclo().format(FORMATO_FECHA) : "";
             case 5: return item.fechaListo() != null ? item.fechaListo().format(FORMATO_FECHA) : "";
             default: return null;
@@ -44,7 +44,7 @@ public class SalidaListaTableModel extends AbstractTableModel {
 
     @Override
     public Class<?> getColumnClass(int columnIndex) {
-        return (columnIndex == 1 || columnIndex == 3) ? Integer.class : String.class;
+        return columnIndex == 1 ? Integer.class : String.class;
     }
 
     @Override

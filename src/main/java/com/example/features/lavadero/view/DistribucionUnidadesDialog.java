@@ -38,11 +38,11 @@ public class DistribucionUnidadesDialog extends JDialog {
      * nombre del elemento no distingue dos tandas del mismo cliente lavadas por separado.
      */
     public static DistribucionUnidadesDialog paraSalidas(Frame parent, String elementoNombre,
-                                                          String clienteNombre, int lavarropasNumero,
+                                                          String clienteNombre, String lavarropas,
                                                           int max) {
         return new DistribucionUnidadesDialog(parent, Constantes.Titulos.CANTIDAD_A_MARCAR_LISTO,
             String.format(Constantes.Textos.FORMATO_ITEM_LAVADO,
-                          elementoNombre, clienteNombre, lavarropasNumero, max),
+                          elementoNombre, clienteNombre, lavarropas, max),
             max);
     }
 

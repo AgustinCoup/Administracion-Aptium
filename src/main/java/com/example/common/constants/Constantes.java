@@ -459,7 +459,7 @@ public final class Constantes {
         public static final String CHECK_TODAS_N           = "Todas (%d)";
         public static final String FORMATO_ITEM_DISPONIBLE = "<html><b>%s</b> — %s (disponibles: %d)</html>";
         public static final String FORMATO_ITEM_LAVADO     =
-            "<html><b>%s</b> — %s<br>lavarropas %d · disponibles: %d</html>";
+            "<html><b>%s</b> — %s<br>lavarropas %s · disponibles: %d</html>";
 
         // ── EquipoSubdivisionDialog ──────────────────────────────────────────────
         public static final String FORMATO_TITULO_SUBDIVIDIR = "Subdividir: %s";

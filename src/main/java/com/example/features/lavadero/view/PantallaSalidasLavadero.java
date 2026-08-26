@@ -157,7 +157,7 @@ public class PantallaSalidasLavadero extends JPanel {
     public int pedirCantidadListo(ElementoLavadoPendiente item) {
         DistribucionUnidadesDialog dialogo = DistribucionUnidadesDialog.paraSalidas(
             (Frame) SwingUtilities.getWindowAncestor(this),
-            item.elementoNombre(), item.clienteNombre(), item.lavarropasNumero(),
+            item.elementoNombre(), item.clienteNombre(), item.lavarropas(),
             item.cantidadPendiente());
         dialogo.setVisible(true);
         return dialogo.getCantidad();

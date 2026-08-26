@@ -130,11 +130,11 @@ public class SalidaLavaderoService {
 
     private String describir(ElementoLavadoPendiente item) {
         return item.elementoNombre() + " (" + item.clienteNombre()
-             + ", lavarropas " + item.lavarropasNumero() + ")";
+             + ", lavarropas " + item.lavarropas() + ")";
     }
 
     private String describir(SalidaLista salida) {
         return salida.elementoNombre() + " (" + salida.clienteNombre()
-             + ", lavarropas " + salida.lavarropasNumero() + ")";
+             + ", lavarropas " + salida.lavarropas() + ")";
     }
 }

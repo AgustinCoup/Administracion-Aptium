@@ -26,7 +26,7 @@ class ConstructorIngresoCDETest {
     private final ConstructorIngresoCDE constructor = new ConstructorIngresoCDE();
 
     private static SalidaLista salida(int salidaId, int clienteId, String elemento, int cantidad) {
-        return new SalidaLista(salidaId, 1, 3, 7, clienteId, "Cliente " + clienteId,
+        return new SalidaLista(salidaId, 1, null, "3", 7, clienteId, "Cliente " + clienteId,
                                elemento, cantidad, FECHA, FECHA);
     }
 

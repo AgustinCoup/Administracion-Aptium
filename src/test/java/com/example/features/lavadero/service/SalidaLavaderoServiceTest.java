@@ -199,12 +199,12 @@ class SalidaLavaderoServiceTest {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private ElementoLavadoPendiente pendiente(int elementoCicloId, int cantidadLavada, int cantidadYaLista) {
-        return new ElementoLavadoPendiente(elementoCicloId, 1, 4, 1, 1, "Hosp. A", "Batas",
+        return new ElementoLavadoPendiente(elementoCicloId, null, "4", 1, 1, "Hosp. A", "Batas",
             cantidadLavada, cantidadYaLista, LocalDateTime.now());
     }
 
     private SalidaLista lista(int salidaId, int cantidad) {
-        return new SalidaLista(salidaId, 1, 4, 1, 1, "Hosp. A", "Batas",
+        return new SalidaLista(salidaId, 1, null, "4", 1, 1, "Hosp. A", "Batas",
             cantidad, LocalDateTime.now(), LocalDateTime.now());
     }
 }

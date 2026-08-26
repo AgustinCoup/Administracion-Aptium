@@ -333,12 +333,12 @@ class SalidasLavaderoControllerTest {
     // ── Datos de prueba ──────────────────────────────────────────────────────
 
     private static ElementoLavadoPendiente lavado(int elementoCicloId, int lavada, int yaLista) {
-        return new ElementoLavadoPendiente(elementoCicloId, 1, 2, 3, 7, "Clinica Norte",
+        return new ElementoLavadoPendiente(elementoCicloId, null, "2", 3, 7, "Clinica Norte",
             "Batas", lavada, yaLista, LocalDateTime.now());
     }
 
     private static SalidaLista salida(int salidaId, int clienteId, String clienteNombre) {
-        return new SalidaLista(salidaId, 1, 2, 3, clienteId, clienteNombre, "Batas", 5,
+        return new SalidaLista(salidaId, 1, null, "2", 3, clienteId, clienteNombre, "Batas", 5,
             LocalDateTime.now(), LocalDateTime.now());
     }
 }
