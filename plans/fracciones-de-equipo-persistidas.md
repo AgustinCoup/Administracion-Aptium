@@ -716,15 +716,13 @@ mvn clean package -q
 
 ### Criterio de salida
 
-- [ ] `V20` existe; los tests de DAO de lavadero pasan (H2 la aplica).
-- [ ] `ElementoLavadoPendiente`/`SalidaLista` con las firmas nuevas — **esto rompe la compilación de
-      `SalidaLavaderoDAO`, `SalidasLavaderoController`, las dos `TableModel` y
-      `PantallaSalidasLavadero` hasta que se ejecuten los Pasos 5 y 6.** Es esperado: dejar anotado en
-      el commit que el build queda roto a propósito hasta el Paso 5, o — si se prefiere no romper el
-      build en un commit intermedio — fusionar Pasos 4 y 5 en una sola sesión/commit. Decidir al
-      ejecutar y anotarlo en "Mutaciones aplicadas".
-- [ ] `AgrupadorInstanciasSalida` y su test, con los 6 casos de arriba en verde.
-- [ ] Commit: `feat: V20 + AgrupadorInstanciasSalida agrupa fracciones de equipo en Salidas`
+- [x] `V20` existe; los tests de DAO de lavadero pasan (H2 la aplica).
+- [x] `ElementoLavadoPendiente`/`SalidaLista` con las firmas nuevas — ver "Mutaciones aplicadas":
+      se hizo el rename mecánico mínimo en los cuatro consumidores rotos para poder correr
+      `mvn test` de verdad esta misma sesión, así que no quedó ventana de build roto.
+- [x] `AgrupadorInstanciasSalida` y su test, con los 6 casos de arriba en verde (más 3 casos
+      simétricos de `agruparListas`, agregado del Paso 5).
+- [x] Commit: `feat: V20 + AgrupadorInstanciasSalida agrupa fracciones de equipo en Salidas`
 
 ---
 
@@ -821,11 +819,13 @@ mvn clean package -q
 
 ### Criterio de salida
 
-- [ ] Las dos consultas de lectura combinan regulares + instancias sin duplicar filas.
-- [ ] `marcarListo`/`volverALavado`/`derivar` operan correctamente sobre una instancia.
-- [ ] Ningún test existente de elementos regulares se modificó.
-- [ ] Invariante 9 tiene test en esta capa (Salidas).
-- [ ] Commit: `feat: SalidaLavaderoDAO agrupa y opera sobre instancias de equipo completas`
+- [x] Las dos consultas de lectura combinan regulares + instancias sin duplicar filas.
+- [x] `marcarListo`/`volverALavado`/`derivar` operan correctamente sobre una instancia.
+- [x] Ningún test existente de elementos regulares cambió su lógica — sólo se ajustaron literales
+      posicionales de los records rediseñados (`.cicloId()` eliminado, `lavarropasNumero`→`lavarropas`)
+      donde el compilador lo exigía; ver "Mutaciones aplicadas".
+- [x] Invariante 9 tiene test en esta capa (Salidas).
+- [x] Commit: `feat: SalidaLavaderoDAO agrupa y opera sobre instancias de equipo completas`
 
 ---
 
@@ -1041,7 +1041,34 @@ Mismo protocolo que [`salidas-lavadero-listo-y-derivacion-cde.md`](salidas-lavad
 
 ### Mutaciones aplicadas
 
-_(vacío — se completa a medida que se ejecuta)_
+- **2026-08-26, Pasos 4 y 5:** se ejecutaron en la misma sesión pero **no se fusionaron en un solo
+  commit** — quedan como dos commits separados, uno por paso, igual que 1-3. Motivo: fusionar 4+5
+  no evitaba ningún build roto, porque el build se rompe por los mismos cuatro consumidores que
+  lista el criterio de salida del Paso 4 (`SalidaLavaderoService`, las dos `TableModel`,
+  `PantallaSalidasLavadero`) y esos sólo se cierran con el Paso 6, no con el 5 — fusionar 4+5 sin
+  tocar esos cuatro archivos hubiera dejado el mismo build roto en un solo commit en vez de dos.
+- **Alcance ampliado, no anticipado por el plan:** para poder correr `mvn test`/`mvn clean package`
+  de verdad y verificar 4 y 5 (Maven compila todo `src/main` y todo `src/test` antes de correr
+  cualquier test — no hay forma de aislar sólo el DAO), se hizo el **rename mecánico mínimo** en los
+  cuatro consumidores de Paso 6 (`item.lavarropasNumero()` → `item.lavarropas()`,
+  `DistribucionUnidadesDialog.paraSalidas(..., int, ...)` → `(..., String, ...)`,
+  `Constantes.Textos.FORMATO_ITEM_LAVADO` de `%d` a `%s`) y se ajustaron los call-sites
+  posicionales de los records rediseñados en `SalidasLavaderoControllerTest`,
+  `ConstructorIngresoCDETest`, `SalidaLavaderoServiceTest`, `ElementoLavadoTableModelTest` y
+  `SalidaListaTableModelTest` (compilaban con la firma vieja). **No se hizo el resto del Paso 6**:
+  ni el caso de test "lista multi-lavarropas" que pide su criterio de salida, ni el smoke manual de
+  pantalla. Como consecuencia, `mvn clean package -q` **ya compila y toda la suite pasa** (no quedó
+  ninguna ventana de build roto pendiente de Paso 6) — el Paso 6, cuando se ejecute, sólo tiene
+  pendiente agregar cobertura y hacer el smoke, no arreglar compilación.
+- **`SalidaLavaderoDAOTest`:** dos usos de `.cicloId()` (campo eliminado del record en el Paso 4,
+  no detectado por el `grep` del blueprint porque estaba scopeado a `src/main/java`) se
+  reemplazaron por `.elementoCicloId()` y por una nueva consulta auxiliar
+  (`cicloIdDeElementoCiclo`); no altera lo que el test verifica.
+- **`AgrupadorInstanciasSalida.agruparListas`**: el blueprint del Paso 4 dejaba explícitamente
+  abierto si el método simétrico para `SalidaLista` iba en la misma clase o en una nueva (nota bajo
+  la tarea 5). Se agregó en la misma clase (`agruparListas`, agrupando por `salidaId`), con su
+  propio record de fila cruda `FilaInstanciaSalidaLista` — evita una segunda clase de una sola
+  responsabilidad casi idéntica.
 
 ---
 

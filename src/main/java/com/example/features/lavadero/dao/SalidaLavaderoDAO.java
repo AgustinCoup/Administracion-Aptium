@@ -3,6 +3,9 @@ package com.example.features.lavadero.dao;
 import com.example.common.exception.BusinessException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.dao.derivadores.DerivadorSalidas;
+import com.example.features.lavadero.dao.helpers.AgrupadorInstanciasSalida;
+import com.example.features.lavadero.dao.helpers.FilaInstanciaEquipo;
+import com.example.features.lavadero.dao.helpers.FilaInstanciaSalidaLista;
 import com.example.features.lavadero.model.DestinoSalida;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
 import com.example.features.lavadero.model.EstadoIngresoLavadero;
@@ -18,6 +21,7 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,6 +36,13 @@ import java.util.stream.Collectors;
  * de {@code LEFT JOIN} + {@code GROUP BY} + {@code HAVING} que ya usa
  * {@code CicloLavaderoDAO.SQL_DISPONIBLES}, que se sabe que corre igual en H2 y en MySQL.</p>
  *
+ * <p>Un {@code Equipo*} repartido en N lavarropas es un caso aparte: sus N fracciones
+ * ({@code elementos_ciclo_lavadero.instancia_equipo_id} compartido) se leen con consultas
+ * separadas y se agrupan en memoria con {@link AgrupadorInstanciasSalida} — una instancia
+ * cuenta como un solo pendiente y genera una sola salida, nunca N (ver
+ * {@code plans/fracciones-de-equipo-persistidas.md}). Los elementos regulares no cambian de
+ * comportamiento.</p>
+ *
  * <p>A diferencia de los DAOs viejos del lavadero, este no traga excepciones: un fallo de SQL
  * sale como {@link DatabaseException} y una regla de negocio violada como
  * {@link BusinessException}. Devolver una lista vacía ante un error de lectura le miente a la
@@ -39,14 +50,17 @@ import java.util.stream.Collectors;
  */
 public class SalidaLavaderoDAO {
 
+    private final AgrupadorInstanciasSalida agrupador = new AgrupadorInstanciasSalida();
+
     /**
-     * Tandas lavadas con cantidad todavía sin marcar como Listo.
+     * Tandas lavadas con cantidad todavía sin marcar como Listo — sólo elementos regulares
+     * (las fracciones de equipo se leen aparte, {@link #SQL_PENDIENTES_DE_INSTANCIA}).
      *
      * <p>Agrupa por fila de ciclo y no por línea de clasificación: así se ve qué ciclo lavó
      * qué, que es lo que el operador tiene delante cuando dobla.</p>
      */
     private static final String SQL_PENDIENTES_DE_LISTO =
-        "SELECT eci.id AS elemento_ciclo_id, eci.ciclo_id, cl.lavarropas_numero, ecl.ingreso_id, " +
+        "SELECT eci.id AS elemento_ciclo_id, cl.lavarropas_numero, ecl.ingreso_id, " +
         "       il.cliente_id, c.nombre AS cliente, cel.nombre AS elemento, " +
         "       eci.cantidad, COALESCE(SUM(sl.cantidad), 0) AS ya_lista, cl.fecha_fin " +
         "FROM elementos_ciclo_lavadero eci " +
@@ -56,22 +70,45 @@ public class SalidaLavaderoDAO {
         "JOIN ingresos_lavadero il                  ON il.id  = ecl.ingreso_id " +
         "JOIN clientes c                            ON c.id   = il.cliente_id " +
         "LEFT JOIN salidas_lavadero sl              ON sl.elemento_ciclo_id = eci.id " +
-        "WHERE cl.fecha_fin IS NOT NULL " +
-        "GROUP BY eci.id, eci.ciclo_id, cl.lavarropas_numero, ecl.ingreso_id, il.cliente_id, c.nombre, " +
+        "WHERE cl.fecha_fin IS NOT NULL AND eci.instancia_equipo_id IS NULL " +
+        "GROUP BY eci.id, cl.lavarropas_numero, ecl.ingreso_id, il.cliente_id, c.nombre, " +
         "         cel.nombre, eci.cantidad, cl.fecha_fin " +
-        "HAVING ya_lista < eci.cantidad " +
-        "ORDER BY cl.fecha_fin, c.nombre, cel.nombre";
+        "HAVING ya_lista < eci.cantidad";
 
     /**
-     * Salidas ya marcadas como Listo y sin destino asignado.
+     * Filas crudas (una por fracción) de instancias de equipo con al menos una parte lanzada.
+     * {@link AgrupadorInstanciasSalida#agruparPendientes(List)} filtra las que no están
+     * completas o ya tienen salida. Sin {@code WHERE cl.fecha_fin IS NOT NULL}: el agrupador
+     * necesita ver también las fracciones de ciclos todavía activos para poder descartar la
+     * instancia entera (incompleta) en vez de mostrarla a medias.
+     */
+    private static final String SQL_PENDIENTES_DE_INSTANCIA =
+        "SELECT eci.id AS elemento_ciclo_id, eci.instancia_equipo_id, ie.elemento_clasificacion_id, ie.total_partes, " +
+        "       cl.lavarropas_numero, cl.fecha_fin, ecl.ingreso_id, " +
+        "       il.cliente_id, c.nombre AS cliente, cel.nombre AS elemento, " +
+        "       COALESCE((SELECT SUM(sl.cantidad) FROM salidas_lavadero sl " +
+        "                  WHERE sl.instancia_equipo_id = eci.instancia_equipo_id), 0) AS ya_marcada " +
+        "FROM elementos_ciclo_lavadero eci " +
+        "JOIN instancias_equipo_ciclo ie           ON ie.id  = eci.instancia_equipo_id " +
+        "JOIN ciclos_lavadero cl                   ON cl.id  = eci.ciclo_id " +
+        "JOIN elementos_clasificacion_lavadero ecl ON ecl.id = eci.elemento_clasificacion_id " +
+        "JOIN catalogo_elementos_lavadero cel      ON cel.id = ecl.elemento_id " +
+        "JOIN ingresos_lavadero il                 ON il.id  = ecl.ingreso_id " +
+        "JOIN clientes c                           ON c.id   = il.cliente_id " +
+        "WHERE eci.instancia_equipo_id IS NOT NULL";
+
+    /**
+     * Salidas regulares ya marcadas como Listo y sin destino asignado. El {@code JOIN} contra
+     * {@code elemento_ciclo_id} ya excluye las salidas de instancia (esa columna es
+     * {@code NULL} en ellas por diseño de V20).
      *
      * <p>Rehace el mismo recorrido hacia atrás ({@code sl -> eci -> cl} y
      * {@code eci -> ecl -> il -> clientes}) para traer lavarropas, fecha de fin de ciclo y
      * cliente: no alcanza con leer {@code salidas_lavadero}.</p>
      */
     private static final String SQL_LISTAS_SIN_DESTINO =
-        "SELECT sl.id AS salida_id, sl.cantidad, sl.fecha_listo, " +
-        "       eci.ciclo_id, cl.lavarropas_numero, cl.fecha_fin, ecl.ingreso_id, " +
+        "SELECT sl.id AS salida_id, eci.id AS elemento_ciclo_id, sl.cantidad, sl.fecha_listo, " +
+        "       cl.lavarropas_numero, cl.fecha_fin, ecl.ingreso_id, " +
         "       il.cliente_id, c.nombre AS cliente, cel.nombre AS elemento " +
         "FROM salidas_lavadero sl " +
         "JOIN elementos_ciclo_lavadero eci          ON eci.id = sl.elemento_ciclo_id " +
@@ -80,11 +117,27 @@ public class SalidaLavaderoDAO {
         "JOIN catalogo_elementos_lavadero cel       ON cel.id = ecl.elemento_id " +
         "JOIN ingresos_lavadero il                  ON il.id  = ecl.ingreso_id " +
         "JOIN clientes c                            ON c.id   = il.cliente_id " +
-        "WHERE sl.destino IS NULL " +
-        "ORDER BY sl.fecha_listo, c.nombre, cel.nombre, sl.id";
+        "WHERE sl.destino IS NULL";
 
     /**
-     * Saldo pendiente de una tanda, releído dentro de la transacción.
+     * Filas crudas (una por fracción/lavarropas) de salidas de instancia sin destino.
+     * {@link AgrupadorInstanciasSalida#agruparListas(List)} las une por {@code salida_id}.
+     */
+    private static final String SQL_LISTAS_DE_INSTANCIA =
+        "SELECT sl.id AS salida_id, sl.instancia_equipo_id, sl.cantidad, sl.fecha_listo, " +
+        "       cl.lavarropas_numero, cl.fecha_fin, ecl.ingreso_id, " +
+        "       il.cliente_id, c.nombre AS cliente, cel.nombre AS elemento " +
+        "FROM salidas_lavadero sl " +
+        "JOIN elementos_ciclo_lavadero eci         ON eci.instancia_equipo_id = sl.instancia_equipo_id " +
+        "JOIN ciclos_lavadero cl                   ON cl.id  = eci.ciclo_id " +
+        "JOIN elementos_clasificacion_lavadero ecl ON ecl.id = eci.elemento_clasificacion_id " +
+        "JOIN catalogo_elementos_lavadero cel      ON cel.id = ecl.elemento_id " +
+        "JOIN ingresos_lavadero il                 ON il.id  = ecl.ingreso_id " +
+        "JOIN clientes c                           ON c.id   = il.cliente_id " +
+        "WHERE sl.destino IS NULL AND sl.instancia_equipo_id IS NOT NULL";
+
+    /**
+     * Saldo pendiente de una tanda regular, releído dentro de la transacción.
      *
      * <p>Exige {@code fecha_fin IS NOT NULL}: una tanda de un ciclo todavía activo no está
      * lavada, así que no devuelve fila y se trata como saldo inexistente en vez de dejarla
@@ -98,11 +151,29 @@ public class SalidaLavaderoDAO {
         "WHERE eci.id = ? AND cl.fecha_fin IS NOT NULL " +
         "GROUP BY eci.id, eci.cantidad";
 
+    /**
+     * Saldo pendiente de una instancia de equipo, releído dentro de la transacción: 1 si
+     * todas sus partes tienen ciclo finalizado y todavía no se marcó Listo, 0 en cualquier
+     * otro caso (incompleta, o ya tiene una salida). A diferencia de un elemento regular no
+     * hay "acumular": una instancia se marca entera o no se marca.
+     */
+    private static final String SQL_SALDO_PENDIENTE_INSTANCIA =
+        "SELECT SUM(CASE WHEN cl.fecha_fin IS NOT NULL THEN 1 ELSE 0 END) AS terminadas, " +
+        "       ie.total_partes, " +
+        "       (SELECT COUNT(*) FROM salidas_lavadero sl WHERE sl.instancia_equipo_id = ie.id) AS ya_marcada " +
+        "FROM instancias_equipo_ciclo ie " +
+        "JOIN elementos_ciclo_lavadero eci ON eci.instancia_equipo_id = ie.id " +
+        "JOIN ciclos_lavadero cl           ON cl.id = eci.ciclo_id " +
+        "WHERE ie.id = ? " +
+        "GROUP BY ie.id, ie.total_partes";
+
+    /** {@code instancia_equipo_id} queda {@code NULL} para una salida regular y viceversa. */
     private static final String SQL_INSERTAR_SALIDA =
-        "INSERT INTO salidas_lavadero (elemento_ciclo_id, cantidad, fecha_listo) VALUES (?, ?, NOW())";
+        "INSERT INTO salidas_lavadero (elemento_ciclo_id, instancia_equipo_id, cantidad, fecha_listo) " +
+        "VALUES (?, ?, ?, NOW())";
 
     /**
-     * Salida sin destino donde acumular lo que se marque de esta tanda, si ya hay una.
+     * Salida sin destino donde acumular lo que se marque de esta tanda regular, si ya hay una.
      *
      * <p>Se resuelve en dos sentencias (buscar el id, después sumar) y no con un {@code UPDATE}
      * con subconsulta sobre la misma tabla: MySQL no lo permite. {@code MIN(id)} elige siempre
@@ -134,7 +205,11 @@ public class SalidaLavaderoDAO {
      * Cuánto clasificó un ingreso y cuánto de eso ya salió con destino asignado.
      *
      * <p>El total sale de la clasificación y no de los ciclos: un ingreso está terminado cuando
-     * todo lo que se clasificó tiene destino, no cuando todo lo que se lavó lo tiene.</p>
+     * todo lo que se clasificó tiene destino, no cuando todo lo que se lavó lo tiene. Lo
+     * derivado suma dos caminos independientes — salidas regulares (por
+     * {@code elemento_ciclo_id}) y salidas de instancia (por {@code instancia_equipo_id}) —
+     * porque exactamente una de esas dos columnas está poblada por fila (V20) y una instancia
+     * nace de una sola línea de clasificación, que pertenece a un solo ingreso.</p>
      */
     private static final String SQL_TOTAL_Y_DERIVADO_DEL_INGRESO =
         "SELECT (SELECT COALESCE(SUM(ecl.cantidad), 0) " +
@@ -144,7 +219,13 @@ public class SalidaLavaderoDAO {
         "          FROM salidas_lavadero sl " +
         "          JOIN elementos_ciclo_lavadero eci           ON eci.id  = sl.elemento_ciclo_id " +
         "          JOIN elementos_clasificacion_lavadero ecl2  ON ecl2.id = eci.elemento_clasificacion_id " +
-        "         WHERE ecl2.ingreso_id = ? AND sl.destino IS NOT NULL)              AS derivado";
+        "         WHERE ecl2.ingreso_id = ? AND sl.destino IS NOT NULL) " +
+        "       + " +
+        "       (SELECT COALESCE(SUM(sl3.cantidad), 0) " +
+        "          FROM salidas_lavadero sl3 " +
+        "          JOIN instancias_equipo_ciclo ie             ON ie.id   = sl3.instancia_equipo_id " +
+        "          JOIN elementos_clasificacion_lavadero ecl3  ON ecl3.id = ie.elemento_clasificacion_id " +
+        "         WHERE ecl3.ingreso_id = ? AND sl3.destino IS NOT NULL)             AS derivado";
 
     private static final String SQL_FINALIZAR_INGRESO =
         "UPDATE ingresos_lavadero SET estado = '" + EstadoIngresoLavadero.FINALIZADO + "' WHERE id = ?";
@@ -153,14 +234,35 @@ public class SalidaLavaderoDAO {
 
     public List<ElementoLavadoPendiente> obtenerLavadosPendientesDeListo() {
         List<ElementoLavadoPendiente> lista = new ArrayList<>();
+        lista.addAll(obtenerPendientesRegulares());
+        lista.addAll(agrupador.agruparPendientes(obtenerFilasPendientesDeInstancia()));
+        lista.sort(Comparator.comparing(ElementoLavadoPendiente::fechaFinCiclo)
+            .thenComparing(ElementoLavadoPendiente::clienteNombre)
+            .thenComparing(ElementoLavadoPendiente::elementoNombre));
+        return lista;
+    }
+
+    public List<SalidaLista> obtenerListasSinDestino() {
+        List<SalidaLista> lista = new ArrayList<>();
+        lista.addAll(obtenerListasRegulares());
+        lista.addAll(agrupador.agruparListas(obtenerFilasListasDeInstancia()));
+        lista.sort(Comparator.comparing(SalidaLista::fechaListo)
+            .thenComparing(SalidaLista::clienteNombre)
+            .thenComparing(SalidaLista::elementoNombre)
+            .thenComparing(SalidaLista::salidaId));
+        return lista;
+    }
+
+    private List<ElementoLavadoPendiente> obtenerPendientesRegulares() {
+        List<ElementoLavadoPendiente> lista = new ArrayList<>();
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_PENDIENTES_DE_LISTO);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 lista.add(new ElementoLavadoPendiente(
                     rs.getInt("elemento_ciclo_id"),
-                    rs.getInt("ciclo_id"),
-                    rs.getInt("lavarropas_numero"),
+                    null,
+                    String.valueOf(rs.getInt("lavarropas_numero")),
                     rs.getInt("ingreso_id"),
                     rs.getInt("cliente_id"),
                     rs.getString("cliente"),
@@ -176,7 +278,33 @@ public class SalidaLavaderoDAO {
         return lista;
     }
 
-    public List<SalidaLista> obtenerListasSinDestino() {
+    private List<FilaInstanciaEquipo> obtenerFilasPendientesDeInstancia() {
+        List<FilaInstanciaEquipo> lista = new ArrayList<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SQL_PENDIENTES_DE_INSTANCIA);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                lista.add(new FilaInstanciaEquipo(
+                    rs.getInt("instancia_equipo_id"),
+                    rs.getInt("elemento_clasificacion_id"),
+                    rs.getInt("total_partes"),
+                    rs.getInt("elemento_ciclo_id"),
+                    rs.getInt("lavarropas_numero"),
+                    rs.getObject("fecha_fin", LocalDateTime.class),
+                    rs.getInt("ingreso_id"),
+                    rs.getInt("cliente_id"),
+                    rs.getString("cliente"),
+                    rs.getString("elemento"),
+                    rs.getInt("ya_marcada")
+                ));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al obtener las fracciones de equipo pendientes de Listo", e);
+        }
+        return lista;
+    }
+
+    private List<SalidaLista> obtenerListasRegulares() {
         List<SalidaLista> lista = new ArrayList<>();
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_LISTAS_SIN_DESTINO);
@@ -184,8 +312,9 @@ public class SalidaLavaderoDAO {
             while (rs.next()) {
                 lista.add(new SalidaLista(
                     rs.getInt("salida_id"),
-                    rs.getInt("ciclo_id"),
-                    rs.getInt("lavarropas_numero"),
+                    rs.getInt("elemento_ciclo_id"),
+                    null,
+                    String.valueOf(rs.getInt("lavarropas_numero")),
                     rs.getInt("ingreso_id"),
                     rs.getInt("cliente_id"),
                     rs.getString("cliente"),
@@ -197,6 +326,31 @@ public class SalidaLavaderoDAO {
             }
         } catch (SQLException e) {
             throw new DatabaseException("Error al obtener las salidas listas sin destino", e);
+        }
+        return lista;
+    }
+
+    private List<FilaInstanciaSalidaLista> obtenerFilasListasDeInstancia() {
+        List<FilaInstanciaSalidaLista> lista = new ArrayList<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SQL_LISTAS_DE_INSTANCIA);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                lista.add(new FilaInstanciaSalidaLista(
+                    rs.getInt("salida_id"),
+                    rs.getInt("instancia_equipo_id"),
+                    rs.getInt("cantidad"),
+                    rs.getObject("fecha_listo", LocalDateTime.class),
+                    rs.getInt("lavarropas_numero"),
+                    rs.getObject("fecha_fin", LocalDateTime.class),
+                    rs.getInt("ingreso_id"),
+                    rs.getInt("cliente_id"),
+                    rs.getString("cliente"),
+                    rs.getString("elemento")
+                ));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al obtener las salidas de instancia sin destino", e);
         }
         return lista;
     }
@@ -224,17 +378,27 @@ public class SalidaLavaderoDAO {
 
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
-            try (PreparedStatement psSaldo    = conn.prepareStatement(SQL_SALDO_PENDIENTE);
-                 PreparedStatement psAbierta  = conn.prepareStatement(SQL_SALIDA_ABIERTA_DE_TANDA);
-                 PreparedStatement psSumar    = conn.prepareStatement(SQL_SUMAR_A_SALIDA);
-                 PreparedStatement psInsertar = conn.prepareStatement(SQL_INSERTAR_SALIDA)) {
+            try (PreparedStatement psSaldoRegular   = conn.prepareStatement(SQL_SALDO_PENDIENTE);
+                 PreparedStatement psSaldoInstancia = conn.prepareStatement(SQL_SALDO_PENDIENTE_INSTANCIA);
+                 PreparedStatement psAbierta        = conn.prepareStatement(SQL_SALIDA_ABIERTA_DE_TANDA);
+                 PreparedStatement psSumar          = conn.prepareStatement(SQL_SUMAR_A_SALIDA);
+                 PreparedStatement psInsertar       = conn.prepareStatement(SQL_INSERTAR_SALIDA)) {
                 for (MarcaListo marca : marcas) {
-                    int elementoCicloId = marca.item().elementoCicloId();
-                    int disponible      = saldoPendiente(psSaldo, elementoCicloId);
-                    if (marca.cantidad() > disponible) {
-                        throw new BusinessException(mensajeSaldoInsuficiente(marca, disponible));
+                    ElementoLavadoPendiente item = marca.item();
+                    if (item.esInstanciaDeEquipo()) {
+                        int disponible = saldoPendienteInstancia(psSaldoInstancia, item.instanciaEquipoId());
+                        if (marca.cantidad() > disponible) {
+                            throw new BusinessException(mensajeSaldoInsuficiente(marca, disponible));
+                        }
+                        insertarSalidaDeInstancia(psInsertar, item.instanciaEquipoId(), marca.cantidad());
+                    } else {
+                        int elementoCicloId = item.elementoCicloId();
+                        int disponible = saldoPendiente(psSaldoRegular, elementoCicloId);
+                        if (marca.cantidad() > disponible) {
+                            throw new BusinessException(mensajeSaldoInsuficiente(marca, disponible));
+                        }
+                        acumularOInsertar(psAbierta, psSumar, psInsertar, elementoCicloId, marca.cantidad());
                     }
-                    acumularOInsertar(psAbierta, psSumar, psInsertar, elementoCicloId, marca.cantidad());
                 }
             }
             tx.commit();
@@ -254,7 +418,8 @@ public class SalidaLavaderoDAO {
 
     /**
      * Devuelve al estado "lavado, sin doblar" la selección entera, en una sola transacción:
-     * o vuelven todas o no vuelve ninguna.
+     * o vuelven todas o no vuelve ninguna. Opera por {@code salidaId} sin distinguir tipo:
+     * una salida de instancia se revierte igual que una regular.
      *
      * <p>Simétrico de {@link #marcarListo(List)} y por el mismo motivo: revertir cuatro filas
      * arrastradas y que la tercera falle dejaría dos revertidas y dos no, un estado que nadie
@@ -293,6 +458,8 @@ public class SalidaLavaderoDAO {
 
     /**
      * Le asigna destino definitivo a una selección de salidas listas, en una sola transacción.
+     * Opera por {@code salidaId} sin distinguir tipo: el derivador y el estampado de destino
+     * son los mismos para una salida regular o de instancia.
      *
      * <p>Lo que el derivador cree en otra feature (el ingreso de CDE) y el estampado del destino
      * acá tienen que ser atómicos: si el ingreso se crea y el destino no se estampa, la misma
@@ -381,6 +548,7 @@ public class SalidaLavaderoDAO {
             for (int ingresoId : ingresoIds) {
                 psVerificar.setInt(1, ingresoId);
                 psVerificar.setInt(2, ingresoId);
+                psVerificar.setInt(3, ingresoId);
                 try (ResultSet rs = psVerificar.executeQuery()) {
                     if (rs.next() && rs.getInt("derivado") >= rs.getInt("total")) {
                         psFinalizar.setInt(1, ingresoId);
@@ -406,6 +574,8 @@ public class SalidaLavaderoDAO {
 
     /**
      * Suma la cantidad a la salida sin destino que ya tenga esa tanda, o crea una si no hay.
+     * Sólo aplica a elementos regulares: una instancia de equipo no acumula, se marca entera
+     * de una vez ({@link #insertarSalidaDeInstancia}).
      *
      * <p>Marcar 4 y después 3 de la misma tanda tiene que dar <b>una</b> salida de 7 y no dos
      * filas: para el operador es la misma ropa, doblada en dos ratos. Como consecuencia, las
@@ -426,7 +596,8 @@ public class SalidaLavaderoDAO {
             return;
         }
         psInsertar.setInt(1, elementoCicloId);
-        psInsertar.setInt(2, cantidad);
+        psInsertar.setNull(2, Types.INTEGER);
+        psInsertar.setInt(3, cantidad);
         psInsertar.executeUpdate();
     }
 
@@ -440,12 +611,31 @@ public class SalidaLavaderoDAO {
         }
     }
 
-    /** Saldo actual de la tanda. Sin fila (ciclo activo o tanda inexistente) es saldo cero. */
+    /** Saldo actual de la tanda regular. Sin fila (ciclo activo o tanda inexistente) es saldo cero. */
     private int saldoPendiente(PreparedStatement psSaldo, int elementoCicloId) throws SQLException {
         psSaldo.setInt(1, elementoCicloId);
         try (ResultSet rs = psSaldo.executeQuery()) {
             return rs.next() ? rs.getInt("pendiente") : 0;
         }
+    }
+
+    /** Saldo actual de la instancia: 1 (completa y sin marcar) o 0. Sin fila, saldo cero. */
+    private int saldoPendienteInstancia(PreparedStatement psSaldo, int instanciaEquipoId) throws SQLException {
+        psSaldo.setInt(1, instanciaEquipoId);
+        try (ResultSet rs = psSaldo.executeQuery()) {
+            if (!rs.next()) return 0;
+            boolean completa  = rs.getInt("terminadas") == rs.getInt("total_partes");
+            boolean yaMarcada = rs.getInt("ya_marcada") > 0;
+            return (completa && !yaMarcada) ? 1 : 0;
+        }
+    }
+
+    private void insertarSalidaDeInstancia(PreparedStatement psInsertar, int instanciaEquipoId,
+                                           int cantidad) throws SQLException {
+        psInsertar.setNull(1, Types.INTEGER);
+        psInsertar.setInt(2, instanciaEquipoId);
+        psInsertar.setInt(3, cantidad);
+        psInsertar.executeUpdate();
     }
 
     /**
@@ -465,6 +655,6 @@ public class SalidaLavaderoDAO {
     /** Identifica una tanda como la ve el operador: elemento, cliente y lavarropas. */
     private String describir(ElementoLavadoPendiente item) {
         return item.elementoNombre() + " (" + item.clienteNombre()
-             + ", lavarropas " + item.lavarropasNumero() + ")";
+             + ", lavarropas " + item.lavarropas() + ")";
     }
 }

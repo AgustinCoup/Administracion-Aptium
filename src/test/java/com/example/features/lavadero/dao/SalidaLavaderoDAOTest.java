@@ -2,6 +2,7 @@ package com.example.features.lavadero.dao;
 
 import com.example.AbstractDAOTest;
 import com.example.common.exception.BusinessException;
+import com.example.features.lavadero.dao.derivadores.DerivadorFueraDeFlujo;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
@@ -39,6 +40,10 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
     private String nombreB;
     private String nombreC;
 
+    /** Un Equipo* de cantidad 1, para las fracciones repartidas entre lavarropas. */
+    private int clasifEquipo;
+    private String nombreEquipo;
+
     @BeforeEach
     void setUp() throws SQLException {
         dao       = new SalidaLavaderoDAO();
@@ -58,19 +63,23 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         int catalogoA = catalogoElementoId(1);
         int catalogoB = catalogoElementoId(2);
         int catalogoC = catalogoElementoId(3);
+        int catalogoEquipo = catalogoElementoId(4);
         nombreA = catalogoElementoNombre(catalogoA);
         nombreB = catalogoElementoNombre(catalogoB);
         nombreC = catalogoElementoNombre(catalogoC);
+        nombreEquipo = catalogoElementoNombre(catalogoEquipo);
 
         clasifA = insertarClasificacion(catalogoA, 10);
         clasifB = insertarClasificacion(catalogoB, 6);
         clasifC = insertarClasificacion(catalogoC, 4);
+        clasifEquipo = insertarClasificacion(catalogoEquipo, 1);
     }
 
     @Override
     protected void limpiarTablas() throws SQLException {
         ejecutarSQL("DELETE FROM salidas_lavadero");
         ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
+        ejecutarSQL("DELETE FROM instancias_equipo_ciclo");
         ejecutarSQL("DELETE FROM ciclos_lavadero");
         ejecutarSQL("DELETE FROM elementos_clasificacion_lavadero");
         ejecutarSQL("DELETE FROM bolsas_lavadero");
@@ -102,6 +111,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         assertEquals(5, item.cantidadLavada());
         assertEquals(0, item.cantidadYaLista());
         assertEquals(5, item.cantidadPendiente());
+        assertFalse(item.esInstanciaDeEquipo());
     }
 
     @Test
@@ -132,9 +142,10 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
         assertEquals(2, pendientes.size());
         assertTrue(pendientes.stream().allMatch(p -> nombreA.equals(p.elementoNombre())));
-        assertEquals(List.of(1, 3), pendientes.stream().map(ElementoLavadoPendiente::lavarropasNumero).sorted().toList());
+        assertEquals(List.of(1, 3),
+            pendientes.stream().map(p -> Integer.parseInt(p.lavarropas())).sorted().toList());
         assertTrue(pendientes.stream().allMatch(p -> p.fechaFinCiclo() != null));
-        assertNotEquals(pendientes.get(0).cicloId(), pendientes.get(1).cicloId());
+        assertNotEquals(pendientes.get(0).elementoCicloId(), pendientes.get(1).elementoCicloId());
     }
 
     // ── marcarListo ──────────────────────────────────────────────────────────
@@ -258,7 +269,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
     void marcarListo_sobreUnCicloTodaviaActivo_lanzaYNoInsertaNada() throws SQLException {
         lanzarYFinalizar(1, movimiento(clasifA, 10));
         ElementoLavadoPendiente item = unicoPendiente();
-        reabrirCiclo(item.cicloId());
+        reabrirCiclo(cicloIdDeElementoCiclo(item.elementoCicloId()));
 
         assertThrows(BusinessException.class, () -> dao.marcarListo(List.of(new MarcaListo(item, 1))));
 
@@ -313,7 +324,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         List<SalidaLista> listas = dao.obtenerListasSinDestino();
 
         assertEquals(2, listas.size());
-        assertEquals(List.of(1, 3), listas.stream().map(SalidaLista::lavarropasNumero).sorted().toList());
+        assertEquals(List.of(1, 3), listas.stream().map(s -> Integer.parseInt(s.lavarropas())).sorted().toList());
         assertTrue(listas.stream().allMatch(s -> s.fechaFinCiclo() != null));
         assertTrue(listas.stream().allMatch(s -> s.fechaListo() != null));
         assertTrue(listas.stream().allMatch(s -> nombreA.equals(s.elementoNombre())));
@@ -394,6 +405,119 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         assertThrows(BusinessException.class, () -> dao.volverALavado(List.of()));
     }
 
+    // ── instancias de equipo (fracciones repartidas entre lavarropas) ─────────
+
+    @Test
+    void instanciaConSusPartesTodasLavadas_apareceUnaVezConTodosLosLavarropas() throws SQLException {
+        int instanciaId = crearInstancia(clasifEquipo, 4);
+        lanzarYFinalizarFraccion(1, instanciaId);
+        lanzarYFinalizarFraccion(2, instanciaId);
+        lanzarYFinalizarFraccion(3, instanciaId);
+        lanzarYFinalizarFraccion(4, instanciaId);
+
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+
+        assertEquals(1, pendientes.size());
+        ElementoLavadoPendiente item = pendientes.get(0);
+        assertTrue(item.esInstanciaDeEquipo());
+        assertEquals(instanciaId, item.instanciaEquipoId());
+        assertNull(item.elementoCicloId());
+        assertEquals("1, 2, 3, 4", item.lavarropas());
+        assertEquals(1, item.cantidadPendiente());
+    }
+
+    @Test
+    void instanciaConUnaFraccionEnCicloTodaviaActivo_noApareceEnAbsoluto() throws SQLException {
+        int instanciaId = crearInstancia(clasifEquipo, 4);
+        lanzarYFinalizarFraccion(1, instanciaId);
+        lanzarYFinalizarFraccion(2, instanciaId);
+        lanzarYFinalizarFraccion(3, instanciaId);
+        lanzarFraccion(4, instanciaId);
+
+        assertTrue(dao.obtenerLavadosPendientesDeListo().isEmpty());
+    }
+
+    @Test
+    void marcarListoDeInstanciaCompleta_pasaAListasSinDestinoYDesaparecePendientes() throws SQLException {
+        int instanciaId = crearInstancia(clasifEquipo, 2);
+        lanzarYFinalizarFraccion(1, instanciaId);
+        lanzarYFinalizarFraccion(2, instanciaId);
+
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
+
+        assertTrue(dao.obtenerLavadosPendientesDeListo().isEmpty());
+        List<SalidaLista> listas = dao.obtenerListasSinDestino();
+        assertEquals(1, listas.size());
+        SalidaLista salida = listas.get(0);
+        assertTrue(salida.esInstanciaDeEquipo());
+        assertEquals(instanciaId, salida.instanciaEquipoId());
+        assertNull(salida.elementoCicloId());
+        assertEquals(1, salida.cantidad());
+        assertEquals("1, 2", salida.lavarropas());
+    }
+
+    @Test
+    void marcarListoDeInstanciaIncompleta_lanzaYNoInsertaNada() throws SQLException {
+        int instanciaId = crearInstancia(clasifEquipo, 3);
+        lanzarYFinalizarFraccion(1, instanciaId);
+        lanzarYFinalizarFraccion(2, instanciaId);
+        lanzarFraccion(3, instanciaId);
+        ElementoLavadoPendiente itemDeSnapshotViejo = new ElementoLavadoPendiente(
+            null, instanciaId, "1, 2, 3", ingresoId, clienteId, "TestSalidaCliente", nombreEquipo, 1, 0, null);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+            () -> dao.marcarListo(List.of(new MarcaListo(itemDeSnapshotViejo, 1))));
+
+        assertTrue(ex.getMessage().contains(nombreEquipo), ex.getMessage());
+        assertEquals(0, contarFilas("salidas_lavadero"));
+    }
+
+    @Test
+    void volverALavadoDeSalidaDeInstancia_devuelveLaInstanciaAPendientes() throws SQLException {
+        int instanciaId = crearInstancia(clasifEquipo, 2);
+        lanzarYFinalizarFraccion(1, instanciaId);
+        lanzarYFinalizarFraccion(2, instanciaId);
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
+        int salidaId = dao.obtenerListasSinDestino().get(0).salidaId();
+
+        dao.volverALavado(salidaId);
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+        assertTrue(dao.obtenerListasSinDestino().isEmpty());
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+        assertEquals(1, pendientes.size());
+        assertTrue(pendientes.get(0).esInstanciaDeEquipo());
+    }
+
+    @Test
+    void derivarSalidaDeInstancia_funcionaIgualQueUnaRegular() throws SQLException {
+        int instanciaId = crearInstancia(clasifEquipo, 2);
+        lanzarYFinalizarFraccion(1, instanciaId);
+        lanzarYFinalizarFraccion(2, instanciaId);
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
+        SalidaLista salida = dao.obtenerListasSinDestino().get(0);
+
+        dao.derivar(new DerivadorFueraDeFlujo(), List.of(salida));
+
+        assertTrue(dao.obtenerListasSinDestino().isEmpty());
+        assertEquals("FUERA_DE_FLUJO",
+            escalarString("SELECT destino FROM salidas_lavadero WHERE id = " + salida.salidaId()));
+    }
+
+    @Test
+    void unaFilaRegularYUnaDeInstanciaDelMismoCliente_seLeenAmbasSinInterferir() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 5));
+        int instanciaId = crearInstancia(clasifEquipo, 2);
+        lanzarYFinalizarFraccion(2, instanciaId);
+        lanzarYFinalizarFraccion(3, instanciaId);
+
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+
+        assertEquals(2, pendientes.size());
+        assertTrue(pendientes.stream().anyMatch(p -> !p.esInstanciaDeEquipo() && nombreA.equals(p.elementoNombre())));
+        assertTrue(pendientes.stream().anyMatch(p -> p.esInstanciaDeEquipo() && nombreEquipo.equals(p.elementoNombre())));
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private ElementoCicloMovimiento movimiento(int clasificacionId, int cantidad) {
@@ -408,6 +532,19 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     private void lanzarYFinalizar(int lavarropas, ElementoCicloMovimiento... movimientos) throws SQLException {
         lanzarCiclo(lavarropas, movimientos);
+        ciclosDao.finalizarCiclo(ultimoCicloId());
+    }
+
+    private int crearInstancia(int elementoClasificacionId, int totalPartes) {
+        return ciclosDao.crearInstanciaEquipo(elementoClasificacionId, totalPartes);
+    }
+
+    private void lanzarFraccion(int lavarropas, int instanciaId) {
+        lanzarCiclo(lavarropas, new ElementoCicloMovimiento(clasifEquipo, 1, instanciaId));
+    }
+
+    private void lanzarYFinalizarFraccion(int lavarropas, int instanciaId) throws SQLException {
+        lanzarFraccion(lavarropas, instanciaId);
         ciclosDao.finalizarCiclo(ultimoCicloId());
     }
 
@@ -436,7 +573,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     private ElementoLavadoPendiente pendientePorLavarropas(int lavarropas) {
         return dao.obtenerLavadosPendientesDeListo().stream()
-                .filter(p -> p.lavarropasNumero() == lavarropas)
+                .filter(p -> String.valueOf(lavarropas).equals(p.lavarropas()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("no hay pendiente en el lavarropas " + lavarropas));
     }
@@ -448,6 +585,10 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     private void reabrirCiclo(int cicloId) throws SQLException {
         ejecutarSQL("UPDATE ciclos_lavadero SET fecha_fin = NULL, estado = 'ACTIVO' WHERE id = " + cicloId);
+    }
+
+    private int cicloIdDeElementoCiclo(int elementoCicloId) throws SQLException {
+        return escalar("SELECT ciclo_id FROM elementos_ciclo_lavadero WHERE id = " + elementoCicloId);
     }
 
     private int insertarClasificacion(int catalogoId, int cantidad) throws SQLException {
@@ -500,6 +641,15 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
              ResultSet rs = stmt.executeQuery(sql)) {
             rs.next();
             return rs.getInt(1);
+        }
+    }
+
+    private String escalarString(String sql) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            rs.next();
+            return rs.getString(1);
         }
     }
 }
