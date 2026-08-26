@@ -57,6 +57,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     @Override
     protected void limpiarTablas() throws SQLException {
         ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
+        ejecutarSQL("DELETE FROM instancias_equipo_ciclo");
         ejecutarSQL("DELETE FROM ciclos_lavadero");
         ejecutarSQL("DELETE FROM elementos_clasificacion_lavadero");
         ejecutarSQL("DELETE FROM bolsas_lavadero");
@@ -177,6 +178,89 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         assertEquals(4, items.get(0).getCantidadYaProcesada());
     }
 
+    // ── crearInstanciaEquipo / instancia_equipo_id ───────────────────────────
+    // Invariante 9: un equipo repartido en N lavarropas consume 1 unidad de su
+    // línea de clasificación, nunca N.
+
+    @Test
+    void crearInstanciaEquipo_devuelveIdYPersisteTotalPartes() throws SQLException {
+        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 3);
+
+        assertTrue(instanciaId > 0);
+        assertEquals(3, totalPartesPersistido(instanciaId));
+    }
+
+    @Test
+    void disponibles_fraccionesDeEquipoCuentanComoUnaSolaUnidad() {
+        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 4);
+        for (int lav = 1; lav <= 4; lav++) {
+            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
+                List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaId)));
+        }
+
+        List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
+
+        assertEquals(1, items.size());
+        assertEquals(1, items.get(0).getCantidadYaProcesada());
+        assertEquals(9, items.get(0).getCantidadDisponible());
+    }
+
+    @Test
+    void disponibles_dosInstanciasDeLaMismaLinea_sumanDosUnidades() {
+        int instanciaSinRepartir = dao.crearInstanciaEquipo(elementoClasifId, 1);
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")),
+            List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaSinRepartir)));
+
+        int instanciaRepartida = dao.crearInstanciaEquipo(elementoClasifId, 3);
+        for (int lav = 2; lav <= 4; lav++) {
+            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
+                List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaRepartida)));
+        }
+
+        List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
+
+        assertEquals(1, items.size());
+        assertEquals(2, items.get(0).getCantidadYaProcesada());
+    }
+
+    @Test
+    void disponibles_combinaFraccionesDeEquipoYUnidadesRegulares() {
+        // SQL_DISPONIBLES no distingue por categoría (cel.categoria), sólo por si
+        // instancia_equipo_id es NULL. En el dominio real una línea de clasificación es o
+        // EQUIPO o REGULAR (no se mezclan), pero esta prueba verifica que la aritmética
+        // combinada (suma de regulares + cuenta de instancias) es correcta igual con datos
+        // que sí la mezclan, para no depender de esa restricción de dominio no forzada en BD.
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")),
+            List.of(new ElementoCicloMovimiento(elementoClasifId, 3)));
+
+        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 1);
+        dao.lanzarCiclo(2, config(new BigDecimal("1.5")),
+            List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaId)));
+
+        List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
+
+        assertEquals(1, items.size());
+        assertEquals(4, items.get(0).getCantidadYaProcesada());
+    }
+
+    @Test
+    void lanzarCiclo_persisteInstanciaEquipoIdCuandoElMovimientoLoTrae() throws SQLException {
+        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 1);
+
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")),
+            List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaId)));
+
+        assertEquals(instanciaId, instanciaEquipoIdPersistido());
+    }
+
+    @Test
+    void lanzarCiclo_sinInstancia_persisteInstanciaEquipoIdNulo() throws SQLException {
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")),
+            List.of(new ElementoCicloMovimiento(elementoClasifId, 3)));
+
+        assertNull(instanciaEquipoIdPersistido());
+    }
+
     // ── finalizarCiclo ───────────────────────────────────────────────────────
 
     @Test
@@ -234,6 +318,27 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
                      "SELECT tipo_lavado FROM ciclos_lavadero ORDER BY id DESC LIMIT 1")) {
             rs.next();
             return rs.getString(1);
+        }
+    }
+
+    private int totalPartesPersistido(int instanciaId) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                     "SELECT total_partes FROM instancias_equipo_ciclo WHERE id = " + instanciaId)) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    private Integer instanciaEquipoIdPersistido() throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                     "SELECT instancia_equipo_id FROM elementos_ciclo_lavadero ORDER BY id DESC LIMIT 1")) {
+            rs.next();
+            int valor = rs.getInt(1);
+            return rs.wasNull() ? null : valor;
         }
     }
 

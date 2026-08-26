@@ -26,7 +26,10 @@ public class CicloLavaderoDAO {
         "VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), 'ACTIVO')";
 
     private static final String SQL_INSERTAR_ELEMENTO =
-        "INSERT INTO elementos_ciclo_lavadero (ciclo_id, elemento_clasificacion_id, cantidad) VALUES (?, ?, ?)";
+        "INSERT INTO elementos_ciclo_lavadero (ciclo_id, elemento_clasificacion_id, cantidad, instancia_equipo_id) VALUES (?, ?, ?, ?)";
+
+    private static final String SQL_INSERTAR_INSTANCIA =
+        "INSERT INTO instancias_equipo_ciclo (elemento_clasificacion_id, total_partes) VALUES (?, ?)";
 
     private static final String SQL_ACTIVOS =
         "SELECT cl.id, cl.lavarropas_numero, cl.tipo_lavado, cl.jabon_id, cj.nombre AS jabon_nombre, " +
@@ -63,7 +66,8 @@ public class CicloLavaderoDAO {
 
     private static final String SQL_DISPONIBLES =
         "SELECT ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, " +
-        "       COALESCE(SUM(eci.cantidad), 0) AS ya_procesada, " +
+        "       COALESCE(SUM(CASE WHEN eci.instancia_equipo_id IS NULL THEN eci.cantidad ELSE 0 END), 0) " +
+        "         + COUNT(DISTINCT eci.instancia_equipo_id) AS ya_procesada, " +
         "       c.nombre AS cliente, cel.categoria " +
         "FROM elementos_clasificacion_lavadero ecl " +
         "JOIN catalogo_elementos_lavadero cel ON cel.id = ecl.elemento_id " +
@@ -195,9 +199,35 @@ public class CicloLavaderoDAO {
                 ps.setInt(1, cicloId);
                 ps.setInt(2, m.getElementoClasificacionId());
                 ps.setInt(3, m.getCantidad());
+                if (m.getInstanciaEquipoId() != null) ps.setInt(4, m.getInstanciaEquipoId());
+                else ps.setNull(4, Types.INTEGER);
                 ps.addBatch();
             }
             ps.executeBatch();
+        }
+    }
+
+    /**
+     * Transacción propia, separada de {@code lanzarCiclo}: las fracciones de una
+     * instancia lanzan en ciclos independientes, uno por lavarropas (decisión B del
+     * blueprint de fracciones de equipo — no hay una transacción única que las agrupe).
+     */
+    public int crearInstanciaEquipo(int elementoClasificacionId, int totalPartes) {
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            try (PreparedStatement ps = conn.prepareStatement(SQL_INSERTAR_INSTANCIA, Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, elementoClasificacionId);
+                ps.setInt(2, totalPartes);
+                ps.executeUpdate();
+                try (ResultSet keys = ps.getGeneratedKeys()) {
+                    keys.next();
+                    int id = keys.getInt(1);
+                    tx.commit();
+                    return id;
+                }
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al crear la instancia de equipo", e);
         }
     }
 

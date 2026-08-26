@@ -60,6 +60,14 @@ public class CicloLavaderoService {
         dao.lanzarCiclo(lavarropasNumero, config, movimientos);
     }
 
+    public int crearInstanciaEquipo(int elementoClasificacionId, int totalPartes) {
+        ValidationException.Builder v = ValidationException.builder();
+        v.addErrorIf(elementoClasificacionId <= 0, "ID de elemento de clasificación inválido.");
+        v.addErrorIf(totalPartes <= 0, "El total de partes debe ser mayor a cero.");
+        v.throwIfHasErrors();
+        return dao.crearInstanciaEquipo(elementoClasificacionId, totalPartes);
+    }
+
     public List<CicloLavadero> obtenerCiclosFinalizados() {
         return dao.obtenerCiclosFinalizados();
     }
