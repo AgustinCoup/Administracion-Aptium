@@ -550,6 +550,34 @@ Los tests no agarran nada de esto. Checklist a correr sobre la app real:
 
 Recién con esto en verde: `/code-review ultra` (paso 6 del plan de sesiones).
 
+### Resultado de la Fase 5 — ✅ PASADA (2026-08-27)
+
+Corrida por el usuario sobre la app real, sin `strict`. **El hallazgo #6 queda cerrado del todo.**
+
+**Log: 30 WARN de `EdtGuard`, los 30 de la lista esperada. Cero fuera de ella.**
+
+| Origen | Veces |
+|---|---|
+| `ClienteService.buscarClientes` ← `AutocompleteListener` (8 del CDE + 5 de Lavadero) | 13 |
+| `CatalogoDAO.obtenerDescripcionVigente` ← `PanelMateriales` / `GestorValidacionFormulario` | 10 |
+| `InstitucionService.buscarInstituciones` | 5 |
+| `ProfesionalService.buscarProfesionales` | 2 |
+
+**Un solo ERROR, y era el que el punto 6 pide provocar:** `ValidationException: El código de
+catálogo 500 no existe o fue dado de baja`. Su stack es la prueba del refactor —
+`EquipoCorreccionService.modificarCodigoMaterial` ← `CorreccionesController` ←
+**`TareaUI$1.doInBackground`**: la escritura corrió fuera del EDT y el error volvió por `siFalla`
+sin romper nada.
+
+El resto de los WARN son ruido de arranque conocido: credenciales de desarrollo, `outOfOrder` de
+Flyway, el `System::load` de FlatLaf y la versión `dev-SNAPSHOT` que el chequeo de actualizaciones
+no sabe parsear.
+
+**Cambio que salió de esta corrida:** `TareaUI` logueaba a **ERROR y con stack completo** las
+`ValidationException`, que son reglas de negocio esperadas, no fallos. Ahora `registrarFallo(...)`
+las manda a **WARN sin stack** y deja ERROR con traza para todo lo demás. El log de errores de
+producción deja de llenarse de casos normales.
+
 ---
 
 ## Riesgos y trampas conocidas

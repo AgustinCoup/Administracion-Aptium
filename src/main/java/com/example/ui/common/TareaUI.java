@@ -1,5 +1,7 @@
 package com.example.ui.common;
 
+import com.example.common.exception.ValidationException;
+
 import java.awt.EventQueue;
 import java.util.Objects;
 import java.util.concurrent.Callable;
@@ -31,8 +33,10 @@ import org.slf4j.LoggerFactory;
  * }</pre>
  *
  * <p><b>Los errores nunca se pierden:</b> cualquier excepción de {@code leer} (o de
- * {@code pintar}) se loguea a ERROR aunque no se haya declarado {@code siFalla}, y se
- * rutea al manejador en el hilo de UI. {@code pintar} no se ejecuta si hubo fallo.
+ * {@code pintar}) se loguea aunque no se haya declarado {@code siFalla}, y se rutea al
+ * manejador en el hilo de UI. {@code pintar} no se ejecuta si hubo fallo. Una
+ * {@link ValidationException} va a <b>WARN sin stack</b> (es una regla de negocio, no un fallo);
+ * todo lo demás va a ERROR con la traza completa.
  *
  * <p><b>Cancelación:</b> {@link #lanzar()} devuelve una {@link Ejecucion} cancelable.
  * La cancelación es de <i>aplicación</i>, no de <i>ejecución</i>: una query JDBC ya
@@ -164,7 +168,7 @@ public final class TareaUI<T> {
     }
 
     private void manejarFallo(Throwable causa) {
-        log.error("Fallo en la tarea de fondo '{}'", nombre, causa);
+        registrarFallo(causa);
         if (siFalla == null) {
             return;
         }
@@ -173,6 +177,20 @@ public final class TareaUI<T> {
         } catch (RuntimeException e) {
             log.error("El manejador de error de la tarea '{}' también falló", nombre, e);
         }
+    }
+
+    /**
+     * Una {@link ValidationException} es una regla de negocio que el usuario violó —el código de
+     * catálogo no existe, falta un campo—, no un fallo del sistema: se loguea a WARN y sin stack,
+     * porque el stack no aporta nada y ensucia el log de errores de producción con casos normales.
+     * Cualquier otra causa sí es un fallo y va a ERROR con la traza completa.
+     */
+    private void registrarFallo(Throwable causa) {
+        if (causa instanceof ValidationException) {
+            log.warn("Validación rechazada en la tarea '{}': {}", nombre, causa.getMessage());
+            return;
+        }
+        log.error("Fallo en la tarea de fondo '{}'", nombre, causa);
     }
 
     private static void enHiloUi(Runnable accion) {

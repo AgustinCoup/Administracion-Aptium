@@ -2,8 +2,8 @@
 
 Diagnóstico de la revisión profunda del 2026-07-22.
 
-**Estado al 2026-08-27:** los 8 hallazgos **cerrados en código**. Lo único que queda de todos es la
-**checklist manual de la Fase 5** de #6 (verificación contra la app real, no trabajo de código).
+**Estado al 2026-08-27: los 8 hallazgos cerrados**, incluida la checklist manual de la Fase 5 de #6,
+pasada contra la app real ese mismo día. Del plan de sesiones queda **sólo el `/code-review ultra`**.
 
 | # | Estado | Commit |
 |---|---|---|
@@ -12,7 +12,7 @@ Diagnóstico de la revisión profunda del 2026-07-22.
 | #5 `common` ↔ Swing | hecho | `fc15bd1` |
 | #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
 | #3 `AppModel` | hecho (2026-07-23) — **disuelto** | `728c88d` |
-| #6 concurrencia / EDT | **código cerrado** — Fases 1-6, **4b** y el hallazgo derivado de Lavadero. Falta sólo la checklist manual de la Fase 5, que se corre **sin** `strict` (los 5 autocompletados por tecla son excepción aceptada y en `strict` lanzan). Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | Fase 4b: `14354a2` · Lavadero: `95c9e33` |
+| #6 concurrencia / EDT | **hecho (2026-08-27)** — Fases 1-6, **4b**, el hallazgo derivado de Lavadero y la **checklist manual de la Fase 5 pasada**: 30 WARN de `EdtGuard`, los 30 de los autocompletados documentados, cero fuera de la lista. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md#resultado-de-la-fase-5--pasada-2026-08-27) | Fase 4b: `14354a2` · Lavadero: `95c9e33` |
 | #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
 | #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | hecho (2026-08-27) — `CiclosController` colapsó sus 4 lecturas en un `recargar()` con el record `DatosCiclos` + `ConstructorVistaCiclos`, y sus 3 escrituras van por un helper `ejecutar(...)`; `ClasificacionController` y `LavaderoController.guardar()` al patrón de 4b. 970 tests, smoke pasado | `95c9e33` |
 
@@ -282,7 +282,8 @@ resumen lossy.
 
 1. ~~**#4** (`Object[]`→records)~~ — ✅ hecho el 2026-07-23.
 2. ~~**#3** (`AppModel`)~~ — ✅ hecho el 2026-07-23, disuelto.
-3. **#6** (concurrencia/EDT) — el más grande y el único que queda. Plan escrito el 2026-07-23
+3. ~~**#6** (concurrencia/EDT)~~ — ✅ cerrado el 2026-08-27, checklist manual incluida.
+   Era el más grande. Plan escrito el 2026-07-23
    en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md): 5 fases, a ejecutar en
    2 chats (fases 1-3 / fases 4-5). Es donde está el riesgo real: los bugs de EDT y de
    refrescos fuera de orden no los agarra la suite de tests.
