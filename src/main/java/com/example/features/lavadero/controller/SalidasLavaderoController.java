@@ -26,8 +26,9 @@ import java.util.stream.Collectors;
  * con el resultado.
  *
  * <p><b>Todo acceso a la base va por {@link TareaUI}</b>, lecturas y escrituras por igual:
- * el hilo de la interfaz no toca JDBC (ver {@code EdtGuard}). No copiar el acceso directo de
- * {@code CiclosController.cargarDatos()}, que es deuda registrada, no un patrón.</p>
+ * el hilo de la interfaz no toca JDBC (ver {@code EdtGuard}). Es la implementación de
+ * referencia de la feature: {@code CiclosController} y {@code ClasificacionController}
+ * siguen el mismo patrón.</p>
  *
  * <p><b>Refresco:</b> derivar al CDE crea ingresos en la cola operativa de esterilización, así
  * que dispara el refresco que alimenta <i>Registrar estado</i>, <i>Para entregar</i> y

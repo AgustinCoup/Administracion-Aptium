@@ -729,3 +729,138 @@ misma superficie), más la comprobación específica de entregar un equipo por c
   cambio aparte y de riesgo distinto (toca el mapeo, no el filtro).
 - Constructor muerto de `LotesController` con `equipoContexto` → refactor-clean.
 - Migrar los 2 `SwingWorker` de reportes a `TareaUI` — opcional, decidir en la Fase 4.
+
+---
+
+# Hallazgo derivado — Lavadero (Ciclos + Clasificación) todavía fuera del modelo EDT
+
+**Descubierto el 2026-08-27**, durante la verificación de la Fase 4b. La feature Lavadero es
+posterior a las Fases 1-6 y de otra rama; nunca pasó por el inventario de #6. `TareaUI` y
+`EdtGuard` ya existían cuando se escribió, pero dos de sus controllers no los usan.
+
+**Es un hallazgo aparte, no una fase de este plan.** Se resuelve en su propia sesión (ver
+recomendación de modelo/prompt más abajo, o donde quede registrada). No bloquea la Fase 5:
+el smoke de 4b se corre sin `strict` y las pantallas afectadas no están en el camino de
+ortopedia/otros.
+
+## Estado medido (2026-08-27, sobre `ConexionConCDE` tras el commit de 4b)
+
+| Controller | Qué hace en el EDT | Ya migrado |
+|---|---|---|
+| `SalidasLavaderoController` | — | ✅ **es la implementación de referencia**: record `DatosSalidas` + `.leer()` para lecturas, helper privado `ejecutar(String, Runnable, Runnable)` para escrituras |
+| `VerCiclosController` | — | ✅ patrón Fase 2 (`componentShown` → `solicitarRefresco`) |
+| `LavaderoController` | `clienteService.buscarClientes` en `AutocompleteListener` ([:46](../src/main/java/com/example/features/lavadero/controller/LavaderoController.java#L46)) | excepción documentada (autocompletado por tecla — misma clase que los 4 de la Fase 4) |
+| **`CiclosController`** | **lecturas:** `cargarDatos()` ([:152](../src/main/java/com/example/features/lavadero/controller/CiclosController.java#L152), `:154`, `:157`), `actualizarTodasLasCards()` (`:177`, una por ciclo activo), `refrescarDisponiblesYCards()` (`:379`), `cargarJabonesUnaVez()` (`:146`). **escrituras:** `resolverInstancias()` → `crearInstanciaEquipo` (`:453`), `ejecutarLanzamiento()` → `lanzarCiclo` (`:495`), `ejecutarFinalizacion()` → `finalizarCiclo` (`:543`) | ❌ nada |
+| **`ClasificacionController`** | **lectura:** `cargarIngresosSinClasificar()` ([:46-47](../src/main/java/com/example/features/lavadero/controller/ClasificacionController.java#L46)). **escritura:** `guardar()` → `clasificacionLavaderoService.guardar` (`:77`, hoy con `try/catch` síncrono) | ❌ nada |
+
+En `-Daptium.edt.strict=true`: abrir la pantalla Ciclos, abrir Clasificación, lanzar/finalizar
+un ciclo o guardar una clasificación **lanzan** `IllegalStateException`. En modo normal son WARNs
+del `EdtGuard`.
+
+**Nota sobre `CiclosController` en 4b:** su constructor ya se sacó del EDT (I/O movido a
+`abrirPantalla()`), lo mínimo para que la app arranque en `strict`. El resto — que
+`abrirPantalla()`/`cargarDatos()` y las 3 escrituras corran en fondo — es este hallazgo.
+
+## Alcance del arreglo
+
+1. **`CiclosController` — lecturas.** `cargarDatos()` + `actualizarTodasLasCards()` +
+   `refrescarDisponiblesYCards()` + jabones a **una** `TareaUI.leer` que devuelva un record
+   (ej. `DatosCiclos`), y un `pintar()` puro que vuelque a las cards. Ojo con `actualizarTodasLasCards()`,
+   que hoy interleava `obtenerElementosDeCiclo(id)` por cada ciclo activo: esas lecturas van
+   dentro del mismo `leer`. La lógica pura de armado (`staging.aplicarSobreDisponibles`, el mapeo
+   a `LavarropasItem`, la decisión activo/staging por card) es candidata a clase plana + test,
+   como `AgrupadorEntregas` / `ConstructorMaterialesDisponibles`.
+2. **`CiclosController` — escrituras.** `lanzarCiclo()` / `lanzarTodos()` / `finalizarCiclo()` /
+   `finalizarTodos()`: los diálogos de confirmación y la lectura del staging quedan en el EDT;
+   `resolverInstancias` + `ejecutarLanzamiento` (o `ejecutarFinalizacion`) van a `.leer`. Helper
+   privado local al estilo `SalidasLavaderoController.ejecutar(...)` — **no** uno compartido.
+   Cuidado con `lanzarTodos()`: hoy es un loop de `ejecutarLanzamiento` seguido de `cargarDatos()`;
+   el loop entero va en una sola tarea, como se hizo con `RegistrarEstadoController.confirmarCambios`
+   en 4b (ver `AplicadorMovimientosPendientes`).
+3. **`ClasificacionController`.** `cargarIngresosSinClasificar()` → `.leer`; `guardar()` → patrón
+   de 4b (`aplicarCorreccion`): validación de formulario en EDT, `clasificacionLavaderoService.guardar`
+   en `.leer`, `ValidationException` por `.siFalla`, navegación/éxito en `.pintar`, botón
+   deshabilitado en `.antes/.despues`. El `try/catch` síncrono desaparece.
+4. **Regla dura** (igual que Lotes): el estado mutable de `CiclosController` (`staging`,
+   `ciclosActivos`, `elementosDisponibles`, `lavarropasItems`, `nextInstanciaId`, `lavarropasArrastre`)
+   se lee y escribe **solo en el EDT**. El DnD y los diálogos lo tocan; nada de eso puede
+   moverse al hilo de fondo.
+5. **Fuera de alcance de este hallazgo:** `LavaderoController` autocompletado (excepción
+   documentada), y el `AtomicInteger nextInstanciaId` en memoria que ya está anotado como
+   defecto aparte en `hallazgos-arquitectura-pendientes.md`.
+
+## Verificación
+
+- `mvn test` verde (los tests de `CicloLavaderoService` / `ClasificacionLavaderoService` **no se tocan**).
+- `grep -rn "Service\.\(obtener\|guardar\|lanzar\|finalizar\|crear\)" src/main/java/**/lavadero/controller` → toda ocurrencia dentro de `TareaUI.leer(...)` o de un helper que lo envuelve (salvo el autocompletado de `LavaderoController`).
+- Arrancar con `-Daptium.edt.strict=true`, abrir Lavadero → Clasificación (clasificar un ingreso), Lavadero → Ciclos (repartir con DnD, lanzar un ciclo, finalizarlo): **no lanza**.
+- Con eso, la checklist de la Fase 5 se puede correr entera en `strict` incluyendo Lavadero.
+
+## Resultado (2026-08-27)
+
+**Cerrado. 970 tests en verde** (eran 961; +9 nuevos). Smoke manual pasado el 2026-08-27:
+clasificar un ingreso, y en Ciclos repartir con DnD, lanzar y finalizar — sin WARNs de
+`EdtGuard` desde ninguno de los dos controllers. Sin commitear.
+
+- **`CiclosController` — lecturas.** `cargarDatos()`, `actualizarTodasLasCards()`,
+  `refrescarDisponiblesYCards()` y `cargarJabonesUnaVez()` colapsaron en un único
+  `recargar()`: una `TareaUI.leer` que devuelve el record `DatosCiclos` (ciclos activos,
+  disponibles, lavarropas, los elementos de cada ciclo activo y —sólo la primera vez— el
+  catálogo de jabones) y un `pintar()` puro. `refrescarDisponiblesYCards()` desapareció:
+  hacía lo mismo que `cargarDatos()` menos una query, y mantener dos caminos de lectura era
+  la mitad del problema.
+- **Clase plana + test.** `ConstructorVistaCiclos` (+ `ConstructorVistaCiclosTest`, 9 tests)
+  toma `DatosCiclos` + `StagingCiclos` y devuelve `VistaCiclos` (disponibles ya descontados,
+  `LavarropasItem`s, una `VistaCard` por card, y los dos flags de los botones globales).
+  **Corre en el EDT**, no en fondo: toca el staging.
+- **`CiclosController` — escrituras.** Helper privado local `ejecutar(nombre, escritura,
+  alTerminar)`. `lanzarCiclo`/`lanzarTodos` entran los dos por `lanzar(List<Integer>)` y
+  `finalizarCiclo`/`finalizarTodos` por `finalizar(List<Integer>)`: la tanda entera va en
+  **una** tarea, como `confirmarCambios` en 4b. Diálogos, validación de config de cada card y
+  lectura del staging quedan en el EDT y se congelan en los records `LanzamientoPendiente` /
+  `LineaLanzamiento` — que todavía llevan el `instanciaId` **de staging**; el de la base lo
+  asigna `crearInstancias()` ya en fondo. `ResultadoEscritura(exitosos, fallidos)` vuelve al
+  EDT, donde recién ahí se hace `staging.limpiarLavarropas(...)` / `resetConfiguracion()`.
+  **Regla dura respetada:** ningún campo del controller se toca fuera del EDT.
+- **Anti doble-lanzamiento.** Antes era imposible por ser síncrono. Ahora los tres botones
+  globales y los de cada card se apagan en `.antes` (nuevo `LavarropasCard.deshabilitarAccion()`)
+  y el refresco va en `.despues` —no en `pintar`— para que también los reencienda si falló.
+- **Orden de pintado.** `recargar()` cancela la carga anterior en vuelo: dos arrastres
+  seguidos no pueden pintar fuera de orden.
+- **`ClasificacionController`.** `cargarIngresosSinClasificar()` → `.leer` con el record
+  `DatosClasificacion`; `guardar()` al patrón de 4b. El `try/catch` síncrono desapareció:
+  `ValidationException` → `siFalla`, cualquier otra excepción → error genérico (antes se
+  propagaba), botón Guardar apagado en `.antes/.despues`.
+- Se corrigió el javadoc de `SalidasLavaderoController`, que citaba a `CiclosController` como
+  deuda: ya no lo es.
+
+**Verificación hecha:**
+- `mvn test` verde (970).
+- El grep de la sección: las 13 ocurrencias en `**/lavadero/controller` están todas dentro de
+  un `TareaUI.leer(...)` o de un helper que lo envuelve. Cero excepciones.
+
+**Verificación pendiente:** el smoke manual de Clasificación y de Ciclos (ver más abajo).
+
+### Hallazgo derivado — `LavaderoController.guardar()` escribía en el EDT ✅ HECHO (2026-08-27)
+
+La tabla de "Estado medido" de arriba dejó pasar uno: `LavaderoController.guardar()` llamaba a
+`lavaderoService.registrarIngreso` en forma síncrona sobre el EDT. Apareció en el log del smoke
+(WARN de `EdtGuard` con `TransactionalConnection.begin` ← `IngresoLavaderoDAO.guardar` ←
+`LavaderoService.registrarIngreso`) — no es el autocompletado, es una escritura de la misma
+clase que las 7 de la Fase 4b.
+
+**Arreglado con el mismo patrón**, a pedido del usuario apenas cerró el smoke de #8: validación
+y armado del `IngresoLavadero` en el EDT, `registrarIngreso` en `.leer`, `ValidationException`
+por `.siFalla` (sigue usando `mostrarAdvertencia` y el fallback "Error de validación." de
+antes), cualquier otra excepción → error genérico, éxito/limpieza/navegación/refresco en
+`.pintar`, botón Guardar apagado en `.antes/.despues`. El `try/catch` síncrono desapareció.
+Se documentó en el javadoc de la clase que el autocompletado de clientes queda como excepción
+aceptada.
+
+### Nota de método: el smoke de Lavadero no se puede correr en `strict`
+
+Con `-Daptium.edt.strict=true` los autocompletados documentados **lanzan** en vez de avisar,
+así que los campos de cliente de Ingreso de Lavadero y del CDE quedan inutilizables y no se
+puede ni cargar el ingreso que después habría que clasificar. Es el punto 11 de la Fase 5
+llevado a la práctica: el smoke de esta feature se corre **sin** `strict` y se verifica
+leyendo los WARNs de `EdtGuard` en el log, igual que hizo 4b.

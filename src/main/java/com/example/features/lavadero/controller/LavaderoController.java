@@ -9,6 +9,7 @@ import com.example.features.lavadero.service.LavaderoService;
 import com.example.features.lavadero.view.PanelBolsas;
 import com.example.features.lavadero.view.PantallaIngresoLavadero;
 import com.example.ui.common.AutocompleteListener;
+import com.example.ui.common.TareaUI;
 import com.example.ui.events.OnEquipoGuardadoListener;
 
 import java.awt.CardLayout;
@@ -16,6 +17,18 @@ import java.math.BigDecimal;
 import java.util.List;
 import javax.swing.JPanel;
 
+/**
+ * Cablea el alta de un ingreso de lavadero.
+ *
+ * <p>El guardado va por {@link TareaUI}: validación y armado del {@code IngresoLavadero} en el
+ * hilo de la interfaz, la escritura en fondo, y el éxito —mensaje, limpieza, navegación y
+ * refresco— en {@code pintar}.
+ *
+ * <p><b>Excepción conocida:</b> el autocompletado de clientes sí consulta la base desde el hilo
+ * de la interfaz ({@link #cablearAutocompleteCliente()}). Es la misma excepción aceptada que los
+ * otros cuatro autocompletados por tecla de la app: se dispara en cada pulsación y moverlo a
+ * fondo pide cancelación y orden de resultados, que es un cambio aparte.
+ */
 public class LavaderoController {
 
     private final PantallaIngresoLavadero  panel;
@@ -71,24 +84,35 @@ public class LavaderoController {
             ingreso.agregarBolsa(new BolsaLavadero(peso));
         }
 
-        boolean exito;
-        try {
-            exito = lavaderoService.registrarIngreso(ingreso);
-        } catch (ValidationException ex) {
-            String msg = ex.getValidationErrors().isEmpty()
-                ? "Error de validación."
-                : String.join("\n", ex.getValidationErrors());
-            panel.mostrarAdvertencia(msg);
+        // El ingreso ya está armado y nadie más lo toca: se puede entregar al hilo de fondo.
+        TareaUI.<Boolean>nueva()
+            .nombre("guardar-ingreso-lavadero")
+            .antes(() -> panel.getBtnGuardar().setEnabled(false))
+            .despues(() -> panel.getBtnGuardar().setEnabled(true))
+            .leer(() -> lavaderoService.registrarIngreso(ingreso))
+            .pintar(this::finalizarGuardado)
+            .siFalla(this::mostrarFallo)
+            .lanzar();
+    }
+
+    private void finalizarGuardado(boolean guardado) {
+        if (!guardado) {
+            panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_DATOS);
             return;
         }
+        panel.mostrarInfo(Constantes.Mensajes.DATOS_GUARDADOS);
+        panel.limpiarFormulario();
+        navegador.show(contenedor, Constantes.Pantallas.LAVADERO);
+        onGuardado.onEquipoGuardado();
+    }
 
-        if (exito) {
-            panel.mostrarInfo(Constantes.Mensajes.DATOS_GUARDADOS);
-            panel.limpiarFormulario();
-            navegador.show(contenedor, Constantes.Pantallas.LAVADERO);
-            onGuardado.onEquipoGuardado();
-        } else {
-            panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_DATOS);
+    private void mostrarFallo(Throwable causa) {
+        if (causa instanceof ValidationException validacion) {
+            panel.mostrarAdvertencia(validacion.getValidationErrors().isEmpty()
+                ? "Error de validación."
+                : String.join("\n", validacion.getValidationErrors()));
+            return;
         }
+        panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_DATOS);
     }
 }

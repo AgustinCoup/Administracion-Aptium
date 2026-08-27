@@ -303,6 +303,15 @@ public class LavarropasCard extends JPanel {
     public void setOnAccion(Runnable r)               { this.onAccion = r; }
     public void setOnConfiguracionChanged(Runnable r) { this.onConfiguracionChanged = r; }
 
+    /**
+     * Apaga el botón de acción mientras hay una escritura en vuelo, para que un segundo
+     * click no vuelva a lanzar (o finalizar) lo mismo. No hace falta volver a encenderlo a
+     * mano: el refresco posterior repinta la card y {@link #actualizarBtnAccion()} recalcula.
+     */
+    public void deshabilitarAccion() {
+        btnAccion.setEnabled(false);
+    }
+
     public void actualizarBtnAccion() {
         if (activo) {
             btnAccion.setEnabled(true);

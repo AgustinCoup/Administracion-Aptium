@@ -1,13 +1,16 @@
 package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
+import com.example.common.exception.ValidationException;
+import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos;
+import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos.VistaCard;
+import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos.VistaCiclos;
+import com.example.features.lavadero.controller.helpers.DatosCiclos;
 import com.example.features.lavadero.controller.helpers.StagingCiclos;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
-import com.example.features.lavadero.model.JabonCatalogo;
-import com.example.features.lavadero.model.Lavarropas;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
@@ -17,6 +20,7 @@ import com.example.features.lavadero.view.EquipoSubdivisionDialog;
 import com.example.features.lavadero.view.LavarropasCard;
 import com.example.features.lavadero.view.PantallaCiclos;
 import com.example.features.lavadero.view.helpers.LavarropasItem;
+import com.example.ui.common.TareaUI;
 import com.example.ui.common.dnd.LocalObjectFlavors;
 import com.example.ui.common.dnd.MultiRowTableTransferHandler;
 import org.slf4j.Logger;
@@ -30,9 +34,25 @@ import java.awt.event.ComponentEvent;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+/**
+ * Cablea la pantalla de Ciclos: qué se reparte en cada lavarropas y cuándo se lanza o
+ * finaliza un ciclo.
+ *
+ * <p><b>Todo acceso a la base va por {@link TareaUI}</b>, lecturas y escrituras por igual:
+ * el hilo de la interfaz no toca JDBC (ver {@code EdtGuard}).
+ *
+ * <p><b>Regla dura:</b> el estado en memoria de este controller —{@link #staging},
+ * {@link #ciclosActivos}, {@link #elementosDisponibles}, {@link #lavarropasItems},
+ * {@link #nextInstanciaId}, {@link #lavarropasArrastre}— se lee y se escribe <b>sólo</b> en
+ * el hilo de la interfaz. El arrastre y los diálogos de subdivisión lo tocan, así que nada
+ * de eso puede moverse al hilo de fondo: a fondo van únicamente los llamados al service, y
+ * lo que devuelven se aplica en {@code pintar}.
+ */
 public class CiclosController {
 
     private static final Logger log = LoggerFactory.getLogger(CiclosController.class);
@@ -60,7 +80,38 @@ public class CiclosController {
     /** El catálogo de jabones no cambia en runtime: se lee una sola vez, al abrir la pantalla. */
     private boolean jabonesCargados = false;
 
+    /**
+     * Carga en vuelo, para descartar su resultado si se dispara otra. Dos refrescos rápidos
+     * —dos arrastres seguidos— no deben pintar fuera de orden.
+     */
+    private TareaUI.Ejecucion cargaEnCurso = null;
+
     public static final DataFlavor ELEMENTO_CICLO_FLAVOR = LocalObjectFlavors.forList();
+
+    /**
+     * Una línea del staging lista para lanzarse, todavía con el id de instancia <b>de
+     * staging</b>: el de la base recién se conoce en {@link #escribirLanzamientos}.
+     *
+     * @param instanciaStagingId {@code null} si no es una fracción de equipo
+     * @param totalPartes        en cuántos lavarropas se repartió el equipo (1 si no se repartió)
+     */
+    private record LineaLanzamiento(int elementoClasificacionId, String elementoNombre,
+                                    int cantidad, Integer instanciaStagingId, int totalPartes) { }
+
+    /** Lo que un lavarropas lleva a su ciclo, leído de las cards y del staging en el EDT. */
+    private record LanzamientoPendiente(int lavarropasNumero, ConfiguracionCiclo config,
+                                        List<LineaLanzamiento> lineas) { }
+
+    /**
+     * Qué lavarropas quedaron efectivamente escritos y cuántos fallaron. Una tanda no corta
+     * ante el primer fallo: lo que ya se escribió está en la base y hay que reflejarlo.
+     */
+    private record ResultadoEscritura(List<Integer> exitosos, int fallidos) {
+
+        boolean huboFallos() {
+            return fallidos > 0;
+        }
+    }
 
     public CiclosController(PantallaCiclos pantalla, CicloLavaderoService cicloLavaderoService,
                              LavarropasService lavarropasService,
@@ -126,69 +177,84 @@ public class CiclosController {
     /**
      * Punto de entrada al abrir la pantalla: resetea la configuración de las cards
      * libres (una card con ciclo activo no se toca, muestra lo que hay adentro del
-     * lavarropas) y recién después carga los datos. {@link #cargarDatos()} solo no
+     * lavarropas) y recién después carga los datos. {@link #recargar()} solo no
      * alcanza porque también se llama tras lanzar/finalizar/devolver, y resetear ahí
      * borraría lo que el operador está tipeando en otra card.
      */
     public void abrirPantalla() {
-        cargarJabonesUnaVez();
         for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
             if (!ciclosActivos.containsKey(entry.getKey())) {
                 entry.getValue().resetConfiguracion();
             }
         }
-        cargarDatos();
+        recargar();
     }
 
-    /** Puebla el combo de jabones de cada card. Se llama al abrir la pantalla, una sola vez. */
-    private void cargarJabonesUnaVez() {
-        if (jabonesCargados) return;
-        List<JabonCatalogo> jabones = catalogoJabonesService.obtenerTodos();
-        cards.values().forEach(card -> card.setJabones(jabones));
-        jabonesCargados = true;
+    // ── Carga ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Único camino de lectura de la pantalla: ciclos activos, disponibles, lavarropas, los
+     * elementos de cada ciclo en curso y —la primera vez— el catálogo de jabones salen de
+     * una sola tarea de fondo. El armado de la vista queda entero en el hilo de la interfaz
+     * porque necesita el staging (ver {@link ConstructorVistaCiclos}).
+     */
+    private void recargar() {
+        if (cargaEnCurso != null) cargaEnCurso.cancelar();
+        // La decisión de traer los jabones se toma acá, en el EDT: si esta carga se cancela,
+        // jabonesCargados sigue en false y la siguiente los vuelve a pedir.
+        boolean conJabones = !jabonesCargados;
+        cargaEnCurso = TareaUI.<DatosCiclos>nueva()
+            .nombre("carga-ciclos-lavadero")
+            .leer(() -> leerDatos(conJabones))
+            .pintar(this::pintar)
+            .siFalla(e -> pantalla.mostrarError(Constantes.Mensajes.ERROR_CARGAR_DATOS))
+            .lanzar();
     }
 
-    public void cargarDatos() {
-        ciclosActivos = cicloLavaderoService.obtenerCiclosActivosPorLavarropas();
+    /** Fuera del hilo de la interfaz. No toca ningún campo del controller. */
+    private DatosCiclos leerDatos(boolean conJabones) {
+        Map<Integer, CicloLavadero> activos = cicloLavaderoService.obtenerCiclosActivosPorLavarropas();
 
-        List<ElementoCicloItem> dbDisponibles = cicloLavaderoService.obtenerElementosDisponiblesParaCiclo();
-        elementosDisponibles = staging.aplicarSobreDisponibles(dbDisponibles);
-
-        List<Lavarropas> lavarropasLista = lavarropasService.obtenerTodos();
-        lavarropasItems = new ArrayList<>();
-        for (Lavarropas lv : lavarropasLista) {
-            CicloLavadero activo = ciclosActivos.get(lv.getNumero());
-            boolean ocupado = activo != null;
-            Integer cicloId = ocupado ? activo.getId() : null;
-            lavarropasItems.add(new LavarropasItem(lv.getNumero(), lv.getCapacidadLitros(), ocupado, cicloId));
+        Map<Integer, List<ElementoCicloItem>> itemsActivos = new HashMap<>();
+        for (Map.Entry<Integer, CicloLavadero> entry : activos.entrySet()) {
+            itemsActivos.put(entry.getKey(),
+                cicloLavaderoService.obtenerElementosDeCiclo(entry.getValue().getId()));
         }
+
+        return new DatosCiclos(
+            activos,
+            cicloLavaderoService.obtenerElementosDisponiblesParaCiclo(),
+            lavarropasService.obtenerTodos(),
+            itemsActivos,
+            conJabones ? catalogoJabonesService.obtenerTodos() : List.of()
+        );
+    }
+
+    private void pintar(DatosCiclos datos) {
+        if (!datos.jabones().isEmpty()) {
+            cards.values().forEach(card -> card.setJabones(datos.jabones()));
+            jabonesCargados = true;
+        }
+
+        ciclosActivos = datos.ciclosActivos();
+        VistaCiclos vista = ConstructorVistaCiclos.construir(datos, cards.keySet(), staging);
+        elementosDisponibles = vista.disponibles();
+        lavarropasItems      = vista.lavarropas();
 
         pantalla.setElementosDisponibles(elementosDisponibles);
-        actualizarTodasLasCards();
-    }
-
-    private void actualizarTodasLasCards() {
-        Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
-        for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
-            int num = entry.getKey();
-            LavarropasCard card = entry.getValue();
-            if (ciclosActivos.containsKey(num)) {
-                List<ElementoCicloItem> items =
-                    cicloLavaderoService.obtenerElementosDeCiclo(ciclosActivos.get(num).getId());
-                card.setModoActivo(ciclosActivos.get(num).getId());
-                card.setItems(items, Collections.emptyMap());
-            } else {
-                List<ElementoCicloItem> pending = staging.pendientesDe(num);
-                card.setModoStaging();
-                card.setItems(pending, fracciones);
-            }
+        for (VistaCard vistaCard : vista.cards()) {
+            LavarropasCard card = cards.get(vistaCard.lavarropasNumero());
+            if (vistaCard.esActivo()) card.setModoActivo(vistaCard.cicloActivoId());
+            else                      card.setModoStaging();
+            card.setItems(vistaCard.items(), vistaCard.fracciones());
             card.actualizarBtnAccion();
         }
-        boolean hayPendientes = tienePendientes();
-        pantalla.getBtnLanzarTodos().setEnabled(hayPendientes);
-        pantalla.getBtnDescartarTodos().setEnabled(hayPendientes);
-        pantalla.getBtnFinalizarTodos().setEnabled(!ciclosActivos.isEmpty());
+        pantalla.getBtnLanzarTodos().setEnabled(vista.hayPendientes());
+        pantalla.getBtnDescartarTodos().setEnabled(vista.hayPendientes());
+        pantalla.getBtnFinalizarTodos().setEnabled(vista.hayActivos());
     }
+
+    // ── DnD ───────────────────────────────────────────────────────────────────
 
     private void configurarDnD() {
         JTable tablaDisponibles = pantalla.getTablaDisponibles();
@@ -273,7 +339,7 @@ public class CiclosController {
             if (item.isEquipo()) procesarDropEquipo(item, lavarropasNum);
             else                 procesarDropRegular(item, lavarropasNum);
         }
-        refrescarDisponiblesYCards();
+        recargar();
     }
 
     private void procesarDropRegular(ElementoCicloItem item, int lavarropasNum) {
@@ -351,7 +417,7 @@ public class CiclosController {
         if (items == null || items.isEmpty()) return;
         if (!confirmarDeshacerSubdivisiones(items)) return;
         staging.quitar(items, lavarropasOrigen);
-        refrescarDisponiblesYCards();
+        recargar();
     }
 
     /**
@@ -375,23 +441,83 @@ public class CiclosController {
         return pantalla.confirmar(mensaje, Constantes.Mensajes.TITULO_DESHACER_SUBDIVISION);
     }
 
-    private void refrescarDisponiblesYCards() {
-        List<ElementoCicloItem> dbDisponibles = cicloLavaderoService.obtenerElementosDisponiblesParaCiclo();
-        elementosDisponibles = staging.aplicarSobreDisponibles(dbDisponibles);
-        pantalla.setElementosDisponibles(elementosDisponibles);
-        actualizarTodasLasCards();
-    }
-
-    // ── Lanzar / Finalizar ────────────────────────────────────────────────────
+    // ── Lanzar ────────────────────────────────────────────────────────────────
 
     private void lanzarCiclo(int num) {
         String bloqueo = motivoBloqueoPorInstanciaRepartida(num);
         if (bloqueo != null) { pantalla.mostrarError(bloqueo); return; }
         if (!pantalla.confirmar(Constantes.Mensajes.CONFIRMAR_LANZAR_CICLO,
                 Constantes.Mensajes.TITULO_LANZAR_LOTE)) return;
-        Map<Integer, Integer> instancias = resolverInstancias(List.of(num));
-        ejecutarLanzamiento(num, instancias);
-        cargarDatos();
+        lanzar(List.of(num));
+    }
+
+    private void lanzarTodos() {
+        List<Integer> conPendientes = staging.lavarropasConPendientes();
+        if (conPendientes.isEmpty()) return;
+        String faltaConfig = validarConfigDeGruposRepartidos(conPendientes);
+        if (faltaConfig != null) { pantalla.mostrarError(faltaConfig); return; }
+        if (!pantalla.confirmar(
+                "¿Lanzar " + conPendientes.size() + " ciclo(s) de lavado?",
+                Constantes.Mensajes.TITULO_LANZAR_LOTE)) return;
+        lanzar(conPendientes);
+    }
+
+    /**
+     * Arma en el hilo de la interfaz lo que cada lavarropas lleva al ciclo —la config de su
+     * card y sus líneas de staging— y manda la tanda entera a <b>una sola</b> tarea de fondo.
+     * Los lavarropas a los que les falta config se saltean con su aviso, igual que antes.
+     */
+    private void lanzar(List<Integer> lavarropas) {
+        List<String> faltantes = new ArrayList<>();
+        List<LanzamientoPendiente> pendientes = new ArrayList<>();
+        for (int num : lavarropas) {
+            prepararLanzamiento(num, faltantes).ifPresent(pendientes::add);
+        }
+        if (!faltantes.isEmpty()) pantalla.mostrarError(String.join("\n", faltantes));
+        if (pendientes.isEmpty()) return;
+
+        ejecutar("lanzar-ciclos",
+            () -> escribirLanzamientos(pendientes),
+            resultado -> {
+                resultado.exitosos().forEach(staging::limpiarLavarropas);
+                if (resultado.huboFallos()) {
+                    pantalla.mostrarError(Constantes.Mensajes.ERROR_LANZAR_CICLO);
+                }
+            });
+    }
+
+    /**
+     * {@code Optional.empty()} si el lavarropas no tiene nada que lanzar o le falta config;
+     * en el segundo caso además deja el motivo en {@code faltantes}.
+     */
+    private Optional<LanzamientoPendiente> prepararLanzamiento(int num, List<String> faltantes) {
+        List<ElementoCicloItem> pendientes = staging.pendientesDe(num);
+        if (pendientes.isEmpty()) return Optional.empty();
+
+        LavarropasCard card = cards.get(num);
+        TipoLavado tipoLavado = card.getTipoLavado();
+        if (tipoLavado == null) {
+            faltantes.add("Lavarropas #" + num + ": seleccione el tipo de lavado.");
+            return Optional.empty();
+        }
+        BigDecimal litrosJabon = card.getLitrosJabon();
+        if (litrosJabon == null) {
+            faltantes.add("Lavarropas #" + num + ": ingrese los mililitros de jabón.");
+            return Optional.empty();
+        }
+
+        ConfiguracionCiclo config = new ConfiguracionCiclo(tipoLavado, card.getJabon(), litrosJabon,
+            card.isSuavizante(), card.isPotenciador(), card.getLitrosTotales());
+
+        Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
+        List<LineaLanzamiento> lineas = new ArrayList<>();
+        for (ElementoCicloItem item : pendientes) {
+            Integer instancia = esFraccionDeEquipo(item) ? item.getInstanciaId() : null;
+            lineas.add(new LineaLanzamiento(
+                item.getElementoClasificacionId(), item.getElementoNombre(), item.getCantidadEnCiclo(),
+                instancia, instancia == null ? 1 : fracciones.getOrDefault(instancia, 1)));
+        }
+        return Optional.of(new LanzamientoPendiente(num, config, lineas));
     }
 
     /**
@@ -403,7 +529,7 @@ public class CiclosController {
     private String motivoBloqueoPorInstanciaRepartida(int num) {
         Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
         for (ElementoCicloItem item : staging.pendientesDe(num)) {
-            if (item.isEquipo() && item.getInstanciaId() != null
+            if (esFraccionDeEquipo(item)
                     && fracciones.getOrDefault(item.getInstanciaId(), 1) > 1) {
                 return String.format(Constantes.Mensajes.BLOQUEO_LANZAR_INSTANCIA_REPARTIDA,
                     num, item.getElementoNombre());
@@ -423,7 +549,7 @@ public class CiclosController {
         for (int num : conPendientes) {
             LavarropasCard card = cards.get(num);
             for (ElementoCicloItem item : staging.pendientesDe(num)) {
-                if (!item.isEquipo() || item.getInstanciaId() == null) continue;
+                if (!esFraccionDeEquipo(item)) continue;
                 if (fracciones.getOrDefault(item.getInstanciaId(), 1) <= 1) continue;
                 if (card.getTipoLavado() == null || card.getLitrosJabon() == null) {
                     return String.format(Constantes.Mensajes.FALTA_CONFIG_GRUPO_REPARTIDO,
@@ -435,92 +561,70 @@ public class CiclosController {
     }
 
     /**
-     * Crea en la BD la instancia de cada equipo pendiente en estos lavarropas (una por
-     * {@code instanciaId} de staging, con el {@code total_partes} real) y devuelve el mapeo
-     * staging → BD que {@link #ejecutarLanzamiento} necesita para construir los movimientos.
-     * Equipos sin repartir (una sola fracción) también pasan por acá: su instancia se crea igual,
-     * con {@code total_partes = 1} (ver §4 del blueprint).
+     * Fuera del hilo de la interfaz. Crea primero <b>todas</b> las instancias de equipo de la
+     * tanda —una por id de staging, con su total de partes real— y recién después lanza cada
+     * lavarropas, para que un grupo repartido no quede lanzado a medias por un fallo posterior.
      */
-    private Map<Integer, Integer> resolverInstancias(List<Integer> lavarropasEnEsteLanzamiento) {
-        Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
-        Map<Integer, Integer> resultado = new HashMap<>();
-        for (int num : lavarropasEnEsteLanzamiento) {
-            for (ElementoCicloItem item : staging.pendientesDe(num)) {
-                if (!item.isEquipo() || item.getInstanciaId() == null) continue;
-                int stagingId = item.getInstanciaId();
-                if (resultado.containsKey(stagingId)) continue;
-                int totalPartes = fracciones.getOrDefault(stagingId, 1);
-                int dbId = cicloLavaderoService.crearInstanciaEquipo(item.getElementoClasificacionId(), totalPartes);
-                resultado.put(stagingId, dbId);
+    private ResultadoEscritura escribirLanzamientos(List<LanzamientoPendiente> pendientes) {
+        Map<Integer, Integer> instancias = crearInstancias(pendientes);
+
+        List<Integer> exitosos = new ArrayList<>();
+        int fallidos = 0;
+        for (LanzamientoPendiente pendiente : pendientes) {
+            try {
+                cicloLavaderoService.lanzarCiclo(pendiente.lavarropasNumero(), pendiente.config(),
+                    movimientosDe(pendiente, instancias));
+                exitosos.add(pendiente.lavarropasNumero());
+            } catch (Exception e) {
+                log.error("Error al lanzar ciclo en lavarropas {}", pendiente.lavarropasNumero(), e);
+                fallidos++;
             }
         }
-        return resultado;
+        return new ResultadoEscritura(exitosos, fallidos);
     }
 
-    private void ejecutarLanzamiento(int num, Map<Integer, Integer> instancias) {
-        LavarropasCard card = cards.get(num);
-        List<ElementoCicloItem> pendientes = staging.pendientesDe(num);
-        if (pendientes.isEmpty()) return;
-
-        TipoLavado tipoLavado = card.getTipoLavado();
-        if (tipoLavado == null) {
-            pantalla.mostrarError("Lavarropas #" + num + ": seleccione el tipo de lavado.");
-            return;
+    /** {@code instanciaId de staging → id en la base}. Equipos sin repartir también pasan por acá. */
+    private Map<Integer, Integer> crearInstancias(List<LanzamientoPendiente> pendientes) {
+        Map<Integer, Integer> instancias = new HashMap<>();
+        for (LanzamientoPendiente pendiente : pendientes) {
+            for (LineaLanzamiento linea : pendiente.lineas()) {
+                Integer stagingId = linea.instanciaStagingId();
+                if (stagingId == null || instancias.containsKey(stagingId)) continue;
+                instancias.put(stagingId, cicloLavaderoService.crearInstanciaEquipo(
+                    linea.elementoClasificacionId(), linea.totalPartes()));
+            }
         }
-        BigDecimal litrosJabon = card.getLitrosJabon();
-        if (litrosJabon == null) {
-            pantalla.mostrarError("Lavarropas #" + num + ": ingrese los mililitros de jabón.");
-            return;
-        }
-        ConfiguracionCiclo config = new ConfiguracionCiclo(tipoLavado, card.getJabon(), litrosJabon,
-            card.isSuavizante(), card.isPotenciador(), card.getLitrosTotales());
+        return instancias;
+    }
 
+    private static List<ElementoCicloMovimiento> movimientosDe(LanzamientoPendiente pendiente,
+                                                               Map<Integer, Integer> instancias) {
         List<ElementoCicloMovimiento> movimientos = new ArrayList<>();
-        for (ElementoCicloItem item : pendientes) {
-            if (item.isEquipo() && item.getInstanciaId() != null) {
-                Integer instanciaDbId = instancias.get(item.getInstanciaId());
-                if (instanciaDbId == null) {
-                    throw new IllegalStateException("No se resolvió la instancia de equipo para "
-                        + item.getElementoNombre() + " (staging id " + item.getInstanciaId()
-                        + ") en lavarropas #" + num);
-                }
+        for (LineaLanzamiento linea : pendiente.lineas()) {
+            if (linea.instanciaStagingId() == null) {
                 movimientos.add(new ElementoCicloMovimiento(
-                    item.getElementoClasificacionId(), item.getCantidadEnCiclo(), instanciaDbId));
-            } else {
-                movimientos.add(new ElementoCicloMovimiento(
-                    item.getElementoClasificacionId(), item.getCantidadEnCiclo()));
+                    linea.elementoClasificacionId(), linea.cantidad()));
+                continue;
             }
+            Integer instanciaDbId = instancias.get(linea.instanciaStagingId());
+            if (instanciaDbId == null) {
+                throw new IllegalStateException("No se resolvió la instancia de equipo para "
+                    + linea.elementoNombre() + " (staging id " + linea.instanciaStagingId()
+                    + ") en lavarropas #" + pendiente.lavarropasNumero());
+            }
+            movimientos.add(new ElementoCicloMovimiento(
+                linea.elementoClasificacionId(), linea.cantidad(), instanciaDbId));
         }
-        try {
-            cicloLavaderoService.lanzarCiclo(num, config, movimientos);
-            staging.limpiarLavarropas(num);
-        } catch (Exception e) {
-            log.error("Error al lanzar ciclo en lavarropas {}", num, e);
-            pantalla.mostrarError(Constantes.Mensajes.ERROR_LANZAR_CICLO);
-        }
+        return movimientos;
     }
 
-    private void lanzarTodos() {
-        List<Integer> conPendientes = staging.lavarropasConPendientes();
-        if (conPendientes.isEmpty()) return;
-        String faltaConfig = validarConfigDeGruposRepartidos(conPendientes);
-        if (faltaConfig != null) { pantalla.mostrarError(faltaConfig); return; }
-        if (!pantalla.confirmar(
-                "¿Lanzar " + conPendientes.size() + " ciclo(s) de lavado?",
-                Constantes.Mensajes.TITULO_LANZAR_LOTE)) return;
-        Map<Integer, Integer> instancias = resolverInstancias(conPendientes);
-        for (int num : conPendientes) {
-            ejecutarLanzamiento(num, instancias);
-        }
-        cargarDatos();
-    }
+    // ── Finalizar ─────────────────────────────────────────────────────────────
 
     private void finalizarCiclo(int num) {
         if (ciclosActivos.get(num) == null) return;
         if (!pantalla.confirmar(Constantes.Mensajes.CONFIRMAR_FINALIZAR_CICLO,
                 Constantes.Mensajes.TITULO_FINALIZAR_LOTE)) return;
-        ejecutarFinalizacion(num);
-        cargarDatos();
+        finalizar(List.of(num));
     }
 
     private void finalizarTodos() {
@@ -530,22 +634,84 @@ public class CiclosController {
         if (!pantalla.confirmar(
                 "¿Finalizar " + conActivos.size() + " ciclo(s) activo(s)?",
                 Constantes.Mensajes.TITULO_FINALIZAR_LOTE)) return;
-        for (int num : conActivos) {
-            ejecutarFinalizacion(num);
-        }
-        cargarDatos();
+        finalizar(conActivos);
     }
 
-    private void ejecutarFinalizacion(int num) {
-        CicloLavadero ciclo = ciclosActivos.get(num);
-        if (ciclo == null) return;
-        try {
-            cicloLavaderoService.finalizarCiclo(ciclo.getId());
-            cards.get(num).resetConfiguracion();
-        } catch (Exception e) {
-            log.error("Error al finalizar ciclo {}", ciclo.getId(), e);
-            pantalla.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_CICLO);
+    /** Los ids de ciclo se leen del EDT; la tanda entera se escribe en una sola tarea de fondo. */
+    private void finalizar(List<Integer> lavarropas) {
+        Map<Integer, Integer> ciclosPorLavarropas = new LinkedHashMap<>();
+        for (int num : lavarropas) {
+            CicloLavadero ciclo = ciclosActivos.get(num);
+            if (ciclo != null) ciclosPorLavarropas.put(num, ciclo.getId());
         }
+        if (ciclosPorLavarropas.isEmpty()) return;
+
+        ejecutar("finalizar-ciclos",
+            () -> escribirFinalizaciones(ciclosPorLavarropas),
+            resultado -> {
+                resultado.exitosos().forEach(num -> cards.get(num).resetConfiguracion());
+                if (resultado.huboFallos()) {
+                    pantalla.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_CICLO);
+                }
+            });
+    }
+
+    /** Fuera del hilo de la interfaz. */
+    private ResultadoEscritura escribirFinalizaciones(Map<Integer, Integer> ciclosPorLavarropas) {
+        List<Integer> exitosos = new ArrayList<>();
+        int fallidos = 0;
+        for (Map.Entry<Integer, Integer> entry : ciclosPorLavarropas.entrySet()) {
+            try {
+                cicloLavaderoService.finalizarCiclo(entry.getValue());
+                exitosos.add(entry.getKey());
+            } catch (Exception e) {
+                log.error("Error al finalizar ciclo {}", entry.getValue(), e);
+                fallidos++;
+            }
+        }
+        return new ResultadoEscritura(exitosos, fallidos);
+    }
+
+    // ── Mecánica común de las escrituras ──────────────────────────────────────
+
+    /**
+     * Toda escritura de esta pantalla tiene la misma forma: se escribe fuera del hilo de la
+     * interfaz y lo que devolvió se aplica al estado en memoria en el EDT.
+     *
+     * <p>Los botones de acción se apagan mientras la escritura está en vuelo —si no, un
+     * segundo click lanzaría de nuevo el mismo staging— y el refresco va en {@code despues}
+     * para que también corra si falló: es el que los vuelve a encender.
+     */
+    private void ejecutar(String nombre, Callable<ResultadoEscritura> escritura,
+                          Consumer<ResultadoEscritura> alTerminar) {
+        TareaUI.<ResultadoEscritura>nueva()
+            .nombre(nombre)
+            .antes(this::deshabilitarAcciones)
+            .leer(escritura)
+            .pintar(alTerminar)
+            .siFalla(this::mostrarFallo)
+            .despues(this::recargar)
+            .lanzar();
+    }
+
+    private void deshabilitarAcciones() {
+        pantalla.getBtnLanzarTodos().setEnabled(false);
+        pantalla.getBtnFinalizarTodos().setEnabled(false);
+        pantalla.getBtnDescartarTodos().setEnabled(false);
+        cards.values().forEach(LavarropasCard::deshabilitarAccion);
+    }
+
+    private void mostrarFallo(Throwable causa) {
+        if (causa instanceof ValidationException validacion) {
+            pantalla.mostrarError(String.join("\n", validacion.getValidationErrors()));
+            return;
+        }
+        pantalla.mostrarError(causa.getMessage());
+    }
+
+    /** Un equipo sin {@code instanciaId} no se repartió por subdivisión: cuenta como regular. */
+    private static boolean esFraccionDeEquipo(ElementoCicloItem item) {
+        return item.isEquipo() && item.getInstanciaId() != null;
     }
 
     // ── Pendientes ────────────────────────────────────────────────────────────
@@ -556,6 +722,6 @@ public class CiclosController {
 
     public void descartarPendientes() {
         staging.limpiar();
-        cargarDatos();
+        recargar();
     }
 }

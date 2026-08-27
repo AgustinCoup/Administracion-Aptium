@@ -2,7 +2,8 @@
 
 Diagnóstico de la revisión profunda del 2026-07-22.
 
-**Estado al 2026-08-27:** #1 a #5 y #7 **ejecutados**. Queda solo **#6** (concurrencia/EDT).
+**Estado al 2026-08-27:** #1 a #5 y #7 **ejecutados**. Quedan **#6** (falta Fase 5) y **#8**
+(Lavadero fuera del modelo EDT).
 
 | # | Estado | Commit |
 |---|---|---|
@@ -11,8 +12,9 @@ Diagnóstico de la revisión profunda del 2026-07-22.
 | #5 `common` ↔ Swing | hecho | `fc15bd1` |
 | #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
 | #3 `AppModel` | hecho (2026-07-23) — **disuelto** | sin commitear |
-| #6 concurrencia / EDT | **casi** — Fases 1-6 hechas; falta la **Fase 4b** (escrituras del flujo principal fuera del EDT, descubierta el 2026-08-27 en la verificación manual) y la checklist manual de la Fase 5 en `strict`. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | — |
+| #6 concurrencia / EDT | **casi** — Fases 1-6 + **4b** hechas; falta solo la checklist manual de la Fase 5 en `strict`. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | Fase 4b: `14354a2` |
 | #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
+| #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | pendiente — `CiclosController` y `ClasificacionController` hacen lecturas y escrituras síncronas sobre el EDT; en `strict` lanzan. Referencia lista: `SalidasLavaderoController`. Detalle y alcance en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md#hallazgo-derivado--lavadero-ciclos--clasificación-todavía-fuera-del-modelo-edt) | — |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -199,6 +201,23 @@ históricos**. Sin cancelación: dos refrescos rápidos pueden aplicar resultado
 **Fix (dirección):** estandarizar en `SwingWorker` (o un helper propio), sacar todo acceso a BD
 del EDT, y agregar cancelación/debounce al refresco global. Es el hallazgo de más trabajo y el
 que conviene planificar con cuidado (toca varios controllers y el flujo de refresco).
+
+**Estado:** se ejecuta en `plans/refactor-concurrencia-edt.md`. Fases 1-6 y 4b cerradas; el
+hallazgo derivado de Lavadero (Ciclos + Clasificación) también, el 2026-08-27.
+
+**Lo que queda del EDT, medido el 2026-08-27:** sólo los **cinco autocompletados por tecla**,
+que son excepción aceptada — `AutocompleteListener` de clientes/profesionales/instituciones, el
+`CatalogoLookup` de `OrthopediaInputController`, el de `catalogo_otros`, y el de clientes de
+`LavaderoController`. Se disparan en cada pulsación y moverlos a fondo pide cancelación y orden
+de resultados, que es un cambio aparte.
+
+En `strict` esos cinco **lanzan**, lo que vuelve inutilizables los campos de cliente de Lavadero
+y del CDE: por eso los smokes de esas pantallas se corren **sin** `strict`, verificando los WARNs
+del log.
+
+`LavaderoController.guardar()` también escribía en el EDT (se le escapó al inventario del
+hallazgo de Lavadero, que sólo miró Ciclos y Clasificación). Arreglado el 2026-08-27 con el
+patrón de la Fase 4b.
 
 ---
 
