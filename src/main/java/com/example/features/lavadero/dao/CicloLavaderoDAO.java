@@ -254,24 +254,43 @@ public class CicloLavaderoDAO {
         return ids;
     }
 
+    /**
+     * Cuánto clasificó un ingreso y cuánto de eso ya entró a algún ciclo.
+     *
+     * <p>Los dos términos se agregan en subconsultas independientes y no con un {@code JOIN}
+     * entre las dos tablas: un {@code LEFT JOIN} repite la línea de clasificación una vez por
+     * fila de ciclo, así que {@code SUM(ecl.cantidad)} contaba el total tantas veces como
+     * ciclos hubiera y una línea lavada en dos tandas nunca alcanzaba su propio total. Mismo
+     * patrón que {@code SalidaLavaderoDAO.SQL_TOTAL_Y_DERIVADO_DEL_INGRESO}.</p>
+     *
+     * <p>Lo procesado usa la fórmula de la decisión C del blueprint de fracciones de equipo (la
+     * misma de {@link #SQL_DISPONIBLES}): las N fracciones de un equipo repartido consumen 1
+     * unidad de su línea, no N. Sin ella, sacar el fan-out haría pasar a LAVADO un ingreso que
+     * todavía tiene equipos sin lavar.</p>
+     */
+    private static final String SQL_TOTAL_Y_PROCESADO_DEL_INGRESO =
+        "SELECT (SELECT COALESCE(SUM(ecl.cantidad), 0) " +
+        "          FROM elementos_clasificacion_lavadero ecl " +
+        "         WHERE ecl.ingreso_id = ?)                                        AS total, " +
+        "       (SELECT COALESCE(SUM(CASE WHEN eci.instancia_equipo_id IS NULL " +
+        "                                 THEN eci.cantidad ELSE 0 END), 0) " +
+        "             + COUNT(DISTINCT eci.instancia_equipo_id) " +
+        "          FROM elementos_ciclo_lavadero eci " +
+        "          JOIN elementos_clasificacion_lavadero ecl2 ON ecl2.id = eci.elemento_clasificacion_id " +
+        "         WHERE ecl2.ingreso_id = ?)                                       AS procesado";
+
+    private static final String SQL_MARCAR_LAVADO =
+        "UPDATE ingresos_lavadero SET estado = '" + EstadoIngresoLavadero.LAVADO + "' WHERE id = ?";
+
     private void actualizarEstadoIngresosAfectados(Connection conn, Set<Integer> ingresoIds) throws SQLException {
         if (ingresoIds.isEmpty()) return;
-        String sqlVerificar =
-            "SELECT ecl.ingreso_id, " +
-            "       SUM(ecl.cantidad) AS total, " +
-            "       COALESCE(SUM(eci.cantidad), 0) AS procesado " +
-            "FROM elementos_clasificacion_lavadero ecl " +
-            "LEFT JOIN elementos_ciclo_lavadero eci ON eci.elemento_clasificacion_id = ecl.id " +
-            "WHERE ecl.ingreso_id = ? " +
-            "GROUP BY ecl.ingreso_id " +
-            "HAVING procesado >= total";
-        String sqlMarcar = "UPDATE ingresos_lavadero SET estado = '" + EstadoIngresoLavadero.LAVADO + "' WHERE id = ?";
-        try (PreparedStatement psVerificar = conn.prepareStatement(sqlVerificar);
-             PreparedStatement psMarcar   = conn.prepareStatement(sqlMarcar)) {
+        try (PreparedStatement psVerificar = conn.prepareStatement(SQL_TOTAL_Y_PROCESADO_DEL_INGRESO);
+             PreparedStatement psMarcar   = conn.prepareStatement(SQL_MARCAR_LAVADO)) {
             for (int ingresoId : ingresoIds) {
                 psVerificar.setInt(1, ingresoId);
+                psVerificar.setInt(2, ingresoId);
                 try (ResultSet rs = psVerificar.executeQuery()) {
-                    if (rs.next()) {
+                    if (rs.next() && rs.getInt("procesado") >= rs.getInt("total")) {
                         psMarcar.setInt(1, ingresoId);
                         psMarcar.executeUpdate();
                     }

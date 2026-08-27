@@ -297,6 +297,49 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         assertEquals(0, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId));
     }
 
+    /**
+     * Una línea lavada en varios ciclos suma igual que si se hubiera lavado en uno.
+     * El {@code LEFT JOIN} del cálculo multiplica la línea por cada fila de ciclo, así que el
+     * total tiene que salir de la clasificación agregada aparte y no del producto cartesiano.
+     */
+    @Test
+    void finalizarCiclo_marcaIngresoLavadoCuandoLaLineaSeLavoEnDosCiclos() throws SQLException {
+        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos(6));
+        dao.finalizarCiclo(lastInsertIdDeCiclos());
+        assertEquals(0, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
+            "con 6 de 10 lavadas el ingreso todavía no está lavado");
+
+        dao.lanzarCiclo(2, config(new BigDecimal("1.5")), movimientos(4));
+        dao.finalizarCiclo(lastInsertIdDeCiclos());
+
+        assertEquals(1, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
+            "6 + 4 cubren las 10 de la línea: el ingreso está lavado");
+    }
+
+    /**
+     * Invariante 9 en esta capa: el cálculo de "ya está todo lavado" cuenta un equipo repartido
+     * como 1 y no como N. Con la suma cruda de {@code eci.cantidad}, las 3 fracciones darían 3
+     * y pasarían a LAVADO un ingreso al que todavía le faltan 7 unidades de la línea.
+     */
+    @Test
+    void finalizarCiclo_lasFraccionesDeUnEquipoNoAdelantanElLavadoDelIngreso() throws SQLException {
+        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 3);
+        for (int lav = 1; lav <= 3; lav++) {
+            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
+                List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaId)));
+            dao.finalizarCiclo(lastInsertIdDeCiclos());
+        }
+
+        assertEquals(0, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
+            "3 fracciones consumen 1 de las 10 unidades de la línea, no 3");
+
+        dao.lanzarCiclo(4, config(new BigDecimal("1.5")), movimientos(9));
+        dao.finalizarCiclo(lastInsertIdDeCiclos());
+
+        assertEquals(1, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
+            "1 del equipo repartido + 9 regulares cubren las 10");
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private List<ElementoCicloMovimiento> movimientos(int cantidad) {
