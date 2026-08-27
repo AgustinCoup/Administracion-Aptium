@@ -1,5 +1,8 @@
 # Blueprint — Tooltip con info del ingreso al hacer hover sobre materiales (Gestionar Lotes)
 
+**Estado:** ✅ **EJECUTADO** — commit `238a3df`. Verificado el 2026-08-27: existe
+`features/lotes/view/helpers/IngresoTooltipFormatter` y lo consume `PanelLotesContenido`.
+
 > Plan de construcción autocontenido. Cada paso incluye su propio *context brief*
 > para que un agente pueda ejecutarlo en frío, sin haber leído los pasos previos.
 

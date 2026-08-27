@@ -1,6 +1,13 @@
 # Plan: Botón "Buscar actualizaciones" (auto-reemplazo robusto del fat JAR)
 
-**Estado:** aprobado para ejecución · **Creado:** 2026-07-23 · **Pasos:** 5 (seriales, cada uno depende del anterior)
+**Estado:** ✅ **EJECUTADO** · **Creado:** 2026-07-23 · **Pasos:** 5 (seriales, cada uno depende del anterior)
+
+> Commits: `052b688` ("App que busca actualizaciones independientemente"), `0a005e4`
+> ("Botón de actualizaciones más robusto") y `145d012`, mergeados a `main` en `7b94b9f`.
+> Verificado el 2026-08-27: existe `features/actualizaciones/` (`ActualizacionService`,
+> `ActualizacionInstaller`, `ActualizacionException`) + `common/VersionInfo`, cableado desde
+> `AppContext` y disparado desde `PantallaAjustes`/`AjustesController`.
+> Lo de abajo queda como registro de diseño, no como trabajo por hacer.
 **Rama base sugerida:** `AutoUpdates` (rama actual del repo) — un commit/PR por fase: `autoupdate/0-pipeline-version`, `autoupdate/1-chequeo`, `autoupdate/2-descarga`, `autoupdate/3-reemplazo`, `autoupdate/4-entrypoint-ui`
 **Modo:** directo (no hay `gh` CLI disponible en este entorno) — cada fase se integra por merge normal a `AutoUpdates`, sin automatizar PRs.
 

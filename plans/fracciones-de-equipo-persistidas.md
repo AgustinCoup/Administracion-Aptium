@@ -1,6 +1,10 @@
 # Blueprint — Las fracciones de `Equipo*` tienen que existir en la base
 
-**Estado:** diagnóstico cerrado, **las cuatro decisiones (A, B, C, D) cerradas el 2026-08-25**.
+**Estado:** ✅ **EJECUTADO, los 9 pasos** (`4a78c81`..`ef6b8c2`, cierre en `b65c61a`). Las cuatro
+decisiones (A, B, C, D) se cerraron el 2026-08-25. **Queda sólo el smoke manual de GUI**, que estaba
+fuera del blueprint y hoy vive como el **punto 14** de la checklist de la Fase 5 de
+[`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md#fase-5--verificación-manual) — se
+corre de una sola vez junto con el resto. Las checkboxes de abajo no se fueron marcando: el estado real es el código.
 Blueprint ejecutable, multi-sesión, modo directo (sin `gh`, commit por paso sobre `ConexionConCDE`).
 
 **Origen:** observaciones 5 y 6 del smoke manual del Paso 8 de

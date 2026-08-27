@@ -80,11 +80,17 @@ Ruta del usuario desde el menú, y qué tocar para cada una.
 
 | Pantalla | Vista | Controller | Services |
 |---|---|---|---|
-| Menú lavadero | `lavadero/view/PantallaLavadero` | — (solo navega; los botones se cablean en [UiCoordinator:186-203](../src/main/java/com/example/app/ui/UiCoordinator.java#L186-L203)) | — |
+| Menú lavadero | `lavadero/view/PantallaLavadero` | — (solo navega; los 5 botones se cablean en [UiCoordinator:187-214](../src/main/java/com/example/app/ui/UiCoordinator.java#L187-L214)) | — |
 | Ingreso | `lavadero/view/PantallaIngresoLavadero` | `LavaderoController` | Cliente, Lavadero |
 | Clasificación | `lavadero/view/PantallaClasificacionLavadero` | `ClasificacionController` | Lavadero, ClasificacionLavadero |
 | Ciclos | `lavadero/view/PantallaCiclos` | `CiclosController` | CicloLavadero, Lavarropas, CatalogoJabones |
+| Salidas | `lavadero/view/PantallaSalidasLavadero` | `SalidasLavaderoController` | SalidaLavadero |
 | Ver ciclos | `lavadero/view/PantallaVerCiclos` | `VerCiclosController` | (solo lee del refrescador) |
+
+**Salidas es la única pantalla de Lavadero cableada al grupo `operativo`** y no a
+`refrescarEquipos` ([UiCoordinator:206-209](../src/main/java/com/example/app/ui/UiCoordinator.java#L206-L209)):
+derivar al CDE crea ingresos en la cola operativa, y las tres pantallas del CDE tienen que verlos
+aparecer sin recargar.
 
 ### Otras
 
@@ -151,15 +157,15 @@ sola. Ejemplos que ya existen: `AgrupadorIngresosLote`, `DuplicadoHighlighter`,
 
 ## 6. Dónde está la masa (y dónde duele)
 
-Reparto de las ~28.000 líneas:
+Reparto de las ~31.100 líneas (remedido el 2026-08-27, después de Salidas y del refactor de EDT):
 
 | Capa | LOC | % |
 |---|---|---|
-| Vistas y UI compartida | 10.300 | 37% |
-| Controllers (+ helpers) | 5.000 | 18% |
-| DAOs | 4.760 | 17% |
-| Services | 3.120 | 11% |
-| Modelos | 2.140 | 8% |
+| Vistas y UI compartida | 10.800 | 35% |
+| DAOs | 5.960 | 19% |
+| Controllers (+ helpers) | 5.870 | 19% |
+| Services | 3.280 | 11% |
+| Modelos | 2.340 | 8% |
 
 Los archivos más grandes, que concentran la complejidad y son los primeros
 candidatos a partir:
@@ -167,11 +173,13 @@ candidatos a partir:
 | Archivo | LOC |
 |---|---|
 | `lotes/dao/LoteDAO.java` | 948 |
-| `equipos/otros/dao/EquipoOtrosDAO.java` | 876 |
+| `equipos/otros/dao/EquipoOtrosDAO.java` | 886 |
+| `lavadero/controller/CiclosController.java` | 727 |
+| `lavadero/dao/SalidaLavaderoDAO.java` | 660 |
+| `lotes/controller/LotesController.java` | 652 |
 | `equipos/ortopedias/view/PantallaCorrecciones.java` | 626 |
-| `lotes/controller/LotesController.java` | 619 |
 | `lotes/view/helpers/PanelLotesContenido.java` | 488 |
-| `lavadero/controller/CiclosController.java` | 465 |
+| `common/constants/Constantes.java` | 487 |
 | `equipos/ortopedias/dao/MaterialDAO.java` | 466 |
 | `equipos/ortopedias/dao/EquipoDAO.java` | 455 |
 
@@ -195,3 +203,17 @@ Anotadas para que no pierdas tiempo dos veces con lo mismo:
    controllers. El resto ya está en español.
 4. **Las `Pantalla*` no tienen lógica.** Si buscás qué hace un botón y solo ves
    `getBtnX()`, estás en el archivo correcto pero en la capa equivocada: subí al controller.
+5. **Lavadero y CDE se tocan en un solo punto: `DerivadorIngresoCDE`.** Es el **único** lugar de
+   la app donde una feature escribe en las tablas de otra: crea un `equipo_otros` con
+   `requiereLavado = false` usando `EquipoOtrosDAO.guardar(Connection, ...)` **dentro de la
+   transacción de la derivación**, así que si la creación del ingreso falla, `salidas_lavadero`
+   queda intacta. Vive en `lavadero/dao/derivadores/`, no en `controller/helpers/`: su único
+   consumidor es un DAO, y ponerlo arriba dejaba un import `dao → controller`, al revés del flujo.
+   La misma clase sirve para las dos acciones — derivar al cliente original o a nombre de APTIUM —
+   cambiando sólo el `AsignadorClienteCDE` que recibe.
+6. **`AccionSalida` no es `DestinoSalida`.** La primera es lo que el operador **elige**; la segunda
+   es lo que se **persiste** en `salidas_lavadero.destino`, y no son 1:1: `CDE_CLIENTE` y
+   `CDE_APTIUM` son dos acciones con el mismo destino `CDE_OTROS`. Lo que las diferencia queda en
+   el `nro_cliente` del ingreso creado, no en la salida. La asimetría es deliberada. Además,
+   `destino` es **nullable**: `NULL` significa "marcada como Listo, sin destino todavía", que es un
+   estado legítimo — por eso `DestinoSalida.desdeBD(null)` devuelve `null` en vez de un default.

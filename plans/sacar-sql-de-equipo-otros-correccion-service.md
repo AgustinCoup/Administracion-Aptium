@@ -1,6 +1,8 @@
 # Plan: sacar el SQL de `EquipoOtrosCorreccionService`
 
-**Estado:** aprobado, sin ejecutar.
+**Estado:** ✅ **EJECUTADO** — commit `de1af06` (el mismo que cerró el hallazgo #1 de fallos
+silenciosos). Verificado el 2026-08-27: `EquipoOtrosCorreccionService` no contiene ni un
+`SELECT`/`INSERT`/`UPDATE` ni un `PreparedStatement`.
 **Origen:** diagnóstico de arquitectura hexagonal del 2026-07-22. Era el punto 4 de 5.
 Los puntos 2 (`Color` fuera de `EstadoEquipo`) y 3 (romper el ciclo `AppModel ↔ *ReporteService`)
 ya están commiteados. El punto 1 (inyectar `DataSource`) se descartó: el seam de testing

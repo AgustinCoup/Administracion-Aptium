@@ -1,6 +1,12 @@
 # Plan: Volúmenes por ingreso al lanzar lote (equipos "otros") — v2 TDD
 
-**Estado:** aprobado para ejecución · **Creado:** 2026-07-03 (v2 TDD: mismo día) · **Pasos:** 4 (seriales)
+**Estado:** ✅ **EJECUTADO, los 4 pasos** · **Creado:** 2026-07-03 (v2 TDD: mismo día) · **Pasos:** 4 (seriales)
+
+> Commits: Paso 1 `b2e0a71` (tests de caracterización) · Paso 2 `a1b9db8` (V13 + esquema) ·
+> Paso 3 `906ba84` (`DialogoVolumenesIngreso`) · Paso 4 (limpieza) en la misma tanda.
+> Verificado el 2026-08-27: existen `V13__lote_otros_volumenes.sql`, `DialogoVolumenesIngreso`
+> y `AgrupadorIngresosLote`; `pedirCantidadYVolumen` y `getVolumenOtros` ya no existen en
+> `src/main`. Lo de abajo queda como registro de diseño, no como trabajo por hacer.
 **Rama base sugerida:** `main` (una rama/PR por paso: `refactor/volumen-ingreso-N-descripcion`)
 
 ## Objetivo

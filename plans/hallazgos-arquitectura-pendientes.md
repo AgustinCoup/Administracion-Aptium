@@ -2,8 +2,8 @@
 
 Diagnóstico de la revisión profunda del 2026-07-22.
 
-**Estado al 2026-08-27:** #1 a #5 y #7 **ejecutados**. Quedan **#6** (falta Fase 5) y **#8**
-(Lavadero fuera del modelo EDT).
+**Estado al 2026-08-27:** los 8 hallazgos **cerrados en código**. Lo único que queda de todos es la
+**checklist manual de la Fase 5** de #6 (verificación contra la app real, no trabajo de código).
 
 | # | Estado | Commit |
 |---|---|---|
@@ -11,10 +11,10 @@ Diagnóstico de la revisión profunda del 2026-07-22.
 | #2 strategies muertas (`IMaterialFilter` + `ICapacidadCalculator`) | hecho | `a370e61` |
 | #5 `common` ↔ Swing | hecho | `fc15bd1` |
 | #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
-| #3 `AppModel` | hecho (2026-07-23) — **disuelto** | sin commitear |
-| #6 concurrencia / EDT | **casi** — Fases 1-6 + **4b** hechas; falta solo la checklist manual de la Fase 5 en `strict`. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | Fase 4b: `14354a2` |
+| #3 `AppModel` | hecho (2026-07-23) — **disuelto** | `728c88d` |
+| #6 concurrencia / EDT | **código cerrado** — Fases 1-6, **4b** y el hallazgo derivado de Lavadero. Falta sólo la checklist manual de la Fase 5, que se corre **sin** `strict` (los 5 autocompletados por tecla son excepción aceptada y en `strict` lanzan). Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | Fase 4b: `14354a2` · Lavadero: `95c9e33` |
 | #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
-| #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | pendiente — `CiclosController` y `ClasificacionController` hacen lecturas y escrituras síncronas sobre el EDT; en `strict` lanzan. Referencia lista: `SalidasLavaderoController`. Detalle y alcance en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md#hallazgo-derivado--lavadero-ciclos--clasificación-todavía-fuera-del-modelo-edt) | — |
+| #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | hecho (2026-08-27) — `CiclosController` colapsó sus 4 lecturas en un `recargar()` con el record `DatosCiclos` + `ConstructorVistaCiclos`, y sus 3 escrituras van por un helper `ejecutar(...)`; `ClasificacionController` y `LavaderoController.guardar()` al patrón de 4b. 970 tests, smoke pasado | `95c9e33` |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -123,10 +123,8 @@ en un `mapearFila(ResultSet)` privado que accede **por nombre de columna**, así
 major 61.
 
 **Pendientes menores que dejó, fuera del alcance de #4:**
-- [`MaterialCorreccionDTO`](../src/main/java/com/example/features/equipos/ortopedias/controller/helpers/MaterialCorreccionDTO.java)
-  es **código muerto** (cero referencias) y tiene exactamente los mismos 6 campos que
-  `FilaMaterial` — es el DTO que alguien creó para esto y nunca cableó. Candidato directo
-  del refactor-clean.
+- ~~`MaterialCorreccionDTO` es código muerto (cero referencias) y tiene los mismos 6 campos que
+  `FilaMaterial`~~ → ✅ **borrado el 2026-08-27** en el refactor-clean.
 - `MaterialDAO.obtenerMaterial` sigue devolviendo `null` cuando no encuentra; con Java 17
   disponible, `Optional` es ahora una opción. No se tocó por estar fuera del hallazgo.
 - Quedan `Object[]` locales en `EquipoMaterialHelper` y `EquipoOtrosMaterialHelper` (se arman
@@ -171,11 +169,10 @@ Actualizados los 4 call-sites (`PantallaIngresoOrtopedia` ×2, `PantallaCorrecci
 Verificación: `grep -E "javax\.swing|java\.awt" src/main/java/com/example/common` → sin
 resultados. El núcleo ya no depende de la UI.
 
-**Pendientes menores que dejó, fuera del alcance de #5:**
-- `Validador.esEmailValido` y `Validador.esNumeroPositivo` **no tienen ningún llamador**
-  → código muerto, candidato para el refactor-clean.
-- No existe `ValidadorTest`. Los 6 métodos puros que quedaron son ahora trivialmente
-  testeables sin Swing.
+**Pendientes menores que dejó — ✅ los dos cerrados el 2026-08-27:**
+- ~~`Validador.esEmailValido` y `esNumeroPositivo` sin llamadores~~ → borrados en el refactor-clean.
+- ~~No existe `ValidadorTest`~~ → creado, 15 tests sobre los 4 métodos que quedan
+  (`noEstaVacio`, `esFormatoNombre`, `soloNumeros`, `detectarDuplicados`) + el constructor privado.
 
 ---
 
@@ -291,12 +288,54 @@ resumen lossy.
    refrescos fuera de orden no los agarra la suite de tests.
    Nota: #3 dejó el terreno mejor — `UiCoordinator.crearRefrescador()` sigue igual, pero
    ahora cada controller declara qué services toca, así que es visible cuáles hacen I/O.
-4. **refactor-clean** — barre el código muerto que dejen los anteriores. Ya identificados:
-   `Validador.esEmailValido` / `esNumeroPositivo` (de #5) y `MaterialCorreccionDTO` (de #4).
-   Los 16 métodos muertos de `AppModel` ya se fueron con la clase en #3.
-5. **security review** — superficie real acotada: queries parametrizadas, credenciales
-   en `config.properties` y los defaults hardcodeados, validación de entrada. Es una app
-   Swing de escritorio sin auth ni endpoints: presupuestar un chat corto, no una fase.
+4. ~~**refactor-clean**~~ — ✅ hecho el 2026-08-27. Se borraron `Validador.esEmailValido` /
+   `esNumeroPositivo` (de #5) y `MaterialCorreccionDTO` (de #4), los tres con cero referencias en
+   `src/main` y `src/test`. Los 16 métodos muertos de `AppModel` ya se habían ido con la clase en #3.
+   De paso se escribió el `ValidadorTest` que #5 anotaba como faltante (15 tests sobre los 4 métodos
+   que quedan). Suite: **985 verdes** (eran 970).
+   **Queda una decisión abierta:** `PantallaVerCDEv1` (69 líneas) se instancia y se registra en el
+   `CardLayout` de `PantallaPrincipal:85,108`, pero `Constantes.Pantallas.VER_CDE` no se referencia
+   desde ningún botón — la reemplazó `PantallaVerCDEv2`. Es inalcanzable; borrarla es una decisión
+   del usuario, no del refactor-clean.
+5. ~~**security review**~~ — ✅ hecha el 2026-08-27. **Sin hallazgos CRÍTICOS ni ALTOS.**
+   Resultado en la sección "Revisión de seguridad" al final de este documento.
 6. **code review de la branch** — usar `/code-review ultra`, que corre la revisión
    multi-agente en la nube y **no consume el contexto del chat**. Es user-triggered y
-   facturado aparte.
+   facturado aparte. **Único ítem del plan de sesiones que sigue abierto.**
+
+---
+
+## Revisión de seguridad (2026-08-27)
+
+**Sin hallazgos CRÍTICOS ni ALTOS.** La superficie es chica y bien tratada: app de escritorio,
+sin endpoints, sin sesiones, sin HTML — no aplican XSS, CSRF ni SSRF.
+
+**Lo que está bien:**
+
+- **Inyección SQL: sin superficie.** Todo dato de usuario viaja por `PreparedStatement`. La única
+  concatenación que arma SQL es el nombre de tabla en `SimpleEntityDAO` (`getTableName()`), y
+  viene de un literal por subclase, nunca de entrada del usuario.
+- **Cero secretos commiteados.** `config.properties` está en `.gitignore`; `README-DEPLOY.md` y
+  `docs/conexion-remota-mysql-tailscale.md` usan placeholders (`TuContraseñaFuerte123!`,
+  `192.168.1.100`, `<USUARIO>`); `.vscode/launch.json` no lleva credenciales.
+- **Precedencia de config correcta:** variables de entorno → `config.properties` (fuera del repo,
+  con instrucciones de `icacls`/permisos 600) → defaults, y el arranque **avisa por log** cuando
+  cae a `localhost:root:root`. Falla ruidosamente si falta `db.ip`/`db.user`/`db.name`.
+- **El runbook de Tailscale acota el firewall** a `100.64.0.0/10` (el CGNAT del tailnet) en vez de
+  abrir 3306 al mundo, y ya advierte de no dejar `root@'%'`.
+
+**Recomendaciones (MEDIO, ninguna bloqueante):**
+
+1. **`GRANT ALL PRIVILEGES` para el usuario de la app.** Incluye `DROP`/`ALTER`, y la app además
+   necesita `CREATE DATABASE` (`ConnectionPool.crearBaseDeDatosSiNoExiste`). Least privilege sería
+   partirlo en dos usuarios: uno de migraciones con DDL, y uno de runtime con
+   `SELECT/INSERT/UPDATE/DELETE`. Tiene costo operativo real (Flyway corre al arrancar la app), así
+   que es una decisión, no un defecto.
+2. **`bind-address = 0.0.0.0` protegido sólo por la regla de firewall.** El propio runbook avisa
+   que la regla no persiste entre migraciones de servidor: si se pierde, MySQL queda escuchando en
+   todas las interfaces. Atarlo a la IP de Tailscale es más robusto que depender del firewall.
+3. **Las credenciales viven en cada puesto de trabajo.** Es consecuencia de la arquitectura
+   —escritorio contra MySQL directo, sin capa de servidor—: quien tenga acceso a la PC puede leer
+   `config.properties` o las variables de entorno y conectarse a la base por fuera de la app. La app
+   tampoco tiene autenticación propia. Aceptado por diseño; anotado para que sea una decisión
+   consciente y no una sorpresa.

@@ -443,7 +443,7 @@ el service (con tests). Lo que 4b cambia es el *cableado*. Cubrir con:
 
 ### Resultado de la Fase 4b (2026-08-27)
 
-**Ejecutada. 961 tests en verde** (eran 956; +5 nuevos). Sin commitear todavía.
+**Ejecutada. 961 tests en verde** (eran 956; +5 nuevos). Commiteada en `14354a2`.
 
 Los 7 sitios migrados a `TareaUI` con el patrón de `aplicarCorreccion` / `mutar`:
 validación + armado del objeto + diálogos en el EDT, solo la llamada al service en
@@ -496,8 +496,21 @@ abrir Ciclos o guardar una clasificación lanza. Es el "hallazgo Lavadero" que 4
 
 ## Fase 5 — Verificación manual
 
-Los tests no agarran nada de esto. Checklist a correr sobre la app real, con el
-`EdtGuard` en modo `strict` (`-Daptium.edt.strict=true`):
+> **Actualizada el 2026-08-27.** La versión original se escribió antes de 4b, del hallazgo de
+> Lavadero y del plan de fracciones. Esta es la checklist **única** que queda por correr en todo el
+> proyecto: absorbe el smoke de GUI de las fracciones de equipo (#7), que estaba fuera de su
+> blueprint.
+>
+> **Correr SIN `-Daptium.edt.strict=true`.** En `strict` los 5 autocompletados por tecla —excepción
+> aceptada— lanzan, y sin campo de cliente no se puede ni cargar un ingreso. El modo de verificación
+> es **leer los WARN de `EdtGuard` en el log**: cualquier WARN que **no** venga de uno de esos cinco
+> es un camino de I/O que se escapó.
+>
+> Los cinco esperados: `AutocompleteListener` (clientes / profesionales / instituciones), el
+> `CatalogoLookup` de `OrthopediaInputController` (×2), el de `catalogo_otros`, y el de clientes de
+> `LavaderoController`. Además `VerEquiposController.abrirDetalleOtros` (lookup al doble click).
+
+Los tests no agarran nada de esto. Checklist a correr sobre la app real:
 
 1. **Arranque** — la app abre; ninguna pantalla queda vacía después del primer refresco.
 2. **Guardar un ingreso de ortopedia** → las 6 pantallas quedan coherentes; el guardado no
@@ -515,13 +528,25 @@ Los tests no agarran nada de esto. Checklist a correr sobre la app real, con el
    datos fuera de orden. Este es el bug que hoy existe y nadie ve.
 10. **Ver Equipos**: aplicar filtros, disparar un refresco global desde otra pantalla, volver →
     los filtros del usuario siguen aplicados.
-11. **Log limpio**: cero excepciones, y los únicos WARNs de `EdtGuard` son los cuatro
-    autocompletados documentados en la Fase 4 (`OrthopediaInputController` ×2,
-    `VerEquiposController.abrirDetalleOtros`, `AutocompleteListener`). Cualquier otro
-    sitio en la lista es un camino de lectura que se escapó del refresco global.
-    Ojo con `strict`: si está activo, esos cuatro **lanzan** en vez de avisar, así que
-    conviene correr la checklist sin `strict` y revisar el log, o aceptar que el
-    autocompletado no funcione durante la corrida con `strict`.
+11. **Lavadero — Ingreso y Clasificación** (hallazgo #8): cargar un ingreso (el botón Guardar se
+    apaga y se reenciende), clasificarlo, forzar un error de validación y ver que aparece el
+    mensaje y no una excepción.
+12. **Lavadero — Ciclos** (hallazgo #8): repartir elementos con DnD, lanzar un ciclo, lanzar todos,
+    finalizar. Que los botones de card y los globales se apaguen mientras corre la escritura y
+    vuelvan aunque falle. Salir de Ciclos y volver a entrar: **las cards tienen que estar sin
+    configurar** (Paso 8.6 del plan de Salidas).
+13. **Lavadero — Salidas**: marcar Listo, derivar al CDE con el cliente original y a nombre de
+    APTIUM, mandar algo fuera de flujo, y mover filas entre las dos tablas con DnD. Lo derivado
+    tiene que aparecer **en el acto** en las pantallas del CDE (grupo de refresco `operativo`).
+14. **Fracciones de equipo** (smoke de #7, ver `fracciones-de-equipo-persistidas.md`): repartir un
+    `Equipo*` de cantidad 1 entre 3 lavarropas y verificar los cuatro invariantes:
+    - "Lanzar" individual **bloqueado** para las cards del grupo repartido; sólo entra por "Lanzar Todos".
+    - La línea de clasificación descuenta **1** unidad, no 3.
+    - El equipo **no** aparece en Salidas hasta que las 3 partes tienen ciclo finalizado.
+    - Al aparecer es **una sola fila** (mostrando los 3 lavarropas), y derivarlo crea **un solo**
+      elemento en el ingreso del CDE.
+15. **Log limpio**: cero excepciones, y los únicos WARNs de `EdtGuard` son los del encabezado de
+    esta fase. Cualquier otro sitio es un camino de I/O que se escapó.
 
 Recién con esto en verde: `/code-review ultra` (paso 6 del plan de sesiones).
 
@@ -800,7 +825,7 @@ del `EdtGuard`.
 
 **Cerrado. 970 tests en verde** (eran 961; +9 nuevos). Smoke manual pasado el 2026-08-27:
 clasificar un ingreso, y en Ciclos repartir con DnD, lanzar y finalizar — sin WARNs de
-`EdtGuard` desde ninguno de los dos controllers. Sin commitear.
+`EdtGuard` desde ninguno de los dos controllers. Commiteado en `95c9e33`.
 
 - **`CiclosController` — lecturas.** `cargarDatos()`, `actualizarTodasLasCards()`,
   `refrescarDisponiblesYCards()` y `cargarJabonesUnaVez()` colapsaron en un único

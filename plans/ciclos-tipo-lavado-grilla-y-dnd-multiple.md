@@ -1,5 +1,9 @@
 # Plan — Ciclos de Lavadero: Tipo de Lavado, grilla 3×N y DnD multi-selección
 
+**Estado:** ✅ **EJECUTADO, los 8 pasos.** Verificado el 2026-08-27: `V15__ciclo_tipo_lavado.sql`,
+`TipoLavado` en `CicloLavadero`/`ConfiguracionCiclo`/`CicloLavaderoDAO`, la columna `Ingreso #`
+eliminada (`8d16987`) y `MultiRowTableTransferHandler` cableado en `CiclosController`.
+
 **Objetivo:** en la pantalla *Ciclos* (cards de Lavarropas) — quitar las columnas `Ingreso #`,
 mostrar las cards en filas de a 3, agregar el dato **Tipo de Lavado** (Limpio / Sucio / Podrido)
 persistido por ciclo, y reutilizar el drag-and-drop multi-fila que ya existe en Gestionar Lotes

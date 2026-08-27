@@ -1,5 +1,9 @@
 # Blueprint — Paridad UX Lavadero (hotkey, duplicados, restricciones) + paridad completa Ver Ciclos / Ver Lotes
 
+**Estado:** ✅ **EJECUTADO entero.** Verificado el 2026-08-27: existen `PantallaVerCiclos` +
+`VerCiclosController` con filtro de estado y color-coding (`ac2a931`), `ui/common/DuplicadoHighlighter`
+y la hotkey Ctrl++/Ctrl+- de Clasificación (`1d76c1e`).
+
 > Plan de construcción autocontenido. Cada paso incluye su propio *context brief*
 > para que un agente pueda ejecutarlo en frío, sin haber leído los pasos previos.
 

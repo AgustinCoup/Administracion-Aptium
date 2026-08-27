@@ -1,5 +1,10 @@
 # Plan — Salidas de Lavadero: marcar "Listo" y derivar al CDE
 
+**Estado (2026-08-27): ✅ PLAN CERRADO.** Pasos 1 a 8, los cuatro del smoke (7.5 `8cfc5bc`,
+8.5 `681e0d7`+`48ac8b0`, 8.6 `a2e0ee5`+`36ec2fa`, 8.7 `3459ff5`) y el Paso 9 (documentación).
+Las checkboxes de "Criterio de salida" de los pasos 1-8 casi no se fueron marcando: el estado real
+es el código, no las casillas.
+
 **Objetivo:** pantalla nueva en el módulo Lavadero que toma los elementos ya **lavados** (los que
 pasaron por un ciclo finalizado), permite marcarlos como **Listo** una vez secados y doblados, y
 después decidir el **destino** de cada salida: *sale del flujo de la app* o *ingresa al CDE como un
@@ -1488,9 +1493,31 @@ pantalla de Salidas" a los archivos correctos usando sólo el mapa.
 
 ### Criterio de salida
 
-- [ ] `docs/MAPA.md` lista la pantalla nueva y explica el puente Lavadero→CDE.
-- [ ] `CLAUDE.md` documenta el ciclo de vida completo del ingreso de lavadero.
-- [ ] Commit: `docs: pantalla Salidas de Lavadero y puente con el CDE`
+- [x] `docs/MAPA.md` lista la pantalla nueva y explica el puente Lavadero→CDE.
+- [x] `CLAUDE.md` documenta el ciclo de vida completo del ingreso de lavadero.
+- [x] Commit: `docs: pantalla Salidas de Lavadero y puente con el CDE`
+
+### Resultado (2026-08-27)
+
+**Cerrado.** `docs/MAPA.md`: fila **Salidas** en la tabla de Lavadero + la nota de que es la única
+pantalla del módulo cableada al grupo `operativo`; §7 gana dos entradas (el puente
+`DerivadorIngresoCDE` y `AccionSalida` vs `DestinoSalida`); §6 remedido (28.000 → 31.100 LOC,
+`CiclosController` pasó de 465 a 727 y entró `SalidaLavaderoDAO` con 660).
+
+`CLAUDE.md`: sección nueva **"Lavadero — ciclo de vida de un ingreso"** (`PENDIENTE → CLASIFICADO →
+LAVADO → FINALIZADO`, con qué dispara cada paso y por qué "Listo" vive por cantidad en
+`salidas_lavadero` con `destino = NULL`), sección **"Lavadero → CDE"**, y la fila "De dónde nace" en
+la tabla Ortopedias vs. Otros. El punto 3 del paso se resolvió por el camino corto: las fracciones
+ya estaban ejecutadas y documentadas, así que no hizo falta la advertencia de defecto conocido.
+
+**Fuera del alcance del paso, corregido de paso** (estaba mal, no desactualizado):
+- `CLAUDE.md` seguía listando `IMaterialFilter` e `ICapacidadCalculator` como strategies vivas —
+  se borraron en `a370e61`.
+- No documentaba **nada** del modelo de concurrencia, que hoy es una regla dura de toda la app.
+  Sección nueva con `TareaUI` / `EdtGuard`, las 5 excepciones de autocompletado y la regla del
+  estado mutable en el EDT.
+- La lista de features omitía `lavadero`, `ajustes` y `actualizaciones`; los tests decían "más de
+  500" y son ~970.
 
 ---
 
