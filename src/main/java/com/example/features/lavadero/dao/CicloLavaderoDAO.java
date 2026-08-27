@@ -1,6 +1,7 @@
 package com.example.features.lavadero.dao;
 
 import com.example.common.exception.DatabaseException;
+import com.example.features.lavadero.dao.helpers.LineaSobregirada;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
@@ -79,6 +80,23 @@ public class CicloLavaderoDAO {
         "HAVING ya_procesada < ecl.cantidad " +
         "ORDER BY il.id, cel.nombre";
 
+    /**
+     * Detecta líneas de clasificación cuyo total procesado supera la cantidad clasificada
+     * (decisión D del blueprint de fracciones de equipo). Misma fórmula que
+     * {@link #SQL_DISPONIBLES}, pero sin el filtro {@code il.estado = 'CLASIFICADO'}: el dato
+     * sucio puede estar en una línea ya avanzada a LAVADO/FINALIZADO. Sólo detección — no repara.
+     */
+    private static final String SQL_LINEAS_SOBREGIRADAS =
+        "SELECT ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, " +
+        "       COALESCE(SUM(CASE WHEN eci.instancia_equipo_id IS NULL THEN eci.cantidad ELSE 0 END), 0) " +
+        "         + COUNT(DISTINCT eci.instancia_equipo_id) AS ya_procesada " +
+        "FROM elementos_clasificacion_lavadero ecl " +
+        "JOIN catalogo_elementos_lavadero cel ON cel.id = ecl.elemento_id " +
+        "LEFT JOIN elementos_ciclo_lavadero eci ON eci.elemento_clasificacion_id = ecl.id " +
+        "GROUP BY ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad " +
+        "HAVING ya_procesada > ecl.cantidad " +
+        "ORDER BY ecl.ingreso_id, cel.nombre";
+
     public Map<Integer, CicloLavadero> obtenerCiclosActivosPorLavarropas() {
         Map<Integer, CicloLavadero> mapa = new LinkedHashMap<>();
         try (Connection conn = ConnectionPool.getConnection();
@@ -141,6 +159,26 @@ public class CicloLavaderoDAO {
             }
         } catch (SQLException e) {
             log.error("Error al obtener elementos disponibles", e);
+        }
+        return lista;
+    }
+
+    public List<LineaSobregirada> detectarLineasSobregiradas() {
+        List<LineaSobregirada> lista = new ArrayList<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SQL_LINEAS_SOBREGIRADAS);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                lista.add(new LineaSobregirada(
+                    rs.getInt("id"),
+                    rs.getInt("ingreso_id"),
+                    rs.getString("nombre"),
+                    rs.getInt("cantidad"),
+                    rs.getInt("ya_procesada")
+                ));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al detectar líneas de clasificación sobregiradas", e);
         }
         return lista;
     }

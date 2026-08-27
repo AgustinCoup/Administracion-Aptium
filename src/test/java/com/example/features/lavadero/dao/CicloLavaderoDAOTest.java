@@ -261,6 +261,48 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         assertNull(instanciaEquipoIdPersistido());
     }
 
+    // ── detectarLineasSobregiradas (decisión D) ──────────────────────────────
+
+    @Test
+    void detectarLineasSobregiradas_datosSucios_delataLaLinea() throws SQLException {
+        int lineaId = clasificacionConCantidad(1);
+        for (int lav = 1; lav <= 4; lav++) {
+            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
+                List.of(new ElementoCicloMovimiento(lineaId, 1)));
+        }
+
+        List<com.example.features.lavadero.dao.helpers.LineaSobregirada> lineas =
+            dao.detectarLineasSobregiradas();
+
+        assertEquals(1, lineas.size());
+        assertEquals(lineaId, lineas.get(0).elementoClasificacionId());
+        assertEquals(1, lineas.get(0).cantidad());
+        assertEquals(4, lineas.get(0).yaProcesada());
+    }
+
+    @Test
+    void detectarLineasSobregiradas_datosLimpios_noApareceNada() {
+        int lineaId = clasificacionConCantidad(1);
+        int instanciaId = dao.crearInstanciaEquipo(lineaId, 4);
+        for (int lav = 1; lav <= 4; lav++) {
+            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
+                List.of(new ElementoCicloMovimiento(lineaId, 1, instanciaId)));
+        }
+
+        assertTrue(dao.detectarLineasSobregiradas().isEmpty());
+    }
+
+    @Test
+    void detectarLineasSobregiradas_lineaEnElLimite_noAparece() {
+        int lineaId = clasificacionConCantidad(4);
+        for (int lav = 1; lav <= 4; lav++) {
+            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
+                List.of(new ElementoCicloMovimiento(lineaId, 1)));
+        }
+
+        assertTrue(dao.detectarLineasSobregiradas().isEmpty());
+    }
+
     // ── finalizarCiclo ───────────────────────────────────────────────────────
 
     @Test
@@ -344,6 +386,16 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     private List<ElementoCicloMovimiento> movimientos(int cantidad) {
         return List.of(new ElementoCicloMovimiento(elementoClasifId, cantidad));
+    }
+
+    private int clasificacionConCantidad(int cantidad) {
+        try {
+            ejecutarSQL("INSERT INTO elementos_clasificacion_lavadero (ingreso_id, elemento_id, cantidad) VALUES ("
+                    + ingresoId + ", " + elementoCatalogoId + ", " + cantidad + ")");
+            return lastInsertId();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private ConfiguracionCiclo config(BigDecimal litrosJabon) {
