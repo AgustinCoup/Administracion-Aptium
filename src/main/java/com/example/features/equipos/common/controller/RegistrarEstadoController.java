@@ -5,18 +5,21 @@ import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoKey;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
+import com.example.features.equipos.common.controller.helpers.AplicadorMovimientosPendientes;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
 import com.example.features.equipos.ortopedias.service.MaterialService;
 import com.example.features.equipos.ortopedias.view.PantallaRegistrarEstado;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
+import com.example.ui.common.TareaUI;
 import com.example.ui.events.OnEstadosActualizadosListener;
 
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -267,29 +270,40 @@ public class RegistrarEstadoController {
             Constantes.Mensajes.TITULO_CONFIRMAR_CAMBIOS);
         if (!conf) return;
 
-        boolean todosExitosos = true;
-        StringBuilder errores = new StringBuilder();
+        // Copia del buffer para el hilo de fondo: el del controller se limpia en el
+        // hilo de UI, dentro de finalizarConfirmacion.
+        Map<EquipoKey, List<MovimientoMaterial>> aAplicar = new LinkedHashMap<>();
+        cambiosPendientes.forEach((key, movs) -> aAplicar.put(key, new ArrayList<>(movs.values())));
 
-        for (Map.Entry<EquipoKey, Map<Integer, MovimientoMaterial>> entry : cambiosPendientes.entrySet()) {
-            EquipoKey key                            = entry.getKey();
-            List<MovimientoMaterial> movs            = new ArrayList<>(entry.getValue().values());
+        TareaUI.<AplicadorMovimientosPendientes.Resultado>nueva()
+            .nombre("registrar-estado-confirmar")
+            .leer(() -> AplicadorMovimientosPendientes.aplicarTodos(aAplicar, this::aplicarMovimientos))
+            .pintar(this::finalizarConfirmacion)
+            .siFalla(e -> panel.mostrarError("No se pudieron guardar los cambios: " + e.getMessage()))
+            .antes(() -> {
+                panel.setConfirmarEnabled(false);
+                panel.setCancelarEnabled(false);
+                panel.setAvanzarEnabled(false);
+            })
+            .lanzar();
+    }
 
-            boolean exitoso;
-            if (key.getTipo() == EquipoRegistrableInterface.TipoEquipo.OTROS) {
-                exitoso = equipoOtrosService.aplicarMovimientos(key.getId(), movs);
-            } else {
-                exitoso = materialService.aplicarMovimientos(key.getId(), movs);
-            }
+    /** Despacho al service según el tipo de equipo. Corre en el hilo de fondo. */
+    private boolean aplicarMovimientos(EquipoKey key, List<MovimientoMaterial> movs) {
+        return key.getTipo() == EquipoRegistrableInterface.TipoEquipo.OTROS
+            ? equipoOtrosService.aplicarMovimientos(key.getId(), movs)
+            : materialService.aplicarMovimientos(key.getId(), movs);
+    }
 
-            if (!exitoso) {
-                todosExitosos = false;
-                errores.append(String.format(Constantes.Mensajes.ERROR_ACTUALIZAR_EQUIPO_ID, key.getId()));
-            }
-        }
-
-        if (todosExitosos) {
+    /** Hilo de UI: mensaje del resultado, limpieza del buffer y refresco global. */
+    private void finalizarConfirmacion(AplicadorMovimientosPendientes.Resultado resultado) {
+        if (resultado.todosExitosos()) {
             panel.mostrarInfo(Constantes.Mensajes.CAMBIOS_GUARDADOS_OK);
         } else {
+            StringBuilder errores = new StringBuilder();
+            for (Integer id : resultado.idsConError()) {
+                errores.append(String.format(Constantes.Mensajes.ERROR_ACTUALIZAR_EQUIPO_ID, id));
+            }
             panel.mostrarError(String.format(Constantes.Mensajes.CAMBIOS_GUARDADOS_ERROR, errores));
         }
 
@@ -304,7 +318,7 @@ public class RegistrarEstadoController {
         // alguna operación falló, porque las que sí pasaron cambiaron estado.
         solicitarRefresco.run();
 
-        if (todosExitosos && onEstadosActualizadosListener != null) {
+        if (resultado.todosExitosos() && onEstadosActualizadosListener != null) {
             onEstadosActualizadosListener.onEstadosActualizados();
         }
     }

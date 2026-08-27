@@ -57,6 +57,9 @@ public class CiclosController {
      */
     private Integer lavarropasArrastre = null;
 
+    /** El catálogo de jabones no cambia en runtime: se lee una sola vez, al abrir la pantalla. */
+    private boolean jabonesCargados = false;
+
     public static final DataFlavor ELEMENTO_CICLO_FLAVOR = LocalObjectFlavors.forList();
 
     public CiclosController(PantallaCiclos pantalla, CicloLavaderoService cicloLavaderoService,
@@ -67,18 +70,15 @@ public class CiclosController {
         this.lavarropasService      = lavarropasService;
         this.catalogoJabonesService = catalogoJabonesService;
         this.cards    = pantalla.getAllCards();
+        // Sin I/O en el constructor: la pantalla no está visible al arrancar y
+        // abrirPantalla() carga todo cuando el operador entra (patrón de la Fase 2).
         inicializarEventos();
-        cargarDatos();
     }
 
     private void inicializarEventos() {
-        // El catálogo de jabones no cambia en runtime: se puebla una sola vez
-        // para no resetear la selección del usuario en cada refresh.
-        List<JabonCatalogo> jabones = catalogoJabonesService.obtenerTodos();
         for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
             int num = entry.getKey();
             LavarropasCard card = entry.getValue();
-            card.setJabones(jabones);
             configurarDnDCard(num, card);
             card.setOnAccion(() -> {
                 if (card.estaActivo()) finalizarCiclo(num);
@@ -131,12 +131,21 @@ public class CiclosController {
      * borraría lo que el operador está tipeando en otra card.
      */
     public void abrirPantalla() {
+        cargarJabonesUnaVez();
         for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
             if (!ciclosActivos.containsKey(entry.getKey())) {
                 entry.getValue().resetConfiguracion();
             }
         }
         cargarDatos();
+    }
+
+    /** Puebla el combo de jabones de cada card. Se llama al abrir la pantalla, una sola vez. */
+    private void cargarJabonesUnaVez() {
+        if (jabonesCargados) return;
+        List<JabonCatalogo> jabones = catalogoJabonesService.obtenerTodos();
+        cards.values().forEach(card -> card.setJabones(jabones));
+        jabonesCargados = true;
     }
 
     public void cargarDatos() {

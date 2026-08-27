@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import com.example.app.ui.DatosOperativos;
+import com.example.ui.common.TareaUI;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.common.model.EntregaDestinoKey;
 import com.example.common.model.EntregaDestinoKey.TipoDestino;
@@ -135,36 +136,52 @@ public class EquiposParaEntregarController {
 
         if (!panel.confirmar(construirMensajeConfirmacion(materialesPorInstitucion), "Confirmar Entrega")) return;
 
-        List<String> exitosas = new ArrayList<>();
-        List<String> errores = new ArrayList<>();
+        TareaUI.<ResultadoEntregas>nueva()
+            .nombre("entregar-instituciones")
+            .leer(() -> ejecutarEntregas(materialesPorInstitucion))
+            .pintar(this::finalizarEntregas)
+            .siFalla(e -> panel.mostrarError("No se pudo completar la entrega: " + e.getMessage()))
+            .antes(()  -> panel.setEntregarInstitucionEnabled(false))
+            .despues(() -> panel.setEntregarInstitucionEnabled(true))
+            .lanzar();
+    }
 
-        for (Map.Entry<InstitucionEntregaItem, List<MaterialEntregaItem>> entry : materialesPorInstitucion.entrySet()) {
-            InstitucionEntregaItem institucion = entry.getKey();
+    /** Entrega separada por destino, en el hilo de fondo. Solo services y colecciones. */
+    private ResultadoEntregas ejecutarEntregas(
+            Map<InstitucionEntregaItem, List<MaterialEntregaItem>> materialesPorInstitucion) {
+        List<String> exitosas = new ArrayList<>();
+        List<String> errores  = new ArrayList<>();
+        for (InstitucionEntregaItem institucion : materialesPorInstitucion.keySet()) {
             EntregaDestinoKey key = institucion.getKey();
             boolean exitoso = key.getTipo() == TipoDestino.CLIENTE
                 ? equipoOtrosService.entregarClienteCompleto(key.getId())
                 : materialService.entregarInstitucionCompleta(key.getId());
-            if (exitoso) exitosas.add(institucion.getNombre());
-            else errores.add(institucion.getNombre());
+            (exitoso ? exitosas : errores).add(institucion.getNombre());
         }
+        return new ResultadoEntregas(exitosas, errores);
+    }
 
-        if (!exitosas.isEmpty()) {
-            log.info("{} institución(es) entregada(s) exitosamente", exitosas.size());
+    /** Hilo de UI: mensajes, refresco global y notificación al resto de las pantallas. */
+    private void finalizarEntregas(ResultadoEntregas resultado) {
+        if (!resultado.exitosas().isEmpty()) {
+            log.info("{} institución(es) entregada(s) exitosamente", resultado.exitosas().size());
             solicitarRefresco.run();
             if (onEstadosActualizadosListener != null) {
                 onEstadosActualizadosListener.onEstadosActualizados();
             } else {
                 log.warn("onEstadosActualizadosListener es null, otras pantallas NO se refrescarán");
             }
-            String texto = exitosas.size() == 1
-                ? "\"" + exitosas.get(0) + "\" entregada correctamente."
-                : exitosas.size() + " instituciones entregadas correctamente.";
+            String texto = resultado.exitosas().size() == 1
+                ? "\"" + resultado.exitosas().get(0) + "\" entregada correctamente."
+                : resultado.exitosas().size() + " instituciones entregadas correctamente.";
             panel.mostrarInfo(texto);
         }
-        if (!errores.isEmpty()) {
-            panel.mostrarError("No se pudieron entregar: " + String.join(", ", errores));
+        if (!resultado.errores().isEmpty()) {
+            panel.mostrarError("No se pudieron entregar: " + String.join(", ", resultado.errores()));
         }
     }
+
+    private record ResultadoEntregas(List<String> exitosas, List<String> errores) { }
 
     private String construirMensajeConfirmacion(Map<InstitucionEntregaItem, List<MaterialEntregaItem>> materialesPorInstitucion) {
         StringBuilder sb = new StringBuilder();

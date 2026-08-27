@@ -11,7 +11,7 @@ Diagnóstico de la revisión profunda del 2026-07-22.
 | #5 `common` ↔ Swing | hecho | `fc15bd1` |
 | #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
 | #3 `AppModel` | hecho (2026-07-23) — **disuelto** | sin commitear |
-| #6 concurrencia / EDT | **pendiente** — plan escrito en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | — |
+| #6 concurrencia / EDT | **casi** — Fases 1-6 hechas; falta la **Fase 4b** (escrituras del flujo principal fuera del EDT, descubierta el 2026-08-27 en la verificación manual) y la checklist manual de la Fase 5 en `strict`. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | — |
 | #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.

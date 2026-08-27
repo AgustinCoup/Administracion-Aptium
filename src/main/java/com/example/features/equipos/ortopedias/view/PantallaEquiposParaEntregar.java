@@ -135,6 +135,11 @@ public class PantallaEquiposParaEntregar extends JPanel {
         btnEntregarInstitucion.addActionListener(listener);
     }
 
+    /** Se deshabilita mientras corre la entrega para evitar el doble envío. */
+    public void setEntregarInstitucionEnabled(boolean habilitado) {
+        btnEntregarInstitucion.setEnabled(habilitado);
+    }
+
     public List<InstitucionEntregaItem> getInstitucionesSeleccionadas() {
         int[] selectedRows = tablaInstituciones.getSelectedRows();
         List<InstitucionEntregaItem> result = new ArrayList<>();

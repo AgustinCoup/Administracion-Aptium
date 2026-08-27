@@ -17,6 +17,7 @@ import com.example.features.profesionales.service.ProfesionalService;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.view.PantallaIngresoOrtopedia;
 import com.example.ui.common.AutocompleteListener;
+import com.example.ui.common.TareaUI;
 import com.example.ui.events.OnEquipoGuardadoListener;
 
 import java.awt.CardLayout;
@@ -119,19 +120,27 @@ public class IngresoOrtopediaController extends EquipoInputControllerBase<Pantal
 
         Equipo equipo = constructorEquipo.construir();
 
-        boolean exito;
-        try {
-            exito = equipoService.guardarEquipo(equipo);
-        } catch (ValidationException e) {
-            String mensaje = e.getValidationErrors().isEmpty()
+        TareaUI.<Boolean>nueva()
+            .nombre("guardar-ingreso-ortopedia")
+            .leer(() -> equipoService.guardarEquipo(equipo))
+            .pintar(exito -> manejarResultadoGuardado(exito, Constantes.Mensajes.DATOS_GUARDADOS,
+                Constantes.Pantallas.INGRESO_ORTOPEDIA, "ortopedia"))
+            .siFalla(this::mostrarErrorGuardado)
+            .antes(()  -> panel.getBtnGuardar().setEnabled(false))
+            .despues(() -> panel.getBtnGuardar().setEnabled(true))
+            .lanzar();
+    }
+
+    /** {@link ValidationException} de negocio → aviso con el detalle; cualquier otra → error genérico. */
+    private void mostrarErrorGuardado(Throwable e) {
+        if (e instanceof ValidationException ve) {
+            String mensaje = ve.getValidationErrors().isEmpty()
                 ? Constantes.Mensajes.ERROR_GUARDAR_EQUIPO
-                : String.join("\n", e.getValidationErrors());
+                : String.join("\n", ve.getValidationErrors());
             panel.mostrarAdvertencia(mensaje);
             log.warn("Validación de negocio al guardar equipo: {}", mensaje);
             return;
         }
-
-        manejarResultadoGuardado(exito, Constantes.Mensajes.DATOS_GUARDADOS,
-            Constantes.Pantallas.INGRESO_ORTOPEDIA, "ortopedia");
+        panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_EQUIPO);
     }
 }

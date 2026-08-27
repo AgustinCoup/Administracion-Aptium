@@ -33,6 +33,25 @@ obligaba a una segunda rama en el camino de pintado y bloqueaba la extracción d
 **Pendiente de verificar contra la app real** (no se pudo en la sesión, requiere BD):
 el arranque, y la lista de WARNs que quedan del `EdtGuard`.
 
+### Verificación manual iniciada el 2026-08-27 (rama `ConexionConCDE`)
+
+Al correr el punto 2 de la checklist (guardar un ingreso de ortopedia) apareció un WARN
+del `EdtGuard` **no previsto**: `IngresoOrtopediaController.guardar` →
+`EquipoService.guardarEquipo` → `EquipoDAO.guardarEquipo` → `TransactionalConnection.begin`.
+Es la **transacción de alta completa corriendo en el EDT**.
+
+Causa: el inventario de las Fases 1-4 midió solo los `cargarDatos()` de refresco y los
+`new Thread()` de Correcciones/Ajustes. **Las escrituras del flujo principal**
+(alta de ingreso, confirmar cambios de estado, lanzar/finalizar/marcar-fallo de lote,
+entregar completo) nunca entraron: son llamadas síncronas al service en el `ActionListener`,
+sin `TareaUI`. Estaban antes del refactor y siguen igual. Correcciones y Ajustes sí se
+migraron en la Fase 4 — quedó la mitad de las escrituras en un modelo y la otra mitad en
+otro, que es justo lo que #6 venía a eliminar.
+
+Consecuencia: el **punto 11** de la Fase 5 no puede pasar como está escrito (hay más de 4
+WARNs), y en `strict` el guardado **lanza excepción**, así que la checklist no se puede
+completar. Se agrega la **Fase 4b** (abajo) para cerrar esto antes de retomar la Fase 5.
+
 ### Lista de trabajo medida para la Fase 4
 
 `grep "new Thread("` → **18** ocurrencias fuera de `App.java`:
@@ -349,6 +368,129 @@ Mecánico, pero es lo que deja **un solo** modelo de concurrencia.
 `grep -rn "new Thread(" src/main/java` → **una sola** ocurrencia (`App.java`).
 `grep -rn "SwingWorker" src/main/java` → solo `TareaUI` y los 2 reportes (o los reportes también
 migran a `TareaUI` si el helper les queda cómodo; decidir al llegar, no es obligatorio).
+
+---
+
+## Fase 4b — Escrituras del flujo principal fuera del EDT
+
+**Agregada el 2026-08-27.** La Fase 4 migró las escrituras de *corrección/ajuste* pero dejó
+síncronas las del flujo principal. Esta fase las lleva a `TareaUI`, con el mismo patrón ya
+probado en `CorreccionsController.aplicarCorreccion(...)` y `AjustesController.mutar(...)`.
+
+### Por qué importa
+
+- En `-Daptium.edt.strict=true` (lo que exige la Fase 5) el guardado **lanza excepción**: la
+  app no es usable en el modo con el que hay que verificarla.
+- Objetivo declarado de #6: *un solo* modelo de concurrencia. Con la mitad de las escrituras
+  síncronas, no se cumple.
+- Riesgo práctico de congelamiento: **bajo** hoy (son `INSERT`/`UPDATE` acotados sobre BD
+  local, no lecturas de histórico sin techo). Esto es corrección de consistencia y de
+  "ejecutable en strict", no un bug de rendimiento urgente.
+
+### Sitios a migrar (7, en 4 controllers)
+
+| # | Sitio | Operación | Notas de migración |
+|---|---|---|---|
+| 1 | [`IngresoOrtopediaController.guardar():124`](../src/main/java/com/example/features/equipos/ortopedias/controller/IngresoOrtopediaController.java#L124) | `equipoService.guardarEquipo(equipo)` | Validación de formulario y `construir()` quedan en el EDT. Solo la llamada al service va a fondo. `ValidationException` → `siFalla`. Éxito → `manejarResultadoGuardado(...)` en `pintar`. |
+| 2 | [`OtrosInputController.persistir():109`](../src/main/java/com/example/features/equipos/otros/controller/OtrosInputController.java#L109) | `equipoOtrosService.guardarEquipo(equipo)` | Ídem #1. El armado del `EquipoOtros` (REMITO/DETALLES) queda en el EDT. |
+| 3 | [`RegistrarEstadoController.confirmarCambios():279/281`](../src/main/java/com/example/features/equipos/common/controller/RegistrarEstadoController.java#L279) | `materialService.aplicarMovimientos` / `equipoOtrosService.aplicarMovimientos` en **loop** | El loop entero (todas las entradas de `cambiosPendientes`) va en **una** `TareaUI.leer`, devolviendo el acumulado de éxitos/errores. No lanzar una tarea por equipo. `pintar` arma el mensaje final y dispara el refresco. |
+| 4 | [`LotesController.lanzarLote():470`](../src/main/java/com/example/features/lotes/controller/LotesController.java#L470) | `loteService.lanzarLote(...)` | **Delicado.** Los diálogos (`DialogoVolumen...`, confirmaciones) y la lectura de estado mutable (`volumenesPorIngreso`, `pendientesPorAutoclave`) quedan en el EDT. A fondo va solo `lanzarLote(...)`. `pendientesPorAutoclave.remove(...)`, `solicitarRefresco.run()` y `onEstadosActualizadosListener` van en `pintar` (EDT). Respeta la regla dura del plan: campos del controller se escriben solo en el EDT. |
+| 5 | [`LotesController.finalizarLote():573`](../src/main/java/com/example/features/lotes/controller/LotesController.java#L573) | `loteService.finalizarLote(...)` | Confirmación en EDT; service a fondo; refresco en `pintar`. |
+| 6 | [`LotesController.marcarFallo():589`](../src/main/java/com/example/features/lotes/controller/LotesController.java#L589) | `loteService.marcarLoteFallo(...)` | Ídem #5. |
+| 7 | [`EquiposParaEntregarController:145/146`](../src/main/java/com/example/features/equipos/common/controller/EquiposParaEntregarController.java#L145) | `equipoOtrosService.entregarClienteCompleto` / `materialService.entregarInstitucionCompleta` | La selección de la fila y la confirmación quedan en EDT; el `entregar*` va a fondo; refresco en `pintar`. |
+
+**Fuera de alcance de 4b** (anotar, no tocar): las escrituras de Lavadero
+(`LavaderoController`, `ClasificacionController`, `CiclosController`, `SalidasLavaderoController`).
+Esa feature es posterior a #6 y de otra rama; algunas ya usan un `ejecutar(...)` propio.
+Si se quieren revisar, va como hallazgo aparte.
+
+### Patrón a aplicar (idéntico a `aplicarCorreccion`)
+
+```java
+TareaUI.<Boolean>nueva()
+    .nombre("guardar-ingreso-ortopedia")
+    .leer(() -> equipoService.guardarEquipo(equipo))   // fondo
+    .pintar(exito -> manejarResultadoGuardado(exito, ...))   // EDT
+    .siFalla(e -> panel.mostrarAdvertencia(describirError(e)))   // EDT
+    .antes(()  -> panel.getBtnGuardar().setEnabled(false))
+    .despues(() -> panel.getBtnGuardar().setEnabled(true))
+    .lanzar();
+```
+
+- **Botón deshabilitado mientras corre** (`antes`/`despues`), para que no haya doble submit.
+- `ValidationException` viaja por `siFalla`: el `try/catch` síncrono actual desaparece.
+- Éxito/refresco/navegación: **siempre** en `pintar`, nunca en `leer`.
+- Si un controller repite el patrón (Lotes tiene 3), extraer un helper privado local
+  al estilo `aplicarCorreccion` / `mutar`. No un helper compartido nuevo entre controllers.
+
+### TDD
+
+El repo testea la lógica de Swing extrayéndola a clases planas. Acá la lógica ya está en
+el service (con tests). Lo que 4b cambia es el *cableado*. Cubrir con:
+
+- Test de que `confirmarCambios` acumula bien éxitos y errores de un loop mixto
+  (si esa acumulación se extrae a una clase plana al pasarla a `TareaUI.leer`).
+- Los tests de service existentes no cambian.
+- El resto es verificación manual (Fase 5).
+
+### Verificación de fase
+
+- `mvn test` verde.
+- `grep -rn "Service\.\(guardar\|aplicarMovimientos\|lanzarLote\|finalizarLote\|marcarLoteFallo\|entregar\)" src/main/java/**/{controller,view}` → toda ocurrencia está dentro de un `TareaUI.leer(...)` o de un helper que lo envuelve.
+- Arrancar con `-Daptium.edt.strict=true`, guardar un ingreso de ortopedia y uno de otros:
+  **no lanza**, guarda, refresca.
+- Recién con esto: retomar la **Fase 5** completa (11 puntos + 6.4) en `strict`.
+
+### Resultado de la Fase 4b (2026-08-27)
+
+**Ejecutada. 961 tests en verde** (eran 956; +5 nuevos). Sin commitear todavía.
+
+Los 7 sitios migrados a `TareaUI` con el patrón de `aplicarCorreccion` / `mutar`:
+validación + armado del objeto + diálogos en el EDT, solo la llamada al service en
+`.leer(...)`, éxito/refresco/navegación en `.pintar(...)`, `ValidationException` por
+`.siFalla(...)`, botón deshabilitado en `.antes/.despues`.
+
+- **1-2** (`IngresoOrtopediaController`, `OtrosInputController`): el `try/catch` síncrono
+  desaparece; `ValidationException` → `mostrarErrorGuardado` / `mostrarErrorPersistencia`
+  en `siFalla`; cualquier otra excepción → error genérico (antes se propagaba).
+- **3** (`RegistrarEstadoController.confirmarCambios`): el loop entero en una `TareaUI.leer`.
+  La acumulación éxitos/errores se extrajo a la clase plana
+  `AplicadorMovimientosPendientes` (+ `AplicadorMovimientosPendientesTest`, 5 tests). El
+  despacho al service y el armado de mensajes quedan en el controller. Buffer copiado para
+  el hilo de fondo; se limpia en el EDT dentro de `finalizarConfirmacion`.
+- **4-6** (`LotesController` lanzar/finalizar/marcar-fallo): helper privado local
+  `ejecutarAccionDeLote`. Los diálogos y la lectura de `autoclaveSeleccionado` /
+  `pendientesPorAutoclave` quedan en el EDT; a fondo va solo la llamada al service;
+  `remove(...)` / refresco / listener en `pintar`. **Regla dura respetada.**
+- **7** (`EquiposParaEntregarController`): loop de entregas a fondo, resultado en el record
+  local `ResultadoEntregas`; mensajes/refresco/notificación en `pintar`. Botón nuevo
+  `PantallaEquiposParaEntregar.setEntregarInstitucionEnabled`.
+
+**Desvío respecto del plan — arranque de Lavadero.** Con `-Daptium.edt.strict=true` la app
+no llegaba a abrir: `CiclosController` (Lavadero) leía el catálogo de jabones + 3 queries
+de `cargarDatos()` **en su constructor**, sobre el EDT, durante `UiCoordinator.inicializar()`.
+El plan marcó Lavadero fuera de alcance de 4b, pero esto bloqueaba la verificación entera.
+Fix mínimo (decisión del usuario "extender 4b a arranque de Lavadero"): el constructor de
+`CiclosController` ya no hace I/O — `abrirPantalla()` carga todo cuando el operador entra,
+igual que la Fase 2. Los otros 4 controllers de Lavadero ya tenían el constructor limpio.
+
+**Verificación:**
+- `mvn test` verde (961).
+- El grep de escrituras: las 7 ocurrencias están dentro de `TareaUI.leer(...)` o de un
+  helper que lo envuelve. Único resto: `ClasificacionController:77` (escritura de Lavadero,
+  fuera de alcance).
+- Arranque con `-Daptium.edt.strict=true`: **abre sin lanzar**.
+- Smoke sin `strict` (recomendado por el punto 11 por los autocompletados): guardado de
+  ortopedia, otros REMITO y otros DETALLES → **ningún WARN de `EdtGuard` desde los 5
+  controllers migrados**, cero `IllegalStateException`. Los 19 WARNs del log son todos de
+  las excepciones documentadas en la Fase 4 (`AutocompleteListener` de
+  clientes/profesionales/instituciones, `CatalogoLookup` de `OrthopediaInputController`,
+  autocompletado de `catalogo_otros`).
+
+**Hallazgo nuevo, fuera de alcance (para la rama de Lavadero):** la pantalla Ciclos sigue
+con lecturas y escrituras síncronas sobre el EDT (`cargarDatos()`, `refrescarDisponiblesYCards()`,
+`lanzarCiclo()`, `finalizarCiclo()`); `ClasificacionController.guardar()` idem. En `strict`,
+abrir Ciclos o guardar una clasificación lanza. Es el "hallazgo Lavadero" que 4b anticipó dejar afuera.
 
 ---
 
