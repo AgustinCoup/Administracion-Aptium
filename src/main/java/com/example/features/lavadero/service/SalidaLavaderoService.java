@@ -66,7 +66,7 @@ public class SalidaLavaderoService {
         v.addErrorIf(marcas == null || marcas.isEmpty(), "No hay ninguna cantidad para marcar como Listo.");
 
         if (marcas != null) {
-            Set<Integer> elementosVistos = new HashSet<>();
+            Set<String> elementosVistos = new HashSet<>();
             for (MarcaListo marca : marcas) {
                 v.addErrorIf(marca.item() == null, "Hay una marca sin elemento asociado.");
                 if (marca.item() == null) continue;
@@ -77,7 +77,7 @@ public class SalidaLavaderoService {
                 v.addErrorIf(marca.cantidad() > marca.item().cantidadPendiente(),
                     describir(marca.item()) + " no tiene " + marca.cantidad()
                     + " disponibles (quedan " + marca.item().cantidadPendiente() + ").");
-                v.addErrorIf(!elementosVistos.add(marca.item().elementoCicloId()),
+                v.addErrorIf(!elementosVistos.add(claveDeDuplicado(marca.item())),
                     describir(marca.item()) + " está repetido en la selección.");
             }
         }
@@ -126,6 +126,19 @@ public class SalidaLavaderoService {
         v.throwIfHasErrors();
 
         dao.derivar(derivadoresPorAccion.get(accion), seleccion);
+    }
+
+    /**
+     * Identidad de la tanda a efectos de detectar repetidos en la selección. Tiene que
+     * distinguir los dos tipos de fila: {@code elementoCicloId} es {@code null} en toda
+     * instancia de equipo, así que usarlo solo haría pasar por repetida a la segunda instancia
+     * de cualquier selección — y la validación es sobre la selección entera, así que se caerían
+     * también las filas regulares que la acompañan.
+     */
+    private String claveDeDuplicado(ElementoLavadoPendiente item) {
+        return item.esInstanciaDeEquipo()
+             ? "instancia:" + item.instanciaEquipoId()
+             : "elemento:"  + item.elementoCicloId();
     }
 
     private String describir(ElementoLavadoPendiente item) {

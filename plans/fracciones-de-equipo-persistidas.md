@@ -988,9 +988,11 @@ mvn test
 
 ### Criterio de salida
 
-- [ ] El test cubre los 8 puntos de arriba y pasa en verde.
-- [ ] `mvn test` (suite completa) sigue en verde.
-- [ ] Commit: `test: integración end-to-end de un equipo subdividido, de clasificación a CDE`
+- [x] El test cubre los 8 puntos de arriba y pasa en verde
+      (`EquipoSubdivididoIntegracionTest.equipoRepartidoEnTres_deLaClasificacionAlCDE`), más tres
+      escenarios adicionales — ver "Mutaciones aplicadas".
+- [x] `mvn test` (suite completa) en verde: 951 tests, 0 fallos. `mvn clean package` compila.
+- [x] Commit: `test: integración end-to-end de un equipo subdividido, de clasificación a CDE`
 
 ---
 
@@ -1065,6 +1067,28 @@ Mismo protocolo que [`salidas-lavadero-listo-y-derivacion-cde.md`](salidas-lavad
   no detectado por el `grep` del blueprint porque estaba scopeado a `src/main/java`) se
   reemplazaron por `.elementoCicloId()` y por una nueva consulta auxiliar
   (`cicloIdDeElementoCiclo`); no altera lo que el test verifica.
+- **2026-08-27, Paso 8 — defecto encontrado en el Paso 4 y arreglado acá.** El test de
+  integración destapó que `SalidaLavaderoService.marcarListo` deduplicaba la selección con
+  `marca.item().elementoCicloId()`, campo que desde el rediseño de records del Paso 4 es `null`
+  en **toda** instancia de equipo: `HashSet.add(null)` acepta el primer `null` y rechaza el
+  segundo, así que la segunda instancia de cualquier selección pasaba por "repetida" y —como la
+  validación es sobre la selección entera— se caían con ella las filas regulares que la
+  acompañaban. Rompía el marcado masivo de Salidas cada vez que dos equipos repartidos
+  terminaban a la vez. La §4 del blueprint enumeró qué consumidores no cambiaban, pero a
+  `SalidaLavaderoService` sólo le llegó el rename mecánico `lavarropasNumero`→`lavarropas`; que
+  `elementoCicloId` pasara a ser nullable nunca se revisó contra ese `HashSet`. **Arreglo**
+  (decidido con el usuario, en vez de abrir un Paso 4.5): clave de duplicado `claveDeDuplicado`
+  que distingue `instancia:<id>` de `elemento:<id>`, con tres tests nuevos en
+  `SalidaLavaderoServiceTest` (misma instancia dos veces sigue siendo error; dos instancias
+  distintas no; instancia + regular no). El DAO no tenía el problema: `saldoPendienteInstancia`
+  se relee por marca dentro de la transacción y ya cazaba un duplicado genuino — la guarda del
+  service no sostenía el invariante, sólo estaba mal.
+- **Paso 8, alcance ampliado:** además del escenario de 8 puntos que pide el blueprint, el test
+  cubre `volverALavado` de una instancia, el caso "dos equipos en la misma línea de
+  clasificación, uno repartido en 3" (declarado real en la decisión A — el diseño aguanta: la
+  línea sigue disponible con 1 de 2 unidades) y el marcado conjunto de dos instancias (el que
+  destapó el defecto de arriba). Nombre `EquipoSubdivididoIntegracionTest` en vez de
+  `SalidaLavaderoIntegracionTest`: cruza Ciclos, Salidas y CDE, no sólo Salidas.
 - **`AgrupadorInstanciasSalida.agruparListas`**: el blueprint del Paso 4 dejaba explícitamente
   abierto si el método simétrico para `SalidaLista` iba en la misma clase o en una nueva (nota bajo
   la tarea 5). Se agregó en la misma clase (`agruparListas`, agrupando por `salidaId`), con su

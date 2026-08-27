@@ -106,6 +106,14 @@ class SalidaLavaderoServiceTest {
         verifyNoInteractions(dao);
     }
 
+    @Test
+    void marcarListo_dosMarcasDeLaMismaInstancia_lanzaValidation() {
+        MarcaListo m1 = new MarcaListo(instancia(7), 1);
+        MarcaListo m2 = new MarcaListo(instancia(7), 1);
+        assertThrows(ValidationException.class, () -> service.marcarListo(List.of(m1, m2)));
+        verifyNoInteractions(dao);
+    }
+
     // ── marcarListo — camino feliz ───────────────────────────────────────────
 
     @Test
@@ -113,6 +121,26 @@ class SalidaLavaderoServiceTest {
         MarcaListo marca = new MarcaListo(pendiente(1, 10, 0), 4);
         service.marcarListo(List.of(marca));
         verify(dao).marcarListo(List.of(marca));
+    }
+
+    /**
+     * Dos instancias distintas comparten {@code elementoCicloId == null}: si la clave de
+     * duplicado fuera ese campo, la segunda pasaría por repetida y se caería la selección entera.
+     */
+    @Test
+    void marcarListo_dosInstanciasDistintas_noSonRepetidas() {
+        MarcaListo m1 = new MarcaListo(instancia(7), 1);
+        MarcaListo m2 = new MarcaListo(instancia(8), 1);
+        service.marcarListo(List.of(m1, m2));
+        verify(dao).marcarListo(List.of(m1, m2));
+    }
+
+    @Test
+    void marcarListo_unaInstanciaYUnElementoRegular_noSonRepetidos() {
+        MarcaListo instancia = new MarcaListo(instancia(7), 1);
+        MarcaListo regular   = new MarcaListo(pendiente(1, 10, 0), 4);
+        service.marcarListo(List.of(instancia, regular));
+        verify(dao).marcarListo(List.of(instancia, regular));
     }
 
     // ── volverALavado — validaciones ─────────────────────────────────────────
@@ -201,6 +229,12 @@ class SalidaLavaderoServiceTest {
     private ElementoLavadoPendiente pendiente(int elementoCicloId, int cantidadLavada, int cantidadYaLista) {
         return new ElementoLavadoPendiente(elementoCicloId, null, "4", 1, 1, "Hosp. A", "Batas",
             cantidadLavada, cantidadYaLista, LocalDateTime.now());
+    }
+
+    /** Instancia de equipo completa: sin {@code elementoCicloId}, siempre de cantidad 1. */
+    private ElementoLavadoPendiente instancia(int instanciaEquipoId) {
+        return new ElementoLavadoPendiente(null, instanciaEquipoId, "1, 2, 3", 1, 1, "Hosp. A",
+            "Equipo de trauma", 1, 0, LocalDateTime.now());
     }
 
     private SalidaLista lista(int salidaId, int cantidad) {
