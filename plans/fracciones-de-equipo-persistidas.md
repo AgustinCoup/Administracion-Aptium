@@ -936,9 +936,12 @@ mvn test -Dtest=CicloLavaderoDAOTest
 
 ### Criterio de salida
 
-- [ ] El método de detección existe, con su record y su test con los 3 casos.
-- [ ] No hay reparación automática en ningún lado de este paso.
-- [ ] Commit: `feat: detección de líneas de clasificación sobregiradas`
+- [x] El método de detección existe (`CicloLavaderoDAO.detectarLineasSobregiradas()` +
+      record `dao/helpers/LineaSobregirada`), con su test con los 3 casos en
+      `CicloLavaderoDAOTest` (datos sucios → delata; datos limpios con instancia → nada;
+      línea en el límite `ya_procesada == cantidad` → nada).
+- [x] No hay reparación automática en ningún lado de este paso.
+- [x] Commit: `feat: detección de líneas de clasificación sobregiradas` (0200682)
 
 ---
 
