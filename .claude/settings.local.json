@@ -9,7 +9,29 @@
       "Bash(mvn test *)",
       "Bash(grep -E \"Tests run:.*\\(Fail|Err\\)|Tests run:.*Skipped: [0-9]+$|BUILD\")",
       "Bash(mvn -q compile)",
-      "Bash(mvn -q test)"
+      "Bash(mvn -q test)",
+      "Bash(mvn -q test -Dtest=ConstructorVistaCiclosTest)",
+      "Bash(grep -E \"^\\\\[INFO\\\\] Tests run:.*$|^\\\\[ERROR\\\\] Tests run|BUILD|Failures: [1-9]|Errors: [1-9]\")",
+      "PowerShell(Get-Service MySQL80)",
+      "Bash(mvn -q clean package -DskipTests)",
+      "Bash(grep -E \"^\\\\[INFO\\\\] Tests run:.*Skipped: [0-9]+$|BUILD|Failures: [1-9]|Errors: [1-9]|ERROR\\\\] /C\")",
+      "Bash(grep -vE \"^\\\\s+at |^\\\\s*$\" app-smoke2.log)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(ls \"C:/Users/AGUSTÍN/.claude/projects/c--Trabajo-Administracion-Aptium/memory/\")",
+      "Read(//c/Users/AGUSTÍN/.claude/projects/c--Trabajo-Administracion-Aptium/memory/**)",
+      "Bash(xargs wc -l)",
+      "Bash(:)",
+      "Bash(cd \"c:/Trabajo/Administracion-Aptium\" && ls src/main/java/com/example/common/util/ src/main/java/com/example/common/model/ 2>/dev/null && echo \"--IEstadoValidator--\" && find src/main/java -name \"IEstadoValidator.java\" -o -name \"FilterStrategy.java\" -o -name \"OcupacionAutoclave.java\" && echo \"--tests count--\" && grep -c \"Tests run\" /dev/null; find src/test -name \"*Test.java\" | wc -l)",
+      "Read(//c/dev/**)",
+      "Bash(git rm *)",
+      "Bash(xargs sed -n '1,40p')",
+      "Bash(mvn -q -Dtest=ValidadorTest test)",
+      "Bash(grep -nEi \"pass|user|clave|contrase|[0-9]{1,3}\\(\\\\.[0-9]{1,3}\\){3}\" README-DEPLOY.md)",
+      "Bash(git commit -q -m '@ *)",
+      "Bash(mvn -q test -Dtest=TareaUITest)",
+      "Bash(grep -E \"Tests run:.*Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$|BUILD\")"
     ]
   }
 }
