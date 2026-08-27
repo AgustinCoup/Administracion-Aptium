@@ -74,6 +74,19 @@ NUEVO → LAVANDO → LAVADO → EMPAQUETADO → ESTERILIZANDO → ESTERILIZADO 
 
 Los equipos pueden saltear LAVANDO y/o EMPAQUETADO según los flags `requiereLavado` / `requiereEmpaque`. La lógica de transición válida está en `IEstadoValidator` / `EstadoValidatorImpl`.
 
+## Lavadero — fracciones de equipo
+
+Un `Equipo*` de la clasificación de lavadero se puede repartir entre varios lavarropas. Esa identidad se
+persiste: tabla `instancias_equipo_ciclo (id, elemento_clasificacion_id, total_partes)` + columna
+`instancia_equipo_id` (nullable) en `elementos_ciclo_lavadero` y en `salidas_lavadero` (migraciones
+`V19`/`V20`). **Invariante:** un equipo repartido en N lavarropas consume **1** unidad de su línea de
+clasificación (no N), genera **1** fila de Salidas y **1** elemento en el ingreso del CDE, y no aparece
+en Salidas hasta que las N partes pasaron por un ciclo finalizado. El saldo se calcula
+`SUM(cantidad donde instancia IS NULL) + COUNT(DISTINCT instancia_equipo_id)`. La agrupación de
+fracciones para Salidas vive en la clase plana `AgrupadorInstanciasSalida`.
+`CicloLavaderoDAO.detectarLineasSobregiradas()` delata bases de desarrollo con datos previos a esta
+persistencia. Detalle completo: `plans/fracciones-de-equipo-persistidas.md`.
+
 ## Patrones e interfaces clave
 
 **Strategies** (todas en `common/`):

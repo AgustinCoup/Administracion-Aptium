@@ -1023,9 +1023,10 @@ git log --oneline -10
 
 ### Criterio de salida
 
-- [ ] `CLAUDE.md` documenta la instancia de equipo.
-- [ ] `hallazgos-arquitectura-pendientes.md` #7 marcado hecho.
-- [ ] Commit: `docs: cierre de la persistencia de fracciones de equipo (#7)`
+- [x] `CLAUDE.md` documenta la instancia de equipo (sección "Lavadero — fracciones de equipo").
+- [x] `hallazgos-arquitectura-pendientes.md` #7 marcado hecho, con bloque de cierre formato `#3`-`#6`.
+- [x] Sin `TODO`/`temporal` sueltos en `features/lavadero` (verificado con grep).
+- [x] Commit: `docs: cierre de la persistencia de fracciones de equipo (#7)`
 
 ---
 

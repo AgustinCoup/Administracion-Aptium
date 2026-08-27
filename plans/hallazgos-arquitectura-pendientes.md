@@ -2,8 +2,7 @@
 
 Diagnóstico de la revisión profunda del 2026-07-22.
 
-**Estado al 2026-07-23:** #1 a #5 **ejecutados**, suite en verde (509 tests).
-Queda solo **#6**.
+**Estado al 2026-08-27:** #1 a #5 y #7 **ejecutados**. Queda solo **#6** (concurrencia/EDT).
 
 | # | Estado | Commit |
 |---|---|---|
@@ -13,7 +12,7 @@ Queda solo **#6**.
 | #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
 | #3 `AppModel` | hecho (2026-07-23) — **disuelto** | sin commitear |
 | #6 concurrencia / EDT | **pendiente** — plan escrito en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | — |
-| #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | **pendiente de ejecución** — decisiones cerradas, blueprint de 9 pasos en [`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md) | — |
+| #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -203,7 +202,35 @@ que conviene planificar con cuidado (toca varios controllers y el flujo de refre
 
 ---
 
-## #7 — La subdivisión de `Equipo*` no se persiste  (ALTO — agregado 2026-08-19)
+## #7 — La subdivisión de `Equipo*` no se persiste  ✅ HECHO (2026-08-27)
+
+Blueprint de 9 pasos ([`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md))
+ejecutado entero sobre `ConexionConCDE`, commit por paso. Resultado:
+
+- **`V19`** — tabla `instancias_equipo_ciclo` + columna `instancia_equipo_id` en
+  `elementos_ciclo_lavadero`. **`V20`** — `salidas_lavadero.elemento_ciclo_id` pasa a nullable +
+  columna `instancia_equipo_id`. Ninguna migración existente se tocó.
+- `SQL_DISPONIBLES` y la detección usan la fórmula
+  `SUM(cantidad donde instancia IS NULL) + COUNT(DISTINCT instancia_equipo_id)`: un equipo repartido
+  en N consume 1 unidad, no N.
+- `CicloLavaderoDAO.crearInstanciaEquipo` (+ validación en el service); `CiclosController` crea las
+  instancias antes de lanzar y **exige "Lanzar Todos"** para grupos repartidos (bloquea el lanzamiento
+  individual y valida config completa del grupo).
+- `AgrupadorInstanciasSalida` (clase plana, testeable) agrupa las N fracciones en 1 fila de Salidas,
+  visible sólo cuando las N partes tienen ciclo finalizado. `SalidaLavaderoDAO` opera `marcarListo` /
+  `volverALavado` / `derivar` sobre la instancia entera. Records `ElementoLavadoPendiente` / `SalidaLista`
+  cambiaron `lavarropasNumero: int` → `lavarropas: String`.
+- `CicloLavaderoDAO.detectarLineasSobregiradas()` — detección (sin reparación) de bases de desarrollo
+  con datos previos.
+- Defecto destapado por el test de integración y arreglado en el Paso 8: `SalidaLavaderoService.marcarListo`
+  deduplicaba con `elementoCicloId` (ahora `null` en toda instancia), rompiendo el marcado masivo cuando
+  dos equipos repartidos terminaban juntos — clave de duplicado nueva `claveDeDuplicado`.
+
+**Verificación:** `mvn test` en verde (951+ tests), `mvn clean package` OK. Smoke manual de GUI
+pendiente (fuera del blueprint).
+
+<details>
+<summary>Diagnóstico original (ALTO — agregado 2026-08-19)</summary>
 
 **Qué:** cuando un `Equipo*` se reparte entre varios lavarropas, el `instanciaId` que agrupa sus
 fracciones es un `AtomicInteger` en memoria de `CiclosController` (línea 46) y no viaja a la base:
@@ -218,14 +245,10 @@ hace, y multiplica por 4 lo que manda al CDE.
 **Encontrado por:** el smoke manual del Paso 8 de `salidas-lavadero-listo-y-derivacion-cde.md`.
 No es deuda de ese plan: es anterior, del plan de ciclos.
 
-**Estado (2026-08-25):** diagnóstico y las cuatro decisiones de diseño (identidad persistida,
-lanzamiento conjunto de equipos repartidos, aritmética de la cantidad, datos ya sucios) cerradas con el
-usuario. El brief se convirtió en un blueprint ejecutable de 9 pasos, con una migración `V19` (identidad
-de instancia) y una `V20` (Salidas agrupa por instancia) — ninguna migración existente se toca. Falta
-ejecutarlo.
-
 **Diagnóstico completo, decisiones cerradas y blueprint paso a paso:**
 [`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md).
+
+</details>
 
 ---
 
