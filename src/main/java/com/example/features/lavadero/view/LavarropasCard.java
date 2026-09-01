@@ -106,6 +106,17 @@ public class LavarropasCard extends JPanel {
         aplicarColapso();
     }
 
+    /**
+     * Se estira a lo ancho de su columna pero nunca a lo alto: sin este límite, el
+     * {@code BoxLayout} de {@code construirGrillaDeCards()} reparte el espacio sobrante de la
+     * columna entre todas las cards (no solo en el glue final), dejando un hueco en blanco
+     * debajo incluso con la card contraída.
+     */
+    @Override
+    public Dimension getMaximumSize() {
+        return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+    }
+
     private JPanel buildConfigPanel() {
         JPanel config = new JPanel();
         config.setLayout(new BoxLayout(config, BoxLayout.Y_AXIS));

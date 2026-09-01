@@ -71,42 +71,38 @@ public class PantallaCiclos extends JPanel {
     }
 
     /**
-     * Grilla de cards de lavarropas, de {@code LAVARROPAS_POR_FILA} por fila.
-     *
-     * <p>GridBagLayout con fill=HORIZONTAL y weighty=0: cada card conserva su propio
-     * preferred height (no se estira verticalmente) y se alinea al tope de su celda.
-     * Cuando todos los cards de una fila están contraídos la fila mide ~28px.</p>
+     * Grilla de cards de lavarropas, en {@code LAVARROPAS_POR_FILA} columnas independientes
+     * ("masonry"): cada columna es su propio {@code BoxLayout} vertical, así que expandir una
+     * card sólo empuja hacia abajo a las demás cards de su misma columna, sin dejar hueco en
+     * las columnas vecinas (a diferencia de un grid de filas compartidas, donde una card alta
+     * infla toda la fila).
      */
     private JPanel construirGrillaDeCards() {
         final int porFila = Constantes.Lavadero.LAVARROPAS_POR_FILA;
         final int total   = Constantes.Lavadero.CANTIDAD_LAVARROPAS;
 
-        JPanel panelCards = new JPanel(new GridBagLayout());
+        JPanel panelCards = new JPanel(new GridLayout(1, porFila, 8, 0));
         panelCards.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill    = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0 / porFila;
-        gbc.weighty = 0.0;
-        gbc.anchor  = GridBagConstraints.NORTH;
-        gbc.insets  = new Insets(4, 4, 4, 4);
-
-        for (int i = 1; i <= total; i++) {
-            gbc.gridx = (i - 1) % porFila;
-            gbc.gridy = (i - 1) / porFila;
-            LavarropasCard card = new LavarropasCard(i);
-            cards.put(i, card);
-            panelCards.add(card, gbc);
+        JPanel[] columnas = new JPanel[porFila];
+        for (int c = 0; c < porFila; c++) {
+            columnas[c] = new JPanel();
+            columnas[c].setLayout(new BoxLayout(columnas[c], BoxLayout.Y_AXIS));
+            panelCards.add(columnas[c]);
         }
 
-        // Relleno de las celdas vacías de la última fila: sin ellos las cards de esa fila
-        // se estirarían para ocupar todo el ancho en vez de conservar el de su columna.
-        int sobrantes  = (porFila - total % porFila) % porFila;
-        int ultimaFila = (total - 1) / porFila;
-        for (int c = 0; c < sobrantes; c++) {
-            gbc.gridx = porFila - sobrantes + c;
-            gbc.gridy = ultimaFila;
-            panelCards.add(new JPanel(), gbc);
+        for (int i = 1; i <= total; i++) {
+            JPanel columna = columnas[(i - 1) % porFila];
+            LavarropasCard card = new LavarropasCard(i);
+            card.setAlignmentX(Component.LEFT_ALIGNMENT);
+            cards.put(i, card);
+            if (columna.getComponentCount() > 0) {
+                columna.add(Box.createVerticalStrut(8));
+            }
+            columna.add(card);
+        }
+        for (JPanel columna : columnas) {
+            columna.add(Box.createVerticalGlue());
         }
         return panelCards;
     }
