@@ -6,7 +6,8 @@ import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
-import com.example.features.lavadero.model.ElementoCicloMovimiento;
+import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.LineaLanzamiento;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -29,43 +30,50 @@ public class CicloLavaderoService {
         return dao.obtenerElementosDisponiblesParaCiclo();
     }
 
-    public void lanzarCiclo(int lavarropasNumero, ConfiguracionCiclo config,
-                             List<ElementoCicloMovimiento> movimientos) {
+    /**
+     * Valida la tanda entera antes de tocar la base: si un solo ciclo está mal, no se lanza
+     * ninguno. La transacción es del DAO; acá sólo se rechaza lo que no debería llegar.
+     */
+    public void lanzarTanda(List<LanzamientoCiclo> tanda) {
         ValidationException.Builder v = ValidationException.builder();
-
-        v.addErrorIf(lavarropasNumero < 1 || lavarropasNumero > Constantes.Lavadero.CANTIDAD_LAVARROPAS,
-            "El número de lavarropas debe estar entre 1 y " + Constantes.Lavadero.CANTIDAD_LAVARROPAS + ".");
-        v.addErrorIf(config == null,
-            "Debe configurar el ciclo.");
-        if (config != null) {
-            v.addErrorIf(config.tipoLavado() == null,
-                "Debe seleccionar el tipo de lavado.");
-            v.addErrorIf(config.jabon() == null,
-                "Debe seleccionar un jabón.");
-            v.addErrorIf(config.litrosJabon() == null || config.litrosJabon().compareTo(BigDecimal.ZERO) <= 0,
-                "Los mililitros de jabón deben ser mayores a cero.");
+        v.addErrorIf(tanda == null || tanda.isEmpty(), "Debe haber al menos un ciclo para lanzar.");
+        if (tanda != null) {
+            for (LanzamientoCiclo ciclo : tanda) validar(ciclo, v);
         }
-        v.addErrorIf(movimientos == null || movimientos.isEmpty(),
-            "Debe agregar al menos un elemento al ciclo.");
-
-        if (movimientos != null) {
-            for (ElementoCicloMovimiento m : movimientos) {
-                v.addErrorIf(m.getCantidad() <= 0,
-                    "La cantidad de cada elemento debe ser mayor a cero.");
-            }
-        }
-
         v.throwIfHasErrors();
-
-        dao.lanzarCiclo(lavarropasNumero, config, movimientos);
+        dao.lanzarTanda(tanda);
     }
 
-    public int crearInstanciaEquipo(int elementoClasificacionId, int totalPartes) {
-        ValidationException.Builder v = ValidationException.builder();
-        v.addErrorIf(elementoClasificacionId <= 0, "ID de elemento de clasificación inválido.");
-        v.addErrorIf(totalPartes <= 0, "El total de partes debe ser mayor a cero.");
-        v.throwIfHasErrors();
-        return dao.crearInstanciaEquipo(elementoClasificacionId, totalPartes);
+    /** Los mensajes van prefijados con el lavarropas: en una tanda, "falta el jabón" solo no ubica. */
+    private static void validar(LanzamientoCiclo ciclo, ValidationException.Builder v) {
+        int numero = ciclo.lavarropasNumero();
+        String prefijo = "Lavarropas #" + numero + ": ";
+
+        v.addErrorIf(numero < 1 || numero > Constantes.Lavadero.CANTIDAD_LAVARROPAS,
+            "El número de lavarropas debe estar entre 1 y " + Constantes.Lavadero.CANTIDAD_LAVARROPAS + ".");
+
+        ConfiguracionCiclo config = ciclo.config();
+        v.addErrorIf(config == null, prefijo + "debe configurar el ciclo.");
+        if (config != null) {
+            v.addErrorIf(config.tipoLavado() == null,
+                prefijo + "debe seleccionar el tipo de lavado.");
+            v.addErrorIf(config.jabon() == null,
+                prefijo + "debe seleccionar un jabón.");
+            v.addErrorIf(config.litrosJabon() == null || config.litrosJabon().compareTo(BigDecimal.ZERO) <= 0,
+                prefijo + "los mililitros de jabón deben ser mayores a cero.");
+        }
+
+        List<LineaLanzamiento> lineas = ciclo.lineas();
+        v.addErrorIf(lineas == null || lineas.isEmpty(),
+            prefijo + "debe agregar al menos un elemento al ciclo.");
+        if (lineas != null) {
+            for (LineaLanzamiento linea : lineas) {
+                v.addErrorIf(linea.cantidad() <= 0,
+                    prefijo + "la cantidad de cada elemento debe ser mayor a cero.");
+                v.addErrorIf(linea.totalPartes() <= 0,
+                    prefijo + "el total de partes de un equipo repartido debe ser mayor a cero.");
+            }
+        }
     }
 
     public List<CicloLavadero> obtenerCiclosFinalizados() {

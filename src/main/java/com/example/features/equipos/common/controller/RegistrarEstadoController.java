@@ -245,10 +245,8 @@ public class RegistrarEstadoController {
         equiposPendientes.clear();
         // Solo se descartó el buffer local: la base no cambió, alcanza con repintar.
         repintar();
-        actualizarTextoAvanzar();
         actualizarContadorCambios();
-        panel.setConfirmarEnabled(false);
-        panel.setCancelarEnabled(false);
+        sincronizarBotonesConBuffer();
     }
 
     private void navegarConGuard(Runnable navegar) {
@@ -285,7 +283,23 @@ public class RegistrarEstadoController {
                 panel.setCancelarEnabled(false);
                 panel.setAvanzarEnabled(false);
             })
+            .despues(this::sincronizarBotonesConBuffer)
             .lanzar();
+    }
+
+    /**
+     * Deja los botones acordes al buffer. Va en {@code despues}, que es lo único que corre
+     * tanto en éxito como en error: si la escritura falla, el buffer sigue intacto y hay que
+     * volver a encender Confirmar y Cancelar —sin esto quedaban apagados con cambios adentro,
+     * y el operador no podía ni reintentar ni descartar—. En el éxito el buffer ya está vacío,
+     * así que la misma regla los deja apagados.
+     */
+    private void sincronizarBotonesConBuffer() {
+        boolean hayCambios = !cambiosPendientes.isEmpty();
+        panel.setConfirmarEnabled(hayCambios);
+        panel.setCancelarEnabled(hayCambios);
+        // Avanzar no depende del buffer sino de la selección: se recalcula, no se prende a mano.
+        actualizarTextoAvanzar();
     }
 
     /** Despacho al service según el tipo de equipo. Corre en el hilo de fondo. */
@@ -307,12 +321,10 @@ public class RegistrarEstadoController {
             panel.mostrarError(String.format(Constantes.Mensajes.CAMBIOS_GUARDADOS_ERROR, errores));
         }
 
+        // Los botones los deja sincronizarBotonesConBuffer, en el despues de la tarea.
         cambiosPendientes.clear();
         equiposPendientes.clear();
-        actualizarTextoAvanzar();
         actualizarContadorCambios();
-        panel.setConfirmarEnabled(false);
-        panel.setCancelarEnabled(false);
 
         // Se escribió en la base: hay que releerla. Se pide siempre, incluso si
         // alguna operación falló, porque las que sí pasaron cambiaron estado.

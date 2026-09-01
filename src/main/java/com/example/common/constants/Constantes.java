@@ -146,7 +146,6 @@ public final class Constantes {
         public static final String GUARD_CICLOS_CAMBIOS      = "Tenés elementos cargados en un lavarropas sin lanzar.\nSi volvés ahora, esos cambios se perderán.\n¿Querés salir de todas formas?";
         public static final String CONFIRMAR_LANZAR_CICLO    = "¿Lanzar el ciclo de lavado?";
         public static final String CONFIRMAR_FINALIZAR_CICLO = "¿Marcar este ciclo como finalizado?";
-        public static final String ERROR_LANZAR_CICLO        = "Error al lanzar el ciclo. Intente nuevamente.";
         public static final String ERROR_FINALIZAR_CICLO     = "Error al finalizar el ciclo. Intente nuevamente.";
 
         /** Bloqueo de "Lanzar" individual: la fracción de este lavarropas es de un equipo repartido en más de uno. */

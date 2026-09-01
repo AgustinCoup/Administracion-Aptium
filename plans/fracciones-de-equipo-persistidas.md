@@ -48,7 +48,23 @@ misma línea se reparten distinto — caso real, confirmado con el usuario). Ele
 `instancia_equipo_id INT NULL` en `elementos_ciclo_lavadero`. Es la única que sobrevive al caso
 mezclado. **No reabrir esta decisión.**
 
-### B — ¿Cuándo se crea la instancia si las partes lanzan en momentos distintos? ✅ CERRADA (2026-08-25): **B2-débil**
+### B — ¿Cuándo se crea la instancia si las partes lanzan en momentos distintos? ⚠️ SUPERSEDIDA (2026-09-01)
+
+> **Lo que sigue quedó atrás.** El "riesgo residual aceptado" de más abajo resultó peor de lo que
+> decía este texto: la instancia a medias **no** es inocua. `SQL_DISPONIBLES` cuenta instancias
+> distintas, así que ya la da por consumida, mientras que `AgrupadorInstanciasSalida` exige
+> `grupo.size() == total_partes` y nunca la acepta — el equipo desaparece de Disponibles **y** de
+> Salidas, y el ingreso no puede llegar a FINALIZADO. `detectarLineasSobregiradas` tampoco la
+> delata (está sub-consumida, no sobregirada), y reintentar "Lanzar Todos" acuña una **segunda**
+> instancia para el mismo equipo, ahora sí sobregirando la línea.
+>
+> **Decisión vigente:** la tanda entera —todas las instancias y todos los ciclos— va en **una sola
+> transacción** (`CicloLavaderoDAO.lanzarTanda`). Si un lavarropas falla no se lanza ninguno, el
+> staging queda intacto y el operador reintenta la tanda tal cual. `crearInstanciaEquipo` y
+> `lanzarCiclo` ya no existen como operaciones sueltas: no hay forma de crear una instancia sin
+> sus fracciones. Lo que **sí** sobrevive de la decisión original es la restricción operativa: un
+> grupo repartido sigue lanzando sólo con "Lanzar Todos", y sigue exigiendo config completa en
+> todas sus cards antes de armar la tanda.
 
 Se verificó en código que `lanzarTodos()` (`CiclosController.java:417`) y `CicloLavaderoDAO.lanzarCiclo`
 (`CicloLavaderoDAO.java:144`) **ya no son atómicos entre lavarropas hoy**: cada lavarropas es su propio

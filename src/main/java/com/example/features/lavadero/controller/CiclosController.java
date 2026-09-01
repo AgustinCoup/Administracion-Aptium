@@ -10,7 +10,9 @@ import com.example.features.lavadero.controller.helpers.StagingCiclos;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
-import com.example.features.lavadero.model.ElementoCicloMovimiento;
+import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
@@ -89,22 +91,10 @@ public class CiclosController {
     public static final DataFlavor ELEMENTO_CICLO_FLAVOR = LocalObjectFlavors.forList();
 
     /**
-     * Una línea del staging lista para lanzarse, todavía con el id de instancia <b>de
-     * staging</b>: el de la base recién se conoce en {@link #escribirLanzamientos}.
-     *
-     * @param instanciaStagingId {@code null} si no es una fracción de equipo
-     * @param totalPartes        en cuántos lavarropas se repartió el equipo (1 si no se repartió)
-     */
-    private record LineaLanzamiento(int elementoClasificacionId, String elementoNombre,
-                                    int cantidad, Integer instanciaStagingId, int totalPartes) { }
-
-    /** Lo que un lavarropas lleva a su ciclo, leído de las cards y del staging en el EDT. */
-    private record LanzamientoPendiente(int lavarropasNumero, ConfiguracionCiclo config,
-                                        List<LineaLanzamiento> lineas) { }
-
-    /**
-     * Qué lavarropas quedaron efectivamente escritos y cuántos fallaron. Una tanda no corta
-     * ante el primer fallo: lo que ya se escribió está en la base y hay que reflejarlo.
+     * Qué ciclos quedaron efectivamente finalizados y cuántos fallaron. Finalizar de a varios no
+     * corta ante el primer fallo —cada ciclo se cierra solo, sin invariantes compartidos— así que
+     * lo que ya se escribió está en la base y hay que reflejarlo. Lanzar no usa esto: una tanda
+     * de lanzamiento es todo o nada (ver {@link #lanzar}).
      */
     private record ResultadoEscritura(List<Integer> exitosos, int fallidos) {
 
@@ -466,31 +456,40 @@ public class CiclosController {
      * Arma en el hilo de la interfaz lo que cada lavarropas lleva al ciclo —la config de su
      * card y sus líneas de staging— y manda la tanda entera a <b>una sola</b> tarea de fondo.
      * Los lavarropas a los que les falta config se saltean con su aviso, igual que antes.
+     *
+     * <p>La tanda que llega al service es todo o nada: si falla, no se limpia nada del staging
+     * y el operador puede reintentarla tal cual (ver {@code CicloLavaderoDAO.lanzarTanda}).
      */
     private void lanzar(List<Integer> lavarropas) {
         List<String> faltantes = new ArrayList<>();
-        List<LanzamientoPendiente> pendientes = new ArrayList<>();
+        List<LanzamientoCiclo> tanda = new ArrayList<>();
         for (int num : lavarropas) {
-            prepararLanzamiento(num, faltantes).ifPresent(pendientes::add);
+            prepararLanzamiento(num, faltantes).ifPresent(tanda::add);
         }
         if (!faltantes.isEmpty()) pantalla.mostrarError(String.join("\n", faltantes));
-        if (pendientes.isEmpty()) return;
+        if (tanda.isEmpty()) return;
 
         ejecutar("lanzar-ciclos",
-            () -> escribirLanzamientos(pendientes),
-            resultado -> {
-                resultado.exitosos().forEach(staging::limpiarLavarropas);
-                if (resultado.huboFallos()) {
-                    pantalla.mostrarError(Constantes.Mensajes.ERROR_LANZAR_CICLO);
-                }
-            });
+            () -> escribirTanda(tanda),
+            lanzados -> lanzados.forEach(staging::limpiarLavarropas));
+    }
+
+    /**
+     * Fuera del hilo de la interfaz. Devuelve los lavarropas que quedaron lanzados, que son
+     * todos: si la tanda no se escribió entera, propaga la excepción y no devuelve nada.
+     */
+    private List<Integer> escribirTanda(List<LanzamientoCiclo> tanda) {
+        cicloLavaderoService.lanzarTanda(tanda);
+        return tanda.stream().map(LanzamientoCiclo::lavarropasNumero).toList();
     }
 
     /**
      * {@code Optional.empty()} si el lavarropas no tiene nada que lanzar o le falta config;
-     * en el segundo caso además deja el motivo en {@code faltantes}.
+     * en el segundo caso además deja el motivo en {@code faltantes}. Los tres campos que se
+     * piden acá son los mismos que enciende {@link LavarropasCard#tieneConfiguracionCompleta()}:
+     * lo que cambia es que ahí se decide si el botón se prende y acá se dice qué falta.
      */
-    private Optional<LanzamientoPendiente> prepararLanzamiento(int num, List<String> faltantes) {
+    private Optional<LanzamientoCiclo> prepararLanzamiento(int num, List<String> faltantes) {
         List<ElementoCicloItem> pendientes = staging.pendientesDe(num);
         if (pendientes.isEmpty()) return Optional.empty();
 
@@ -500,13 +499,18 @@ public class CiclosController {
             faltantes.add("Lavarropas #" + num + ": seleccione el tipo de lavado.");
             return Optional.empty();
         }
+        JabonCatalogo jabon = card.getJabon();
+        if (jabon == null) {
+            faltantes.add("Lavarropas #" + num + ": seleccione el jabón.");
+            return Optional.empty();
+        }
         BigDecimal litrosJabon = card.getLitrosJabon();
         if (litrosJabon == null) {
             faltantes.add("Lavarropas #" + num + ": ingrese los mililitros de jabón.");
             return Optional.empty();
         }
 
-        ConfiguracionCiclo config = new ConfiguracionCiclo(tipoLavado, card.getJabon(), litrosJabon,
+        ConfiguracionCiclo config = new ConfiguracionCiclo(tipoLavado, jabon, litrosJabon,
             card.isSuavizante(), card.isPotenciador(), card.getLitrosTotales());
 
         Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
@@ -514,17 +518,18 @@ public class CiclosController {
         for (ElementoCicloItem item : pendientes) {
             Integer instancia = esFraccionDeEquipo(item) ? item.getInstanciaId() : null;
             lineas.add(new LineaLanzamiento(
-                item.getElementoClasificacionId(), item.getElementoNombre(), item.getCantidadEnCiclo(),
+                item.getElementoClasificacionId(), item.getCantidadEnCiclo(),
                 instancia, instancia == null ? 1 : fracciones.getOrDefault(instancia, 1)));
         }
-        return Optional.of(new LanzamientoPendiente(num, config, lineas));
+        return Optional.of(new LanzamientoCiclo(num, config, lineas));
     }
 
     /**
      * {@code null} si el lavarropas se puede lanzar solo; mensaje accionable si alguna de sus
-     * fracciones pertenece a un equipo repartido en más de un lavarropas (decisión B del
-     * blueprint de fracciones de equipo: esos grupos sólo lanzan con "Lanzar Todos", para poder
-     * validar que todas sus cards tengan config completa antes de crear la instancia en BD).
+     * fracciones pertenece a un equipo repartido en más de un lavarropas: esos grupos sólo
+     * lanzan con "Lanzar Todos", para poder validar que todas sus cards tengan config completa
+     * antes de armar la tanda (y para que la tanda las lleve juntas, que es lo que las hace
+     * atómicas entre sí).
      */
     private String motivoBloqueoPorInstanciaRepartida(int num) {
         Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
@@ -551,71 +556,13 @@ public class CiclosController {
             for (ElementoCicloItem item : staging.pendientesDe(num)) {
                 if (!esFraccionDeEquipo(item)) continue;
                 if (fracciones.getOrDefault(item.getInstanciaId(), 1) <= 1) continue;
-                if (card.getTipoLavado() == null || card.getLitrosJabon() == null) {
+                if (!card.tieneConfiguracionCompleta()) {
                     return String.format(Constantes.Mensajes.FALTA_CONFIG_GRUPO_REPARTIDO,
                         num, item.getElementoNombre());
                 }
             }
         }
         return null;
-    }
-
-    /**
-     * Fuera del hilo de la interfaz. Crea primero <b>todas</b> las instancias de equipo de la
-     * tanda —una por id de staging, con su total de partes real— y recién después lanza cada
-     * lavarropas, para que un grupo repartido no quede lanzado a medias por un fallo posterior.
-     */
-    private ResultadoEscritura escribirLanzamientos(List<LanzamientoPendiente> pendientes) {
-        Map<Integer, Integer> instancias = crearInstancias(pendientes);
-
-        List<Integer> exitosos = new ArrayList<>();
-        int fallidos = 0;
-        for (LanzamientoPendiente pendiente : pendientes) {
-            try {
-                cicloLavaderoService.lanzarCiclo(pendiente.lavarropasNumero(), pendiente.config(),
-                    movimientosDe(pendiente, instancias));
-                exitosos.add(pendiente.lavarropasNumero());
-            } catch (Exception e) {
-                log.error("Error al lanzar ciclo en lavarropas {}", pendiente.lavarropasNumero(), e);
-                fallidos++;
-            }
-        }
-        return new ResultadoEscritura(exitosos, fallidos);
-    }
-
-    /** {@code instanciaId de staging → id en la base}. Equipos sin repartir también pasan por acá. */
-    private Map<Integer, Integer> crearInstancias(List<LanzamientoPendiente> pendientes) {
-        Map<Integer, Integer> instancias = new HashMap<>();
-        for (LanzamientoPendiente pendiente : pendientes) {
-            for (LineaLanzamiento linea : pendiente.lineas()) {
-                Integer stagingId = linea.instanciaStagingId();
-                if (stagingId == null || instancias.containsKey(stagingId)) continue;
-                instancias.put(stagingId, cicloLavaderoService.crearInstanciaEquipo(
-                    linea.elementoClasificacionId(), linea.totalPartes()));
-            }
-        }
-        return instancias;
-    }
-
-    private static List<ElementoCicloMovimiento> movimientosDe(LanzamientoPendiente pendiente,
-                                                               Map<Integer, Integer> instancias) {
-        List<ElementoCicloMovimiento> movimientos = new ArrayList<>();
-        for (LineaLanzamiento linea : pendiente.lineas()) {
-            if (linea.instanciaStagingId() == null) {
-                movimientos.add(new ElementoCicloMovimiento(
-                    linea.elementoClasificacionId(), linea.cantidad()));
-                continue;
-            }
-            Integer instanciaDbId = instancias.get(linea.instanciaStagingId());
-            if (instanciaDbId == null) {
-                throw new IllegalStateException("No se resolvió la instancia de equipo para "
-                    + linea.elementoNombre() + " (staging id " + linea.instanciaStagingId()
-                    + ") en lavarropas #" + pendiente.lavarropasNumero());
-            }
-            movimientos.add(new ElementoCicloMovimiento(
-                linea.elementoClasificacionId(), linea.cantidad(), instanciaDbId));
-        }
-        return movimientos;
     }
 
     // ── Finalizar ─────────────────────────────────────────────────────────────
@@ -682,9 +629,8 @@ public class CiclosController {
      * segundo click lanzaría de nuevo el mismo staging— y el refresco va en {@code despues}
      * para que también corra si falló: es el que los vuelve a encender.
      */
-    private void ejecutar(String nombre, Callable<ResultadoEscritura> escritura,
-                          Consumer<ResultadoEscritura> alTerminar) {
-        TareaUI.<ResultadoEscritura>nueva()
+    private <T> void ejecutar(String nombre, Callable<T> escritura, Consumer<T> alTerminar) {
+        TareaUI.<T>nueva()
             .nombre(nombre)
             .antes(this::deshabilitarAcciones)
             .leer(escritura)

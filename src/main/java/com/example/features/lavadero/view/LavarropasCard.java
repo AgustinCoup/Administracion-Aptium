@@ -118,9 +118,10 @@ public class LavarropasCard extends JPanel {
         RestriccionesCampo.soloNumerosDecimales(txtLitrosJabon);
         RestriccionesCampo.soloNumerosDecimales(txtLitrosTotales);
 
-        // Obligatorio y sin default: arranca vacío para forzar una elección explícita.
+        // Obligatorios y sin default: arrancan vacíos para forzar una elección explícita.
         cmbTipoLavado.setSelectedItem(null);
         cmbTipoLavado.addActionListener(e -> notificarConfiguracionChanged());
+        cmbJabon.addActionListener(e -> notificarConfiguracionChanged());
 
         config.add(rowPanel("Tipo:", cmbTipoLavado));
         config.add(rowPanel("Jabón:", cmbJabon));
@@ -140,7 +141,7 @@ public class LavarropasCard extends JPanel {
         return config;
     }
 
-    /** Un solo canal para todos los campos obligatorios de la config (mL de jabón y tipo). */
+    /** Un solo canal para todos los campos obligatorios de la config (tipo, jabón y mL de jabón). */
     private void notificarConfiguracionChanged() {
         if (onConfiguracionChanged != null) SwingUtilities.invokeLater(onConfiguracionChanged);
     }
@@ -236,7 +237,7 @@ public class LavarropasCard extends JPanel {
      */
     public void resetConfiguracion() {
         cmbTipoLavado.setSelectedItem(null);
-        cmbJabon.setSelectedIndex(-1);
+        cmbJabon.setSelectedItem(null);
         txtLitrosJabon.setText("");
         chkSuavizante.setSelected(false);
         chkPotenciador.setSelected(false);
@@ -263,9 +264,15 @@ public class LavarropasCard extends JPanel {
 
     public JabonCatalogo getJabon()  { return (JabonCatalogo) cmbJabon.getSelectedItem(); }
 
+    /**
+     * Deja el combo sin selección después de llenarlo: {@code addItem} autoselecciona el primer
+     * ítem, y el jabón es una elección explícita del operador como el tipo de lavado, no un
+     * default que se lleva puesto sin mirar.
+     */
     public void setJabones(java.util.List<JabonCatalogo> jabones) {
         cmbJabon.removeAllItems();
         for (JabonCatalogo j : jabones) cmbJabon.addItem(j);
+        cmbJabon.setSelectedItem(null);
     }
 
     public BigDecimal getLitrosJabon() {
@@ -312,11 +319,20 @@ public class LavarropasCard extends JPanel {
         btnAccion.setEnabled(false);
     }
 
+    /**
+     * Los tres campos obligatorios del ciclo: tipo de lavado, jabón y mililitros de jabón. Es
+     * la <b>única</b> definición de "config completa" de la pantalla: la usa esta card para
+     * decidir si se puede lanzar y {@code CiclosController} para validar los grupos repartidos.
+     */
+    public boolean tieneConfiguracionCompleta() {
+        return getTipoLavado() != null && getJabon() != null && getLitrosJabon() != null;
+    }
+
     public void actualizarBtnAccion() {
         if (activo) {
             btnAccion.setEnabled(true);
         } else {
-            btnAccion.setEnabled(tieneItems() && getLitrosJabon() != null && getTipoLavado() != null);
+            btnAccion.setEnabled(tieneItems() && tieneConfiguracionCompleta());
         }
     }
 }

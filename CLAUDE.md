@@ -120,7 +120,16 @@ pantallas del CDE.
 Un `Equipo*` de la clasificación de lavadero se puede repartir entre varios lavarropas. Esa identidad se
 persiste: tabla `instancias_equipo_ciclo (id, elemento_clasificacion_id, total_partes)` + columna
 `instancia_equipo_id` (nullable) en `elementos_ciclo_lavadero` y en `salidas_lavadero` (migraciones
-`V19`/`V20`). **Invariante:** un equipo repartido en N lavarropas consume **1** unidad de su línea de
+`V19`/`V20`).
+
+**Lanzar es todo o nada.** `CicloLavaderoDAO.lanzarTanda` es la **única** escritura de lanzamiento:
+crea las instancias y todos los ciclos de la tanda en una sola transacción. No existe crear una
+instancia por separado — si existiera, un fallo a mitad de camino dejaría un equipo con menos
+fracciones que su `total_partes`, que Disponibles ya cuenta como consumido y Salidas nunca acepta
+como completo (o sea, desaparecido de las dos pantallas). Las líneas viajan con el `instanciaStagingId`
+que les puso el controller; el id real de la base lo resuelve el DAO adentro de la transacción.
+
+**Invariante:** un equipo repartido en N lavarropas consume **1** unidad de su línea de
 clasificación (no N), genera **1** fila de Salidas y **1** elemento en el ingreso del CDE, y no aparece
 en Salidas hasta que las N partes pasaron por un ciclo finalizado. El saldo se calcula
 `SUM(cantidad donde instancia IS NULL) + COUNT(DISTINCT instancia_equipo_id)`. La agrupación de

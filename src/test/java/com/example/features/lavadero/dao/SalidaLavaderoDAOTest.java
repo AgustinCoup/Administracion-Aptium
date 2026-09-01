@@ -4,9 +4,10 @@ import com.example.AbstractDAOTest;
 import com.example.common.exception.BusinessException;
 import com.example.features.lavadero.dao.derivadores.DerivadorFueraDeFlujo;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
-import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.MarcaListo;
 import com.example.features.lavadero.model.SalidaLista;
 import com.example.features.lavadero.model.TipoLavado;
@@ -19,6 +20,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -409,11 +411,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void instanciaConSusPartesTodasLavadas_apareceUnaVezConTodosLosLavarropas() throws SQLException {
-        int instanciaId = crearInstancia(clasifEquipo, 4);
-        lanzarYFinalizarFraccion(1, instanciaId);
-        lanzarYFinalizarFraccion(2, instanciaId);
-        lanzarYFinalizarFraccion(3, instanciaId);
-        lanzarYFinalizarFraccion(4, instanciaId);
+        int instanciaId = repartirEquipo(1, 2, 3, 4);
+        finalizarCiclosDe(1, 2, 3, 4);
 
         List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
 
@@ -428,20 +427,16 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void instanciaConUnaFraccionEnCicloTodaviaActivo_noApareceEnAbsoluto() throws SQLException {
-        int instanciaId = crearInstancia(clasifEquipo, 4);
-        lanzarYFinalizarFraccion(1, instanciaId);
-        lanzarYFinalizarFraccion(2, instanciaId);
-        lanzarYFinalizarFraccion(3, instanciaId);
-        lanzarFraccion(4, instanciaId);
+        repartirEquipo(1, 2, 3, 4);
+        finalizarCiclosDe(1, 2, 3);   // la fracción del 4 sigue adentro del lavarropas
 
         assertTrue(dao.obtenerLavadosPendientesDeListo().isEmpty());
     }
 
     @Test
     void marcarListoDeInstanciaCompleta_pasaAListasSinDestinoYDesaparecePendientes() throws SQLException {
-        int instanciaId = crearInstancia(clasifEquipo, 2);
-        lanzarYFinalizarFraccion(1, instanciaId);
-        lanzarYFinalizarFraccion(2, instanciaId);
+        int instanciaId = repartirEquipo(1, 2);
+        finalizarCiclosDe(1, 2);
 
         dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
 
@@ -458,10 +453,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void marcarListoDeInstanciaIncompleta_lanzaYNoInsertaNada() throws SQLException {
-        int instanciaId = crearInstancia(clasifEquipo, 3);
-        lanzarYFinalizarFraccion(1, instanciaId);
-        lanzarYFinalizarFraccion(2, instanciaId);
-        lanzarFraccion(3, instanciaId);
+        int instanciaId = repartirEquipo(1, 2, 3);
+        finalizarCiclosDe(1, 2);   // la fracción del 3 sigue adentro del lavarropas
         ElementoLavadoPendiente itemDeSnapshotViejo = new ElementoLavadoPendiente(
             null, instanciaId, "1, 2, 3", ingresoId, clienteId, "TestSalidaCliente", nombreEquipo, 1, 0, null);
 
@@ -474,9 +467,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void volverALavadoDeSalidaDeInstancia_devuelveLaInstanciaAPendientes() throws SQLException {
-        int instanciaId = crearInstancia(clasifEquipo, 2);
-        lanzarYFinalizarFraccion(1, instanciaId);
-        lanzarYFinalizarFraccion(2, instanciaId);
+        repartirEquipo(1, 2);
+        finalizarCiclosDe(1, 2);
         dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
         int salidaId = dao.obtenerListasSinDestino().get(0).salidaId();
 
@@ -491,9 +483,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void derivarSalidaDeInstancia_funcionaIgualQueUnaRegular() throws SQLException {
-        int instanciaId = crearInstancia(clasifEquipo, 2);
-        lanzarYFinalizarFraccion(1, instanciaId);
-        lanzarYFinalizarFraccion(2, instanciaId);
+        repartirEquipo(1, 2);
+        finalizarCiclosDe(1, 2);
         dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
         SalidaLista salida = dao.obtenerListasSinDestino().get(0);
 
@@ -507,9 +498,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
     @Test
     void unaFilaRegularYUnaDeInstanciaDelMismoCliente_seLeenAmbasSinInterferir() throws SQLException {
         lanzarYFinalizar(1, movimiento(clasifA, 5));
-        int instanciaId = crearInstancia(clasifEquipo, 2);
-        lanzarYFinalizarFraccion(2, instanciaId);
-        lanzarYFinalizarFraccion(3, instanciaId);
+        repartirEquipo(2, 3);
+        finalizarCiclosDe(2, 3);
 
         List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
 
@@ -520,32 +510,46 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private ElementoCicloMovimiento movimiento(int clasificacionId, int cantidad) {
-        return new ElementoCicloMovimiento(clasificacionId, cantidad);
+    private LineaLanzamiento movimiento(int clasificacionId, int cantidad) {
+        return new LineaLanzamiento(clasificacionId, cantidad);
     }
 
-    private void lanzarCiclo(int lavarropas, ElementoCicloMovimiento... movimientos) {
-        ciclosDao.lanzarCiclo(lavarropas,
-            new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), false, false, null),
-            List.of(movimientos));
+    private ConfiguracionCiclo configuracion() {
+        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), false, false, null);
     }
 
-    private void lanzarYFinalizar(int lavarropas, ElementoCicloMovimiento... movimientos) throws SQLException {
-        lanzarCiclo(lavarropas, movimientos);
+    private void lanzarCiclo(int lavarropas, LineaLanzamiento... lineas) {
+        ciclosDao.lanzarTanda(List.of(new LanzamientoCiclo(lavarropas, configuracion(), List.of(lineas))));
+    }
+
+    private void lanzarYFinalizar(int lavarropas, LineaLanzamiento... lineas) throws SQLException {
+        lanzarCiclo(lavarropas, lineas);
         ciclosDao.finalizarCiclo(ultimoCicloId());
     }
 
-    private int crearInstancia(int elementoClasificacionId, int totalPartes) {
-        return ciclosDao.crearInstanciaEquipo(elementoClasificacionId, totalPartes);
+    /**
+     * Reparte el equipo entre los lavarropas dados —una fracción de cantidad 1 en cada uno—
+     * en la única tanda que las puede crear juntas. Quedan lanzadas, no lavadas: finalizarlas
+     * es de {@link #finalizarCiclosDe(int...)}, para poder dejar alguna a medio camino.
+     *
+     * @return el id que la instancia recibió en la base
+     */
+    private int repartirEquipo(int... lavarropas) throws SQLException {
+        final int stagingId = 1;   // local a la tanda: cualquiera sirve
+        List<LanzamientoCiclo> tanda = new ArrayList<>();
+        for (int lav : lavarropas) {
+            tanda.add(new LanzamientoCiclo(lav, configuracion(),
+                List.of(new LineaLanzamiento(clasifEquipo, 1, stagingId, lavarropas.length))));
+        }
+        ciclosDao.lanzarTanda(tanda);
+        return escalar("SELECT MAX(id) FROM instancias_equipo_ciclo");
     }
 
-    private void lanzarFraccion(int lavarropas, int instanciaId) {
-        lanzarCiclo(lavarropas, new ElementoCicloMovimiento(clasifEquipo, 1, instanciaId));
-    }
-
-    private void lanzarYFinalizarFraccion(int lavarropas, int instanciaId) throws SQLException {
-        lanzarFraccion(lavarropas, instanciaId);
-        ciclosDao.finalizarCiclo(ultimoCicloId());
+    private void finalizarCiclosDe(int... lavarropas) throws SQLException {
+        for (int lav : lavarropas) {
+            ciclosDao.finalizarCiclo(escalar(
+                "SELECT MAX(id) FROM ciclos_lavadero WHERE lavarropas_numero = " + lav));
+        }
     }
 
     /** Tres elementos distintos lavados en el mismo ciclo y marcados Listo enteros. */

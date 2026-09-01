@@ -15,10 +15,11 @@ import com.example.features.lavadero.dao.derivadores.DerivadorIngresoCDE;
 import com.example.features.lavadero.model.AccionSalida;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
-import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
 import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.MarcaListo;
 import com.example.features.lavadero.model.SalidaLista;
 import com.example.features.lavadero.model.TipoLavado;
@@ -34,6 +35,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,10 +48,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * reales sobre H2.
  *
  * <p>{@code CiclosController} es Swing y no tiene test dedicado, así que este test <b>replica lo
- * que el controller orquesta</b> — crear la instancia antes del loop de lanzamiento y pasar su id
- * en cada {@link ElementoCicloMovimiento} — sin pasar por la UI. Si el controller dejara de
- * hacerlo, este test seguiría en verde: lo que cubre es que el pipeline de abajo respeta la
- * semántica, no que la pantalla lo invoque bien.</p>
+ * que el controller orquesta</b> — armar la tanda con el id de staging compartido entre las
+ * fracciones — sin pasar por la UI. Si el controller dejara de hacerlo, este test seguiría en
+ * verde: lo que cubre es que el pipeline de abajo respeta la semántica, no que la pantalla lo
+ * invoque bien.</p>
  *
  * <p>El invariante bajo prueba, en todas las capas que lo tocan:
  * <b>un equipo repartido en N lavarropas sigue siendo UN equipo</b> — consume 1 unidad de su
@@ -124,12 +126,9 @@ class EquipoSubdivididoIntegracionTest extends AbstractDAOTest {
     @Test
     @DisplayName("un equipo repartido en 3 lavarropas recorre todo el circuito como UN solo equipo")
     void equipoRepartidoEnTres_deLaClasificacionAlCDE() throws SQLException {
-        // ── 1-3. Lo que hace CiclosController al lanzar: una instancia con total_partes = 3,
-        //         y tres ciclos independientes (uno por lavarropas) que la comparten.
-        int instanciaId = ciclos.crearInstanciaEquipo(clasifEquipo, PARTES);
-        for (int lavarropas = 1; lavarropas <= PARTES; lavarropas++) {
-            lanzarFraccion(lavarropas, instanciaId);
-        }
+        // ── 1-3. Lo que hace CiclosController al lanzar: una tanda con una instancia de
+        //         total_partes = 3 y los tres ciclos que la comparten, todo en una transacción.
+        int instanciaId = repartirEquipo(clasifEquipo, 1, 2, 3);
         assertEquals(PARTES, contar("elementos_ciclo_lavadero WHERE instancia_equipo_id = " + instanciaId),
             "las 3 fracciones tienen que compartir la misma instancia persistida");
 
@@ -189,9 +188,8 @@ class EquipoSubdivididoIntegracionTest extends AbstractDAOTest {
     @Test
     @DisplayName("volver a Lavado una salida de instancia la devuelve entera a pendientes")
     void volverALavadoDeLaInstancia_laDevuelveComoUnSoloPendiente() throws SQLException {
-        int instanciaId = ciclos.crearInstanciaEquipo(clasifEquipo, PARTES);
+        int instanciaId = repartirEquipo(clasifEquipo, 1, 2, 3);
         for (int lavarropas = 1; lavarropas <= PARTES; lavarropas++) {
-            lanzarFraccion(lavarropas, instanciaId);
             finalizarUltimoCiclo(lavarropas);
         }
         salidas.marcarListo(List.of(unicoPendienteMarcable()));
@@ -213,10 +211,8 @@ class EquipoSubdivididoIntegracionTest extends AbstractDAOTest {
         int otroIngreso = insertarIngreso();
         int linea = insertarClasificacion(otroIngreso, primerElementoDeCategoria(ElementoCicloItem.CATEGORIA_EQUIPO), 2);
 
-        int instanciaId = ciclos.crearInstanciaEquipo(linea, PARTES);
+        repartirEquipo(linea, 1, 2, 3);
         for (int lavarropas = 1; lavarropas <= PARTES; lavarropas++) {
-            ciclos.lanzarCiclo(lavarropas, configuracion(),
-                List.of(new ElementoCicloMovimiento(linea, 1, instanciaId)));
             finalizarUltimoCiclo(lavarropas);
         }
 
@@ -238,12 +234,12 @@ class EquipoSubdivididoIntegracionTest extends AbstractDAOTest {
         int otroIngreso = insertarIngreso();
         int linea = insertarClasificacion(otroIngreso, primerElementoDeCategoria(ElementoCicloItem.CATEGORIA_EQUIPO), 2);
 
-        int primera = ciclos.crearInstanciaEquipo(linea, 2);
-        lanzarYFinalizarFraccion(1, linea, primera);
-        lanzarYFinalizarFraccion(2, linea, primera);
-        int segunda = ciclos.crearInstanciaEquipo(linea, 2);
-        lanzarYFinalizarFraccion(3, linea, segunda);
-        lanzarYFinalizarFraccion(4, linea, segunda);
+        repartirEquipo(linea, 1, 2);
+        finalizarUltimoCiclo(1);
+        finalizarUltimoCiclo(2);
+        repartirEquipo(linea, 3, 4);
+        finalizarUltimoCiclo(3);
+        finalizarUltimoCiclo(4);
 
         List<ElementoLavadoPendiente> pendientes = salidas.obtenerLavadosPendientesDeListo();
         assertEquals(2, pendientes.size(), "dos equipos repartidos son dos pendientes distintos");
@@ -255,16 +251,22 @@ class EquipoSubdivididoIntegracionTest extends AbstractDAOTest {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    /** Una fracción del equipo: cantidad 1 en su lavarropas, con el id de instancia compartido. */
-    private void lanzarFraccion(int lavarropas, int instanciaId) {
-        ciclos.lanzarCiclo(lavarropas, configuracion(),
-            List.of(new ElementoCicloMovimiento(clasifEquipo, 1, instanciaId)));
-    }
-
-    private void lanzarYFinalizarFraccion(int lavarropas, int linea, int instanciaId) throws SQLException {
-        ciclos.lanzarCiclo(lavarropas, configuracion(),
-            List.of(new ElementoCicloMovimiento(linea, 1, instanciaId)));
-        finalizarUltimoCiclo(lavarropas);
+    /**
+     * Reparte un equipo de {@code linea} entre los lavarropas dados: una fracción de cantidad 1
+     * en cada uno, todas con el mismo id de staging. Es lo que hace {@code CiclosController} al
+     * lanzar, y va en una sola tanda porque el DAO no acepta crear la instancia por separado.
+     *
+     * @return el id que la instancia recibió en la base
+     */
+    private int repartirEquipo(int linea, int... lavarropas) throws SQLException {
+        final int stagingId = 1;   // local a la tanda: cualquiera sirve
+        List<LanzamientoCiclo> tanda = new ArrayList<>();
+        for (int lav : lavarropas) {
+            tanda.add(new LanzamientoCiclo(lav, configuracion(),
+                List.of(new LineaLanzamiento(linea, 1, stagingId, lavarropas.length))));
+        }
+        ciclos.lanzarTanda(tanda);
+        return escalar("SELECT MAX(id) FROM instancias_equipo_ciclo");
     }
 
     private ConfiguracionCiclo configuracion() {

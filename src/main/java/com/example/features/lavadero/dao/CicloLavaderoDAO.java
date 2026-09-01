@@ -8,6 +8,8 @@ import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.infrastructure.db.TransactionalConnection;
@@ -183,16 +185,29 @@ public class CicloLavaderoDAO {
         return lista;
     }
 
-    public void lanzarCiclo(int lavarropasNumero, ConfiguracionCiclo config,
-                             List<ElementoCicloMovimiento> movimientos) {
+    /**
+     * Lanza una tanda entera —las instancias de equipo repartido y todos los ciclos que las
+     * consumen— en <b>una sola transacción</b>.
+     *
+     * <p>Ese alcance es el que hace consistente al reparto. Con una transacción por lavarropas,
+     * un fallo a mitad de tanda dejaba una instancia con {@code total_partes = N} y menos de N
+     * fracciones: {@code SQL_DISPONIBLES} ya la contaba como consumida (cuenta instancias
+     * distintas, no fracciones) mientras que Salidas nunca la aceptaba como completa, así que el
+     * equipo desaparecía de las dos pantallas y el ingreso no podía llegar a FINALIZADO.
+     * Reintentar tampoco servía: acuñaba una segunda instancia para el mismo equipo.
+     */
+    public void lanzarTanda(List<LanzamientoCiclo> tanda) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
-            int cicloId = insertarCiclo(conn, lavarropasNumero, config);
-            insertarMovimientos(conn, cicloId, movimientos);
+            Map<Integer, Integer> instancias = crearInstancias(conn, tanda);
+            for (LanzamientoCiclo ciclo : tanda) {
+                int cicloId = insertarCiclo(conn, ciclo.lavarropasNumero(), ciclo.config());
+                insertarMovimientos(conn, cicloId, movimientosDe(ciclo, instancias));
+            }
             tx.commit();
         } catch (SQLException e) {
-            log.error("Error al lanzar ciclo en lavarropas {}", lavarropasNumero, e);
-            throw new RuntimeException("Error al lanzar ciclo", e);
+            log.error("Error al lanzar una tanda de {} ciclo(s)", tanda.size(), e);
+            throw new DatabaseException("Error al lanzar los ciclos", e);
         }
     }
 
@@ -246,27 +261,46 @@ public class CicloLavaderoDAO {
     }
 
     /**
-     * Transacción propia, separada de {@code lanzarCiclo}: las fracciones de una
-     * instancia lanzan en ciclos independientes, uno por lavarropas (decisión B del
-     * blueprint de fracciones de equipo — no hay una transacción única que las agrupe).
+     * {@code id de staging → id en la base}. Una sola instancia por id de staging, aunque sus
+     * fracciones estén repartidas entre varios lavarropas de la tanda.
      */
-    public int crearInstanciaEquipo(int elementoClasificacionId, int totalPartes) {
-        try (TransactionalConnection tx = TransactionalConnection.begin()) {
-            Connection conn = tx.get();
-            try (PreparedStatement ps = conn.prepareStatement(SQL_INSERTAR_INSTANCIA, Statement.RETURN_GENERATED_KEYS)) {
-                ps.setInt(1, elementoClasificacionId);
-                ps.setInt(2, totalPartes);
-                ps.executeUpdate();
-                try (ResultSet keys = ps.getGeneratedKeys()) {
-                    keys.next();
-                    int id = keys.getInt(1);
-                    tx.commit();
-                    return id;
-                }
+    private Map<Integer, Integer> crearInstancias(Connection conn,
+                                                   List<LanzamientoCiclo> tanda) throws SQLException {
+        Map<Integer, Integer> instancias = new HashMap<>();
+        for (LanzamientoCiclo ciclo : tanda) {
+            for (LineaLanzamiento linea : ciclo.lineas()) {
+                if (!linea.esFraccionDeEquipo()
+                        || instancias.containsKey(linea.instanciaStagingId())) continue;
+                instancias.put(linea.instanciaStagingId(),
+                    insertarInstancia(conn, linea.elementoClasificacionId(), linea.totalPartes()));
             }
-        } catch (SQLException e) {
-            throw new DatabaseException("Error al crear la instancia de equipo", e);
         }
+        return instancias;
+    }
+
+    private int insertarInstancia(Connection conn, int elementoClasificacionId,
+                                   int totalPartes) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_INSERTAR_INSTANCIA, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, elementoClasificacionId);
+            ps.setInt(2, totalPartes);
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                keys.next();
+                return keys.getInt(1);
+            }
+        }
+    }
+
+    /** Cambia los ids de instancia de staging por los que quedaron en la base. */
+    private static List<ElementoCicloMovimiento> movimientosDe(LanzamientoCiclo ciclo,
+                                                               Map<Integer, Integer> instancias) {
+        List<ElementoCicloMovimiento> movimientos = new ArrayList<>();
+        for (LineaLanzamiento linea : ciclo.lineas()) {
+            movimientos.add(new ElementoCicloMovimiento(
+                linea.elementoClasificacionId(), linea.cantidad(),
+                linea.esFraccionDeEquipo() ? instancias.get(linea.instanciaStagingId()) : null));
+        }
+        return movimientos;
     }
 
     private void marcarFinalizado(Connection conn, int cicloId) throws SQLException {

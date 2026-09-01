@@ -1,11 +1,13 @@
 package com.example.features.lavadero.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
-import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.infrastructure.db.ConnectionPool;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +18,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +26,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CicloLavaderoDAOTest extends AbstractDAOTest {
+
+    /** Los ids de instancia del staging son locales a la tanda: cualquiera sirve. */
+    private static final int STAGING_ID = 1;
 
     private CicloLavaderoDAO dao;
 
@@ -65,24 +71,54 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         ejecutarSQL("DELETE FROM clientes WHERE nombre LIKE 'TestCiclo%'");
     }
 
-    // ── lanzarCiclo ──────────────────────────────────────────────────────────
+    // ── lanzarTanda ──────────────────────────────────────────────────────────
 
     @Test
-    void lanzarCiclo_insertaEnAmbosTablas() throws SQLException {
-        List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 3));
-
-        dao.lanzarCiclo(1, config(new BigDecimal("1.50")), movimientos);
+    void lanzarTanda_insertaEnAmbosTablas() throws SQLException {
+        lanzarCiclo(1, config(new BigDecimal("1.50")), linea(3));
 
         assertEquals(1, contarFilas("ciclos_lavadero"));
         assertEquals(1, contarFilas("elementos_ciclo_lavadero"));
     }
 
     @Test
-    void lanzarCiclo_cicloActivoPorLavarropas_apareceMapeado() {
-        List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 3));
-        dao.lanzarCiclo(2, new ConfiguracionCiclo(
+    void lanzarTanda_variosLavarropas_escribeUnCicloPorCadaUno() throws SQLException {
+        dao.lanzarTanda(List.of(
+            new LanzamientoCiclo(1, config(new BigDecimal("1.5")), List.of(linea(3))),
+            new LanzamientoCiclo(2, config(new BigDecimal("1.5")), List.of(linea(4)))));
+
+        assertEquals(2, contarFilas("ciclos_lavadero"));
+        assertEquals(2, contarFilas("elementos_ciclo_lavadero"));
+    }
+
+    /**
+     * El motivo de que la tanda sea una sola transacción: con una por lavarropas, el ciclo #1 y
+     * la instancia quedaban escritos y la instancia quedaba con 1 de sus 2 fracciones —contada
+     * como consumida en Disponibles y nunca completa en Salidas, o sea el equipo desaparecido.
+     */
+    @Test
+    void lanzarTanda_siUnCicloFalla_noQuedaNadaEscrito() throws SQLException {
+        final int clasificacionInexistente = 999_999;
+        List<LanzamientoCiclo> tanda = List.of(
+            new LanzamientoCiclo(1, config(new BigDecimal("1.5")),
+                List.of(new LineaLanzamiento(elementoClasifId, 1, STAGING_ID, 2))),
+            new LanzamientoCiclo(2, config(new BigDecimal("1.5")),
+                List.of(new LineaLanzamiento(clasificacionInexistente, 1, STAGING_ID, 2))));
+
+        assertThrows(DatabaseException.class, () -> dao.lanzarTanda(tanda));
+
+        assertEquals(0, contarFilas("instancias_equipo_ciclo"),
+            "la instancia se crea dentro de la misma transacción: si la tanda falla, no queda");
+        assertEquals(0, contarFilas("ciclos_lavadero"),
+            "el ciclo del lavarropas 1 alcanzó a insertarse pero tiene que volver atrás");
+        assertEquals(0, contarFilas("elementos_ciclo_lavadero"));
+    }
+
+    @Test
+    void lanzarTanda_cicloActivoPorLavarropas_apareceMapeado() {
+        lanzarCiclo(2, new ConfiguracionCiclo(
             TipoLavado.LIMPIO, jabon, new BigDecimal("2.00"), true, true, new BigDecimal("40.00")),
-            movimientos);
+            linea(3));
 
         Map<Integer, CicloLavadero> activos = dao.obtenerCiclosActivosPorLavarropas();
 
@@ -101,16 +137,16 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void tipoLavado_sePersisteElName_yNoElNombreDeUi() throws SQLException {
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), movimientos(3));
+        lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), linea(3));
 
         assertEquals("PODRIDO", tipoLavadoPersistido());
     }
 
     @Test
     void tipoLavado_roundTrip_enCiclosActivos() {
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.LIMPIO),  movimientos(1));
-        dao.lanzarCiclo(2, config(new BigDecimal("1.5"), TipoLavado.SUCIO),   movimientos(1));
-        dao.lanzarCiclo(3, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), movimientos(1));
+        lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.LIMPIO),  linea(1));
+        lanzarCiclo(2, config(new BigDecimal("1.5"), TipoLavado.SUCIO),   linea(1));
+        lanzarCiclo(3, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), linea(1));
 
         Map<Integer, CicloLavadero> activos = dao.obtenerCiclosActivosPorLavarropas();
 
@@ -121,7 +157,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void tipoLavado_roundTrip_enCiclosFinalizados() throws SQLException {
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), movimientos(1));
+        lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), linea(1));
         dao.finalizarCiclo(lastInsertIdDeCiclos());
 
         List<CicloLavadero> finalizados = dao.obtenerCiclosFinalizados();
@@ -132,9 +168,9 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void tipoLavado_roundTrip_enTodosLosCiclos() throws SQLException {
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.LIMPIO), movimientos(1));
+        lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.LIMPIO), linea(1));
         dao.finalizarCiclo(lastInsertIdDeCiclos());
-        dao.lanzarCiclo(2, config(new BigDecimal("1.5"), TipoLavado.SUCIO), movimientos(1));
+        lanzarCiclo(2, config(new BigDecimal("1.5"), TipoLavado.SUCIO), linea(1));
 
         Map<Integer, TipoLavado> porLavarropas = new HashMap<>();
         for (CicloLavadero c : dao.obtenerTodosLosCiclos()) {
@@ -158,8 +194,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void disponibles_excluyeElementoTotalmenteProcesado() {
-        List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 10));
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(10));
 
         List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
 
@@ -168,8 +203,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void disponibles_incluyeElementoParcialmenteProcesado() {
-        List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 4));
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(4));
 
         List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
 
@@ -178,25 +212,22 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         assertEquals(4, items.get(0).getCantidadYaProcesada());
     }
 
-    // ── crearInstanciaEquipo / instancia_equipo_id ───────────────────────────
+    // ── instancias de equipo repartido ───────────────────────────────────────
     // Invariante 9: un equipo repartido en N lavarropas consume 1 unidad de su
     // línea de clasificación, nunca N.
 
     @Test
-    void crearInstanciaEquipo_devuelveIdYPersisteTotalPartes() throws SQLException {
-        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 3);
+    void lanzarTanda_creaUnaInstanciaConSuTotalDePartes() throws SQLException {
+        int instanciaId = repartirEquipo(elementoClasifId, 1, 2, 3);
 
-        assertTrue(instanciaId > 0);
+        assertEquals(1, contarFilas("instancias_equipo_ciclo"),
+            "las 3 fracciones comparten un id de staging: una sola instancia en la base");
         assertEquals(3, totalPartesPersistido(instanciaId));
     }
 
     @Test
     void disponibles_fraccionesDeEquipoCuentanComoUnaSolaUnidad() {
-        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 4);
-        for (int lav = 1; lav <= 4; lav++) {
-            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
-                List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaId)));
-        }
+        repartirEquipo(elementoClasifId, 1, 2, 3, 4);
 
         List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
 
@@ -207,15 +238,8 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void disponibles_dosInstanciasDeLaMismaLinea_sumanDosUnidades() {
-        int instanciaSinRepartir = dao.crearInstanciaEquipo(elementoClasifId, 1);
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")),
-            List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaSinRepartir)));
-
-        int instanciaRepartida = dao.crearInstanciaEquipo(elementoClasifId, 3);
-        for (int lav = 2; lav <= 4; lav++) {
-            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
-                List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaRepartida)));
-        }
+        repartirEquipo(elementoClasifId, 1);
+        repartirEquipo(elementoClasifId, 2, 3, 4);
 
         List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
 
@@ -230,12 +254,8 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         // EQUIPO o REGULAR (no se mezclan), pero esta prueba verifica que la aritmética
         // combinada (suma de regulares + cuenta de instancias) es correcta igual con datos
         // que sí la mezclan, para no depender de esa restricción de dominio no forzada en BD.
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")),
-            List.of(new ElementoCicloMovimiento(elementoClasifId, 3)));
-
-        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 1);
-        dao.lanzarCiclo(2, config(new BigDecimal("1.5")),
-            List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaId)));
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(3));
+        repartirEquipo(elementoClasifId, 2);
 
         List<ElementoCicloItem> items = dao.obtenerElementosDisponiblesParaCiclo();
 
@@ -244,19 +264,15 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     }
 
     @Test
-    void lanzarCiclo_persisteInstanciaEquipoIdCuandoElMovimientoLoTrae() throws SQLException {
-        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 1);
-
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")),
-            List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaId)));
+    void lanzarTanda_persisteElIdDeInstanciaQueCreoLaPropiaTanda() throws SQLException {
+        int instanciaId = repartirEquipo(elementoClasifId, 1);
 
         assertEquals(instanciaId, instanciaEquipoIdPersistido());
     }
 
     @Test
-    void lanzarCiclo_sinInstancia_persisteInstanciaEquipoIdNulo() throws SQLException {
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")),
-            List.of(new ElementoCicloMovimiento(elementoClasifId, 3)));
+    void lanzarTanda_sinInstancia_persisteInstanciaEquipoIdNulo() throws SQLException {
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(3));
 
         assertNull(instanciaEquipoIdPersistido());
     }
@@ -267,8 +283,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     void detectarLineasSobregiradas_datosSucios_delataLaLinea() throws SQLException {
         int lineaId = clasificacionConCantidad(1);
         for (int lav = 1; lav <= 4; lav++) {
-            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
-                List.of(new ElementoCicloMovimiento(lineaId, 1)));
+            lanzarCiclo(lav, config(new BigDecimal("1.5")), new LineaLanzamiento(lineaId, 1));
         }
 
         List<com.example.features.lavadero.dao.helpers.LineaSobregirada> lineas =
@@ -282,12 +297,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void detectarLineasSobregiradas_datosLimpios_noApareceNada() {
-        int lineaId = clasificacionConCantidad(1);
-        int instanciaId = dao.crearInstanciaEquipo(lineaId, 4);
-        for (int lav = 1; lav <= 4; lav++) {
-            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
-                List.of(new ElementoCicloMovimiento(lineaId, 1, instanciaId)));
-        }
+        repartirEquipo(clasificacionConCantidad(1), 1, 2, 3, 4);
 
         assertTrue(dao.detectarLineasSobregiradas().isEmpty());
     }
@@ -296,8 +306,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     void detectarLineasSobregiradas_lineaEnElLimite_noAparece() {
         int lineaId = clasificacionConCantidad(4);
         for (int lav = 1; lav <= 4; lav++) {
-            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
-                List.of(new ElementoCicloMovimiento(lineaId, 1)));
+            lanzarCiclo(lav, config(new BigDecimal("1.5")), new LineaLanzamiento(lineaId, 1));
         }
 
         assertTrue(dao.detectarLineasSobregiradas().isEmpty());
@@ -307,8 +316,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void finalizarCiclo_marcaFechaFinYEstado() throws SQLException {
-        List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 5));
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(5));
         int cicloId = lastInsertIdDeCiclos();
 
         dao.finalizarCiclo(cicloId);
@@ -319,8 +327,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void finalizarCiclo_marcaIngresoLavadoCuandoTodoProcesado() throws SQLException {
-        List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 10));
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(10));
         int cicloId = lastInsertIdDeCiclos();
 
         dao.finalizarCiclo(cicloId);
@@ -330,8 +337,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void finalizarCiclo_noMarcaLavadoCuandoProcesadoParcial() throws SQLException {
-        List<ElementoCicloMovimiento> movimientos = List.of(new ElementoCicloMovimiento(elementoClasifId, 5));
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos);
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(5));
         int cicloId = lastInsertIdDeCiclos();
 
         dao.finalizarCiclo(cicloId);
@@ -346,12 +352,12 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
      */
     @Test
     void finalizarCiclo_marcaIngresoLavadoCuandoLaLineaSeLavoEnDosCiclos() throws SQLException {
-        dao.lanzarCiclo(1, config(new BigDecimal("1.5")), movimientos(6));
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(6));
         dao.finalizarCiclo(lastInsertIdDeCiclos());
         assertEquals(0, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
             "con 6 de 10 lavadas el ingreso todavía no está lavado");
 
-        dao.lanzarCiclo(2, config(new BigDecimal("1.5")), movimientos(4));
+        lanzarCiclo(2, config(new BigDecimal("1.5")), linea(4));
         dao.finalizarCiclo(lastInsertIdDeCiclos());
 
         assertEquals(1, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
@@ -365,17 +371,15 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
      */
     @Test
     void finalizarCiclo_lasFraccionesDeUnEquipoNoAdelantanElLavadoDelIngreso() throws SQLException {
-        int instanciaId = dao.crearInstanciaEquipo(elementoClasifId, 3);
+        repartirEquipo(elementoClasifId, 1, 2, 3);
         for (int lav = 1; lav <= 3; lav++) {
-            dao.lanzarCiclo(lav, config(new BigDecimal("1.5")),
-                List.of(new ElementoCicloMovimiento(elementoClasifId, 1, instanciaId)));
-            dao.finalizarCiclo(lastInsertIdDeCiclos());
+            dao.finalizarCiclo(cicloIdDe(lav));
         }
 
         assertEquals(0, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
             "3 fracciones consumen 1 de las 10 unidades de la línea, no 3");
 
-        dao.lanzarCiclo(4, config(new BigDecimal("1.5")), movimientos(9));
+        lanzarCiclo(4, config(new BigDecimal("1.5")), linea(9));
         dao.finalizarCiclo(lastInsertIdDeCiclos());
 
         assertEquals(1, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
@@ -384,8 +388,33 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private List<ElementoCicloMovimiento> movimientos(int cantidad) {
-        return List.of(new ElementoCicloMovimiento(elementoClasifId, cantidad));
+    private LineaLanzamiento linea(int cantidad) {
+        return new LineaLanzamiento(elementoClasifId, cantidad);
+    }
+
+    /** Una tanda de un solo lavarropas: el caso más común de los tests. */
+    private void lanzarCiclo(int lavarropas, ConfiguracionCiclo config, LineaLanzamiento... lineas) {
+        dao.lanzarTanda(List.of(new LanzamientoCiclo(lavarropas, config, List.of(lineas))));
+    }
+
+    /**
+     * Reparte un equipo entre los lavarropas dados: una fracción de cantidad 1 en cada uno,
+     * todas con el mismo id de staging, en la <b>única</b> tanda que las puede crear juntas.
+     *
+     * @return el id que la instancia recibió en la base
+     */
+    private int repartirEquipo(int elementoClasificacionId, int... lavarropas) {
+        List<LanzamientoCiclo> tanda = new ArrayList<>();
+        for (int lav : lavarropas) {
+            tanda.add(new LanzamientoCiclo(lav, config(new BigDecimal("1.5")),
+                List.of(new LineaLanzamiento(elementoClasificacionId, 1, STAGING_ID, lavarropas.length))));
+        }
+        dao.lanzarTanda(tanda);
+        return escalar("SELECT MAX(id) FROM instancias_equipo_ciclo");
+    }
+
+    private int cicloIdDe(int lavarropas) {
+        return escalar("SELECT MAX(id) FROM ciclos_lavadero WHERE lavarropas_numero = " + lavarropas);
     }
 
     private int clasificacionConCantidad(int cantidad) {
@@ -416,14 +445,8 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         }
     }
 
-    private int totalPartesPersistido(int instanciaId) throws SQLException {
-        try (Connection conn = ConnectionPool.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(
-                     "SELECT total_partes FROM instancias_equipo_ciclo WHERE id = " + instanciaId)) {
-            rs.next();
-            return rs.getInt(1);
-        }
+    private int totalPartesPersistido(int instanciaId) {
+        return escalar("SELECT total_partes FROM instancias_equipo_ciclo WHERE id = " + instanciaId);
     }
 
     private Integer instanciaEquipoIdPersistido() throws SQLException {
@@ -437,30 +460,26 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         }
     }
 
-    private int lastInsertId() throws SQLException {
-        try (Connection conn = ConnectionPool.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT LAST_INSERT_ID()")) {
-            rs.next();
-            return rs.getInt(1);
-        }
+    private int lastInsertId() {
+        return escalar("SELECT LAST_INSERT_ID()");
     }
 
-    private int lastInsertIdDeCiclos() throws SQLException {
-        try (Connection conn = ConnectionPool.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT MAX(id) FROM ciclos_lavadero")) {
-            rs.next();
-            return rs.getInt(1);
-        }
+    private int lastInsertIdDeCiclos() {
+        return escalar("SELECT MAX(id) FROM ciclos_lavadero");
     }
 
-    private int contarFilas(String tableAndCondition) throws SQLException {
+    private int contarFilas(String tableAndCondition) {
+        return escalar("SELECT COUNT(*) FROM " + tableAndCondition);
+    }
+
+    private int escalar(String sql) {
         try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tableAndCondition)) {
+             ResultSet rs = stmt.executeQuery(sql)) {
             rs.next();
             return rs.getInt(1);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 

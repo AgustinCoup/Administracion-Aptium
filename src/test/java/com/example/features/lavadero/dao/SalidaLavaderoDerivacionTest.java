@@ -17,7 +17,8 @@ import com.example.features.lavadero.dao.derivadores.DerivadorIngresoCDE;
 import com.example.features.lavadero.dao.derivadores.DerivadorSalidas;
 import com.example.features.lavadero.model.AccionSalida;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
-import com.example.features.lavadero.model.ElementoCicloMovimiento;
+import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
 import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.JabonCatalogo;
@@ -342,14 +343,14 @@ class SalidaLavaderoDerivacionTest extends AbstractDAOTest {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private ElementoCicloMovimiento movimiento(int clasificacionId, int cantidad) {
-        return new ElementoCicloMovimiento(clasificacionId, cantidad);
+    private LineaLanzamiento movimiento(int clasificacionId, int cantidad) {
+        return new LineaLanzamiento(clasificacionId, cantidad);
     }
 
-    private void lanzarYFinalizar(int lavarropas, ElementoCicloMovimiento... movimientos) throws SQLException {
-        ciclosDao.lanzarCiclo(lavarropas,
+    private void lanzarYFinalizar(int lavarropas, LineaLanzamiento... lineas) throws SQLException {
+        ciclosDao.lanzarTanda(List.of(new LanzamientoCiclo(lavarropas,
             new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), false, false, null),
-            List.of(movimientos));
+            List.of(lineas))));
         ciclosDao.finalizarCiclo(escalar("SELECT MAX(id) FROM ciclos_lavadero"));
     }
 
