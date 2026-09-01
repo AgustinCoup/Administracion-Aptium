@@ -4,6 +4,7 @@ import com.example.common.constants.Constantes;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.model.ElementoCatalogo;
 import com.example.features.lavadero.model.ElementoClasificacion;
+import com.example.features.lavadero.view.PantallaClasificacionLavadero.NuevoElementoCatalogo;
 import com.example.features.lavadero.model.IngresoLavaderoResumen;
 import com.example.features.lavadero.service.ClasificacionLavaderoService;
 import com.example.features.lavadero.service.LavaderoService;
@@ -52,6 +53,7 @@ public class ClasificacionController {
 
         panel.getBtnGuardar().addActionListener(e -> guardar());
         panel.getBtnCancelar().addActionListener(e -> cancelar());
+        panel.getBtnNuevoCatalogo().addActionListener(e -> agregarElementoCatalogo());
     }
 
     public void cargarIngresosSinClasificar() {
@@ -122,6 +124,25 @@ public class ClasificacionController {
             return;
         }
         panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_DATOS);
+    }
+
+    private void agregarElementoCatalogo() {
+        NuevoElementoCatalogo pedido = panel.pedirNuevoElementoCatalogo();
+        if (pedido == null) return;
+
+        TareaUI.<ElementoCatalogo>nueva()
+            .nombre("agregar-elemento-catalogo-lavadero")
+            .antes(() -> panel.getBtnNuevoCatalogo().setEnabled(false))
+            .despues(() -> panel.getBtnNuevoCatalogo().setEnabled(true))
+            .leer(() -> clasificacionLavaderoService.agregarElementoCatalogo(
+                pedido.nombre(), pedido.categoria()))
+            .pintar(nuevo -> {
+                panel.getPanelElementos().registrarElemento(nuevo);
+                panel.mostrarInfo(String.format(
+                    Constantes.Mensajes.ELEMENTO_CATALOGO_AGREGADO, nuevo.getNombre()));
+            })
+            .siFalla(this::mostrarFallo)
+            .lanzar();
     }
 
     private void cancelar() {

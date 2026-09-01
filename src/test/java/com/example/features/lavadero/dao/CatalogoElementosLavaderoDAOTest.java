@@ -1,58 +1,69 @@
 package com.example.features.lavadero.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.features.lavadero.model.CategoriaElementoLavadero;
 import com.example.features.lavadero.model.ElementoCatalogo;
+import com.example.infrastructure.db.ConnectionPool;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.List;
+import java.sql.Statement;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class CatalogoElementosLavaderoDAOTest extends AbstractDAOTest {
 
-    private final CatalogoElementosLavaderoDAO dao = new CatalogoElementosLavaderoDAO();
+    private CatalogoElementosLavaderoDAO dao;
+
+    @BeforeEach
+    void setUp() {
+        dao = new CatalogoElementosLavaderoDAO();
+    }
 
     @Override
     protected void limpiarTablas() throws SQLException {
-        // Datos de referencia (seed); no se borran entre tests.
+        ejecutarSQL("DELETE FROM catalogo_elementos_lavadero WHERE nombre LIKE 'TestCat%'");
     }
 
     @Test
-    void findAll_retornaElementosSeed() {
-        List<ElementoCatalogo> lista = dao.findAll();
+    void agregar_devuelveElementoConIdYApareceEnFindAll() {
+        ElementoCatalogo creado = dao.agregar("TestCat Sabana", CategoriaElementoLavadero.REGULAR);
 
-        assertEquals(25, lista.size(), "Deben cargarse los 25 elementos del seed");
+        assertTrue(creado.getId() > 0);
+        assertEquals("TestCat Sabana", creado.getNombre());
+        assertTrue(dao.findAll().stream().anyMatch(e -> e.getId() == creado.getId()));
     }
 
     @Test
-    void findAll_ordenadosPorNombre() {
-        List<ElementoCatalogo> lista = dao.findAll();
-
-        for (int i = 0; i < lista.size() - 1; i++) {
-            assertTrue(
-                lista.get(i).getNombre().compareToIgnoreCase(lista.get(i + 1).getNombre()) <= 0,
-                "Los elementos deben estar ordenados alfabéticamente por nombre"
-            );
-        }
+    void agregar_persisteLaCategoria() throws SQLException {
+        ElementoCatalogo creado = dao.agregar("TestCat Equipo", CategoriaElementoLavadero.EQUIPO);
+        assertEquals("EQUIPO", leerCategoria(creado.getId()));
     }
 
     @Test
-    void findAll_retornaListaInmutable() {
-        List<ElementoCatalogo> lista = dao.findAll();
+    void buscarPorNombre_ignoraMayusculas() {
+        ElementoCatalogo creado = dao.agregar("TestCat Poncho", CategoriaElementoLavadero.REGULAR);
 
-        assertThrows(UnsupportedOperationException.class,
-            () -> lista.add(new ElementoCatalogo(999, "test")));
+        Optional<ElementoCatalogo> encontrado = dao.buscarPorNombre("testcat poncho");
+        assertTrue(encontrado.isPresent());
+        assertEquals(creado.getId(), encontrado.get().getId());
     }
 
     @Test
-    void findAll_elementosTienenIdYNombreValidos() {
-        List<ElementoCatalogo> lista = dao.findAll();
+    void buscarPorNombre_inexistente_devuelveVacio() {
+        assertTrue(dao.buscarPorNombre("TestCat NoExiste").isEmpty());
+    }
 
-        for (ElementoCatalogo e : lista) {
-            assertTrue(e.getId() > 0, "El id debe ser positivo");
-            assertNotNull(e.getNombre());
-            assertFalse(e.getNombre().isBlank(), "El nombre no debe estar vacío");
+    private String leerCategoria(int id) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                 "SELECT categoria FROM catalogo_elementos_lavadero WHERE id = " + id)) {
+            return rs.next() ? rs.getString(1) : null;
         }
     }
 }

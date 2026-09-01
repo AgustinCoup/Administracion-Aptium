@@ -203,6 +203,9 @@ public final class Constantes {
         public static final String TITULO_ERROR_ACTUALIZACION     = "Error al actualizar";
         public static final String ERROR_ACTUALIZACION            = "No se pudo completar la actualización: %s";
 
+        // ── Clasificación de Lavadero ────────────────────────────────────────
+        public static final String ELEMENTO_CATALOGO_AGREGADO = "Elemento \"%s\" agregado al catálogo.";
+
         private Mensajes() {}
     }
 
@@ -230,6 +233,7 @@ public final class Constantes {
         public static final String AJUSTES              = "Ajustes";
         public static final String DISTRIBUCION_UNIDADES = "¿Cuántas unidades distribuís ahora?";
         public static final String CANTIDAD_A_MARCAR_LISTO = "¿Cuántas marcás Listo?";
+        public static final String NUEVO_ELEMENTO_CATALOGO = "Nuevo elemento de catálogo";
 
         private Titulos() {}
     }
@@ -288,6 +292,7 @@ public final class Constantes {
         public static final String VOLVER_A_LAVADO  = "Volver a Lavado";
         public static final String SALE_DEL_FLUJO   = "Sale del flujo";
         public static final String INGRESAR_A_CDE   = "Ingresar al CDE";
+        public static final String ANADIR_ELEMENTO_CATALOGO = "Añadir elemento al catálogo";
 
         private Botones() {}
     }
@@ -466,6 +471,12 @@ public final class Constantes {
         public static final String FORMATO_LABEL_SUBDIVIDIR  = "<html><b>Subdividir:</b> %s — %s</html>";
         public static final String FORMATO_LAVARROPAS_NUM    = "Lavarropas #%d";
         public static final String FORMATO_FRACCION          = "Fracción: %s";
+
+        // ── Clasificación de Lavadero ─────────────────────────────────────────
+        public static final String LABEL_INGRESO         = "Ingreso:";
+        public static final String LABEL_ELEMENTOS       = "Elementos:";
+        public static final String LABEL_NOMBRE_ELEMENTO = "Nombre del elemento:";
+        public static final String LABEL_CATEGORIA       = "Categoría:";
 
         private Textos() {}
     }

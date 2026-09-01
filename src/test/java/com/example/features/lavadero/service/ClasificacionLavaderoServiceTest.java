@@ -3,8 +3,11 @@ package com.example.features.lavadero.service;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.dao.CatalogoElementosLavaderoDAO;
 import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
+import com.example.features.lavadero.model.CategoriaElementoLavadero;
 import com.example.features.lavadero.model.ElementoCatalogo;
 import com.example.features.lavadero.model.ElementoClasificacion;
+
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -87,6 +90,43 @@ class ClasificacionLavaderoServiceTest {
         when(clasificacionDAO.guardar(3, elementos)).thenReturn(false);
 
         assertFalse(service.guardar(3, elementos));
+    }
+
+    // ── agregarElementoCatalogo ───────────────────────────────────────────────
+
+    @Test
+    void agregarElementoCatalogo_nombreVacio_lanzaValidationException() {
+        assertThrows(ValidationException.class,
+            () -> service.agregarElementoCatalogo("   ", CategoriaElementoLavadero.REGULAR));
+        verifyNoInteractions(catalogoDAO);
+    }
+
+    @Test
+    void agregarElementoCatalogo_categoriaNula_lanzaValidationException() {
+        assertThrows(ValidationException.class,
+            () -> service.agregarElementoCatalogo("Sabana nueva", null));
+        verifyNoInteractions(catalogoDAO);
+    }
+
+    @Test
+    void agregarElementoCatalogo_nombreDuplicado_lanzaValidationException() {
+        when(catalogoDAO.buscarPorNombre("Batas"))
+            .thenReturn(Optional.of(new ElementoCatalogo(1, "Batas")));
+
+        assertThrows(ValidationException.class,
+            () -> service.agregarElementoCatalogo("Batas", CategoriaElementoLavadero.REGULAR));
+        verify(catalogoDAO, never()).agregar(any(), any());
+    }
+
+    @Test
+    void agregarElementoCatalogo_valido_recortaNombreYDelegaAlDAO() {
+        when(catalogoDAO.buscarPorNombre("Sabana nueva")).thenReturn(Optional.empty());
+        ElementoCatalogo creado = new ElementoCatalogo(9, "Sabana nueva");
+        when(catalogoDAO.agregar("Sabana nueva", CategoriaElementoLavadero.EQUIPO)).thenReturn(creado);
+
+        assertEquals(creado,
+            service.agregarElementoCatalogo("  Sabana nueva  ", CategoriaElementoLavadero.EQUIPO));
+        verify(catalogoDAO).agregar("Sabana nueva", CategoriaElementoLavadero.EQUIPO);
     }
 
     // ── obtenerCatalogo ───────────────────────────────────────────────────────

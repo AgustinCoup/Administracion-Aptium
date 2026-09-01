@@ -10,6 +10,7 @@ import java.awt.*;
 import java.awt.event.ItemEvent;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Function;
 
@@ -29,13 +30,14 @@ public class PanelElementosClasificacion extends JPanel {
 
     private final List<ElementoFila>     filas = new ArrayList<>();
     private final JPanel                 panelFilas;
+    /** Copia mutable: {@link #registrarElemento} suma altas sin reconstruir el panel. */
     private final List<ElementoCatalogo> catalogo;
 
     /** Fondo original de los combos, capturado del primero que se crea. */
     private Color colorNormal = null;
 
     public PanelElementosClasificacion(List<ElementoCatalogo> catalogo) {
-        this.catalogo = catalogo;
+        this.catalogo = new ArrayList<>(catalogo);
         setLayout(new BorderLayout(0, 5));
 
         panelFilas = new JPanel(new GridBagLayout());
@@ -146,5 +148,24 @@ public class PanelElementosClasificacion extends JPanel {
     public void limpiar() {
         filas.clear();
         reconstruirPanel();
+    }
+
+    /**
+     * Suma un elemento recién creado al catálogo en memoria y a todos los combos ya
+     * pintados, en su posición alfabética, sin reconstruir el panel: las filas que el
+     * operador venía cargando (y su selección) quedan intactas.
+     */
+    public void registrarElemento(ElementoCatalogo nuevo) {
+        int pos = Collections.binarySearch(catalogo, nuevo,
+            Comparator.comparing(ElementoCatalogo::getNombre, String.CASE_INSENSITIVE_ORDER));
+        if (pos < 0) pos = -pos - 1;
+        catalogo.add(pos, nuevo);
+
+        for (ElementoFila f : filas) {
+            Object seleccionado = f.cmbElemento.getSelectedItem();
+            f.cmbElemento.insertItemAt(nuevo, pos);
+            f.cmbElemento.setSelectedItem(seleccionado);
+        }
+        tieneDuplicados();
     }
 }
