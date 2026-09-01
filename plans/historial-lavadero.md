@@ -699,6 +699,174 @@ Cosas que un agente ejecutando esto en frío hace mal si no se le avisa:
 
 ---
 
+## Plan de sesiones
+
+Seis pasos, **cinco sesiones**. Los Pasos 3 y 4 van juntos (ambos son Swing puro y el 4 son ~30
+líneas que dependen sólo de una constante que crea el 3). Cada sesión arranca en frío: el prompt
+inicial es autosuficiente.
+
+### Pre-vuelo (antes de la Sesión 1)
+
+El árbol tiene cambios sin commitear de `CategoriaElementoLavadero` y clasificación. **Ninguna sesión
+de este plan toca esos archivos**, pero conviene cerrarlos primero para que `git diff` de cada paso
+sea legible:
+
+```bash
+git status
+git add -A && git commit -m "feat: categoría de elemento de lavadero"   # o lo que corresponda
+```
+
+### Resumen
+
+| Sesión | Pasos | Modelo | Effort | Fast mode | Por qué |
+|---|---|---|---|---|---|
+| 1 | Paso 1 | **Opus 5** | **alto** | ❌ no | El SQL de fracciones + bolsas es la parte con trampa de todo el plan. Es donde se compra o se pierde la corrección. |
+| 2 | Paso 2 | **Sonnet 5** | medio | ➖ opcional | Ejecución mecánica: el plan ya dicta cada regla de filtrado y cada test. |
+| 3 | Pasos 3 + 4 | **Sonnet 5** | medio | ✅ sí | Swing declarativo con dos archivos de referencia calcables. Ciclo de iteración visual corto. |
+| 4 | Paso 5 | **Opus 5** | **alto** | ❌ no | Cableado transversal (4 archivos de infraestructura) + `TareaUI` + el smoke manual de 8 puntos. |
+| 5 | Paso 6 | **Sonnet 5** | medio | ➖ opcional | Cobertura y documentación, salvo el `/code-review` que abre la sesión. |
+
+**Regla de effort:** alto donde todavía hay decisiones (Sesiones 1 y 4); medio donde el plan ya las
+tomó. Bajar el effort en la Sesión 1 es la peor economía posible: un `LEFT JOIN` mal armado ahí sale
+como datos silenciosamente equivocados en pantalla, no como un test rojo.
+
+**Fast mode** (`/fast` — Opus con salida más rápida, no un modelo más chico): sirve en la Sesión 3,
+donde el trabajo es tipear layout ya decidido. Evitarlo en 1 y 4, que es justo donde querés pagar por
+tiempo de razonamiento.
+
+**Paralelizar (opcional):** las Sesiones 2 y 3 no comparten un solo archivo y las dos dependen sólo
+de la 1. Con `git worktree` se pueden correr a la vez. El ahorro es de ~30 min contra el costo de
+mantener dos árboles; para una sola persona, secuencial suele salir mejor.
+
+**Contexto:** las Sesiones 1 y 4 son las que más leen. Si alguna pasa del 80 % de la ventana antes de
+terminar, `/compact` justo después de que los tests queden en verde y antes de escribir el commit.
+
+---
+
+### Sesión 1 — Paso 1: modelo de lectura + DAO
+
+**Opus 5 · effort alto · sin fast mode**
+
+```
+Ejecutá el Paso 1 de plans/historial-lavadero.md (modelo de lectura + HistorialLavaderoDAO).
+
+Antes de escribir código leé del plan: "Contexto compartido", "Decisiones de diseño tomadas
+por el plan" y "Catálogo de anti-patrones". Después leé los archivos de referencia que el
+Paso 1 lista, sobre todo SalidaLavaderoDAO (las constantes SQL_*) y AgrupadorInstanciasSalida.
+
+Tres cosas que el paso resuelve y que son la razón de que esta sesión exista:
+1. cantBolsas va en consulta aparte — meterla en el LEFT JOIN infla el COUNT;
+2. un equipo repartido en N lavarropas es UNA línea del detalle, no N;
+3. una clasificación lanzada a medias necesita su línea "pendiente de lavar", o las
+   cantidades del detalle no cierran contra lo clasificado.
+
+Escribí los tests que el paso pide (incluido el de 3 bolsas + 2 elementos) y no cierres
+hasta que mvn test esté en verde, AgrupadorInstanciasSalidaTest incluido — la extracción de
+TextoLavarropas lo toca.
+
+No escribas ninguna migración: este plan sólo lee tablas que ya existen.
+Terminá con el commit del criterio de salida.
+```
+
+### Sesión 2 — Paso 2: service + estrategia de filtrado
+
+**Sonnet 5 · effort medio**
+
+```
+Ejecutá el Paso 2 de plans/historial-lavadero.md (HistorialLavaderoService +
+HistorialFilterCriteria + HistorialFilterStrategy + tests).
+
+Leé antes del plan: "Contexto compartido" y "Catálogo de anti-patrones". Los archivos a
+calcar son CicloFilterStrategy/CicloFilterCriteria (forma exacta de la strategy) y
+SalidaLavaderoService (forma de un service que sólo valida y delega — cero JDBC).
+
+El Paso 1 ya está commiteado: usá IngresoHistorial tal como quedó, no lo redefinas.
+
+La tabla de reglas de filtrado del paso es normativa: un método privado por filtro, y el
+test del default de la pantalla (un ingreso FINALIZADO no pasa cuando los estados son
+[PENDIENTE, CLASIFICADO, LAVADO]) tiene que existir.
+
+Terminá con mvn test en verde y el commit del criterio de salida.
+```
+
+### Sesión 3 — Pasos 3 y 4: pantalla, diálogo y menú 2×3
+
+**Sonnet 5 · effort medio · fast mode recomendado**
+
+```
+Ejecutá los Pasos 3 y 4 de plans/historial-lavadero.md, en ese orden (pantalla +
+diálogo de detalle + constantes; después el menú de Lavadero en grilla 2x3).
+
+Leé antes del plan: "Contexto compartido" y "Catálogo de anti-patrones". Calcá la
+estructura de PantallaVerCiclos (filtros + tabla) y de DetalleOtrosDialog (diálogo modal).
+
+Los Pasos 1 y 2 ya están commiteados: usá IngresoHistorial y LineaHistorial tal como
+quedaron.
+
+Cuidado con cuatro cosas:
+- restablecerFiltrosPorDefecto() NO dispara el callback de filtros (evita el flash con
+  datos viejos); limpiarFiltros() del botón sí, y deja el mismo default.
+- setRowSelectionAllowed(true) — PantallaVerCiclos lo tiene en false y acá hace falta
+  para el doble clic.
+- ni la pantalla ni el diálogo importan un service o un DAO: reciben datos ya leídos.
+- en PantallaLavadero hay que REESCRIBIR el comentario del layout, no borrarlo: con 6
+  botones la razón que da deja de ser cierta.
+
+Al terminar: mvn clean package && java -jar target/aptium.jar, y revisá visualmente que los
+6 botones queden en 2 filas x 3 columnas sin texto cortado. "Historial" todavía no navega
+a ningún lado — es lo esperado hasta la sesión que viene.
+
+Un commit por paso, con los mensajes de los criterios de salida.
+```
+
+### Sesión 4 — Paso 5: controller + cableado
+
+**Opus 5 · effort alto · sin fast mode**
+
+```
+Ejecutá el Paso 5 de plans/historial-lavadero.md (HistorialLavaderoController +
+AppContext + PantallaPrincipal + UiCoordinator).
+
+Leé antes del plan: "Contexto compartido" (sobre todo las reglas duras), las "Decisiones de
+diseño" y el "Catálogo de anti-patrones". Los Pasos 1 a 4 ya están commiteados.
+
+Regla dura que gobierna esta sesión: ningún acceso a BD en el EDT. El detalle del doble clic
+se lee con TareaUI y el diálogo se construye dentro de .pintar. NO copies
+VerEquiposController.abrirDetalleOtros(), que hace I/O sincrónico en el EDT — es una
+violación preexistente, no un patrón.
+
+El historial de lavadero es un QUINTO grupo de refresco en UiCoordinator, con su propio
+Disparador; actualizá también el comentario del bloque que hoy enumera cuatro. No lo agregues
+al primer pintado del arranque: como toda pantalla de consulta, lee al abrirse.
+
+Cerrá con los 8 puntos del smoke manual que lista el paso. Corré la app SIN
+-Daptium.edt.strict=true (los autocompletados síncronos de otras pantallas lanzarían) y
+revisá el log: no debe haber ningún WARN de EdtGuard atribuible a la pantalla nueva.
+
+Terminá con el commit del criterio de salida.
+```
+
+### Sesión 5 — Paso 6: revisión, cobertura y cierre
+
+**Sonnet 5 · effort medio**
+
+```
+Cerrá plans/historial-lavadero.md.
+
+1. /code-review high sobre el diff completo de la feature (todos los commits del plan
+   contra el punto de partida de la rama). Aplicá lo CRITICAL y lo HIGH; anotá lo MEDIUM
+   que decidas no tocar.
+2. Ejecutá el Paso 6: mvn verify y revisá JaCoCo — HistorialFilterStrategy,
+   AgrupadorLineasHistorial y HistorialLavaderoService tienen que estar en 80%+. Las clases
+   Swing quedan sin cubrir, es la convención del repo.
+3. Actualizá CLAUDE.md (sección Lavadero) y la memoria del proyecto como pide el paso.
+4. Marcá el plan como CERRADO arriba de todo, con los SHAs de cada paso.
+
+Terminá con el commit del criterio de salida.
+```
+
+---
+
 ## Protocolo de mutación del plan
 
 Si al ejecutar aparece algo que el plan no previó:
