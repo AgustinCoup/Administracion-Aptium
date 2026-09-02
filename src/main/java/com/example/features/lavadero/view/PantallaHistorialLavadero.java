@@ -56,6 +56,14 @@ public class PantallaHistorialLavadero extends JPanel {
 
     private Runnable onFiltrosChanged;
 
+    /**
+     * {@code true} mientras se resetean los filtros programáticamente
+     * ({@link #restablecerFiltrosPorDefecto()} / {@link #limpiarFiltros()}): evita contar como
+     * cambio del usuario el aviso que igual disparan {@code JDateChooser}/{@code JTextField} al
+     * limpiarse (p.ej. {@code setDate(null)} avisa aunque ya fuera {@code null}).
+     */
+    private boolean silenciandoCallback;
+
     public PantallaHistorialLavadero(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
@@ -184,12 +192,17 @@ public class PantallaHistorialLavadero extends JPanel {
      * {@code pintar()} es el único que filtra y repinta, para no mostrar un flash con datos viejos.
      */
     public void restablecerFiltrosPorDefecto() {
-        txtCliente.setText("");
-        txtElemento.setText("");
-        txtLavarropas.setText("");
-        dateDesde.setDate(null);
-        dateHasta.setDate(null);
-        cmbEstado.setSelectedItems(ESTADOS_POR_DEFECTO);
+        silenciandoCallback = true;
+        try {
+            txtCliente.setText("");
+            txtElemento.setText("");
+            txtLavarropas.setText("");
+            dateDesde.setDate(null);
+            dateHasta.setDate(null);
+            cmbEstado.setSelectedItems(ESTADOS_POR_DEFECTO);
+        } finally {
+            silenciandoCallback = false;
+        }
     }
 
     /** El botón "Limpiar": mismo default que {@link #restablecerFiltrosPorDefecto()}, pero notifica. */
@@ -199,6 +212,7 @@ public class PantallaHistorialLavadero extends JPanel {
     }
 
     private void notificarCambio() {
+        if (silenciandoCallback) return;
         if (onFiltrosChanged != null) onFiltrosChanged.run();
     }
 

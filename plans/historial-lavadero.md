@@ -1,5 +1,35 @@
 # Plan — Historial de Lavadero
 
+## ✅ CERRADO — 2026-09-02
+
+| Paso | Commit | Mensaje |
+|---|---|---|
+| 1 | `1d534ba` | feat: lectura del historial de lavadero (modelo + DAO) |
+| 2 | `33dc1aa` | feat: service y filtros del historial de lavadero |
+| 3 | `c61cc2f` | feat: pantalla y diálogo de detalle del historial de lavadero |
+| 4 | `0a4b0c7` | feat: menú de Lavadero en grilla 2x3 con botón Historial |
+| 5 | `53cb368` | feat: historial de lavadero cableado en el menú |
+| 6 | *(este commit)* | docs: historial de lavadero |
+
+**Paso 6 / code-review `high` (`a48aa8c..HEAD`):**
+- **HIGH aplicado** — `PantallaHistorialLavadero.restablecerFiltrosPorDefecto()` disparaba el
+  callback de filtros (los `JTextField`/`JDateChooser` avisan al limpiarse aunque ya estén vacíos),
+  rompiendo la garantía "no notifica" y causando un flash con datos viejos. Arreglado con el flag
+  `silenciandoCallback` + guarda en `notificarCambio()`, igual que
+  `PantallaVerEquipos.aplicarFiltroInicial()`.
+- **MEDIUM no tocado** — `HistorialLavaderoDAO.SQL_RESUMEN` hace fan-out sobre
+  clasificación×ciclos×ciclos_lavadero de todo el histórico en cada apertura, sólo para poblar los
+  `Set` `elementos`/`lavarropas` que alimentan filtros opcionales y nunca se muestran como columna.
+  Fue **decisión explícita del plan** (filtros en memoria sobre snapshot, sets de la misma consulta
+  maestra, sin viaje extra). Se deja como está; si el histórico crece a miles de ingresos, pasar
+  esos dos agregados a consultas `GROUP BY ingreso_id` separadas como ya se hace con `SQL_BOLSAS`.
+
+**Cobertura JaCoCo (`mvn verify` en verde):** `HistorialFilterStrategy` 100 % líneas ·
+`AgrupadorLineasHistorial` 100 % · `HistorialLavaderoService` 100 % · `HistorialLavaderoDAO` 89 %.
+Clases Swing sin cubrir, por convención del repo.
+
+---
+
 **Objetivo:** botón nuevo **"Historial"** en el menú de Lavadero (que pasa de 5 botones en columna a
 una grilla **2×3**), que abre una pantalla de consulta con la información de BD de todo el proceso de
 lavadero: una tabla maestra de **ingresos** con filtros, y **doble clic → diálogo modal** con la

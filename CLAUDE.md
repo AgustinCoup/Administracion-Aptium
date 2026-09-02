@@ -99,6 +99,28 @@ PENDIENTE → CLASIFICADO → LAVADO → FINALIZADO
 `destino = NULL`, y `NULL` significa "lista, sin destino todavía" — un estado legítimo, no un dato
 faltante. Un mismo ingreso puede tener parte de su ropa lista y parte todavía en un lavarropas.
 
+## Lavadero — Historial
+
+Pantalla de **consulta de sólo lectura** (botón "Historial" del menú de Lavadero, hoy grilla 2×3).
+Tabla maestra de ingresos con filtros; **doble clic → `DetalleHistorialDialog`** con la trazabilidad
+del ingreso (elemento → lavarropas → fecha de lavado → fecha listo → destino). No muta nada.
+
+- **"Fuera del flujo" = ingresos `FINALIZADO`.** El combo de estados entra con `PENDIENTE`,
+  `CLASIFICADO`, `LAVADO` marcados y `FINALIZADO` desmarcado. Al entrar (`componentShown`) se
+  resetean los filtros al default **sin notificar** (`silenciandoCallback`) y se relee de BD.
+- **El detalle se lee bajo demanda por `TareaUI`**, no en el snapshot maestro: traerlo para todos
+  los ingresos en cada refresco costaría O(historia completa).
+- Es el **quinto grupo de refresco** (`historial lavadero` en `UiCoordinator`): nadie más consume
+  esos datos.
+- `HistorialLavaderoDAO` cruza clasificación + ciclos + instancias + salidas (aparte de
+  `IngresoLavaderoDAO`, igual que `SalidaLavaderoDAO`). `cantBolsas` y los agregados de
+  elementos/lavarropas van en consultas separadas: meterlos en el `LEFT JOIN` maestro infla los
+  `COUNT`. El detalle se ancla en `elementos_clasificacion_lavadero` (no en salidas) y se reparte
+  entre tres consultas sin solaparse; un equipo repartido en N lavarropas es **1** línea
+  (`AgrupadorLineasHistorial`, que a diferencia de `AgrupadorInstanciasSalida` no descarta
+  instancias incompletas ni marcadas). Texto de lavarropas compartido en `TextoLavarropas`.
+- Plan: `plans/historial-lavadero.md`.
+
 ## Lavadero → CDE
 
 Es el **único punto donde una feature escribe en las tablas de otra**, y está concentrado en una
