@@ -40,7 +40,7 @@ entregado/finalizado— mientras el resto del histórico sigue cargando por detr
 | Las dos fases viven **sólo** en `RefrescadorPantallas` | Ni los controllers ni las vistas se enteran de que hubo dos lecturas | Los cinco grupos ya comparten esa clase. Meter el concepto de "fase" en los controllers lo repetiría cinco veces. |
 | API por **factorías**, agregadas antes de quitar el constructor | `enUnaFase(...)` / `enDosFases(...)` se agregan en el Paso 7 **sin** privatizar el constructor; el Paso 8 migra los cinco *call sites* y recién ahí lo cierra | `UiCoordinator` hace `new RefrescadorPantallas<>(...)` en 263, 281, 293, 301 y 312: privatizar el constructor en el Paso 7 rompería la compilación y obligaría al Paso 7 a tocar `UiCoordinator`, que es justo lo que lo volvería no paralelizable. |
 | El grupo `operativo` **no** se hace en dos fases | Sigue en una sola lectura | Ya lee sólo la cola activa (`DatosOperativos`), acotada por definición. Su problema lo arregla la Fase A: arrastra el mismo N+1 vía `obtenerActivos()` y corre **en cada guardado**, donde no hay apertura de pantalla detrás de la cual esconderse. |
-| Preservar selección **por identidad**, no por índice | El helper guarda el id, no el `rowIndex`, y trabaja en **espacio de vista** en los extremos | Entre fase 1 y fase 2 las filas se corren. Y las tablas son **ordenables**: `VerEquiposController` 172/182 y `HistorialLavaderoController:97` usan `convertRowIndexToModel`, así que un helper que confunda vista con modelo selecciona otra fila — el bug que existe para evitar. |
+| Preservar selección **por identidad**, no por índice | El helper guarda el id, no el `rowIndex`, y hace la conversión vista↔modelo explícita en los extremos | Entre fase 1 y fase 2 las filas se corren de lugar. **Aclaración verificada:** las tablas de las pantallas Ver **no** tienen `RowSorter` (`setAutoCreateRowSorter`/`setRowSorter` sólo aparece en `PanelGestionClientes`), así que los `convertRowIndexToModel` de `VerEquiposController` 172/182 y `HistorialLavaderoController:97` son defensivos y hoy son la identidad. El helper igual hace la conversión: es gratis, es correcta, y deja de ser identidad el día que alguien haga las tablas ordenables. |
 | El indicador de carga parcial es **obligatorio** | Mientras corre la fase 2 la pantalla dice que faltan datos; si la fase 2 falla, lo dice también | Sin él, una lista parcial se lee como completa: el usuario busca un equipo entregado, no lo ve y concluye que no existe. Es el único punto de la Fase B que es de **corrección**, no de percepción. |
 | El fallo de la fase 2 **no** abre modal | Va sólo al indicador; el `JOptionPane` queda para `enUnaFase` y para una cadena que no alcanzó a pintar nada | `UiCoordinator.mostrarErrorDeRefresco` (345-352) es un `JOptionPane` **modal**. Con dos lecturas por apertura se duplica la probabilidad de que aparezca, y taparía datos parciales que son perfectamente usables. |
 | El `MAX(fecha)` de movimientos pasa a **subconsulta correlacionada** | En vez de `LEFT JOIN (SELECT material_id, MAX(fecha) … GROUP BY material_id)` | La tabla derivada agrega **toda** la tabla de movimientos, que crece para siempre. La correlacionada pega contra `idx_mov_material` / `idx_otros_mov_material` (`V1:87`, `V2:53`) y resuelve cada fila con un *index range scan*. Corre igual en MySQL 8 y H2 2.2. Sin migración. |
@@ -210,7 +210,8 @@ es gratis y cubre todo; no hace falta ningún arnés de prueba.
 1. **`TareaUI.doInBackground()`** — cronometrar `leer.call()` con `System.nanoTime()` y loguear el
    tiempo junto al nombre de la tarea.
    - Nivel **INFO**: `log.info("Tarea '{}' leyó en {} ms", nombre, ms)`.
-   - Medir **sólo `leer`**, no el pintado: lo que este plan ataca es el I/O.
+   - Medir **sólo `leer`**: es lo que ataca la Fase A. **Pero ver la tarea 5** — el pintado hay que
+     descartarlo como sospechoso una vez, no ignorarlo.
    - El cronómetro va en el `finally`, junto al renombrado del hilo, para que también se registre una
      lectura que **falló** (un timeout de 30 s que explota es justamente lo que se quiere ver).
    - Javadoc: por qué la medición vive acá y no en cada DAO — es el único cuello por el que pasa
@@ -248,6 +249,21 @@ es gratis y cubre todo; no hace falta ningún arnés de prueba.
    sostener conclusiones: anotarlo así y apoyarse en el análisis de complejidad (N+1 es N+1
    independientemente del reloj). Decírselo al usuario, no esconderlo detrás de un número lindo.
 
+5. **⚠️ Descartar (o confirmar) el pintado como sospechoso — una sola vez, en este paso.**
+   Todo el plan asume que el problema es el I/O. Puede no serlo: las cinco pantallas hacen
+   `setRowCount(0)` + un `addRow` **por fila, en el EDT** (`PantallaVerEquipos` 207/223,
+   `PantallaVerCDEv2` 104, `PantallaVerLotes` 179, `PantallaVerCiclos` 122,
+   `PantallaHistorialLavadero` 169). Con miles de filas eso congela la UI y **ninguna optimización
+   de SQL lo arregla**.
+   - Cronometrar `pintar` igual que `leer` —una línea más en el mismo `TareaUI`— y anotar los dos
+     números.
+   - **Si el pintado supera el 30 % del total en alguna pantalla, hay que decírselo al usuario antes
+     de seguir**: la Fase B **duplica** los pintados, así que en ese escenario empeoraría ese
+     componente mientras mejora el otro, y el plan necesitaría un paso nuevo (pintado por lotes o
+     un `TableModel` propio sobre la lista, sin `addRow` fila por fila).
+   - Nota: hoy ninguna de esas tablas tiene `RowSorter`, así que **no** está el caso patológico de
+     re-ordenar en cada `addRow`. Verificarlo sigue siendo barato.
+
 ### Verificación
 
 ```bash
@@ -260,6 +276,8 @@ mvn clean package && java -jar target/aptium.jar   # y leer el log
 
 - [ ] El log muestra un tiempo por cada tarea de fondo, con su nombre
 - [ ] La tabla de baseline está llena con **medianas de 3 corridas**, y los `COUNT(*)` anotados
+- [ ] El tiempo de **pintado** está medido y anotado; si supera el 30 % del total en alguna pantalla,
+      está avisado al usuario antes de arrancar la Fase A
 - [ ] Commit: `feat: TareaUI mide y loguea el tiempo de cada lectura de fondo`
 
 ---
@@ -317,6 +335,18 @@ rompa el plegado.
      | 876 | `obtenerEntreFechas()` | `eo.fecha_ingreso, eo.id` | agregar `, m.id` |
 
      El de la línea 278 es el que un agente se saltea: buscando la cadena `ORDER BY` no aparece.
+
+   - **✅ Alternativa recomendada, estrictamente mejor: NO poner `m.id` en el `ORDER BY`.**
+     En vez de eso, ordenar los materiales **en memoria** después del plegado (listas de 3-10
+     elementos: `list.sort(comparingInt(MaterialOtros::getId))`).
+     Motivo: con `m.id` el `ORDER BY` queda **multi-tabla** (`eo.fecha_ingreso DESC, eo.id DESC, m.id`)
+     y MySQL no puede cubrirlo con ningún índice ⇒ filesort del join entero, siempre. Sin él queda
+     `eo.fecha_ingreso DESC, eo.id DESC`, de una sola tabla, y en InnoDB un índice secundario incluye
+     la PK implícitamente: `idx_otros_fecha_ingreso` del **Paso 4** lo cubre **entero** y el filesort
+     desaparece. El orden de los materiales sale igual de determinista.
+     Si se toma esta alternativa, **aplicar lo mismo a `EquipoDAO`** (que hoy tiene `…, e.id DESC, em.id`
+     en 332 y 344) y **actualizar la justificación del Paso 4**, que dice que los índices no pagan los
+     listados: con este cambio sí los pagan.
    - `cargarMateriales(Connection, EquipoOtros)` queda **sin ningún uso** (verificado: sólo lo llamaba
      `listar`): borrarla.
 
@@ -645,7 +675,18 @@ completo, que **pisa** al primero.
    - **Decisión:** si la cadena anterior ya llegó a repartir un snapshot **completo**, la cadena
      nueva **salta directo a la fase 2** (una sola lectura, sin cartel). La fase 1 sólo tiene sentido
      cuando no hay nada bueno en pantalla.
-   - Guardar ese `boolean tuvoSnapshotCompleto` en el refrescador y documentar por qué existe.
+   - **Por qué es correcto, y no sólo cómodo:** al reentrar, el controller conserva su caché y la
+     tabla **ya está mostrando el snapshot completo anterior**. No hay espera percibida que esconder:
+     los datos viejos se ven al instante y se reemplazan cuando llega la lectura. Mostrar una fase 1
+     ahí sería *sacar* filas de la pantalla para volver a agregarlas.
+   - `boolean tuvoSnapshotCompleto`: campo del refrescador, se pone en `true` al primer reparto
+     completo exitoso y **nunca se resetea**. Si la fase 2 falla, sigue en `false` y la próxima
+     cadena vuelve a hacer las dos fases — que es lo que se quiere.
+   - ⚠️ **Consecuencia que hay que tener presente y no esconder:** con esto, la Fase B mejora la
+     **primera apertura de cada pantalla por sesión de app**, no el uso del día. Es exactamente el
+     momento que el usuario reportó como molesto, así que vale — pero si después de la Fase A esa
+     primera apertura ya baja a pocos cientos de ms, el beneficio restante es chico. Es la otra
+     razón de ser de la compuerta por grupo del Paso 8.
 
 5. **Fallo de la fase 1** ⇒ ir igual a la fase 2 (es la que tiene los datos de verdad) y rutear el
    error de la fase 1 sólo al log. Documentarlo en el Javadoc.
@@ -766,9 +807,13 @@ Las pantallas repintan con el mismo patrón (`setRowCount(0)` + `addRow`): `Pant
 **207 y 223** (⚠️ **dos** tablas), `PantallaVerCDEv2` 104, `PantallaVerLotes` 179, `PantallaVerCiclos`
 122, `PantallaHistorialLavadero` 169. **Cinco pantallas, seis tablas.**
 
-⚠️ **Las tablas son ordenables.** `VerEquiposController` 172/182 y `HistorialLavaderoController:97`
-usan `convertRowIndexToModel`. El helper tiene que ser explícito sobre en qué espacio trabaja o va a
-seleccionar otra fila — el bug que existe para evitar.
+⚠️ **Las tablas NO son ordenables hoy** — verificado: `setAutoCreateRowSorter`/`setRowSorter` sólo
+aparece en `PanelGestionClientes`. Los `convertRowIndexToModel` de `VerEquiposController` 172/182 y
+`HistorialLavaderoController:97` son defensivos y hoy devuelven el mismo índice. El helper **igual**
+hace la conversión en los dos extremos: es gratis, es correcta, y es lo único que evita un bug latente
+el día que alguien agregue un sorter. Lo que **no** hay que hacer es escribir tests que instalen un
+`RowSorter` para "probarlo": se testea el método puro (id → índice de modelo), que es donde está la
+lógica.
 
 > **Regla de este paso: cero copiar y pegar.** Si el mismo bloque aparece en dos pantallas, va a
 > `ui/common/`. Seis copias de "guardar la selección" es exactamente lo que este plan no quiere.
@@ -826,15 +871,14 @@ Smoke manual (**sin** `-Daptium.edt.strict=true`):
 1. Abrir `Ver Equipos`: aparecen primero los activos y el cartel; después llega el resto y se va.
 2. Seleccionar una fila en la lista parcial → al llegar la fase 2 **sigue seleccionada la misma
    fila**, aunque cambió de posición. Probar en **las dos** tablas de esa pantalla.
-3. Ordenar por una columna (clic en el encabezado) y repetir el punto 2: la selección tiene que
-   seguir siendo correcta **con el sorter activo**.
-4. `Historial de Lavadero`: doble clic durante la fase 1 abre el detalle sin romper nada.
-5. Entrar, salir y volver a entrar rápido → sin parpadeo de datos viejos ni cartel colgado.
-6. Log: **ningún WARN de `EdtGuard`** atribuible a estas pantallas.
+3. `Historial de Lavadero`: doble clic durante la fase 1 abre el detalle sin romper nada.
+4. Entrar, salir y volver a entrar → la segunda vez la tabla muestra los datos completos al instante
+   y **no** aparece el cartel (es la optimización de la tarea 4 del Paso 7).
+5. Log: **ningún WARN de `EdtGuard`** atribuible a estas pantallas.
 
 ### Criterio de salida
 
-- [ ] La selección sobrevive al segundo pintado, **con el `RowSorter` activo**
+- [ ] La selección sobrevive al segundo pintado, con la fila cambiada de posición
 - [ ] El indicador aparece durante la fase 2 y desaparece al terminar, **también si falla**
 - [ ] Las seis tablas usan **la misma** clase compartida; cero copias del bloque
 - [ ] Commit: `feat: la carga en dos fases no pierde la selección ni miente sobre lo que falta`
@@ -883,7 +927,10 @@ Smoke manual (**sin** `-Daptium.edt.strict=true`):
 | Dar por hecho que los cuatro predicados "activo" ya existen | Sólo existen los de equipos y lavadero. Lotes y ciclos hay que escribirlos. |
 | Forzar `obtenerCiclosActivosPorLavarropas()` como alcance prioritario | Devuelve `Map<Integer, CicloLavadero>` — uno por lavarropas, no todos los activos. Entregaría un snapshot con menos ciclos de los que hay. |
 | Que la fase 2 traiga sólo el complemento | Rompe "un snapshot reemplaza al anterior" y empuja lógica de merge a **cada** controller. |
-| Preservar la selección por índice de fila | Entre fases las filas se corren. Y con `RowSorter` activo, confundir vista con modelo selecciona otra fila. Va por id, con conversión explícita. |
+| Preservar la selección por índice de fila | Entre fases las filas se corren. Va por id, con conversión vista↔modelo explícita (hoy es la identidad —no hay `RowSorter`— pero deja de serlo si alguien agrega uno). |
+| Asumir que el problema es sólo el I/O | El pintado corre en el EDT, fila por fila. Hay que descartarlo con una medición en el Paso 1 antes de dar por buena toda la premisa del plan. |
+| Poner `m.id` / `em.id` en el `ORDER BY` "porque es lo que hay hoy" | Vuelve el `ORDER BY` multi-tabla y garantiza filesort para siempre. Ordenar los materiales en memoria deja que el índice del Paso 4 cubra el listado entero. |
+| Prometer que la Fase B mejora todas las aperturas | Mejora la **primera de cada pantalla por sesión**. En las siguientes la tabla ya muestra datos completos y no hay nada que esconder. |
 | Restaurar la posición del scroll | Cuando la lista crece de N a 5N, el mismo píxel es otra fila. Va `scrollRectToVisible` de la fila re-seleccionada. |
 | No mostrar que faltan datos | Una lista parcial se lee como completa. Es corrección, no estética. |
 | Dejar el indicador colgado si la fase 2 falla | `alCambiarCarga(false)` va también en el camino de error. |
