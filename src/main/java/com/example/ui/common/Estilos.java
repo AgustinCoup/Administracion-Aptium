@@ -121,6 +121,11 @@ public final class Estilos {
         // Ancho de la columna de botones de un menú vertical.
         // Equivale al ancho de un botón de los menús en grilla 2x2.
         public static final int ANCHO_MENU = 560;
+
+        // Ancho del menú de Lavadero, que a diferencia del resto va en grilla de 3 columnas.
+        // Con ANCHO_MENU (560) repartido en 3, cada botón queda en ~180 px y "Ver Ciclos" se
+        // corta con Fuentes.BOTON.
+        public static final int ANCHO_MENU_GRILLA = 840;
         
         // Ancho de un TextFields pequeño (para números)
         public static int calcularAnchoNumero(int caracteres) {
