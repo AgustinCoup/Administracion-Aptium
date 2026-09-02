@@ -420,30 +420,28 @@ rompa el plegado.
 
 2. **Reescribir `listar()`** con plegado por `LinkedHashMap<Integer, EquipoOtros>`:
    - una fila por (equipo × material); `mat_id` nulo ⇒ equipo sin materiales, se agrega igual;
-   - **⚠️ `listar()` tiene CINCO llamadores, no cuatro.** Todos necesitan `m.id` al final del
-     `ORDER BY` o el orden de los materiales dentro del equipo queda indefinido:
+   - **⚠️ El orden de los materiales se resuelve EN MEMORIA, no con `ORDER BY`.** Después del
+     plegado, ordenar cada lista por id (`list.sort(comparingInt(MaterialOtros::getId))`). Son
+     listas de 3-10 elementos.
+     **Por qué, y no al revés:** poner `m.id` en el `ORDER BY` lo vuelve **multi-tabla**
+     (`eo.fecha_ingreso DESC, eo.id DESC, m.id`) y MySQL no puede cubrir eso con ningún índice ⇒
+     filesort del join entero, para siempre. Sin él queda `eo.fecha_ingreso DESC, eo.id DESC`, de una
+     sola tabla; y como en InnoDB todo índice secundario incluye la PK implícitamente,
+     `idx_otros_fecha_ingreso` del **Paso 4** lo cubre entero. El resultado es igual de determinista.
+
+   - **Consecuencia buena: los cinco llamadores de `listar()` NO necesitan tocar su `ORDER BY`.**
+     El plegado usa `LinkedHashMap` y busca por id (`mapa.containsKey`), así que **no depende de que
+     las filas de un equipo sean contiguas**; el orden de los *equipos* lo da el orden de primera
+     aparición, que es el `ORDER BY` que ya tienen. Se listan igual para que quede constancia de que
+     se revisaron los cinco —el plan original decía cuatro— y de que ninguno quedó roto:
 
      | Línea | Método | `ORDER BY` hoy | Acción |
      |---|---|---|---|
-     | 253 | `obtenerTodos()` | `eo.fecha_ingreso DESC, eo.id DESC` | agregar `, m.id` |
-     | 263 | `obtenerActivos()` | `eo.fecha_ingreso DESC, eo.id DESC` | agregar `, m.id` |
-     | 272 | `obtenerEquiposNuevos()` | `eo.id DESC` | agregar `, m.id` |
-     | **278** | **`obtenerPorId()`** | **NINGUNO** (`"WHERE eo.id = ?"`) | **agregar `ORDER BY m.id` entero** |
-     | 876 | `obtenerEntreFechas()` | `eo.fecha_ingreso, eo.id` | agregar `, m.id` |
-
-     El de la línea 278 es el que un agente se saltea: buscando la cadena `ORDER BY` no aparece.
-
-   - **✅ Alternativa recomendada, estrictamente mejor: NO poner `m.id` en el `ORDER BY`.**
-     En vez de eso, ordenar los materiales **en memoria** después del plegado (listas de 3-10
-     elementos: `list.sort(comparingInt(MaterialOtros::getId))`).
-     Motivo: con `m.id` el `ORDER BY` queda **multi-tabla** (`eo.fecha_ingreso DESC, eo.id DESC, m.id`)
-     y MySQL no puede cubrirlo con ningún índice ⇒ filesort del join entero, siempre. Sin él queda
-     `eo.fecha_ingreso DESC, eo.id DESC`, de una sola tabla, y en InnoDB un índice secundario incluye
-     la PK implícitamente: `idx_otros_fecha_ingreso` del **Paso 4** lo cubre **entero** y el filesort
-     desaparece. El orden de los materiales sale igual de determinista.
-     Si se toma esta alternativa, **aplicar lo mismo a `EquipoDAO`** (que hoy tiene `…, e.id DESC, em.id`
-     en 332 y 344) y **actualizar la justificación del Paso 4**, que dice que los índices no pagan los
-     listados: con este cambio sí los pagan.
+     | 253 | `obtenerTodos()` | `eo.fecha_ingreso DESC, eo.id DESC` | **ninguna** |
+     | 263 | `obtenerActivos()` | `eo.fecha_ingreso DESC, eo.id DESC` | **ninguna** |
+     | 272 | `obtenerEquiposNuevos()` | `eo.id DESC` | **ninguna** |
+     | 278 | `obtenerPorId()` | ninguno (`"WHERE eo.id = ?"`) | **ninguna** — devuelve un solo equipo |
+     | 876 | `obtenerEntreFechas()` | `eo.fecha_ingreso, eo.id` | **ninguna** |
    - `cargarMateriales(Connection, EquipoOtros)` queda **sin ningún uso** (verificado: sólo lo llamaba
      `listar`): borrarla.
 
@@ -490,7 +488,8 @@ Smoke: en `Ver Equipos`, doble clic sobre un equipo "otros" abre el detalle con 
 
 - [ ] `listar()` ejecuta **una sola** consulta, sin importar cuántos equipos devuelva — probado con el
       **contador de consultas** del Paso 1.5, no a ojo
-- [ ] Los **cinco** llamadores tienen `m.id` al final del `ORDER BY`, `obtenerPorId` incluido
+- [ ] Los materiales salen ordenados por id **sin** `m.id` en ningún `ORDER BY`, y los cinco
+      llamadores quedaron revisados (test de orden en `obtenerPorId`, el que no tiene `ORDER BY`)
 - [ ] `listar()` propaga el error; no hay lista parcial
 - [ ] `abrirDetalleOtros` corre por `TareaUI` y muestra un error visible si la lectura falla
 - [ ] `refresco-historial-equipos` bajó respecto del baseline (anotar el número)
@@ -532,7 +531,22 @@ Existen `idx_mov_material (material_id)` (`V1:87`) e `idx_otros_mov_material (ma
    - Quitar el `LEFT JOIN (…) mm` correspondiente.
    - Comentario corto en cada consulta explicando **por qué** (la derivada agregaba toda la tabla).
 2. Aplicar lo mismo a la otra copia de `EquipoDAO` (~292).
-3. **No** extraer una clase o constante compartida entre los dos DAOs: son tablas distintas. Lo único
+3. **⚠️ Sacar `em.id` de los `ORDER BY` de listado de `EquipoDAO` y ordenar los materiales en
+   memoria**, igual que hizo el Paso 2 con `EquipoOtrosDAO`. Son **CUATRO**, no dos:
+
+   | Línea | Método | `ORDER BY` hoy |
+   |---|---|---|
+   | 332 | `obtenerTodosLosEquipos()` | `e.fecha_ingreso DESC, e.id DESC, em.id` |
+   | 344 | `obtenerActivos()` | `e.fecha_ingreso DESC, e.id DESC, em.id` |
+   | **430** | **`obtenerEquiposNuevos()`** | `e.fecha_ingreso DESC, em.id` |
+   | **449** | **`obtenerEntreFechas()`** | `e.fecha_ingreso, em.id` |
+
+   Las dos últimas son las que el plan había contado mal — el mismo error que corrigió con orgullo
+   del lado de `EquipoOtrosDAO`. Si quedan con `em.id`, conservan el filesort que este paso y el
+   Paso 4 existen para matar.
+   ⚠️ **No tocar la línea 297** (`WHERE em.equipo_id = ? ORDER BY em.id`): es la carga de materiales
+   de un solo equipo, no un listado, y ahí el `ORDER BY` es correcto y barato.
+4. **No** extraer una clase o constante compartida entre los dos DAOs: son tablas distintas. Lo único
    común es la forma, y eso lo garantiza el test, no una abstracción.
 
 ### Verificación
@@ -548,6 +562,9 @@ mvn test
 - [ ] No queda ningún `GROUP BY material_id` sin `WHERE` en los DAOs de equipos
 - [ ] `ultimo_movimiento` da **exactamente** el mismo valor que antes (test explícito con un material
       con 3 movimientos en fechas distintas)
+- [ ] Los **cuatro** `ORDER BY` de listado de `EquipoDAO` (332, 344, 430, 449) quedaron sin `em.id`,
+      y la línea 297 quedó intacta
+- [ ] Los materiales siguen saliendo ordenados por id en las dos DAOs (test en cada una)
 - [ ] Commit: `perf: el último movimiento sale por índice y no agregando la tabla entera`
 
 ---
@@ -558,22 +575,26 @@ mvn test
 
 ### Contexto (autocontenido) — leer la advertencia antes que la tabla
 
-⚠️ **Corrección de la revisión adversarial: estos índices NO eliminan el filesort de los listados,
-y el plan original decía lo contrario.** El `ORDER BY` real de los listados es
-`e.fecha_ingreso DESC, e.id DESC, em.id` (`EquipoDAO` 332 y 344): mezcla direcciones y su última
-clave es de **otra tabla**. Ningún índice de una sola tabla lo cubre; siempre va a haber filesort. Y
-el Paso 2 agrega `m.id` del lado de `EquipoOtros`, con el mismo efecto.
+⚠️ **Este paso depende de que los Pasos 2 y 3 hayan sacado `em.id`/`m.id` de los `ORDER BY` de
+listado.** Mientras el `ORDER BY` sea multi-tabla (`e.fecha_ingreso DESC, e.id DESC, em.id`), ningún
+índice de una sola tabla lo cubre y siempre hay filesort. Con esa clave removida queda
+`fecha_ingreso DESC, id DESC`, y como en InnoDB todo índice secundario incluye la PK implícitamente,
+el índice de `fecha_ingreso` lo cubre entero.
 
-**Lo que los índices sí pagan, que es real y vale la migración:**
+**Lo que paga cada índice:**
 
 | Índice | Consulta que acelera |
 |---|---|
-| `equipos.fecha_ingreso`, `equipo_otros.fecha_ingreso` | `obtenerEntreFechas(...)` — los reportes por rango |
+| `equipos.fecha_ingreso`, `equipo_otros.fecha_ingreso` | el `ORDER BY` de **todos los listados** (una vez hechos los Pasos 2 y 3) y `obtenerEntreFechas(...)` |
 | `equipos.estado`, `equipo_otros.estado` | `obtenerEquiposNuevos()` (`WHERE eo.estado = ?`) |
 | `ingresos_lavadero.estado` | `CicloLavaderoDAO:80` (`WHERE il.estado = 'CLASIFICADO'`) y el alcance prioritario del Paso 8 |
-| `ingresos_lavadero.fecha_ingreso` | el `ORDER BY` de `SQL_RESUMEN`, que **después del Paso 5 sí es de una sola tabla** |
+| `ingresos_lavadero.fecha_ingreso` | el `ORDER BY` de `SQL_RESUMEN` — que **ya hoy es de una sola tabla** (`ORDER BY il.fecha_ingreso DESC, il.id DESC`, verificado). Lo que cambia con el Paso 5 no es la cantidad de tablas sino **el tamaño del set a ordenar**, que deja de estar multiplicado por el fan-out |
 
 Los `JOIN` por FK ya están cubiertos: InnoDB crea el índice al declarar la `FOREIGN KEY`.
+
+⚠️ **No afirmar que el índice se usa: comprobarlo.** Que MySQL elija `equipo_otros` como tabla
+conductora del `LEFT JOIN` y aproveche `idx_otros_fecha_ingreso` es *probable*, no *garantizado*. El
+criterio de salida pide un `EXPLAIN`, no una creencia.
 
 **Regla dura: una migración ya escrita no se toca.** Esto va en `V21`. Verificado: V1–V20 presentes
 sin huecos, y `ingresos_lavadero.estado` existe desde **`V10:1-3`**.
@@ -611,7 +632,10 @@ mvn clean package && java -jar target/aptium.jar   # el log de Flyway debe mostr
 - [ ] `mvn test` en verde, con al menos un `*DAOTest` corriendo (prueba que `V21` corre en H2)
 - [ ] La app arranca y Flyway registra `V21` (prueba que corre en MySQL)
 - [ ] No se modificó ninguna migración existente
-- [ ] **No** se usa "el listado bajó" como evidencia de este paso: eso lo produjo el Paso 2
+- [ ] **`EXPLAIN` pegado en el commit** —contra el MySQL sembrado del Paso 1.5— mostrando que el
+      listado de `equipo_otros` usa `idx_otros_fecha_ingreso` y **no** dice `Using filesort`. Si dice
+      filesort, el índice no está pagando lo que este paso promete: anotarlo en "Mutaciones aplicadas"
+      en vez de declarar la victoria
 - [ ] Commit: `perf: índices de fecha y estado para consultas por rango y por estado (V21)`
 
 ---
