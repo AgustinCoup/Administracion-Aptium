@@ -875,3 +875,33 @@ Si al ejecutar aparece algo que el plan no previó:
 - **Saltear un paso** → dejar escrito *por qué* en una sección "Mutaciones aplicadas" al final; no borrarlo.
 - **Cambiar una decisión de la tabla de arriba** → tacharla (`~~...~~`) y escribir la nueva con fecha.
   Las decisiones tomadas con el usuario **no se cambian sin preguntarle**.
+
+---
+
+## Mutaciones aplicadas
+
+### Paso 1 — el `SQL_DETALLE_REGULAR` del plan doble-contaba (2026-09-02)
+
+El boceto del plan traía `LEFT JOIN elementos_ciclo_lavadero … AND eci.instancia_equipo_id IS NULL`
+con `COALESCE(eci.cantidad, ecl.cantidad)`, para que la consulta regular cubriera también lo
+clasificado y sin lavar. Sumado a la consulta *"pendiente de lavar"* que el mismo paso pide, eso
+rompe justo la propiedad que el paso existe para garantizar:
+
+1. Una línea sin lanzar salía **dos veces** — una por el `LEFT JOIN` (cantidad completa) y otra
+   por la consulta de pendientes.
+2. Una línea consumida entera por un `Equipo*` repartido no tiene ninguna fila regular, así que
+   el `LEFT JOIN` le inventaba una línea *"sin lavar"* además de la fracción ya agrupada.
+
+**Implementado:** el `JOIN` a `elementos_ciclo_lavadero` es **interno** (sólo tandas regulares ya
+lanzadas) y lo clasificado sin lanzar queda entero a cargo de `SQL_DETALLE_SIN_LANZAR`. Las tres
+consultas del detalle se reparten las líneas sin superponerse.
+
+Dos ajustes menores del mismo origen:
+
+- El saldo sin lanzar usa la fórmula canónica de `CicloLavaderoDAO.SQL_DISPONIBLES`
+  (`SUM(CASE WHEN instancia IS NULL THEN cantidad ELSE 0 END) + COUNT(DISTINCT instancia_equipo_id)`)
+  y no `SUM(eci.cantidad)`, que cuenta N veces un equipo repartido en N fracciones.
+- `SQL_DETALLE_REGULAR` agrega las salidas por tanda (`GROUP BY eci.id`, `MAX(fecha_listo)`,
+  `MAX(destino)`): una tanda puede tener más de una fila en `salidas_lavadero` si se derivó una
+  parte y después se marcó el resto, y sin el `GROUP BY` aparecía duplicada. Es la misma
+  limitación de grano ya documentada en el paso, ahora también para el destino.

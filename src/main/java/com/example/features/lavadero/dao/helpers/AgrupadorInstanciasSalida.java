@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -15,9 +14,8 @@ import java.util.stream.Collectors;
  * por instancia, para las dos tablas de Salidas. Sin dependencias de JDBC ni Swing — se
  * testea sola, mismo patrón que {@code StagingCiclos}.
  *
- * <p>La agregación se hace acá y no con {@code GROUP_CONCAT}/{@code STRING_AGG} en SQL para no
- * introducir una función de texto que se comporte distinto entre H2 y MySQL: cada fila cruda
- * se lee tal cual y se arma el grupo en memoria.</p>
+ * <p>El texto de lavarropas del grupo lo arma {@link TextoLavarropas}, compartido con el
+ * Historial.</p>
  */
 public final class AgrupadorInstanciasSalida {
 
@@ -36,7 +34,7 @@ public final class AgrupadorInstanciasSalida {
             boolean yaMarcada = grupo.stream().anyMatch(f -> f.cantidadYaMarcada() > 0);
             if (!completa || yaMarcada) continue;
             resultado.add(new ElementoLavadoPendiente(
-                null, primera.instanciaEquipoId(), lavarropasTexto(grupo, FilaInstanciaEquipo::lavarropasNumero),
+                null, primera.instanciaEquipoId(), TextoLavarropas.de(grupo,FilaInstanciaEquipo::lavarropasNumero),
                 primera.ingresoId(), primera.clienteId(), primera.clienteNombre(),
                 primera.elementoNombre(), 1, 0,
                 grupo.stream().map(FilaInstanciaEquipo::fechaFinCiclo).max(Comparator.naturalOrder()).orElse(null)));
@@ -53,17 +51,12 @@ public final class AgrupadorInstanciasSalida {
             FilaInstanciaSalidaLista primera = grupo.get(0);
             resultado.add(new SalidaLista(
                 primera.salidaId(), null, primera.instanciaEquipoId(),
-                lavarropasTexto(grupo, FilaInstanciaSalidaLista::lavarropasNumero),
+                TextoLavarropas.de(grupo,FilaInstanciaSalidaLista::lavarropasNumero),
                 primera.ingresoId(), primera.clienteId(), primera.clienteNombre(),
                 primera.elementoNombre(), primera.cantidad(),
                 grupo.stream().map(FilaInstanciaSalidaLista::fechaFinCiclo).max(Comparator.naturalOrder()).orElse(null),
                 primera.fechaListo()));
         }
         return resultado;
-    }
-
-    private static <T> String lavarropasTexto(List<T> grupo, ToIntFunction<T> numero) {
-        return grupo.stream().mapToInt(numero).distinct().sorted()
-            .mapToObj(String::valueOf).collect(Collectors.joining(", "));
     }
 }
