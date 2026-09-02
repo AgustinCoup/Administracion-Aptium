@@ -11,10 +11,12 @@ import com.example.features.equipos.controller.VerEquiposController;
 import com.example.features.equipos.otros.controller.OtrosInputController;
 import com.example.features.lavadero.controller.CiclosController;
 import com.example.features.lavadero.controller.ClasificacionController;
+import com.example.features.lavadero.controller.HistorialLavaderoController;
 import com.example.features.lavadero.controller.LavaderoController;
 import com.example.features.lavadero.controller.SalidasLavaderoController;
 import com.example.features.lavadero.controller.VerCiclosController;
 import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.model.IngresoHistorial;
 import com.example.features.ajustes.controller.AjustesController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
@@ -58,17 +60,19 @@ public class UiCoordinator {
         //    y ellos necesitan poder pedirle una lectura. Se cablean después de crear
         //    ambos; hasta entonces solicitar() es un no-op.
         //
-        //    Son cuatro grupos con disparadores distintos, no un refresco global:
-        //      · operativo         → cada guardado; la cola activa, sin histórico.
-        //      · historial equipos → al abrir "Ver Equipos" o "Estado de procesos".
-        //      · historial lotes   → al abrir "Ver Lotes".
-        //      · historial ciclos  → al abrir "Ver Ciclos".
+        //    Son cinco grupos con disparadores distintos, no un refresco global:
+        //      · operativo          → cada guardado; la cola activa, sin histórico.
+        //      · historial equipos  → al abrir "Ver Equipos" o "Estado de procesos".
+        //      · historial lotes    → al abrir "Ver Lotes".
+        //      · historial ciclos   → al abrir "Ver Ciclos".
+        //      · historial lavadero → al abrir "Historial".
         //    Las pantallas de consulta se releen cuando el usuario las mira; antes
         //    se releían en cada guardado incluso estando ocultas.
         Disparador operativo         = new Disparador();
         Disparador historialEquipos  = new Disparador();
         Disparador historialLotes    = new Disparador();
         Disparador historialCiclos   = new Disparador();
+        Disparador historialLavadero = new Disparador();
 
         OnEstadosActualizadosListener refrescarEstados = operativo::solicitar;
         OnEquipoGuardadoListener      refrescarEquipos = operativo::solicitar;
@@ -115,6 +119,11 @@ public class UiCoordinator {
         VerCiclosController verCiclosController = new VerCiclosController(
             vista.getPantallaVerCiclos(), historialCiclos);
 
+        HistorialLavaderoController historialLavaderoController = new HistorialLavaderoController(
+            vista.getPantallaHistorialLavadero(),
+            context.getHistorialLavaderoService(),
+            historialLavadero);
+
         VerEquiposController verEquiposController = new VerEquiposController(
             vista.getPantallaVerEquipos(),
             context.getEquipoOtrosService(),
@@ -141,6 +150,8 @@ public class UiCoordinator {
         historialLotes.cablear(crearRefrescadorHistorialLotes(verLotesController));
 
         historialCiclos.cablear(crearRefrescadorHistorialCiclos(verCiclosController));
+
+        historialLavadero.cablear(crearRefrescadorHistorialLavadero(historialLavaderoController));
 
         correccionesController.setOnCambiosAplicados(operativo);
 
@@ -202,6 +213,11 @@ public class UiCoordinator {
 
         vista.getPantallaLavadero().getBtnVerCiclos().addActionListener(e ->
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.VER_CICLOS_LAVADERO));
+
+        // Sin llamada de carga extra: el componentShown del controller restablece los filtros
+        // y pide el refresco, igual que "Ver Ciclos".
+        vista.getPantallaLavadero().getBtnHistorial().addActionListener(e ->
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.HISTORIAL_LAVADERO));
 
         // Derivar al CDE crea ingresos en la cola operativa: por eso este controller recibe
         // el disparador `operativo` y no `refrescarEquipos`.
@@ -286,6 +302,17 @@ public class UiCoordinator {
             "refresco-historial-ciclos",
             context.getCicloLavaderoService()::obtenerTodosLosCiclos,
             verCiclos::pintar,
+            this::mostrarErrorDeRefresco);
+    }
+
+    /** La pantalla que consulta el historial completo del lavadero. */
+    private RefrescadorPantallas<List<IngresoHistorial>> crearRefrescadorHistorialLavadero(
+        HistorialLavaderoController historial
+    ) {
+        return new RefrescadorPantallas<>(
+            "refresco-historial-lavadero",
+            context.getHistorialLavaderoService()::obtenerHistorial,
+            historial::pintar,
             this::mostrarErrorDeRefresco);
     }
 

@@ -34,6 +34,7 @@ import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.lavadero.dao.BolsaLavaderoDAO;
 import com.example.features.lavadero.dao.CatalogoElementosLavaderoDAO;
 import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
+import com.example.features.lavadero.dao.HistorialLavaderoDAO;
 import com.example.features.lavadero.dao.IngresoLavaderoDAO;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.dao.LavarropasDAO;
@@ -49,6 +50,7 @@ import com.example.features.lavadero.model.AccionSalida;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.ClasificacionLavaderoService;
+import com.example.features.lavadero.service.HistorialLavaderoService;
 import com.example.features.lavadero.service.LavarropasService;
 import com.example.features.lavadero.service.LavaderoService;
 import com.example.features.lavadero.service.SalidaLavaderoService;
@@ -79,6 +81,7 @@ public class AppContext {
     private final CicloLavaderoService   cicloLavaderoService;
     private final CatalogoJabonesService catalogoJabonesService;
     private final SalidaLavaderoService  salidaLavaderoService;
+    private final HistorialLavaderoService historialLavaderoService;
     private final LoteReporteService loteReporteService;
     private final EquipoReporteService equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
@@ -105,6 +108,7 @@ public class AppContext {
         CicloLavaderoService cicloLavaderoService,
         CatalogoJabonesService catalogoJabonesService,
         SalidaLavaderoService salidaLavaderoService,
+        HistorialLavaderoService historialLavaderoService,
         LoteReporteService loteReporteService,
         EquipoReporteService equipoReporteService,
         EquipoOtrosReporteService equipoOtrosReporteService,
@@ -120,6 +124,7 @@ public class AppContext {
             || clasificacionLavaderoService == null
             || lavarropasService == null || cicloLavaderoService == null
             || catalogoJabonesService == null || salidaLavaderoService == null
+            || historialLavaderoService == null
             || loteReporteService == null
             || equipoReporteService == null || equipoOtrosReporteService == null
             || actualizacionService == null || versionInfo == null) {
@@ -145,6 +150,7 @@ public class AppContext {
         this.cicloLavaderoService    = cicloLavaderoService;
         this.catalogoJabonesService  = catalogoJabonesService;
         this.salidaLavaderoService   = salidaLavaderoService;
+        this.historialLavaderoService = historialLavaderoService;
         this.loteReporteService = loteReporteService;
         this.equipoReporteService = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
@@ -222,6 +228,10 @@ public class AppContext {
         SalidaLavaderoService salidaLavaderoService =
             new SalidaLavaderoService(salidaLavaderoDAO, derivadores);
 
+        HistorialLavaderoDAO historialLavaderoDAO = new HistorialLavaderoDAO();
+        HistorialLavaderoService historialLavaderoService =
+            new HistorialLavaderoService(historialLavaderoDAO);
+
         return new AppContext(
             equipoService,
             catalogoService,
@@ -242,6 +252,7 @@ public class AppContext {
             cicloLavaderoService,
             catalogoJabonesService,
             salidaLavaderoService,
+            historialLavaderoService,
             loteReporteService,
             equipoReporteService,
             equipoOtrosReporteService,
@@ -324,6 +335,10 @@ public class AppContext {
 
     public SalidaLavaderoService getSalidaLavaderoService() {
         return salidaLavaderoService;
+    }
+
+    public HistorialLavaderoService getHistorialLavaderoService() {
+        return historialLavaderoService;
     }
 
     public LoteReporteService getLoteReporteService() {
