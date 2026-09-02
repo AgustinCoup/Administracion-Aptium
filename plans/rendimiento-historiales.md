@@ -146,7 +146,7 @@ java -jar target/aptium.jar                        # smoke manual (SIN -Daptium.
 ## Grafo de dependencias
 
 ```
-Paso 1 (instrumentar TareaUI + baseline)   ◄── BLOQUEANTE de todo
+Pasos 1 + 1.5 (instrumentar TareaUI + sembrador + baseline)   ◄── BLOQUEANTES de todo
    │
    ├──► Paso 2 (N+1 + propagación + EDT) ──► Paso 3 (subconsultas de movimientos) ─┐
    ├──► Paso 4 (índices, V21) ───────────────────────────────────────────────────  ┤
@@ -282,6 +282,103 @@ mvn clean package && java -jar target/aptium.jar   # y leer el log
 
 ---
 
+## Paso 1.5 — Sembrador sintético sobre MySQL local
+
+> **Agregado el 2026-09-02** tras una objeción del usuario: el plan asumía poder medir contra la base
+> real y nunca decía cómo se consigue eso. **También es bloqueante**, junto con el Paso 1.
+
+### Contexto (autocontenido)
+
+Todo este plan promete mejoras de rendimiento, y no hay forma honesta de verificar una promesa así
+sin datos con volumen. La máquina de desarrollo no tiene los datos de producción, y copiarlos no es
+una opción liviana: `equipos.paciente` guarda **nombres de pacientes**.
+
+**Tres preguntas distintas, tres instrumentos distintos.** Confundirlas fue el error del plan original:
+
+| Pregunta | ¿Sirve H2? | Instrumento |
+|---|---|---|
+| ¿El N+1 existe y el arreglo lo mata? | **Sí** — es estructural (1 consulta vs N+1), no depende del motor | Test H2 que **cuenta consultas**, no milisegundos |
+| ¿Cuánto tarda con volumen, y cuánto ganamos? | **No** | **Este paso**: MySQL local sembrado |
+| ¿Cuánto tarda en la máquina real? | **No** | `app.log` — ver la nota al final |
+
+⚠️ **H2 no sirve para las preguntas de plan de ejecución** (¿usa el índice? ¿el predicado "activo" es
+más caro que la consulta completa?). H2 en `MODE=MySQL` imita la sintaxis, no el optimizador. Para el
+Paso 4 y para la compuerta del Paso 8 hace falta MySQL 8 de verdad.
+
+**Nota que ahorra un viaje a producción:** `logback.xml` ya tiene un `RollingFileAppender` a nivel
+**INFO** que escribe `${LOG_DIR}/app.log` con rotación diaria, y la app se auto-actualiza desde
+GitHub Releases. O sea: la instrumentación del Paso 1 **viaja sola** en el próximo release y los
+tiempos reales se acumulan en la máquina de producción sin que nadie haga nada. Esa es la validación
+final del plan; el sembrador es lo que permite trabajar **antes** de eso.
+
+### Tareas
+
+1. **MySQL 8 local, base dedicada.** Documentar el arranque en el propio archivo del sembrador:
+   ```bash
+   docker run -d --name aptium-perf -e MYSQL_ROOT_PASSWORD=perf \
+       -e MYSQL_DATABASE=aptium_perf -p 3307:3306 mysql:8
+   ```
+   Puerto **3307** a propósito: que no colisione con un MySQL local que ya esté en uso.
+   Flyway crea el esquema solo al conectar la app o el sembrador.
+
+2. **`src/test/java/.../perf/SembradorRendimiento.java`** — clase de test, **no** parte de `mvn test`:
+   - `@EnabledIfSystemProperty(named = "aptium.perf", matches = "true")`, de modo que `mvn test` y
+     `mvn verify` **la saltean siempre**. Sólo corre con `mvn test -Dtest=SembradorRendimiento -Daptium.perf=true`.
+   - **⚠️ Tres guardas de seguridad, obligatorias. Un sembrador que se equivoca de base destruye
+     datos de producción:**
+     1. abortar si el nombre de la base **no termina en `_perf`**;
+     2. abortar si `DB_HOST` no es `localhost`/`127.0.0.1`;
+     3. abortar si alguna tabla ya tiene filas que **no** fueron sembradas por él (marcar lo sembrado
+        con un prefijo reconocible en los campos de texto, p. ej. `PERF-`).
+     Las tres fallan con un mensaje explícito, no con un `assert` mudo.
+
+3. **La forma de los datos va en constantes al tope de la clase**, para poder escalarla:
+   ```java
+   static final int FACTOR = Integer.getInteger("aptium.perf.factor", 1);   // 1x, 2x, 5x
+   static final int EQUIPOS_OTROS       = 3_000 * FACTOR;
+   static final int EQUIPOS_ORTOPEDIA   = 3_000 * FACTOR;
+   static final int MATERIALES_POR_EQUIPO = 4;
+   static final int MOVIMIENTOS_POR_MATERIAL = 3;
+   static final int PCT_ACTIVOS         = 30;     // % que todavía no está entregado
+   static final int INGRESOS_LAVADERO   = 2_000 * FACTOR;
+   ```
+   - **Los valores de arriba son una suposición documentada, no un dato.** Si el usuario puede correr
+     una consulta de agregados en producción (sólo `COUNT(*)`, ningún dato personal sale), ajustarlos
+     y **anotar de dónde salieron**. Si no, dejarlos como están y decir en el commit que son supuestos.
+   - `PCT_ACTIVOS` es **el número que decide la compuerta del Paso 8**: si en producción los activos
+     son la mayoría del total, la fase prioritaria no puede ganar por construcción.
+
+4. **Insertar por lotes** (`addBatch`/`executeBatch`, autocommit apagado). Sembrar 3.000 equipos con
+   12.000 materiales fila por fila tarda minutos y no es el punto del ejercicio.
+
+5. **Correr el baseline sobre esta base**, no sobre la de desarrollo: apuntar la app a `aptium_perf`
+   (variables de entorno `DB_HOST/DB_PORT/DB_NAME`) y llenar la tabla del Paso 1.
+   - **A `FACTOR=1` y a `FACTOR=5`.** La segunda corrida es la que responde "¿cuándo vuelve a
+     molestar?", que es información que ninguna otra parte del plan da.
+
+6. **Test estructural aparte, ese sí en H2 y en `mvn test`**: contar las consultas que ejecuta
+   `listar()`. Un `Connection` envuelto que incrementa un contador por `prepareStatement`, o el
+   contador de HikariCP. Es lo que convierte "el N+1 murió" en un criterio **objetivo y permanente**,
+   independiente del reloj y de la máquina.
+
+### Verificación
+
+```bash
+mvn test                                                        # el sembrador NO corre
+mvn test -Dtest=SembradorRendimiento -Daptium.perf=true         # siembra 1x
+mvn test -Dtest=SembradorRendimiento -Daptium.perf=true -Daptium.perf.factor=5
+```
+
+### Criterio de salida
+
+- [ ] `mvn test` normal **no** ejecuta el sembrador (verificado mirando la salida)
+- [ ] Las tres guardas de seguridad existen y se probó que **abortan** (al menos la del nombre de base)
+- [ ] La tabla del Paso 1 tiene baseline a `FACTOR=1` **y** a `FACTOR=5`
+- [ ] Está escrito si la forma de los datos salió de producción o es un supuesto
+- [ ] Commit: `test: sembrador sintético para medir rendimiento sobre MySQL local`
+
+---
+
 ## Paso 2 — Matar el N+1 de `EquipoOtrosDAO` (y su llamador en el EDT)
 
 > Depende del Paso 1. **Es el hallazgo #1: el más caro de todos.** Es también el paso con más
@@ -391,7 +488,8 @@ Smoke: en `Ver Equipos`, doble clic sobre un equipo "otros" abre el detalle con 
 
 ### Criterio de salida
 
-- [ ] `listar()` ejecuta **una sola** consulta, sin importar cuántos equipos devuelva
+- [ ] `listar()` ejecuta **una sola** consulta, sin importar cuántos equipos devuelva — probado con el
+      **contador de consultas** del Paso 1.5, no a ojo
 - [ ] Los **cinco** llamadores tienen `m.id` al final del `ORDER BY`, `obtenerPorId` incluido
 - [ ] `listar()` propaga el error; no hay lista parcial
 - [ ] `abrirDetalleOtros` corre por `TareaUI` y muestra un error visible si la lectura falla
@@ -919,8 +1017,12 @@ Smoke manual (**sin** `-Daptium.edt.strict=true`):
 | Anti-patrón | Por qué está mal acá |
 |---|---|
 | Empezar por la Fase B | Se construiría la maquinaria sobre un N+1 patológico: la fase 2 tardaría lo mismo que hoy y el tirón de cada guardado no se arreglaría. |
-| Saltear el Paso 1 | Sin baseline no hay forma de saber si un paso sirvió ni cuál pantalla sigue cara. Es el único paso bloqueante. |
+| Saltear el Paso 1 o el 1.5 | Sin baseline con volumen no hay forma de saber si un paso sirvió. Son los dos pasos bloqueantes. |
 | Medir una sola vez | El ruido de JIT y del pool es del orden de la mejora esperada. Tres corridas, mediana. |
+| Medir con H2 si la pregunta es de índices o de plan de ejecución | H2 en `MODE=MySQL` imita la sintaxis, **no el optimizador**. Para el Paso 4 y la compuerta del Paso 8 hace falta MySQL 8 real. H2 **sí** sirve para contar consultas (el N+1). |
+| Apuntar el sembrador a cualquier base | Un sembrador equivocado de base destruye producción. Tres guardas: nombre terminado en `_perf`, host local, y tablas sin datos ajenos. |
+| Dejar el sembrador corriendo en `mvn test` | Insertaría miles de filas en cada build. Va detrás de `@EnabledIfSystemProperty`. |
+| Presentar la forma de los datos sembrados como si fuera un dato de producción | Son un supuesto hasta que alguien corra los `COUNT(*)` reales. Decirlo en el commit. |
 | Buscar los llamadores de `listar()` por la cadena `ORDER BY` | `obtenerPorId` (278) **no tiene** `ORDER BY`. Son cinco llamadores, no cuatro. |
 | Propagar la excepción de `listar()` sin tocar `abrirDetalleOtros` | Cambia un fallo silencioso por uno **invisible**: corre en el EDT sin `try/catch` (`VerEquiposController` 179-189). |
 | Privatizar el constructor de `RefrescadorPantallas` en el Paso 7 | `UiCoordinator` lo usa en 263, 281, 293, 301 y 312: rompe la compilación y arruina el paralelismo. Lo cierra el Paso 8. |
@@ -956,7 +1058,7 @@ Diez pasos, **seis sesiones**.
 
 | Sesión | Pasos | Modelo | Effort | Fast mode | Por qué |
 |---|---|---|---|---|---|
-| 1 | Paso 1 | Sonnet 5 | medio | ➖ | Instrumentación chica, pero incluye salir a medir contra la base real. |
+| 1 | Pasos 1 + 1.5 | Sonnet 5 | medio | ➖ | Instrumentación chica, pero incluye levantar el MySQL local, escribir el sembrador con sus guardas y tomar el baseline a 1x y 5x. |
 | 2 | Pasos 2 + 3 | **Opus 5** | **alto** | ❌ | El N+1, los cinco llamadores y el arreglo del EDT. Es el paso con más superficie de rotura. |
 | 3 | Pasos 4 + 5 | Sonnet 5 | medio | ✅ | Migración mecánica + una partición ya escrita en el plan, con test previo. |
 | 4 | Pasos 6 + 7 | **Opus 5** | **alto** | ❌ | El Paso 7 es diseño de concurrencia: cadena, cancelación, retroceso. Ahí se gana o se pierde la Fase B. |
@@ -969,27 +1071,35 @@ secuencial suele salir mejor.
 
 ---
 
-### Sesión 1 — Paso 1: instrumentar y medir
+### Sesión 1 — Pasos 1 y 1.5: instrumentar, sembrar y medir
 
 **Sonnet 5 · effort medio**
 
 ```
-Ejecutá el Paso 1 de plans/rendimiento-historiales.md (medir el tiempo de cada lectura de
-fondo en TareaUI y tomar el baseline).
+Ejecutá los Pasos 1 y 1.5 de plans/rendimiento-historiales.md, en ese orden (medir el tiempo
+de cada lectura de fondo en TareaUI; después el sembrador sintético sobre MySQL local y el
+baseline).
 
 Leé antes del plan: "Contexto compartido" y "Catálogo de anti-patrones".
 
-Es el paso bloqueante de todo el plan: sin baseline ningún paso posterior puede demostrar que
-sirvió. No sigas de largo a optimizar nada.
+Son los dos pasos bloqueantes: sin baseline con volumen, ningún paso posterior puede demostrar
+que sirvió. No sigas de largo a optimizar nada.
 
-Después de instrumentar corré la app contra la base real, abrí cada pantalla de consulta TRES
-veces (descartando la primera apertura de la app) y ESCRIBÍ las medianas en la tabla del Paso
-1, dentro del archivo del plan. Anotá también los COUNT(*) de las tablas.
+Cuatro cosas que importan:
+1. En el Paso 1, medí también el PINTADO, no sólo la lectura. Corre en el EDT fila por fila y
+   ninguna optimización de SQL lo arregla; si pasa del 30% del total, avisá antes de seguir.
+2. El sembrador NO puede correr en mvn test (va detrás de @EnabledIfSystemProperty) y necesita
+   TRES guardas de seguridad: nombre de base terminado en _perf, host local, y ninguna tabla
+   con datos ajenos. Un sembrador equivocado de base destruye producción.
+3. Tomá el baseline a FACTOR=1 y a FACTOR=5. La corrida de 5x es la que responde "cuándo
+   vuelve a molestar", y ninguna otra parte del plan da ese dato.
+4. Escribí también el test que CUENTA CONSULTAS (ese sí en H2 y en mvn test): es lo que
+   convierte "el N+1 murió" en un criterio objetivo, independiente del reloj.
 
-Si equipo_otros tiene menos de ~500 filas, decílo explícitamente: los ms no alcanzan para
-sostener conclusiones y hay que apoyarse en el análisis de complejidad.
+Los valores de forma de los datos son un SUPUESTO documentado, no un dato de producción.
+Decílo así en el commit; si el usuario te pasa los COUNT(*) reales, ajustalos y anotá el origen.
 
-Corré la app SIN -Daptium.edt.strict=true. Terminá con el commit del criterio de salida.
+Corré la app SIN -Daptium.edt.strict=true. Un commit por paso.
 ```
 
 ### Sesión 2 — Pasos 2 y 3: el N+1, sus llamadores y las subconsultas
