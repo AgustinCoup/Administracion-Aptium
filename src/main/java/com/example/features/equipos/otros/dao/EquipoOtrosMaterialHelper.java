@@ -40,6 +40,51 @@ public final class EquipoOtrosMaterialHelper {
      * matcheaba y el estado quedaba en {@code NUEVO} — pero acá la intención está escrita en
      * vez de depender de esa coincidencia.
      *
+     * <h2>Mantenimiento de la columna {@code version} (V21)</h2>
+     *
+     * <p>Acá se incrementa el token de bloqueo optimista del agregado, por el mismo motivo que en
+     * el helper de ortopedias: toda ruta que muta materiales termina llamando a este recálculo, así
+     * que la cobertura sale de una línea en vez de veinte {@code UPDATE} sueltos. <b>La columna se
+     * mantiene pero NO se usa como guarda en ningún {@code WHERE}</b> — ver
+     * {@link com.example.features.equipos.ortopedias.dao.EquipoMaterialHelper#recalcularEstadoEquipo}.
+     *
+     * <p><b>Auditoría de las rutas que escriben los agregados sin pasar por acá</b>
+     * (2026-09-03, {@code grep "UPDATE equipo" -r src/main/java}). Una ruta que escribe sin
+     * bumpear da un falso negativo silencioso, que es justo lo que el bloqueo viene a eliminar,
+     * así que ninguna queda implícita:
+     *
+     * <ul>
+     *   <li><b>{@code LoteDAO.acumularVolumenEquipoOtros} — {@code SET volumen_equipo}: cubierta.</b>
+     *       Su único llamador ({@code LoteDAO:319}) corre inmediatamente después de
+     *       {@code procesarEquiposOtrosAfectados} ({@code :318}), sobre el mismo conjunto de
+     *       equipos y dentro de la misma transacción. Ojo: el recálculo corre <em>antes</em>, no
+     *       después — lo que la cubre no es el orden sino la atomicidad, porque un lector
+     *       concurrente ve la transacción entera o ninguna parte de ella.</li>
+     *   <li><b>{@code EquipoOtrosDAO:162} — {@code SET remito_id}: no invalida ningún snapshot.</b>
+     *       Corre dentro de {@code guardar}, en la misma transacción que el {@code INSERT} que
+     *       crea la fila: nadie puede tener un snapshot de un equipo que todavía no existía.</li>
+     *   <li><b>{@code EquipoDAO.actualizar} — {@code SET estado}: bumpea explícitamente.</b> Escribe
+     *       el estado de la cabecera sin derivarlo, así que sí invalida un snapshot. Hoy no tiene
+     *       llamador de producción (sólo implementa {@code DAO<T,ID>}), pero el bump va igual para
+     *       que quien lo cablee mañana no herede un agujero.</li>
+     *   <li><b>{@code EquipoOtrosDAO:338} — {@code SET estado} del camino REMITO sin materiales
+     *       reales:</b> asignada al Paso 4 del plan, que la hace bumpear a mano — no hay materiales
+     *       que recalcular, así que este helper no aplica.</li>
+     *   <li><b>{@code FusionClientesDAO} — {@code SET nro_cliente}:</b> ABM de clientes, fuera del
+     *       alcance acordado del plan.</li>
+     *   <li><b>Rutas de {@code Correcciones} ({@code actualizarCantidadRemito},
+     *       {@code actualizarCantidadMaterial}, {@code insertarMaterial},
+     *       {@code eliminarMaterialesPorDescripcion}, {@code eliminarEquipo}, y en ortopedias
+     *       {@code MaterialDAO.actualizarCantidad} / {@code actualizarCodigo}):</b> ver la nota de
+     *       abajo. Son escrituras ciegas hoy y siguen siéndolo; <b>bumpean</b> para que la columna
+     *       quede honesta, pero no llevan guarda.</li>
+     * </ul>
+     *
+     * <p>Esas rutas de Correcciones no pueden pasar por este recálculo: deriva {@code estado} desde
+     * los materiales, y sobre un REMITO sin materiales reales pisaría la cabecera con
+     * {@code NUEVO}. Tampoco se las puede documentar como inocuas: son exactamente las escrituras
+     * que reemplazan lo que un snapshot de Correcciones mostraba. Por eso llevan bump a mano.
+     *
      * @param conn          conexión activa con {@code autoCommit=false}
      * @param equipoOtrosId ID del equipo "otros" a recalcular
      */
@@ -73,9 +118,32 @@ public final class EquipoOtrosMaterialHelper {
         }
 
         try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE equipo_otros SET estado = ? WHERE id = ?")) {
+                "UPDATE equipo_otros SET estado = ?, version = version + 1 WHERE id = ?")) {
             ps.setString(1, nuevoEstado.getNombre());
             ps.setInt   (2, equipoOtrosId);
+            ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Incrementa la {@code version} del agregado sin tocar ninguna otra columna.
+     *
+     * <p>Para las rutas que mutan {@code equipo_otros_materiales} <b>sin</b> pasar por
+     * {@link #recalcularEstadoEquipo} — las de {@code Correcciones}. No pueden usar el recálculo
+     * porque deriva {@code estado} desde los materiales y sobre un REMITO sin materiales reales
+     * pisaría la cabecera con {@code NUEVO}; pero sí tienen que mantener el token, porque
+     * {@code Correcciones} es justamente su consumidor previsto.
+     *
+     * <p>Llamar dentro de la misma transacción que la escritura que lo motiva, para que el bump
+     * y el cambio se vean o no se vean juntos.
+     *
+     * @param conn          conexión activa con {@code autoCommit=false}
+     * @param equipoOtrosId ID del equipo "otros" cuyo token se invalida
+     */
+    public static void bumpVersion(Connection conn, int equipoOtrosId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE equipo_otros SET version = version + 1 WHERE id = ?")) {
+            ps.setInt(1, equipoOtrosId);
             ps.executeUpdate();
         }
     }

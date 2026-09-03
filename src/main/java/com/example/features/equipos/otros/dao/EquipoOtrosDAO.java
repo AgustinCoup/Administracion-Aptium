@@ -47,7 +47,7 @@ public class EquipoOtrosDAO {
         "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
         "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
         "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-        "eo.volumen_equipo, eo.fecha_ingreso " +
+        "eo.volumen_equipo, eo.fecha_ingreso, eo.version " +
         "FROM equipo_otros eo " +
         "JOIN clientes c ON eo.nro_cliente = c.id ";
 
@@ -620,12 +620,19 @@ public class EquipoOtrosDAO {
     /**
      * Actualiza {@code remito_cantidad} del encabezado.
      *
+     * <p>Ruta de {@code Correcciones}. Bumpea {@code version} a mano porque el recálculo del
+     * helper no aplica: deriva {@code estado} desde los materiales, y sobre un REMITO sin
+     * materiales reales pisaría la cabecera con {@code NUEVO}. Sigue siendo una escritura ciega
+     * — no lleva guarda, que es lo acordado para Correcciones — pero mantiene el token honesto
+     * para el día que la guarda se active. Ver la auditoría en
+     * {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}.
+     *
      * @throws DatabaseException si falla el UPDATE
      */
     public void actualizarCantidadRemito(int equipoId, int cantidadNueva) {
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "UPDATE equipo_otros SET remito_cantidad = ? WHERE id = ?")) {
+                 "UPDATE equipo_otros SET remito_cantidad = ?, version = version + 1 WHERE id = ?")) {
             ps.setInt(1, cantidadNueva);
             ps.setInt(2, equipoId);
             ps.executeUpdate();
@@ -638,17 +645,27 @@ public class EquipoOtrosDAO {
     /**
      * Actualiza la cantidad de un material del equipo.
      *
+     * <p>Ruta de {@code Correcciones}: bumpea la {@code version} del agregado dentro de la misma
+     * transacción, para que el cambio y la invalidación del token se vean juntos. No lleva guarda
+     * — ver {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}.
+     *
      * @return filas afectadas — 0 si el material no pertenece al equipo
      * @throws DatabaseException si falla el UPDATE
      */
     public int actualizarCantidadMaterial(int equipoId, int materialId, int cantidadNueva) {
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "UPDATE equipo_otros_materiales SET cantidad = ? WHERE id = ? AND equipo_otros_id = ?")) {
-            ps.setInt(1, cantidadNueva);
-            ps.setInt(2, materialId);
-            ps.setInt(3, equipoId);
-            return ps.executeUpdate();
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            int filas;
+            try (PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE equipo_otros_materiales SET cantidad = ? WHERE id = ? AND equipo_otros_id = ?")) {
+                ps.setInt(1, cantidadNueva);
+                ps.setInt(2, materialId);
+                ps.setInt(3, equipoId);
+                filas = ps.executeUpdate();
+            }
+            if (filas > 0) EquipoOtrosMaterialHelper.bumpVersion(conn, equipoId);
+            tx.commit();
+            return filas;
         } catch (SQLException e) {
             log.error("Error al modificar cantidad material={}", materialId, e);
             throw new DatabaseException("Error al modificar la cantidad del material", e);
@@ -699,6 +716,9 @@ public class EquipoOtrosDAO {
                 ps.executeUpdate();
             }
 
+            // Ruta de Correcciones: no pasa por el recálculo, así que mantiene el token a mano.
+            EquipoOtrosMaterialHelper.bumpVersion(conn, equipoId);
+
             tx.commit();
             return nuevoMaterialId;
 
@@ -711,16 +731,25 @@ public class EquipoOtrosDAO {
     /**
      * Elimina todas las filas del equipo con la descripción indicada.
      *
+     * <p>Ruta de {@code Correcciones}: bumpea la {@code version} del agregado en la misma
+     * transacción que el {@code DELETE}.
+     *
      * @return filas eliminadas
      * @throws DatabaseException si falla el DELETE
      */
     public int eliminarMaterialesPorDescripcion(int equipoId, String descripcion) {
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "DELETE FROM equipo_otros_materiales WHERE equipo_otros_id = ? AND descripcion = ?")) {
-            ps.setInt   (1, equipoId);
-            ps.setString(2, descripcion);
-            return ps.executeUpdate();
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            int filas;
+            try (PreparedStatement ps = conn.prepareStatement(
+                     "DELETE FROM equipo_otros_materiales WHERE equipo_otros_id = ? AND descripcion = ?")) {
+                ps.setInt   (1, equipoId);
+                ps.setString(2, descripcion);
+                filas = ps.executeUpdate();
+            }
+            if (filas > 0) EquipoOtrosMaterialHelper.bumpVersion(conn, equipoId);
+            tx.commit();
+            return filas;
         } catch (SQLException e) {
             log.error("Error al eliminar material descripcion='{}' equipo={}", descripcion, equipoId, e);
             throw new DatabaseException("Error al eliminar el material", e);
@@ -729,6 +758,8 @@ public class EquipoOtrosDAO {
 
     /**
      * Elimina el encabezado del equipo.
+     *
+     * <p>No bumpea {@code version}: la fila desaparece, así que no queda token que invalidar.
      *
      * @throws DatabaseException si falla el DELETE
      */
@@ -761,6 +792,7 @@ public class EquipoOtrosDAO {
         eq.setVolumenEquipo(rs.getInt("volumen_equipo"));
         Timestamp fi = rs.getTimestamp("fecha_ingreso");
         eq.setFechaIngreso(fi != null ? fi.toLocalDateTime() : null);
+        eq.setVersion(rs.getInt("version"));
         return eq;
     }
 

@@ -45,6 +45,19 @@ public class EquipoOtros implements EquipoRegistrableInterface {
     private int              volumenEquipo       = 0; // litros acumulados en lotes exitosos
     private LocalDateTime    fechaIngreso;
 
+    /**
+     * Token de bloqueo optimista del agregado (columna {@code version}, V21). Lo incrementa
+     * {@code EquipoOtrosMaterialHelper.recalcularEstadoEquipo} en cada escritura sobre el equipo.
+     *
+     * <p>Se mantiene pero <b>no se usa como guarda en ningún {@code WHERE}</b>; su consumidor
+     * previsto es {@code Correcciones}. Ver el javadoc del helper, que lleva la auditoría de las
+     * rutas que escriben fuera del recálculo.
+     *
+     * <p>No es {@code final} porque esta clase es un bean mutable que el mapeo del DAO llena campo
+     * por campo desde el constructor sin argumentos. El setter existe para ese mapeo.
+     */
+    private int              version;
+
     private final List<MaterialOtros> materiales = new ArrayList<>();
 
     public EquipoOtros() {
@@ -235,6 +248,10 @@ public class EquipoOtros implements EquipoRegistrableInterface {
 
     public int     getVolumenEquipo()                       { return volumenEquipo; }
     public void    setVolumenEquipo(int volumen)            { this.volumenEquipo = volumen; }
+
+    /** Token de bloqueo optimista del agregado; ver el campo {@link #version}. */
+    public int     getVersion()                             { return version; }
+    public void    setVersion(int version)                  { this.version = version; }
 
     public LocalDateTime getFechaIngreso()                  { return fechaIngreso; }
     public void    setFechaIngreso(LocalDateTime v)         { this.fechaIngreso = v; }

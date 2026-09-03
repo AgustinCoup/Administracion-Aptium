@@ -32,6 +32,22 @@ public final class EquipoMaterialHelper {
      *
      * <p>Debe llamarse dentro de una transacción activa.
      *
+     * <p><b>Acá se mantiene la columna {@code version}</b> (V21), el token de bloqueo optimista
+     * del agregado. Va en este único lugar y no en cada {@code UPDATE} desperdigado porque toda
+     * ruta que muta materiales de un equipo termina llamando a este recálculo: la cobertura sale
+     * de una línea en vez de veinte que alguien va a olvidar de tocar el día que agregue una ruta
+     * nueva. Las excepciones auditadas están listadas abajo.
+     *
+     * <p><b>La {@code version} se mantiene pero NO se usa como guarda en ningún {@code WHERE}</b>
+     * — ni acá ni en los flujos que este helper sirve. Es deliberado: guardar con la version del
+     * agregado haría chocar a dos operadores que avanzan materiales <em>distintos</em> del mismo
+     * equipo, un falso positivo que enseña al operador a ignorar el cartel. La protección real de
+     * esos flujos es la guarda sobre el {@code estado} de cada material, que es precisa. El
+     * consumidor previsto de la columna es {@code Correcciones}, que reemplaza la fila entera
+     * desde un snapshot. <b>Antes de activar esa guarda hay que cubrir las rutas de Correcciones</b>
+     * (ver el javadoc de {@link com.example.features.equipos.otros.dao.EquipoOtrosMaterialHelper#recalcularEstadoEquipo},
+     * que lleva la auditoría completa), o dará falsos negativos.
+     *
      * @param conn      conexión activa con {@code autoCommit=false}
      * @param equipoId  ID del equipo a recalcular
      */
@@ -65,9 +81,31 @@ public final class EquipoMaterialHelper {
         }
 
         try (PreparedStatement pstmt = conn.prepareStatement(
-                "UPDATE equipos SET estado = ? WHERE id = ?")) {
+                "UPDATE equipos SET estado = ?, version = version + 1 WHERE id = ?")) {
             pstmt.setString(1, estadoEquipo.getNombre());
             pstmt.setInt(2, equipoId);
+            pstmt.executeUpdate();
+        }
+    }
+
+    // ── bumpVersion ───────────────────────────────────────────────────────────
+
+    /**
+     * Incrementa la {@code version} del agregado sin tocar ninguna otra columna.
+     *
+     * <p>Para las rutas de {@code Correcciones}, que mutan {@code equipo_materiales} sin pasar por
+     * {@link #recalcularEstadoEquipo}. Siguen sin llevar guarda — eso está fuera del alcance
+     * acordado — pero mantienen el token honesto para el día que la guarda se active.
+     *
+     * <p>Llamar dentro de la misma transacción que la escritura que lo motiva.
+     *
+     * @param conn     conexión activa con {@code autoCommit=false}
+     * @param equipoId ID del equipo cuyo token se invalida
+     */
+    public static void bumpVersion(Connection conn, int equipoId) throws SQLException {
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "UPDATE equipos SET version = version + 1 WHERE id = ?")) {
+            pstmt.setInt(1, equipoId);
             pstmt.executeUpdate();
         }
     }

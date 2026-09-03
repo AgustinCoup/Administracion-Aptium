@@ -36,7 +36,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, " +
         "       p.nombre AS profesional_nombre, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
-        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso " +
+        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, e.version " +
         "FROM equipos e " +
         "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
         "LEFT JOIN profesionales p ON e.nro_profesional = p.id " +
@@ -47,7 +47,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, " +
         "       p.nombre AS profesional_nombre, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
-        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, " +
+        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, e.version, " +
         "       em.id AS mat_id, em.codigo_catalogo, cd.descripcion AS mat_descripcion, " +
         "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, mm.ultimo_movimiento, " +
         "       l.id_negocio AS lote_id_negocio " +
@@ -239,6 +239,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
         Timestamp fi = rs.getTimestamp("fecha_ingreso");
         eq.setFechaIngreso(fi != null ? fi.toLocalDateTime() : null);
+        eq.setVersion(rs.getInt("version"));
         return eq;
     }
 
@@ -349,10 +350,16 @@ public class EquipoDAO implements DAO<Equipo, String> {
     /**
      * Actualiza el estado de un equipo existente.
      * Implementa el método actualizar de la interfaz DAO.
+     *
+     * <p>Escribe {@code estado} sin derivarlo de los materiales, así que no pasa por
+     * {@link EquipoMaterialHelper#recalcularEstadoEquipo} y tiene que mantener la columna
+     * {@code version} (V21) por su cuenta. Hoy no tiene llamador de producción — sólo implementa
+     * {@code DAO<T,ID>} — pero el bump va igual para que quien lo cablee no herede un agujero en
+     * el token de bloqueo optimista.
      */
     @Override
     public boolean actualizar(Equipo equipo) {
-        String sql = "UPDATE equipos SET estado = ? WHERE id = ?";
+        String sql = "UPDATE equipos SET estado = ?, version = version + 1 WHERE id = ?";
         
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {

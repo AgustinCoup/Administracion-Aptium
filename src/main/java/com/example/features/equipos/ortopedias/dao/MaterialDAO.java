@@ -254,20 +254,45 @@ public class MaterialDAO {
 
     // ── Métodos simples (sin transacción propia) ─────────────────────────────
 
+    /**
+     * Ruta de {@code Correcciones}: escritura ciega (sin guarda, fuera del alcance del bloqueo
+     * optimista) que sí mantiene la {@code version} del agregado, en la misma transacción que el
+     * cambio. Ver {@link EquipoMaterialHelper#bumpVersion}.
+     */
     public boolean actualizarCantidad(Integer materialId, Integer cantidadNueva) {
         String sql = "UPDATE equipo_materiales SET cantidad = ? WHERE id = ?";
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, cantidadNueva);
-            ps.setInt(2, materialId);
-            int filasActualizadas = ps.executeUpdate();
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            int filasActualizadas;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setInt(1, cantidadNueva);
+                ps.setInt(2, materialId);
+                filasActualizadas = ps.executeUpdate();
+            }
             if (filasActualizadas > 0) {
+                bumpVersionDelEquipoDe(conn, materialId);
+                tx.commit();
                 log.debug("Cantidad del material {} actualizada a {}", materialId, cantidadNueva);
                 return true;
             }
+            tx.commit();
             return false;
         } catch (SQLException e) {
             throw new DatabaseException("Error al actualizar cantidad del material " + materialId, e);
+        }
+    }
+
+    /**
+     * Bumpea la {@code version} del equipo dueño del material, resolviéndolo desde la propia fila
+     * porque estas rutas de {@code Correcciones} sólo reciben el {@code materialId}.
+     */
+    private void bumpVersionDelEquipoDe(Connection conn, Integer materialId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT equipo_id FROM equipo_materiales WHERE id = ?")) {
+            ps.setInt(1, materialId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) EquipoMaterialHelper.bumpVersion(conn, rs.getInt("equipo_id"));
+            }
         }
     }
 
@@ -285,17 +310,24 @@ public class MaterialDAO {
         return null; // no encontrado
     }
 
+    /** Ruta de {@code Correcciones}; mantiene la {@code version} igual que {@link #actualizarCantidad}. */
     public boolean actualizarCodigo(Integer materialId, Integer codigoNuevo) {
         String sql = "UPDATE equipo_materiales SET codigo_catalogo = ? WHERE id = ?";
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, codigoNuevo);
-            ps.setInt(2, materialId);
-            int filasActualizadas = ps.executeUpdate();
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            int filasActualizadas;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setInt(1, codigoNuevo);
+                ps.setInt(2, materialId);
+                filasActualizadas = ps.executeUpdate();
+            }
             if (filasActualizadas > 0) {
+                bumpVersionDelEquipoDe(conn, materialId);
+                tx.commit();
                 log.debug("Código del material {} actualizado a {}", materialId, codigoNuevo);
                 return true;
             }
+            tx.commit();
             return false;
         } catch (SQLException e) {
             throw new DatabaseException("Error al actualizar código del material " + materialId, e);
