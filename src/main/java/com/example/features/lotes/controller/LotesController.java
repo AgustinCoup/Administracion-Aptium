@@ -2,6 +2,7 @@ package com.example.features.lotes.controller;
 
 import com.example.app.ui.DatosOperativos;
 import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.features.lotes.controller.helpers.AgrupadorIngresosLote;
 import com.example.features.lotes.controller.helpers.ConstructorMaterialesDisponibles;
 import com.example.features.lotes.controller.helpers.EstadoStaging;
@@ -466,7 +467,8 @@ public class LotesController {
         List<LoteMovimiento> movimientos = new ArrayList<>();
         for (MaterialLoteItem item : pendientes) {
             movimientos.add(new LoteMovimiento(
-                    item.getMaterialId(), item.getEquipoId(), item.getCantidad(), item.isEsOtros()));
+                    item.getMaterialId(), item.getEquipoId(), item.getCantidad(),
+                    item.isEsOtros(), item.getEstadoOrigen()));
         }
 
         String nombreAutoclave     = autoclaveSeleccionado.getNombre();
@@ -476,7 +478,11 @@ public class LotesController {
         ejecutarAccionDeLote("lanzar-lote",
             () -> loteService.lanzarLote(nombreAutoclave, capacidadTotal, volFinal, movimientos, vols) != null,
             "Error al lanzar el lote.",
-            () -> pendientesPorAutoclave.remove(nombreAutoclave));
+            () -> pendientesPorAutoclave.remove(nombreAutoclave),
+            // Choque: el snapshot con el que se armó el staging ya no vale. Descartarlo entero
+            // (medio staging puede haber cambiado y el operador no sabe qué mitad) y recargar
+            // disponibles de la base — lo hace solo el refresco global.
+            pendientesPorAutoclave::clear);
     }
 
     /** Confirmación previa al refactor, vigente para lotes sin materiales "otros". */
@@ -572,6 +578,7 @@ public class LotesController {
         ejecutarAccionDeLote("finalizar-lote",
             () -> loteService.finalizarLote(loteId),
             Constantes.Mensajes.ERROR_FINALIZAR_LOTE,
+            () -> { },
             () -> { });
     }
 
@@ -585,7 +592,8 @@ public class LotesController {
         ejecutarAccionDeLote("marcar-lote-fallo",
             () -> loteService.marcarLoteFallo(loteId),
             Constantes.Mensajes.ERROR_MARCAR_LOTE_FALLO,
-            () -> panel.mostrarInfo(Constantes.Mensajes.LOTE_FALLO_OK));
+            () -> panel.mostrarInfo(Constantes.Mensajes.LOTE_FALLO_OK),
+            () -> { });
     }
 
     /**
@@ -597,9 +605,12 @@ public class LotesController {
      * @param accion       llamada al service; {@code false} = no se aplicó el cambio
      * @param mensajeError qué mostrar si el service devuelve que no se aplicó o si falla
      * @param alExito      efectos en el hilo de UI tras un service OK (además del refresco)
+     * @param alConflicto  efectos en el hilo de UI si el service lanza
+     *                     {@link ConflictoConcurrenciaException} (típicamente descartar el staging);
+     *                     además siempre se muestra el mensaje del conflicto y se dispara el refresco
      */
     private void ejecutarAccionDeLote(String nombreTarea, Callable<Boolean> accion,
-                                      String mensajeError, Runnable alExito) {
+                                      String mensajeError, Runnable alExito, Runnable alConflicto) {
         TareaUI.<Boolean>nueva()
             .nombre(nombreTarea)
             .leer(accion)
@@ -612,7 +623,15 @@ public class LotesController {
                     panel.mostrarError(mensajeError);
                 }
             })
-            .siFalla(e -> panel.mostrarError(mensajeError))
+            .siFalla(e -> {
+                if (e instanceof ConflictoConcurrenciaException) {
+                    alConflicto.run();
+                    panel.mostrarError(e.getMessage());
+                    solicitarRefresco.run();
+                } else {
+                    panel.mostrarError(mensajeError);
+                }
+            })
             .antes(()  -> setBotonesAccionLoteEnabled(false))
             // Recalcula los botones desde el estado actual (el refresco global,
             // asíncrono, terminará de repintar cuando llegue su snapshot).

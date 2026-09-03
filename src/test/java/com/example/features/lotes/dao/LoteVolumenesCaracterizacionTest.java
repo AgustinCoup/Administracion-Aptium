@@ -1,5 +1,7 @@
 package com.example.features.lotes.dao;
 
+import com.example.features.equipos.ortopedias.model.EstadoEquipo;
+
 import com.example.AbstractDAOTest;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
@@ -58,7 +60,7 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
         int[] fx = insertarEquipoOtrosDetalles();
 
         Lote lote = lanzarLoteConOtros("E01", 120, 12,
-            List.of(new LoteMovimiento(fx[1], fx[0], 5, true)),
+            List.of(new LoteMovimiento(fx[1], fx[0], 5, true, EstadoEquipo.NUEVO)),
             Map.of(fx[0], 12));
         dao.finalizarLote(lote.getId());
 
@@ -70,7 +72,7 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
         int[] fx = insertarEquipoOtrosDetalles();
 
         Lote lote = lanzarLoteConOtros("E01", 120, 12,
-            List.of(new LoteMovimiento(fx[1], fx[0], 5, true)),
+            List.of(new LoteMovimiento(fx[1], fx[0], 5, true, EstadoEquipo.NUEVO)),
             Map.of(fx[0], 12));
         dao.finalizarLote(lote.getId());
 
@@ -89,7 +91,7 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
 
         // Mueve 2 de 5 con 7 litros declarados para el ingreso
         Lote lote = lanzarLoteConOtros("E01", 120, 7,
-            List.of(new LoteMovimiento(fx[1], fx[0], 2, true)),
+            List.of(new LoteMovimiento(fx[1], fx[0], 2, true, EstadoEquipo.NUEVO)),
             Map.of(fx[0], 7));
         dao.finalizarLote(lote.getId());
 
@@ -105,7 +107,7 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtrosRemito(50);
 
         Lote lote = lanzarLoteConOtros("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true)),
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, EstadoEquipo.NUEVO)),
             Map.of(equipoOtrosId, 10));
         dao.finalizarLote(lote.getId());
 
@@ -117,13 +119,13 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtrosRemito(50);
 
         Lote lote1 = lanzarLoteConOtros("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true)),
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, EstadoEquipo.NUEVO)),
             Map.of(equipoOtrosId, 10));
         dao.finalizarLote(lote1.getId());
 
         // La UI vuelve a mandar materialId negativo para el remanente del REMITO
         Lote lote2 = lanzarLoteConOtros("E02", 120, 5,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)),
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)),
             Map.of(equipoOtrosId, 5));
         dao.finalizarLote(lote2.getId());
 
@@ -139,8 +141,8 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
 
         Lote lote = lanzarLoteConOtros("E01", 120, 25,
             List.of(
-                new LoteMovimiento(-ingresoA, ingresoA, 20, true),
-                new LoteMovimiento(-ingresoB, ingresoB, 15, true)),
+                new LoteMovimiento(-ingresoA, ingresoA, 20, true, EstadoEquipo.NUEVO),
+                new LoteMovimiento(-ingresoB, ingresoB, 15, true, EstadoEquipo.NUEVO)),
             Map.of(ingresoA, 20, ingresoB, 5));
         dao.finalizarLote(lote.getId());
 
@@ -155,8 +157,8 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
 
         Lote lote = lanzarLoteConOtros("E01", 120, 25,
             List.of(
-                new LoteMovimiento(-ingresoA, ingresoA, 20, true),
-                new LoteMovimiento(-ingresoB, ingresoB, 15, true)),
+                new LoteMovimiento(-ingresoA, ingresoA, 20, true, EstadoEquipo.NUEVO),
+                new LoteMovimiento(-ingresoB, ingresoB, 15, true, EstadoEquipo.NUEVO)),
             Map.of(ingresoA, 20, ingresoB, 5));
         dao.finalizarLote(lote.getId());
 
@@ -174,7 +176,7 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
         int[] fx = insertarEquipoOtrosDetalles();
 
         Lote lote = lanzarLoteConOtros("E01", 120, 9,
-            List.of(new LoteMovimiento(fx[1], fx[0], 5, true)),
+            List.of(new LoteMovimiento(fx[1], fx[0], 5, true, EstadoEquipo.NUEVO)),
             Map.of(fx[0], 9));
         dao.marcarLoteFallo(lote.getId());
 
@@ -186,7 +188,7 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
         int[] fx = insertarEquipoOtrosDetalles();
 
         Lote lote = lanzarLoteConOtros("E01", 120, 9,
-            List.of(new LoteMovimiento(fx[1], fx[0], 5, true)),
+            List.of(new LoteMovimiento(fx[1], fx[0], 5, true, EstadoEquipo.NUEVO)),
             Map.of(fx[0], 9));
         dao.marcarLoteFallo(lote.getId());
 
@@ -218,8 +220,8 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
 
         Lote lote = lanzarLoteConOtros("E01", 120, 45,
             List.of(
-                new LoteMovimiento(materialOrtopediaId, equipo.getId(), 3),
-                new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)),
+                new LoteMovimiento(materialOrtopediaId, equipo.getId(), 3, EstadoEquipo.NUEVO),
+                new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)),
             Map.of(equipoOtrosId, 20));
         dao.finalizarLote(lote.getId());
 
@@ -240,7 +242,7 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtrosRemito(10);
 
         Lote lote = lanzarLoteConOtros("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)),
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)),
             Map.of()); // sin litros para este ingreso
         dao.finalizarLote(lote.getId());
 
@@ -252,7 +254,7 @@ class LoteVolumenesCaracterizacionTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtrosRemito(10);
 
         Lote lote = lanzarLoteConOtros("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)),
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)),
             Map.of());
         dao.finalizarLote(lote.getId());
 

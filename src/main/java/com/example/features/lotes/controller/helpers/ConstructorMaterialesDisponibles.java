@@ -66,7 +66,9 @@ public class ConstructorMaterialesDisponibles {
                     material.getDescripcion(),
                     material.getCantidad(),
                     volumen != null ? volumen : VOLUMEN_POR_DEFECTO,
-                    clienteNombre));
+                    clienteNombre,
+                    false,
+                    material.getEstado()));
             }
         }
     }
@@ -81,10 +83,11 @@ public class ConstructorMaterialesDisponibles {
             if (remitoSinFilas) {
                 if (equipo.getSiguienteEstado(equipo.getEstado()) != EstadoEquipo.ESTERILIZANDO) continue;
                 int cantidad = equipo.getRemitoCantidad() != null ? equipo.getRemitoCantidad() : 1;
-                // materialId negativo = -equipoId, señal única de REMITO para el DAO
+                // materialId negativo = -equipoId, señal única de REMITO para el DAO.
+                // La guarda del REMITO es el estado del encabezado (no hay fila de material).
                 destino.add(new MaterialLoteItem(
                     -equipo.getId(), equipo.getId(), DESCRIPCION_REMITO, cantidad,
-                    VOLUMEN_POR_DEFECTO, clienteNombre, true));
+                    VOLUMEN_POR_DEFECTO, clienteNombre, true, equipo.getEstado()));
                 continue;
             }
 
@@ -94,7 +97,8 @@ public class ConstructorMaterialesDisponibles {
                 if (material.getId() == null) continue;
                 destino.add(new MaterialLoteItem(
                     material.getId(), equipo.getId(), material.getDescripcion(),
-                    material.getCantidad(), VOLUMEN_POR_DEFECTO, clienteNombre, true));
+                    material.getCantidad(), VOLUMEN_POR_DEFECTO, clienteNombre, true,
+                    material.getEstado()));
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.example.features.equipos;
 
+import com.example.features.equipos.ortopedias.model.EstadoEquipo;
+
 import com.example.AbstractDAOTest;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
@@ -102,7 +104,7 @@ class VersionAgregadoTest extends AbstractDAOTest {
         int otrosMaterialId = fixture[1];
 
         loteDAO.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true)), Map.of());
+            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true, EstadoEquipo.NUEVO)), Map.of());
 
         assertTrue(versionDeEquipoOtros(equipoOtrosId) > 0,
             "lanzarLote pasa por procesarEquiposOtrosAfectados, que tiene que bumpear");
@@ -113,7 +115,7 @@ class VersionAgregadoTest extends AbstractDAOTest {
         int versionAntes = versionDeEquipo(equipo.getId());
 
         loteDAO.lanzarLote("E02", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, false)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, false, EstadoEquipo.NUEVO)), Map.of());
 
         assertTrue(versionDeEquipo(equipo.getId()) > versionAntes);
     }
@@ -125,7 +127,7 @@ class VersionAgregadoTest extends AbstractDAOTest {
         int otrosMaterialId = fixture[1];
 
         Lote lote = loteDAO.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true)), Map.of());
+            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true, EstadoEquipo.NUEVO)), Map.of());
         int versionTrasLanzar = versionDeEquipoOtros(equipoOtrosId);
 
         loteDAO.finalizarLote(lote.getId());

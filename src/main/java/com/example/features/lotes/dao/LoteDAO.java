@@ -1,5 +1,7 @@
 package com.example.features.lotes.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.dao.EquipoMaterialHelper;
 import com.example.features.equipos.otros.dao.EquipoOtrosMaterialHelper;
@@ -565,10 +567,41 @@ public class LoteDAO {
         }
     }
 
+    /**
+     * Rechaza el movimiento si el estado leído {@code FOR UPDATE} no coincide con el que la
+     * pantalla mostraba, o si el material ya está asignado a un lote todavía abierto. Las dos
+     * condiciones son el mismo <i>lost update</i>: el staging se armó sobre un snapshot que ya no
+     * vale.
+     *
+     * <p>El {@code lote_id} sólo cuenta si apunta a un lote <b>activo</b> ({@code fecha_fin IS
+     * NULL}): {@code marcarLoteFallo} revierte el estado del material pero deja el {@code lote_id}
+     * apuntando al lote fallido, y ese material sí es relanzable.
+     */
+    private void guardarConcurrencia(Connection conn, String estadoActual, Integer loteIdActual,
+                                     LoteMovimiento movimiento) throws SQLException {
+        EstadoEquipo esperado = movimiento.getEstadoOrigenEsperado();
+        boolean estadoCambio = esperado == null
+            || estadoActual == null
+            || !estadoActual.equalsIgnoreCase(esperado.getNombre());
+        if (estadoCambio || (loteIdActual != null && loteSigueActivo(conn, loteIdActual))) {
+            throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_LOTE);
+        }
+    }
+
+    private boolean loteSigueActivo(Connection conn, int loteId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM lotes WHERE id = ? AND fecha_fin IS NULL")) {
+            ps.setInt(1, loteId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
     private void aplicarMovimientoLote(Connection conn, int loteId,
                                        LoteMovimiento movimiento) throws SQLException {
         String sqlSelect =
-            "SELECT codigo_catalogo, cantidad, estado " +
+            "SELECT codigo_catalogo, cantidad, estado, lote_id " +
             "FROM equipo_materiales WHERE id = ? AND equipo_id = ? FOR UPDATE";
         String sqlInsert =
             "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado, lote_id) " +
@@ -581,6 +614,7 @@ public class LoteDAO {
         int codigo;
         int cantidadActual;
         String estadoActual;
+        Integer loteIdActual;
 
         try (PreparedStatement pstmt = conn.prepareStatement(sqlSelect)) {
             pstmt.setInt(1, materialId);
@@ -590,8 +624,15 @@ public class LoteDAO {
                 codigo = rs.getInt("codigo_catalogo");
                 cantidadActual = rs.getInt("cantidad");
                 estadoActual = rs.getString("estado");
+                int l = rs.getInt("lote_id");
+                loteIdActual = rs.wasNull() ? null : l;
             }
         }
+
+        // Guarda de concurrencia, ANTES de validar la cantidad: si el estado cambió o el material
+        // ya está en otro lote abierto, el saldo que vio el operador es de otra realidad y
+        // "cantidad inválida" sería un mensaje engañoso. El throw revierte el lote entero.
+        guardarConcurrencia(conn, estadoActual, loteIdActual, movimiento);
 
         if (cantidadMover <= 0 || cantidadMover > cantidadActual) {
             throw new SQLException("Cantidad inválida para mover en lote: " + materialId);
@@ -720,6 +761,14 @@ public class LoteDAO {
                     remitoCantidad = rs.getInt("remito_cantidad");
                 }
             }
+
+            // Guarda de concurrencia del REMITO: su guarda es el estado del encabezado (no hay
+            // fila de material, y el lote_id vive en las filas materializadas). Dos lotes partiendo
+            // el mismo REMITO en paralelo es un caso legítimo — el equipo sigue en su estado hasta
+            // que se procesan todos los elementos —, así que sólo choca si el encabezado ya avanzó
+            // entero a otro estado.
+            guardarConcurrencia(conn, estadoActual, null, movimiento);
+
             int catalogoId = obtenerOCrearCatalogoOtros(conn, "Elementos");
 
             // Tras el primer split existen filas reales en equipo_otros_materiales.
@@ -762,13 +811,14 @@ public class LoteDAO {
 
         // DETALLES: fila real
         String sqlSelect =
-            "SELECT catalogo_otros_id, descripcion, cantidad, estado " +
+            "SELECT catalogo_otros_id, descripcion, cantidad, estado, lote_id " +
             "FROM equipo_otros_materiales WHERE id = ? AND equipo_otros_id = ? FOR UPDATE";
 
         int    catalogoId;
         String descripcion;
         int    cantidadActual;
         String estadoActual;
+        Integer loteIdActual;
 
         try (PreparedStatement ps = conn.prepareStatement(sqlSelect)) {
             ps.setInt(1, materialId);
@@ -779,8 +829,12 @@ public class LoteDAO {
                 descripcion    = rs.getString("descripcion");
                 cantidadActual = rs.getInt("cantidad");
                 estadoActual   = rs.getString("estado");
+                int l = rs.getInt("lote_id");
+                loteIdActual   = rs.wasNull() ? null : l;
             }
         }
+
+        guardarConcurrencia(conn, estadoActual, loteIdActual, movimiento);
 
         if (cantidadMover <= 0 || cantidadMover > cantidadActual)
             throw new SQLException("Cantidad inválida para mover en lote otros: " + materialId);
