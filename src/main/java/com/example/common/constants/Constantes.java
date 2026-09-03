@@ -207,6 +207,28 @@ public final class Constantes {
         // ── Clasificación de Lavadero ────────────────────────────────────────
         public static final String ELEMENTO_CATALOGO_AGREGADO = "Elemento \"%s\" agregado al catálogo.";
 
+        // ── Conflictos de concurrencia ───────────────────────────────────────
+        // Van dirigidos al operador y tienen que decir QUÉ CAMBIÓ y QUÉ HACER: un conflicto no
+        // es un error suyo ni de la app, es que otra persona se le adelantó.
+        public static final String CONFLICTO_GENERICO =
+            "Otro usuario modificó estos datos mientras trabajabas.\n"
+                + "La pantalla se actualizó: revisá y volvé a confirmar.";
+        public static final String CONFLICTO_MATERIAL =
+            "Otro usuario ya cambió el estado de este material mientras trabajabas.\n"
+                + "La pantalla se actualizó: revisá qué falta y volvé a registrarlo.";
+        public static final String CONFLICTO_LOTE =
+            "Otro usuario movió alguno de estos materiales mientras armabas el lote.\n"
+                + "El lote no se lanzó. La pantalla se actualizó: rearmalo con los materiales disponibles.";
+        public static final String CONFLICTO_TANDA =
+            "Otro usuario ya usó parte de esta ropa mientras armabas la tanda.\n"
+                + "La tanda no se lanzó. La pantalla se actualizó: rearmala con lo que quedó disponible.";
+        public static final String CONFLICTO_SALIDA =
+            "Otro usuario ya procesó esta salida mientras trabajabas.\n"
+                + "La pantalla se actualizó: revisá el estado antes de volver a intentarlo.";
+        public static final String CONFLICTO_CLASIFICACION =
+            "Otro usuario ya clasificó este ingreso mientras trabajabas.\n"
+                + "La clasificación no se guardó. La pantalla se actualizó: revisá lo que quedó cargado.";
+
         private Mensajes() {}
     }
 
