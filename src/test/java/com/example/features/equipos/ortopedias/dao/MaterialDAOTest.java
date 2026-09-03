@@ -1,11 +1,15 @@
 package com.example.features.equipos.ortopedias.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.model.*;
+import com.example.infrastructure.db.ConnectionPool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
@@ -167,7 +171,7 @@ class MaterialDAOTest extends AbstractDAOTest {
     @Test
     void aplicarMovimientos_estadoDestinoExplicito_actualizaEstado() {
         List<MovimientoMaterial> movs = List.of(
-            new MovimientoMaterial(materialId, 3, EstadoEquipo.LAVANDO));
+            new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO));
         dao.aplicarMovimientos(equipo.getId(), movs);
 
         Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
@@ -177,7 +181,7 @@ class MaterialDAOTest extends AbstractDAOTest {
     @Test
     void aplicarMovimientos_estadoDestinoNulo_lanzaExcepcion() {
         List<MovimientoMaterial> movs = List.of(
-            new MovimientoMaterial(materialId, 3, null));
+            new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, null));
         assertThrows(DatabaseException.class,
             () -> dao.aplicarMovimientos(equipo.getId(), movs));
     }
@@ -186,13 +190,44 @@ class MaterialDAOTest extends AbstractDAOTest {
     void aplicarMovimientos_cantidadParcial_splitaMaterial() {
         // Mueve 1 de 3 → original queda con 2, nuevo material con 1
         List<MovimientoMaterial> movs = List.of(
-            new MovimientoMaterial(materialId, 1, EstadoEquipo.LAVANDO));
+            new MovimientoMaterial(materialId, 1, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO));
         dao.aplicarMovimientos(equipo.getId(), movs);
 
         Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
         assertEquals(2, cargado.getMateriales().size());
         int total = cargado.getMateriales().stream().mapToInt(Material::getCantidad).sum();
         assertEquals(3, total);
+    }
+
+    /**
+     * Guarda de concurrencia con dos conexiones reales: A leyó el material en NUEVO, B lo avanzó a
+     * LAVANDO y commiteó, y recién entonces A intenta aplicar su movimiento contra el estado viejo.
+     * Tiene que fallar con {@link ConflictoConcurrenciaException} y dejar intacto el cambio de B.
+     */
+    @Test
+    void aplicarMovimientos_estadoCambiadoPorOtraConexion_lanzaConflictoYNoPisaElCambio() throws SQLException {
+        // B: otra conexión avanza el material y commitea
+        try (Connection otra = ConnectionPool.getConnection()) {
+            otra.setAutoCommit(false);
+            try (PreparedStatement ps = otra.prepareStatement(
+                    "UPDATE equipo_materiales SET estado = 'Lavando' WHERE id = ?")) {
+                ps.setInt(1, materialId);
+                ps.executeUpdate();
+            }
+            otra.commit();
+        }
+
+        // A: aplica con el snapshot viejo (esperaba NUEVO)
+        List<MovimientoMaterial> movsA = List.of(
+            new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO));
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.aplicarMovimientos(equipo.getId(), movsA));
+
+        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
+        assertEquals(EstadoEquipo.LAVANDO, cargado.getMateriales().get(0).getEstado(),
+            "el cambio de B queda intacto: la transacción de A se revirtió entera");
+        assertEquals(3, cargado.getMateriales().get(0).getCantidad(),
+            "A no llegó a splitear ni mover cantidades");
     }
 
     // ── eliminarMaterialesPorCodigo ───────────────────────────────────────────

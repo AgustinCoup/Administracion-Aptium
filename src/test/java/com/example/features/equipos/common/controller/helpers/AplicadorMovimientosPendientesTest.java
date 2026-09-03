@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.model.EquipoKey;
 import com.example.common.model.EquipoRegistrableInterface.TipoEquipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
@@ -70,6 +71,24 @@ class AplicadorMovimientosPendientesTest {
     }
 
     @Test
+    @DisplayName("un choque de concurrencia se contabiliza aparte del error técnico y no corta el loop")
+    void choqueDeConcurrenciaSeSeparaDelError() {
+        List<Integer> intentados = new ArrayList<>();
+
+        var resultado = AplicadorMovimientosPendientes.aplicarTodos(buffer(), (k, m) -> {
+            intentados.add(k.getId());
+            if (k.equals(otros7)) throw new ConflictoConcurrenciaException("otro se adelantó");
+            if (k.equals(ortopedia3)) return false;   // fallo técnico
+            return true;
+        });
+
+        assertEquals(List.of(1, 7, 3), intentados, "no corta ante el choque del medio");
+        assertEquals(List.of(3), resultado.idsConError());
+        assertEquals(List.of(7), resultado.idsConConflicto());
+        assertFalse(resultado.todosExitosos());
+    }
+
+    @Test
     @DisplayName("cada equipo recibe sus propios movimientos")
     void pasaLosMovimientosDeCadaEquipo() {
         Map<EquipoKey, List<MovimientoMaterial>> recibidos = new LinkedHashMap<>();
@@ -93,6 +112,6 @@ class AplicadorMovimientosPendientesTest {
     }
 
     private static MovimientoMaterial mov(int materialId) {
-        return new MovimientoMaterial(materialId, 1, EstadoEquipo.LAVANDO);
+        return new MovimientoMaterial(materialId, 1, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO);
     }
 }

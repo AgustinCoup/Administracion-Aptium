@@ -92,6 +92,8 @@ public final class Constantes {
         public static final String CAMBIOS_GUARDADOS_OK         = "Todos los cambios se guardaron correctamente.";
         public static final String CAMBIOS_GUARDADOS_ERROR      = "Algunos cambios no se pudieron guardar:\n%s";
         public static final String ERROR_ACTUALIZAR_EQUIPO_ID   = "- Error al actualizar equipo ID: %d\n";
+        public static final String CONFLICTO_ACTUALIZAR_EQUIPO_ID =
+            "- Equipo ID %d: otro usuario lo modificó mientras trabajabas; rehacé el cambio con los datos recargados\n";
         public static final String GUARD_REGISTRAR_ESTADO_CAMBIOS = "Tenés cambios sin confirmar. Si volvés ahora, se perderán.\n¿Querés salir de todas formas?";
         public static final String GUARD_LOTES_CAMBIOS          = "Tenés materiales cargados en un equipo de esterilización sin lanzar.\nSi volvés ahora, esos cambios se perderán.\n¿Querés salir de todas formas?";
 

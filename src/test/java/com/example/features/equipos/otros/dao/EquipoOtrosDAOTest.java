@@ -165,7 +165,7 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
     @Test
     void aplicarMovimientos_estadoDestinoExplicito_actualizaEstado() {
         List<MovimientoMaterial> movs = List.of(
-            new MovimientoMaterial(materialId, 3, EstadoEquipo.LAVANDO));
+            new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO));
         assertTrue(dao.aplicarMovimientos(equipoDetalles.getId(), movs));
 
         EquipoOtros recargado = dao.obtenerTodos().stream()
@@ -178,7 +178,7 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
     void aplicarMovimientos_estadoDestinoNulo_calculaSiguienteEstado() {
         // requiereLavado=true (default) → NUEVO → siguiente = LAVANDO
         List<MovimientoMaterial> movs = List.of(
-            new MovimientoMaterial(materialId, 3, null));
+            new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, null));
         assertTrue(dao.aplicarMovimientos(equipoDetalles.getId(), movs));
 
         EquipoOtros recargado = dao.obtenerTodos().stream()
@@ -191,7 +191,7 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
     void aplicarMovimientos_cantidadParcial_splitaMaterial() {
         // Mueve 1 de 3 → 2 filas: original con 2 + nuevo con 1
         List<MovimientoMaterial> movs = List.of(
-            new MovimientoMaterial(materialId, 1, EstadoEquipo.LAVANDO));
+            new MovimientoMaterial(materialId, 1, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO));
         dao.aplicarMovimientos(equipoDetalles.getId(), movs);
 
         EquipoOtros recargado = dao.obtenerTodos().stream()

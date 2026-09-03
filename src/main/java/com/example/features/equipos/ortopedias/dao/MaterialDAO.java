@@ -1,5 +1,7 @@
 package com.example.features.equipos.ortopedias.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
@@ -74,6 +76,25 @@ public class MaterialDAO {
         }
     }
 
+    /**
+     * Aplica en una transacción los movimientos de estado de los materiales de un equipo.
+     *
+     * <p><b>Guarda de concurrencia:</b> cada {@link MovimientoMaterial} trae el
+     * {@code estadoOrigenEsperado} que la pantalla mostraba al tildarlo. Antes de escribir se
+     * relee la fila {@code FOR UPDATE} y se compara: si el estado cambió, otro operador avanzó
+     * ese material mientras este pensaba y se lanza {@link ConflictoConcurrenciaException}, que
+     * revierte la transacción de este equipo entera.
+     *
+     * <p><b>Por qué la guarda es el {@code estado} del material y no la {@code version} del
+     * equipo:</b> la columna {@code version} de {@code equipos} existe y se mantiene (V21), pero
+     * <b>no viaja acá</b> — ni en {@link com.example.common.model.EquipoKey} ni como parámetro de
+     * este método. Guardar con la {@code version} del agregado haría chocar a dos operadores que
+     * avanzan materiales <em>distintos</em> del mismo equipo (los dos incrementan la misma
+     * {@code version}), un falso positivo que enseña al operador a ignorar el aviso. La guarda por
+     * material es precisa: sólo choca cuando el choque es real. Un parámetro {@code version} sin
+     * consumidor sería además código muerto. Su consumidor previsto es {@code Correcciones}
+     * (reemplazo de la fila entera desde un snapshot), fuera del alcance de este cambio.
+     */
     public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {
         if (movimientos == null || movimientos.isEmpty()) return true;
 
@@ -113,6 +134,14 @@ public class MaterialDAO {
                         cantidadActual = rs.getInt("cantidad");
                         estadoActual  = rs.getString("estado");
                     }
+                }
+
+                // Guarda de concurrencia: va ANTES de validar la cantidad. Si el estado cambió,
+                // el saldo que vio el operador es de otra fila conceptual y "cantidad inválida"
+                // sería un mensaje engañoso.
+                EstadoEquipo estadoEsperado = movimiento.getEstadoOrigenEsperado();
+                if (estadoEsperado == null || !estadoActual.equalsIgnoreCase(estadoEsperado.getNombre())) {
+                    throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
                 }
 
                 if (cantidadMover <= 0 || cantidadMover > cantidadActual) {

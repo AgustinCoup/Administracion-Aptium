@@ -209,7 +209,8 @@ public class RegistrarEstadoController {
         cambiosPendientes.putIfAbsent(key, new HashMap<>());
         equiposPendientes.put(key, equipo);
 
-        MovimientoMaterial movimiento = new MovimientoMaterial(material.getId(), cantidad, siguienteEstado);
+        MovimientoMaterial movimiento = new MovimientoMaterial(
+            material.getId(), cantidad, material.getEstado(), siguienteEstado);
         cambiosPendientes.get(key).put(material.getId(), movimiento);
 
         equipo.aplicarMovimientoPreview(material, cantidad, siguienteEstado);
@@ -314,11 +315,17 @@ public class RegistrarEstadoController {
         if (resultado.todosExitosos()) {
             panel.mostrarInfo(Constantes.Mensajes.CAMBIOS_GUARDADOS_OK);
         } else {
-            StringBuilder errores = new StringBuilder();
+            // Fallos técnicos y choques de concurrencia se nombran por separado: un choque no es
+            // un error del operador, es que otro se le adelantó, y su trabajo sobre ese equipo
+            // hay que rehacerlo con los datos recargados.
+            StringBuilder detalle = new StringBuilder();
             for (Integer id : resultado.idsConError()) {
-                errores.append(String.format(Constantes.Mensajes.ERROR_ACTUALIZAR_EQUIPO_ID, id));
+                detalle.append(String.format(Constantes.Mensajes.ERROR_ACTUALIZAR_EQUIPO_ID, id));
             }
-            panel.mostrarError(String.format(Constantes.Mensajes.CAMBIOS_GUARDADOS_ERROR, errores));
+            for (Integer id : resultado.idsConConflicto()) {
+                detalle.append(String.format(Constantes.Mensajes.CONFLICTO_ACTUALIZAR_EQUIPO_ID, id));
+            }
+            panel.mostrarError(String.format(Constantes.Mensajes.CAMBIOS_GUARDADOS_ERROR, detalle));
         }
 
         // Los botones los deja sincronizarBotonesConBuffer, en el despues de la tarea.
