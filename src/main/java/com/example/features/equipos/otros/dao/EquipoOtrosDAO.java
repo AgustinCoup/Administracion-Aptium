@@ -1,5 +1,7 @@
 package com.example.features.equipos.otros.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.otros.model.EquipoOtros;
@@ -332,10 +334,15 @@ public class EquipoOtrosDAO {
                         EstadoEquipo.ESTERILIZADO.getNombre(), EstadoEquipo.ENTREGADO);
                 }
 
-                // REMITO sin filas reales: actualizar estado del equipo si está esterilizado
+                // REMITO sin filas reales: actualizar estado del equipo si está esterilizado.
+                // Este camino escribe equipo_otros.estado SIN pasar por recalcularEstadoEquipo (no
+                // hay materiales que recalcular), así que el bump de version va acá a mano — si no,
+                // un equipo entregado por esta vía quedaría con una version que miente.
+                // 0 filas afectadas = el equipo no estaba esterilizado: es un skip legítimo dentro
+                // de una entrega masiva por cliente, no un conflicto.
                 if (mats.isEmpty()) {
                     try (PreparedStatement ps = conn.prepareStatement(
-                            "UPDATE equipo_otros SET estado = ? " +
+                            "UPDATE equipo_otros SET estado = ?, version = version + 1 " +
                             "WHERE id = ? AND estado = ?")) {
                         ps.setString(1, EstadoEquipo.ENTREGADO.getNombre());
                         ps.setInt(2, equipoId);
@@ -362,8 +369,17 @@ public class EquipoOtrosDAO {
     /**
      * Persiste una lista de movimientos sobre materiales de un equipo "otros".
      * Replica la lógica de
-     * {@link com.example.features.equipos.ortopedias.dao.MaterialDAO#aplicarMovimientos}
-     * pero sobre las tablas de "otros".
+     * {@link com.example.features.equipos.ortopedias.dao.MaterialDAO#aplicarMovimientos},
+     * incluida su <b>guarda de concurrencia</b>: cada {@link MovimientoMaterial} trae el
+     * {@code estadoOrigenEsperado} que la pantalla mostraba al tildarlo y se compara contra la
+     * relectura {@code FOR UPDATE} antes de escribir. Si cambió, otro operador se adelantó y se
+     * lanza {@link ConflictoConcurrenciaException}, que revierte la transacción entera de este
+     * equipo. Vale para las dos ramas: el material real y el REMITO sin filas (donde el estado
+     * esperado es el del encabezado).
+     *
+     * <p>La {@code version} del agregado <b>no</b> se usa como guarda acá, igual que en el camino
+     * de ortopedias y por el mismo motivo (ver el javadoc de {@code MaterialDAO.aplicarMovimientos}):
+     * haría chocar a dos operadores avanzando materiales distintos del mismo equipo.
      */
     public boolean aplicarMovimientos(int equipoId,
                                       List<MovimientoMaterial> movimientos) {
@@ -428,6 +444,14 @@ public class EquipoOtrosDAO {
                             }
                         }
                     }
+
+                    // Guarda de concurrencia (REMITO): el estado esperado es el del encabezado.
+                    EstadoEquipo estadoEsperadoRemito = mov.getEstadoOrigenEsperado();
+                    if (estadoEsperadoRemito == null
+                            || !estadoActual.equalsIgnoreCase(estadoEsperadoRemito.getNombre())) {
+                        throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+                    }
+
                     if (dest == null) throw new SQLException("Estado final para REMITO: " + equipoId);
 
                     int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, "Elementos");
@@ -483,6 +507,12 @@ public class EquipoOtrosDAO {
 
                 anyDetalles = true;
 
+                // Guarda de concurrencia: va ANTES de validar la cantidad, igual que en ortopedias.
+                EstadoEquipo estadoEsperado = mov.getEstadoOrigenEsperado();
+                if (estadoEsperado == null || !estadoActual.equalsIgnoreCase(estadoEsperado.getNombre())) {
+                    throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+                }
+
                 if (cantidadMover <= 0 || cantidadMover > cantidadActual)
                     throw new SQLException("Cantidad inválida para mover: " + matId);
 
@@ -531,6 +561,11 @@ public class EquipoOtrosDAO {
             conn.commit();
             return true;
 
+        } catch (ConflictoConcurrenciaException e) {
+            // Choque de concurrencia: rollback y propagación. El controller lo distingue de un
+            // fallo técnico (que baja como return false).
+            rollback(conn, e);
+            throw e;
         } catch (SQLException e) {
             rollback(conn, e);
             return false;

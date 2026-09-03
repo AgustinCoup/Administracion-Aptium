@@ -1,6 +1,7 @@
 package com.example.features.equipos.otros.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
@@ -200,6 +201,72 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
         assertEquals(2, recargado.getMateriales().size());
         int total = recargado.getMateriales().stream().mapToInt(MaterialOtros::getCantidad).sum();
         assertEquals(3, total);
+    }
+
+    /**
+     * Espejo del test de ortopedias: A leyó el material en NUEVO, otra conexión lo avanzó a
+     * LAVANDO y commiteó, y recién entonces A intenta. Tiene que fallar con
+     * {@link ConflictoConcurrenciaException} y dejar intacto el cambio de la otra conexión.
+     */
+    @Test
+    void aplicarMovimientos_estadoCambiadoPorOtraConexion_lanzaConflictoYNoPisaElCambio() throws SQLException {
+        try (Connection otra = ConnectionPool.getConnection()) {
+            otra.setAutoCommit(false);
+            try (PreparedStatement ps = otra.prepareStatement(
+                    "UPDATE equipo_otros_materiales SET estado = 'Lavando' WHERE id = ?")) {
+                ps.setInt(1, materialId);
+                ps.executeUpdate();
+            }
+            otra.commit();
+        }
+
+        List<MovimientoMaterial> movsA = List.of(
+            new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO));
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.aplicarMovimientos(equipoDetalles.getId(), movsA));
+
+        EquipoOtros recargado = dao.obtenerTodos().stream()
+            .filter(e -> e.getId().equals(equipoDetalles.getId()))
+            .findFirst().orElseThrow();
+        assertEquals(EstadoEquipo.LAVANDO, recargado.getMateriales().get(0).getEstado(),
+            "el cambio de la otra conexión queda intacto: la transacción de A se revirtió entera");
+        assertEquals(3, recargado.getMateriales().get(0).getCantidad());
+    }
+
+    @Test
+    void aplicarMovimientos_snapshotDeEstadoDesactualizado_lanzaConflicto() throws SQLException {
+        // A cree que el material sigue en NUEVO, pero ya está en LAVANDO.
+        ejecutarSQL("UPDATE equipo_otros_materiales SET estado = 'Lavando' WHERE id = " + materialId);
+
+        List<MovimientoMaterial> movs = List.of(
+            new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVADO));
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.aplicarMovimientos(equipoDetalles.getId(), movs));
+    }
+
+    @Test
+    void entregarClienteCompleto_remitoSinFilas_bumpeaLaVersion() throws SQLException {
+        EquipoOtros remito = nuevoRemito(3);
+        dao.guardar(remito);
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Esterilizado' WHERE id = " + remito.getId());
+        int versionAntes = versionDeEquipoOtros(remito.getId());
+
+        assertTrue(dao.entregarClienteCompleto(remito.getNroCliente()));
+
+        assertEquals(versionAntes + 1, versionDeEquipoOtros(remito.getId()),
+            "el camino REMITO escribe el estado fuera del recálculo: el bump va a mano");
+    }
+
+    private int versionDeEquipoOtros(int id) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT version FROM equipo_otros WHERE id = ?")) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        }
+        throw new IllegalStateException("no existe equipo_otros " + id);
     }
 
     // ── obtenerEquiposNuevos ──────────────────────────────────────────────────
