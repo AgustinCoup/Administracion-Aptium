@@ -1,6 +1,7 @@
 package com.example.features.lavadero.controller;
 
 import com.example.common.exception.BusinessException;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.features.lavadero.model.AccionSalida;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
 import com.example.features.lavadero.model.MarcaListo;
@@ -285,6 +286,26 @@ class SalidasLavaderoControllerTest {
         verify(pantalla, timeout(ESPERA_MS)).mostrarError("Esa salida ya fue derivada.");
         verify(service, timeout(ESPERA_MS)).obtenerLavadosPendientesDeListo();
         verify(refrescoOperativo, never()).run();
+    }
+
+    /**
+     * Un choque sí dispara el refresco operativo: el que se adelantó pudo haber derivado al CDE,
+     * y desde acá no hay forma de saberlo. Un refresco de más en un caso raro sale más barato que
+     * una pantalla del CDE mostrando datos viejos.
+     */
+    @Test
+    @DisplayName("un conflicto de concurrencia recarga y además refresca el CDE")
+    void conflictoDeConcurrencia_recargaYRefrescaElOperativo() {
+        when(pantalla.getSeleccionListos()).thenReturn(List.of(salida(1, 7, "Clinica Norte")));
+        when(pantalla.elegirAccionCde(1)).thenReturn(AccionSalida.CDE_CLIENTE);
+        doThrow(new ConflictoConcurrenciaException("Otro usuario ya derivó esta salida."))
+            .when(service).derivar(any(), anyList());
+
+        btnIngresarACde.doClick();
+
+        verify(pantalla, timeout(ESPERA_MS)).mostrarError("Otro usuario ya derivó esta salida.");
+        verify(service, timeout(ESPERA_MS)).obtenerLavadosPendientesDeListo();
+        verify(refrescoOperativo, timeout(ESPERA_MS)).run();
     }
 
     // ── Volver a Lavado ──────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ package com.example.features.lavadero.dao;
 
 import com.example.AbstractDAOTest;
 import com.example.common.exception.BusinessException;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.features.lavadero.dao.derivadores.DerivadorFueraDeFlujo;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
@@ -184,7 +185,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         lanzarYFinalizar(1, movimiento(clasifA, 10));
         ElementoLavadoPendiente item = unicoPendiente();
 
-        BusinessException ex = assertThrows(BusinessException.class,
+        ConflictoConcurrenciaException ex = assertThrows(ConflictoConcurrenciaException.class,
                 () -> dao.marcarListo(List.of(new MarcaListo(item, 11))));
 
         assertTrue(ex.getMessage().contains(nombreA), ex.getMessage());
@@ -236,7 +237,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
             new MarcaListo(pendientePorElemento(nombreB), 7),    // sobregira: sólo hay 6
             new MarcaListo(pendientePorElemento(nombreC), 4));   // válida
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> dao.marcarListo(marcas));
+        ConflictoConcurrenciaException ex =
+            assertThrows(ConflictoConcurrenciaException.class, () -> dao.marcarListo(marcas));
 
         assertTrue(ex.getMessage().contains(nombreB), ex.getMessage());
         assertEquals(0, contarFilas("salidas_lavadero"));
@@ -250,7 +252,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
         dao.marcarListo(List.of(new MarcaListo(snapshot, 6)));
 
-        assertThrows(BusinessException.class, () -> dao.marcarListo(List.of(new MarcaListo(snapshot, 6))));
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.marcarListo(List.of(new MarcaListo(snapshot, 6))));
         assertEquals(6, sumaDeSalidas());
     }
 
@@ -260,7 +263,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         lanzarYFinalizar(1, movimiento(clasifA, 10));
         ElementoLavadoPendiente item = unicoPendiente();
 
-        assertThrows(BusinessException.class, () -> dao.marcarListo(List.of(
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.marcarListo(List.of(
             new MarcaListo(item, 6),
             new MarcaListo(item, 6))));
 
@@ -273,7 +276,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         ElementoLavadoPendiente item = unicoPendiente();
         reabrirCiclo(cicloIdDeElementoCiclo(item.elementoCicloId()));
 
-        assertThrows(BusinessException.class, () -> dao.marcarListo(List.of(new MarcaListo(item, 1))));
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.marcarListo(List.of(new MarcaListo(item, 1))));
 
         assertEquals(0, contarFilas("salidas_lavadero"));
     }
@@ -311,6 +315,29 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
     @Test
     void marcarListo_conSeleccionVacia_lanza() {
         assertThrows(BusinessException.class, () -> dao.marcarListo(List.of()));
+    }
+
+    /**
+     * La otra mitad de la regla: una validación de la selección <b>no</b> es un choque. Si
+     * salieran las dos como {@code ConflictoConcurrenciaException}, el operador leería "otro
+     * usuario se te adelantó" cuando lo único que pasó es que puso una cantidad en cero, y el
+     * controller dispararía refrescos que no hacen falta.
+     */
+    @Test
+    void lasValidacionesDeLaSeleccion_noSonConflictosDeConcurrencia() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente item = unicoPendiente();
+
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.marcarListo(List.of())) instanceof ConflictoConcurrenciaException);
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.marcarListo(List.of(new MarcaListo(item, 0)))) instanceof ConflictoConcurrenciaException);
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.volverALavado(List.of())) instanceof ConflictoConcurrenciaException);
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.volverALavado(List.of(0))) instanceof ConflictoConcurrenciaException);
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.derivar(new DerivadorFueraDeFlujo(), List.of())) instanceof ConflictoConcurrenciaException);
     }
 
     // ── obtenerListasSinDestino ──────────────────────────────────────────────
@@ -366,7 +393,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         int salidaId = dao.obtenerListasSinDestino().get(0).salidaId();
         asignarDestino(salidaId);
 
-        assertThrows(BusinessException.class, () -> dao.volverALavado(salidaId));
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.volverALavado(salidaId));
 
         assertEquals(1, contarFilas("salidas_lavadero WHERE id = " + salidaId));
         assertEquals(6, unicoPendiente().cantidadPendiente());
@@ -374,7 +401,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void volverALavado_deUnaSalidaInexistente_lanza() {
-        assertThrows(BusinessException.class, () -> dao.volverALavado(999_999));
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.volverALavado(999_999));
     }
 
     // ── volverALavado en lote ────────────────────────────────────────────────
@@ -396,7 +423,8 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         List<Integer> ids = tresSalidasListas();
         asignarDestino(ids.get(1));
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> dao.volverALavado(ids));
+        ConflictoConcurrenciaException ex =
+            assertThrows(ConflictoConcurrenciaException.class, () -> dao.volverALavado(ids));
 
         assertTrue(ex.getMessage().contains(String.valueOf(ids.get(1))), ex.getMessage());
         assertEquals(3, contarFilas("salidas_lavadero"));
@@ -458,7 +486,7 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         ElementoLavadoPendiente itemDeSnapshotViejo = new ElementoLavadoPendiente(
             null, instanciaId, "1, 2, 3", ingresoId, clienteId, "TestSalidaCliente", nombreEquipo, 1, 0, null);
 
-        BusinessException ex = assertThrows(BusinessException.class,
+        ConflictoConcurrenciaException ex = assertThrows(ConflictoConcurrenciaException.class,
             () -> dao.marcarListo(List.of(new MarcaListo(itemDeSnapshotViejo, 1))));
 
         assertTrue(ex.getMessage().contains(nombreEquipo), ex.getMessage());

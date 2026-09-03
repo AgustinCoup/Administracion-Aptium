@@ -3,6 +3,7 @@ package com.example.features.lavadero.dao;
 import com.example.AbstractDAOTest;
 import com.example.common.constants.Constantes;
 import com.example.common.exception.BusinessException;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ResourceNotFoundException;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
@@ -265,11 +266,51 @@ class SalidaLavaderoDerivacionTest extends AbstractDAOTest {
         List<SalidaLista> snapshot = dao.obtenerListasSinDestino();
         dao.derivar(fueraDeFlujo, List.of(snapshot.get(0)));
 
-        assertThrows(BusinessException.class, () -> dao.derivar(cdeCliente, snapshot));
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.derivar(cdeCliente, snapshot));
 
         assertEquals(1, contar("salidas_lavadero WHERE destino = 'FUERA_DE_FLUJO'"));
         assertEquals(1, contar("salidas_lavadero WHERE destino IS NULL"));
         assertEquals(0, contar("equipo_otros WHERE nro_cliente = " + clienteA));
+    }
+
+    /**
+     * <b>Doble derivación al CDE.</b> Es el peor caso de esta pantalla: derivar es irreversible y
+     * crea un {@code equipo_otros} real, así que una segunda derivación de la misma salida metería
+     * la misma ropa dos veces en el circuito de esterilización. Lo que lo impide es que la
+     * relectura del destino y la creación del ingreso corren en la <b>misma</b> transacción: el
+     * segundo intento sale como choque y su ingreso de CDE se va con el rollback.
+     */
+    @Test
+    @DisplayName("derivar dos veces la misma salida al CDE deja un solo ingreso nuevo")
+    void dobleDerivacionAlCde_creaUnSoloEquipoOtros() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA1, 10));
+        marcarTodoListo();
+        List<SalidaLista> snapshot = dao.obtenerListasSinDestino();
+
+        dao.derivar(cdeCliente, snapshot);
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.derivar(cdeCliente, snapshot));
+
+        assertEquals(1, contar("equipo_otros WHERE nro_cliente = " + clienteA),
+            "la segunda derivación no puede dejar un segundo ingreso en el CDE");
+        assertEquals(1, contar("salidas_lavadero WHERE destino = 'CDE_OTROS'"));
+        assertEquals(1, contar("equipo_otros_materiales"));
+    }
+
+    /**
+     * La única guarda del plan que no lanza. Que el ingreso ya esté FINALIZADO es el resultado
+     * buscado, no un choque: la operación es idempotente y no hay nada que avisarle al operador.
+     */
+    @Test
+    @DisplayName("derivar sobre un ingreso ya FINALIZADO no lanza: la guarda de estado es idempotente")
+    void ingresoYaFinalizado_derivarNoLanza() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA1, 10), movimiento(clasifA2, 6));
+        marcarTodoListo();
+        ejecutarSQL("UPDATE ingresos_lavadero SET estado = 'FINALIZADO' WHERE id = " + ingresoA);
+
+        dao.derivar(fueraDeFlujo, dao.obtenerListasSinDestino());
+
+        assertEquals(EstadoIngresoLavadero.FINALIZADO.name(), estadoIngreso(ingresoA));
+        assertEquals(2, contar("salidas_lavadero WHERE destino = 'FUERA_DE_FLUJO'"));
     }
 
     // ── paso a FINALIZADO ────────────────────────────────────────────────────

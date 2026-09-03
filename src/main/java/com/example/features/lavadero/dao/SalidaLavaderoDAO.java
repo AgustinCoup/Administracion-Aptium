@@ -1,6 +1,8 @@
 package com.example.features.lavadero.dao;
 
+import com.example.common.dao.ControlConcurrencia;
 import com.example.common.exception.BusinessException;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.dao.derivadores.DerivadorSalidas;
 import com.example.features.lavadero.dao.helpers.AgrupadorInstanciasSalida;
@@ -47,6 +49,15 @@ import java.util.stream.Collectors;
  * sale como {@link DatabaseException} y una regla de negocio violada como
  * {@link BusinessException}. Devolver una lista vacía ante un error de lectura le miente a la
  * pantalla.</p>
+ *
+ * <p><b>Choque y regla de negocio no son lo mismo.</b> Las detecciones que este DAO ya hacía
+ * —el saldo releído dentro de la transacción, el {@code AND destino IS NULL} de las tres
+ * escrituras sobre {@code salidas_lavadero}— salen como
+ * {@link ConflictoConcurrenciaException}: la operación era válida cuando la pantalla la mostró
+ * y otro operador se adelantó. Las validaciones de la selección (vacía, cantidad no positiva,
+ * salida sin identificar) siguen siendo {@code BusinessException} a secas — ahí no se adelantó
+ * nadie. La distinción es la que le permite al controller decir "alguien se te adelantó" en vez
+ * de un mensaje de negocio que no explica nada.</p>
  */
 public class SalidaLavaderoDAO {
 
@@ -227,8 +238,18 @@ public class SalidaLavaderoDAO {
         "          JOIN elementos_clasificacion_lavadero ecl3  ON ecl3.id = ie.elemento_clasificacion_id " +
         "         WHERE ecl3.ingreso_id = ? AND sl3.destino IS NOT NULL)             AS derivado";
 
+    /**
+     * <b>La única guarda de este plan que no lanza si no matchea.</b> El resto de las guardas
+     * protegen una operación que sólo puede pasar una vez; ésta es idempotente: que el ingreso ya
+     * esté FINALIZADO es exactamente el resultado que se quería, no un choque. Quien lo finalizó
+     * fue otra derivación del mismo ingreso, que es trabajo legítimo y concurrente. El
+     * {@code AND estado <> 'FINALIZADO'} está igual para que la escritura no se repita al pedo y
+     * para que la regla sea uniforme con las demás; lo que cambia es que nadie mira las filas
+     * afectadas.
+     */
     private static final String SQL_FINALIZAR_INGRESO =
-        "UPDATE ingresos_lavadero SET estado = '" + EstadoIngresoLavadero.FINALIZADO + "' WHERE id = ?";
+        "UPDATE ingresos_lavadero SET estado = '" + EstadoIngresoLavadero.FINALIZADO + "' "
+        + "WHERE id = ? AND estado <> '" + EstadoIngresoLavadero.FINALIZADO + "'";
 
     // ── lectura ──────────────────────────────────────────────────────────────
 
@@ -369,9 +390,11 @@ public class SalidaLavaderoDAO {
      * <p>Como el chequeo y la inserción se intercalan sobre la misma conexión, dos marcas de la
      * misma tanda dentro de la misma llamada se ven entre sí y tampoco pueden sobregirar juntas.</p>
      *
-     * @throws BusinessException si la selección está vacía, si alguna cantidad no es positiva o
-     *                           si alguna supera el saldo disponible. En todos los casos no queda
-     *                           ninguna fila insertada.
+     * @throws BusinessException             si la selección está vacía o si alguna cantidad no es
+     *                                       positiva — eso es un error de la selección, no un choque
+     * @throws ConflictoConcurrenciaException si alguna cantidad supera el saldo que quedó: el saldo
+     *                                       estaba cuando la pantalla lo leyó y otro operador se lo
+     *                                       llevó. En los dos casos no queda ninguna fila insertada.
      */
     public void marcarListo(List<MarcaListo> marcas) {
         validarMarcas(marcas);
@@ -388,14 +411,16 @@ public class SalidaLavaderoDAO {
                     if (item.esInstanciaDeEquipo()) {
                         int disponible = saldoPendienteInstancia(psSaldoInstancia, item.instanciaEquipoId());
                         if (marca.cantidad() > disponible) {
-                            throw new BusinessException(mensajeSaldoInsuficiente(marca, disponible));
+                            throw new ConflictoConcurrenciaException(
+                                mensajeSaldoInsuficiente(marca, disponible));
                         }
                         insertarSalidaDeInstancia(psInsertar, item.instanciaEquipoId(), marca.cantidad());
                     } else {
                         int elementoCicloId = item.elementoCicloId();
                         int disponible = saldoPendiente(psSaldoRegular, elementoCicloId);
                         if (marca.cantidad() > disponible) {
-                            throw new BusinessException(mensajeSaldoInsuficiente(marca, disponible));
+                            throw new ConflictoConcurrenciaException(
+                                mensajeSaldoInsuficiente(marca, disponible));
                         }
                         acumularOInsertar(psAbierta, psSumar, psInsertar, elementoCicloId, marca.cantidad());
                     }
@@ -429,8 +454,10 @@ public class SalidaLavaderoDAO {
      * {@code AND destino IS NULL} del {@code DELETE} hace las dos cosas a la vez — filtra y
      * detecta —, así que no hace falta releer antes.</p>
      *
-     * @throws BusinessException si la selección está vacía o si alguna salida ya se derivó o
-     *                           dejó de existir. En todos los casos no se borra ninguna fila.
+     * @throws BusinessException             si la selección está vacía o trae una salida sin
+     *                                       identificar
+     * @throws ConflictoConcurrenciaException si alguna salida ya se derivó o dejó de existir. En
+     *                                       los dos casos no se borra ninguna fila.
      */
     public void volverALavado(List<Integer> salidaIds) {
         if (salidaIds == null || salidaIds.isEmpty()) {
@@ -445,9 +472,8 @@ public class SalidaLavaderoDAO {
                         throw new BusinessException("Hay una salida sin identificar en la selección.");
                     }
                     ps.setInt(1, salidaId);
-                    if (ps.executeUpdate() == 0) {
-                        throw new BusinessException(mensajeNoRevertible(salidaId));
-                    }
+                    ControlConcurrencia.exigirFilaAfectada(
+                        ps.executeUpdate(), mensajeNoRevertible(salidaId));
                 }
             }
             tx.commit();
@@ -471,8 +497,10 @@ public class SalidaLavaderoDAO {
      * derivar es irreversible, así que una selección vieja tiene que fallar entera y no derivar
      * de nuevo lo que ya salió.</p>
      *
-     * @throws BusinessException si la selección está vacía o si alguna salida ya tiene destino.
-     *                           No queda nada escrito.
+     * @throws BusinessException             si la selección está vacía
+     * @throws ConflictoConcurrenciaException si alguna salida ya tiene destino: alguien la derivó
+     *                                       entre que la pantalla la leyó y el operador confirmó.
+     *                                       No queda nada escrito.
      */
     public void derivar(DerivadorSalidas derivador, List<SalidaLista> salidas) {
         if (salidas == null || salidas.isEmpty()) {
@@ -504,7 +532,7 @@ public class SalidaLavaderoDAO {
                 ps.setInt(1, salida.salidaId());
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) {
-                        throw new BusinessException(
+                        throw new ConflictoConcurrenciaException(
                             salida.elementoNombre() + " (" + salida.clienteNombre()
                             + ") ya tiene un destino asignado o dejó de existir, así que no se "
                             + "derivó nada. Refrescá la pantalla.");
@@ -514,7 +542,15 @@ public class SalidaLavaderoDAO {
         }
     }
 
-    /** Estampa destino, fecha y el ingreso de CDE creado (si la acción creó alguno). */
+    /**
+     * Estampa destino, fecha y el ingreso de CDE creado (si la acción creó alguno).
+     *
+     * <p>El {@code AND destino IS NULL} de {@link #SQL_ESTAMPAR_DESTINO} es la última red: la
+     * relectura de {@link #verificarSinDestino} ya corrió, pero es una lectura y no un lock, así
+     * que entre las dos alguien pudo estampar. Que acá no matchee es un choque, no un error
+     * técnico — y como el derivador ya creó el ingreso de CDE en esta misma transacción, el
+     * rollback es lo único que impide que la misma ropa entre dos veces al CDE.</p>
+     */
     private void estamparDestino(Connection conn,
                                  List<SalidaLista> salidas,
                                  DestinoSalida destino,
@@ -526,11 +562,10 @@ public class SalidaLavaderoDAO {
                 if (equipoOtrosId != null) ps.setInt(2, equipoOtrosId);
                 else                       ps.setNull(2, Types.INTEGER);
                 ps.setInt(3, salida.salidaId());
-                if (ps.executeUpdate() != 1) {
-                    throw new SQLException(
-                        "No se pudo estampar el destino de la salida " + salida.salidaId()
-                        + ": dejó de estar sin destino durante la derivación");
-                }
+                ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(),
+                    salida.elementoNombre() + " (" + salida.clienteNombre() + ") dejó de estar "
+                    + "sin destino durante la derivación, así que no se derivó nada. "
+                    + "Refrescá la pantalla.");
             }
         }
     }

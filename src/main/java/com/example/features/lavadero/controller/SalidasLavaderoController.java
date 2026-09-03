@@ -2,6 +2,7 @@ package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
 import com.example.common.exception.BusinessException;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.model.AccionSalida;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
@@ -264,6 +265,14 @@ public class SalidasLavaderoController {
     /**
      * Una {@link BusinessException} de esta feature siempre significa lo mismo — la pantalla
      * quedó vieja respecto de la base —, así que recargar es parte de la respuesta y no un extra.
+     *
+     * <p>Un {@link ConflictoConcurrenciaException} además dispara el refresco del grupo
+     * {@code operativo}. Lo que otro operador hizo mientras tanto pudo ser justamente una
+     * derivación al CDE, y esta pantalla es la única de Lavadero cableada a ese grupo porque lo
+     * que sale de acá tiene que aparecer en el acto en <i>Registrar estado</i>. Se dispara sin
+     * mirar qué acción chocó: desde acá no se puede saber si el que se adelantó derivó o sólo
+     * marcó Listo, y un refresco de más en un caso raro es más barato que una pantalla del CDE
+     * desactualizada.</p>
      */
     private void mostrarFallo(Throwable causa) {
         if (causa instanceof ValidationException validacion) {
@@ -272,6 +281,7 @@ public class SalidasLavaderoController {
         }
         pantalla.mostrarError(causa.getMessage());
         if (causa instanceof BusinessException) cargarDatos();
+        if (causa instanceof ConflictoConcurrenciaException) refrescoOperativo.run();
     }
 
     /**
