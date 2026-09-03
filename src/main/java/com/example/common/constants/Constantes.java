@@ -229,6 +229,14 @@ public final class Constantes {
             "Otro usuario ya clasificó este ingreso mientras trabajabas.\n"
                 + "La clasificación no se guardó. La pantalla se actualizó: revisá lo que quedó cargado.";
 
+        // ── Arranque: build más viejo que la base ────────────────────────────
+        // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y
+        // dice QUÉ HACER, no qué falló: su build quedó atrás de la base compartida.
+        public static final String TITULO_ESQUEMA_DESACTUALIZADO = "Actualización requerida";
+        public static final String ESQUEMA_DESACTUALIZADO =
+            "Esta versión de la aplicación es más vieja que la base de datos.\n"
+                + "Actualizá desde Ajustes → Buscar actualizaciones antes de seguir trabajando.";
+
         private Mensajes() {}
     }
 
