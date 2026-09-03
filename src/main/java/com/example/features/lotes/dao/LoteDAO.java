@@ -845,37 +845,13 @@ public class LoteDAO {
         throw new SQLException("No se pudo obtener o crear catalogo_otros: " + descripcion);
     }
 
+    /**
+     * Deriva el estado del equipo "otros" desde sus materiales.
+     * Delega en {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}, igual que
+     * {@link #recalcularEstadoEquipo} delega en el helper de ortopedias.
+     */
     private void recalcularEstadoEquipoOtros(Connection conn, int equipoOtrosId) throws SQLException {
-        String sqlCalc =
-            "SELECT MIN(CASE " +
-            "  WHEN estado='Nuevo'         THEN 1 " +
-            "  WHEN estado='Lavando'       THEN 2 " +
-            "  WHEN estado='Lavado'        THEN 3 " +
-            "  WHEN estado='Empaquetado'   THEN 4 " +
-            "  WHEN estado='Esterilizando' THEN 5 " +
-            "  WHEN estado='Esterilizado'  THEN 6 " +
-            "  WHEN estado='Entregado'     THEN 7 " +
-            "  ELSE 1 END) AS orden_minimo " +
-            "FROM equipo_otros_materiales WHERE equipo_otros_id = ?";
-
-        EstadoEquipo nuevoEstado = EstadoEquipo.NUEVO;
-        try (PreparedStatement ps = conn.prepareStatement(sqlCalc)) {
-            ps.setInt(1, equipoOtrosId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next() && rs.getObject("orden_minimo") != null) {
-                    int orden = rs.getInt("orden_minimo");
-                    for (EstadoEquipo e : EstadoEquipo.values()) {
-                        if (e.getOrden() == orden) { nuevoEstado = e; break; }
-                    }
-                }
-            }
-        }
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE equipo_otros SET estado = ? WHERE id = ?")) {
-            ps.setString(1, nuevoEstado.getNombre());
-            ps.setInt(2, equipoOtrosId);
-            ps.executeUpdate();
-        }
+        EquipoOtrosMaterialHelper.recalcularEstadoEquipo(conn, equipoOtrosId);
     }
 
     private void actualizarEstadoMaterialOtros(Connection conn, int materialId,

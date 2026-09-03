@@ -1,5 +1,7 @@
 package com.example.features.equipos.otros.dao;
 
+import com.example.features.equipos.ortopedias.model.EstadoEquipo;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -15,6 +17,68 @@ import java.util.List;
 public final class EquipoOtrosMaterialHelper {
 
     private EquipoOtrosMaterialHelper() { }
+
+    // ── recalcularEstadoEquipo ────────────────────────────────────────────────
+
+    /**
+     * Deriva el estado del equipo "otros" a partir del material más atrasado y persiste el
+     * resultado en {@code equipo_otros}.
+     *
+     * <p>Debe llamarse dentro de una transacción activa.
+     *
+     * <p><b>Fuente única.</b> Hasta la unificación de este método, el cálculo estaba duplicado
+     * en {@code EquipoOtrosDAO} y en {@code LoteDAO}, cada uno con su propia copia del
+     * {@code CASE} de orden y su propio {@code UPDATE}. Los dos delegan acá ahora: es el único
+     * lugar donde se escribe {@code equipo_otros.estado} por derivación, y por eso es también
+     * el único lugar donde hace falta poner el mantenimiento de la columna {@code version}.
+     * Análogo a {@link com.example.features.equipos.ortopedias.dao.EquipoMaterialHelper#recalcularEstadoEquipo}.
+     *
+     * <p>El {@code rs.getObject("orden_minimo") != null} es la variante defensiva de las dos que
+     * había: sin materiales, el {@code MIN(...)} devuelve {@code NULL} y el chequeo evita un
+     * {@code getInt} sobre {@code NULL}. El resultado es el mismo por otra vía — ningún
+     * {@code EstadoEquipo} tiene orden 0, así que el {@code getInt} de la variante laxa tampoco
+     * matcheaba y el estado quedaba en {@code NUEVO} — pero acá la intención está escrita en
+     * vez de depender de esa coincidencia.
+     *
+     * @param conn          conexión activa con {@code autoCommit=false}
+     * @param equipoOtrosId ID del equipo "otros" a recalcular
+     */
+    public static void recalcularEstadoEquipo(Connection conn, int equipoOtrosId) throws SQLException {
+        String sqlCalcularEstado =
+            "SELECT MIN(CASE " +
+            "  WHEN estado='Nuevo'         THEN 1 " +
+            "  WHEN estado='Lavando'       THEN 2 " +
+            "  WHEN estado='Lavado'        THEN 3 " +
+            "  WHEN estado='Empaquetado'   THEN 4 " +
+            "  WHEN estado='Esterilizando' THEN 5 " +
+            "  WHEN estado='Esterilizado'  THEN 6 " +
+            "  WHEN estado='Entregado'     THEN 7 " +
+            "  ELSE 1 END) AS orden_minimo " +
+            "FROM equipo_otros_materiales WHERE equipo_otros_id = ?";
+
+        EstadoEquipo nuevoEstado = EstadoEquipo.NUEVO;
+        try (PreparedStatement ps = conn.prepareStatement(sqlCalcularEstado)) {
+            ps.setInt(1, equipoOtrosId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && rs.getObject("orden_minimo") != null) {
+                    int ordenMinimo = rs.getInt("orden_minimo");
+                    for (EstadoEquipo estado : EstadoEquipo.values()) {
+                        if (estado.getOrden() == ordenMinimo) {
+                            nuevoEstado = estado;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE equipo_otros SET estado = ? WHERE id = ?")) {
+            ps.setString(1, nuevoEstado.getNombre());
+            ps.setInt   (2, equipoOtrosId);
+            ps.executeUpdate();
+        }
+    }
 
     /**
      * Materializa el split de un REMITO en {@code equipo_otros_materiales}.

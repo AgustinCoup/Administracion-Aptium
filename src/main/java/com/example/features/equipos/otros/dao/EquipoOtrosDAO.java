@@ -797,38 +797,13 @@ public class EquipoOtrosDAO {
         }
     }
 
+    /**
+     * Deriva el estado del equipo desde sus materiales.
+     * Delega en {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}, que es la fuente
+     * única del cálculo — {@code LoteDAO} llega al mismo lugar por el otro camino.
+     */
     private void recalcularEstadoEquipo(Connection conn, int equipoId) throws SQLException {
-        String sqlCalc =
-            "SELECT MIN(CASE " +
-            "  WHEN estado='Nuevo'         THEN 1 " +
-            "  WHEN estado='Lavando'       THEN 2 " +
-            "  WHEN estado='Lavado'        THEN 3 " +
-            "  WHEN estado='Empaquetado'   THEN 4 " +
-            "  WHEN estado='Esterilizando' THEN 5 " +
-            "  WHEN estado='Esterilizado'  THEN 6 " +
-            "  WHEN estado='Entregado'     THEN 7 " +
-            "  ELSE 1 END) AS orden_minimo " +
-            "FROM equipo_otros_materiales WHERE equipo_otros_id = ?";
-
-        EstadoEquipo nuevoEstado = EstadoEquipo.NUEVO;
-        try (PreparedStatement ps = conn.prepareStatement(sqlCalc)) {
-            ps.setInt(1, equipoId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    int orden = rs.getInt("orden_minimo");
-                    for (EstadoEquipo e : EstadoEquipo.values()) {
-                        if (e.getOrden() == orden) { nuevoEstado = e; break; }
-                    }
-                }
-            }
-        }
-
-        String sqlUpd = "UPDATE equipo_otros SET estado = ? WHERE id = ?";
-        try (PreparedStatement ps = conn.prepareStatement(sqlUpd)) {
-            ps.setString(1, nuevoEstado.getNombre());
-            ps.setInt   (2, equipoId);
-            ps.executeUpdate();
-        }
+        EquipoOtrosMaterialHelper.recalcularEstadoEquipo(conn, equipoId);
     }
 
     /**
