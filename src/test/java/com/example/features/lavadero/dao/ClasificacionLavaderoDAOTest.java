@@ -1,6 +1,8 @@
 package com.example.features.lavadero.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.exception.BusinessException;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.features.clientes.dao.ClienteDAO;
 import com.example.features.clientes.model.Cliente;
 import com.example.features.lavadero.model.BolsaLavadero;
@@ -58,14 +60,56 @@ class ClasificacionLavaderoDAOTest extends AbstractDAOTest {
             new ElementoClasificacion(elementoId(2), 1)
         );
 
-        assertTrue(clasificacionDAO.guardar(ingresoId, elementos));
+        clasificacionDAO.guardar(ingresoId, elementos);
+
         assertEquals(2, contarFilas("elementos_clasificacion_lavadero"));
+        assertEquals("CLASIFICADO", estadoDelIngreso(ingresoId));
     }
 
+    /**
+     * Un ingreso que no existe no está PENDIENTE, así que la guarda no matchea. El mensaje habla
+     * de "otro usuario ya lo clasificó" y no de "no existe" a propósito: por la pantalla sólo se
+     * llega a un ingreso que el combo listó, y desde ahí la única forma de que deje de estar
+     * PENDIENTE es que alguien más lo haya tocado.
+     */
     @Test
-    void guardar_ingresoInexistente_retornaFalse() {
+    void guardar_ingresoInexistente_lanzaConflicto() throws SQLException {
         List<ElementoClasificacion> elementos = List.of(new ElementoClasificacion(elementoId(1), 2));
-        assertFalse(clasificacionDAO.guardar(999999, elementos));
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> clasificacionDAO.guardar(999999, elementos));
+        assertEquals(0, contarFilas("elementos_clasificacion_lavadero"));
+    }
+
+    // ── guarda de concurrencia ────────────────────────────────────────────────
+
+    /**
+     * Dos operadores clasificando el mismo ingreso: sin la guarda se insertaban los dos juegos de
+     * líneas y el ingreso quedaba con el doble de ropa de la que entró.
+     */
+    @Test
+    void guardar_ingresoYaClasificadoPorOtro_lanzaYNoInsertaNingunaLinea() throws SQLException {
+        clasificacionDAO.guardar(ingresoId, List.of(new ElementoClasificacion(elementoId(1), 3)));
+
+        List<ElementoClasificacion> segunda = List.of(
+            new ElementoClasificacion(elementoId(2), 7),
+            new ElementoClasificacion(elementoId(3), 2));
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> clasificacionDAO.guardar(ingresoId, segunda));
+
+        assertEquals(1, contarFilas("elementos_clasificacion_lavadero"),
+            "la segunda clasificación no dejó ninguna línea: sólo quedan las de la primera");
+        assertEquals(3, escalar("SELECT cantidad FROM elementos_clasificacion_lavadero"));
+    }
+
+    /** El conflicto es una BusinessException: los controllers ya la rutean como aviso al usuario. */
+    @Test
+    void guardar_conflicto_esUnaBusinessException() {
+        clasificacionDAO.guardar(ingresoId, List.of(new ElementoClasificacion(elementoId(1), 1)));
+
+        assertThrows(BusinessException.class, () -> clasificacionDAO.guardar(
+            ingresoId, List.of(new ElementoClasificacion(elementoId(1), 1))));
     }
 
     // ── findSinClasificar ─────────────────────────────────────────────────────
@@ -88,10 +132,23 @@ class ClasificacionLavaderoDAOTest extends AbstractDAOTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private int contarFilas(String tabla) throws SQLException {
+        return escalar("SELECT COUNT(*) FROM " + tabla);
+    }
+
+    private int escalar(String sql) throws SQLException {
         try (Connection conn = ConnectionPool.getConnection();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tabla)) {
+             ResultSet rs = stmt.executeQuery(sql)) {
             return rs.next() ? rs.getInt(1) : 0;
+        }
+    }
+
+    private String estadoDelIngreso(int id) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                 "SELECT estado FROM ingresos_lavadero WHERE id = " + id)) {
+            return rs.next() ? rs.getString(1) : null;
         }
     }
 

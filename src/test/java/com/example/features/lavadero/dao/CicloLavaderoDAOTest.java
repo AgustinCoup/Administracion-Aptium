@@ -1,6 +1,7 @@
 package com.example.features.lavadero.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
@@ -98,12 +99,18 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
      */
     @Test
     void lanzarTanda_siUnCicloFalla_noQuedaNadaEscrito() throws SQLException {
-        final int clasificacionInexistente = 999_999;
+        // El fallo se inyecta en la config del segundo lavarropas (jabón inexistente → viola la
+        // FK de ciclos_lavadero) y no en la línea de clasificación: una línea inválida la
+        // rechazaría antes la guarda de saldo, y entonces el test no probaría el rollback de lo
+        // que el primer lavarropas ya alcanzó a escribir.
+        ConfiguracionCiclo configRota = new ConfiguracionCiclo(
+            TipoLavado.SUCIO, new JabonCatalogo(999_999, "Jabón inexistente"),
+            new BigDecimal("1.5"), false, false, null);
         List<LanzamientoCiclo> tanda = List.of(
             new LanzamientoCiclo(1, config(new BigDecimal("1.5")),
                 List.of(new LineaLanzamiento(elementoClasifId, 1, STAGING_ID, 2))),
-            new LanzamientoCiclo(2, config(new BigDecimal("1.5")),
-                List.of(new LineaLanzamiento(clasificacionInexistente, 1, STAGING_ID, 2))));
+            new LanzamientoCiclo(2, configRota,
+                List.of(new LineaLanzamiento(elementoClasifId, 1, STAGING_ID, 2))));
 
         assertThrows(DatabaseException.class, () -> dao.lanzarTanda(tanda));
 
@@ -277,13 +284,127 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         assertNull(instanciaEquipoIdPersistido());
     }
 
+    // ── guarda de concurrencia del saldo (bloqueo optimista) ─────────────────
+    // La pantalla calcula el saldo con SQL_DISPONIBLES y lo deja quieto mientras el operador
+    // arma la tanda. La relectura dentro de la transacción es lo que impide que dos tandas
+    // armadas sobre el mismo snapshot sobregiren la línea.
+
+    @Test
+    void lanzarTanda_saldoJustoParaLaTanda_lanzaSinChistar() {
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(6));
+
+        lanzarCiclo(2, config(new BigDecimal("1.5")), linea(4));
+
+        assertEquals(2, contarFilas("ciclos_lavadero"), "6 + 4 son exactamente las 10 de la línea");
+    }
+
+    @Test
+    void lanzarTanda_segundaTandaSobreElMismoSaldo_lanzaConflicto() {
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(7));
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> lanzarCiclo(2, config(new BigDecimal("1.5")), linea(7)));
+
+        assertEquals(1, contarFilas("ciclos_lavadero"), "la segunda tanda no dejó su ciclo");
+        assertEquals(1, contarFilas("elementos_ciclo_lavadero"));
+    }
+
+    /** El conflicto tira la tanda entera, instancias incluidas: no puede quedar nada a medias. */
+    @Test
+    void lanzarTanda_conflictoEnUnaLinea_noDejaNiInstanciasNiCiclos() {
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(10));
+        int ciclosAntes = contarFilas("ciclos_lavadero");
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.lanzarTanda(List.of(
+            new LanzamientoCiclo(2, config(new BigDecimal("1.5")),
+                List.of(new LineaLanzamiento(elementoClasifId, 1, STAGING_ID, 2))),
+            new LanzamientoCiclo(3, config(new BigDecimal("1.5")),
+                List.of(new LineaLanzamiento(elementoClasifId, 1, STAGING_ID, 2))))));
+
+        assertEquals(0, contarFilas("instancias_equipo_ciclo"));
+        assertEquals(ciclosAntes, contarFilas("ciclos_lavadero"));
+    }
+
+    /**
+     * Dos líneas de la misma tanda que apuntan a la misma clasificación se ven entre sí: el
+     * consumo se agrega por línea antes de compararlo contra el saldo, así que 6 + 5 sobre una
+     * línea de 10 se rechaza aunque cada mitad sola entrara.
+     */
+    @Test
+    void lanzarTanda_dosLavarropasQueJuntosSobregiranLaMismaLinea_lanzaConflicto() {
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.lanzarTanda(List.of(
+            new LanzamientoCiclo(1, config(new BigDecimal("1.5")), List.of(linea(6))),
+            new LanzamientoCiclo(2, config(new BigDecimal("1.5")), List.of(linea(5))))));
+
+        assertEquals(0, contarFilas("ciclos_lavadero"));
+    }
+
+    /**
+     * Invariante 9 contra la guarda: un equipo repartido en N lavarropas de la misma tanda
+     * consume <b>1</b> unidad, no N. Con una fórmula propia que contara fracciones, esta tanda
+     * legítima —4 fracciones sobre una línea de 1— se rechazaría.
+     */
+    @Test
+    void lanzarTanda_equipoRepartidoEnCuatro_consumeUnaSolaUnidadYNoChoca() {
+        int lineaDeUno = clasificacionConCantidad(1);
+
+        repartirEquipo(lineaDeUno, 1, 2, 3, 4);
+
+        assertEquals(4, contarFilas("elementos_ciclo_lavadero WHERE elemento_clasificacion_id = " + lineaDeUno));
+        assertEquals(1, contarFilas("instancias_equipo_ciclo"));
+    }
+
+    /** Dos instancias del mismo equipo sí consumen 2: la segunda no entra en una línea de 1. */
+    @Test
+    void lanzarTanda_segundaInstanciaSobreUnaLineaDeUno_lanzaConflicto() {
+        int lineaDeUno = clasificacionConCantidad(1);
+        repartirEquipo(lineaDeUno, 1, 2);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> repartirEquipo(lineaDeUno, 3, 4));
+
+        assertEquals(1, contarFilas("instancias_equipo_ciclo"));
+    }
+
+    @Test
+    void lanzarTanda_lineaDeClasificacionInexistente_lanzaConflicto() {
+        assertThrows(ConflictoConcurrenciaException.class, () -> lanzarCiclo(
+            1, config(new BigDecimal("1.5")), new LineaLanzamiento(999_999, 1)));
+
+        assertEquals(0, contarFilas("ciclos_lavadero"));
+    }
+
+    /** Después de la guarda, ninguna tanda puede dejar una línea sobregirada. */
+    @Test
+    void lanzarTanda_conLaGuardaPuesta_noPuedeGenerarLineasSobregiradas() {
+        int lineaDeUno = clasificacionConCantidad(1);
+        lanzarCiclo(1, config(new BigDecimal("1.5")), new LineaLanzamiento(lineaDeUno, 1));
+
+        for (int lav = 2; lav <= 4; lav++) {
+            final int numero = lav;
+            assertThrows(ConflictoConcurrenciaException.class, () -> lanzarCiclo(
+                numero, config(new BigDecimal("1.5")), new LineaLanzamiento(lineaDeUno, 1)));
+        }
+
+        assertTrue(dao.detectarLineasSobregiradas().isEmpty());
+    }
+
     // ── detectarLineasSobregiradas (decisión D) ──────────────────────────────
 
+    /**
+     * Las filas sucias se insertan a mano y no lanzando cuatro ciclos: desde que
+     * {@code lanzarTanda} relee el saldo, el DAO ya no deja escribir una línea sobregirada.
+     * Este detector existe justamente para los datos que quedaron de <b>antes</b> de esa guarda
+     * (o de un JAR viejo), así que su fixture tiene que poder saltearla.
+     */
     @Test
     void detectarLineasSobregiradas_datosSucios_delataLaLinea() throws SQLException {
         int lineaId = clasificacionConCantidad(1);
-        for (int lav = 1; lav <= 4; lav++) {
-            lanzarCiclo(lav, config(new BigDecimal("1.5")), new LineaLanzamiento(lineaId, 1));
+        lanzarCiclo(1, config(new BigDecimal("1.5")), new LineaLanzamiento(lineaId, 1));
+        int cicloId = lastInsertIdDeCiclos();
+        for (int extra = 0; extra < 3; extra++) {
+            ejecutarSQL("INSERT INTO elementos_ciclo_lavadero "
+                + "(ciclo_id, elemento_clasificacion_id, cantidad, instancia_equipo_id) VALUES ("
+                + cicloId + ", " + lineaId + ", 1, NULL)");
         }
 
         List<com.example.features.lavadero.dao.helpers.LineaSobregirada> lineas =

@@ -1,6 +1,7 @@
 package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.model.ElementoCatalogo;
 import com.example.features.lavadero.model.ElementoClasificacion;
@@ -96,21 +97,17 @@ public class ClasificacionController {
         int ingresoId = ingreso.getId();
         List<ElementoClasificacion> aGuardar = List.copyOf(elementos);
 
-        TareaUI.<Boolean>nueva()
+        TareaUI.<Void>nueva()
             .nombre("guardar-clasificacion-lavadero")
             .antes(() -> panel.getBtnGuardar().setEnabled(false))
             .despues(() -> panel.getBtnGuardar().setEnabled(true))
-            .leer(() -> clasificacionLavaderoService.guardar(ingresoId, aGuardar))
-            .pintar(this::finalizarGuardado)
+            .leer(() -> { clasificacionLavaderoService.guardar(ingresoId, aGuardar); return null; })
+            .pintar(sinResultado -> finalizarGuardado())
             .siFalla(this::mostrarFallo)
             .lanzar();
     }
 
-    private void finalizarGuardado(boolean guardado) {
-        if (!guardado) {
-            panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_DATOS);
-            return;
-        }
+    private void finalizarGuardado() {
         panel.mostrarInfo(Constantes.Mensajes.DATOS_GUARDADOS);
         panel.limpiarFormulario();
         cargarIngresosSinClasificar();
@@ -118,9 +115,21 @@ public class ClasificacionController {
         onGuardado.onEquipoGuardado();
     }
 
+    /**
+     * Un choque no es un error: significa que otro operador ya clasificó ese ingreso mientras
+     * este lo estaba cargando. Se muestra el mensaje del conflicto —que dice qué pasó y qué
+     * hacer— y se relee el combo, del que el ingreso ya clasificado desaparece. El formulario
+     * <b>no</b> se limpia: lo que el operador tipeó es justamente lo que tiene que revisar
+     * contra lo que quedó cargado.
+     */
     private void mostrarFallo(Throwable causa) {
         if (causa instanceof ValidationException validacion) {
             panel.mostrarError(String.join("\n", validacion.getValidationErrors()));
+            return;
+        }
+        if (causa instanceof ConflictoConcurrenciaException) {
+            panel.mostrarError(causa.getMessage());
+            cargarIngresosSinClasificar();
             return;
         }
         panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_DATOS);

@@ -1,6 +1,7 @@
 package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos;
 import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos.VistaCard;
@@ -459,6 +460,11 @@ public class CiclosController {
      *
      * <p>La tanda que llega al service es todo o nada: si falla, no se limpia nada del staging
      * y el operador puede reintentarla tal cual (ver {@code CicloLavaderoDAO.lanzarTanda}).
+     *
+     * <p><b>Salvo que el fallo sea un choque:</b> ahí el staging de la tanda se descarta entero.
+     * Reintentarlo tal cual no sirve —parte de esa ropa ya se la llevó otro operador y el
+     * operador no tiene cómo saber qué parte—, así que se arranca de nuevo desde lo que el
+     * refresco traiga de la base. Mismo criterio que en Lotes.
      */
     private void lanzar(List<Integer> lavarropas) {
         List<String> faltantes = new ArrayList<>();
@@ -471,7 +477,8 @@ public class CiclosController {
 
         ejecutar("lanzar-ciclos",
             () -> escribirTanda(tanda),
-            lanzados -> lanzados.forEach(staging::limpiarLavarropas));
+            lanzados -> lanzados.forEach(staging::limpiarLavarropas),
+            () -> tanda.forEach(ciclo -> staging.limpiarLavarropas(ciclo.lavarropasNumero())));
     }
 
     /**
@@ -600,7 +607,9 @@ public class CiclosController {
                 if (resultado.huboFallos()) {
                     pantalla.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_CICLO);
                 }
-            });
+            },
+            // Finalizar no se apoya en ningún staging: no hay estado en memoria que descartar.
+            () -> { });
     }
 
     /** Fuera del hilo de la interfaz. */
@@ -628,14 +637,22 @@ public class CiclosController {
      * <p>Los botones de acción se apagan mientras la escritura está en vuelo —si no, un
      * segundo click lanzaría de nuevo el mismo staging— y el refresco va en {@code despues}
      * para que también corra si falló: es el que los vuelve a encender.
+     *
+     * @param alConflicto qué hacer con el estado en memoria si la escritura chocó con otro
+     *                    operador (típicamente descartar el staging); además siempre se muestra
+     *                    el mensaje del conflicto y se recarga
      */
-    private <T> void ejecutar(String nombre, Callable<T> escritura, Consumer<T> alTerminar) {
+    private <T> void ejecutar(String nombre, Callable<T> escritura, Consumer<T> alTerminar,
+                              Runnable alConflicto) {
         TareaUI.<T>nueva()
             .nombre(nombre)
             .antes(this::deshabilitarAcciones)
             .leer(escritura)
             .pintar(alTerminar)
-            .siFalla(this::mostrarFallo)
+            .siFalla(causa -> {
+                if (causa instanceof ConflictoConcurrenciaException) alConflicto.run();
+                mostrarFallo(causa);
+            })
             .despues(this::recargar)
             .lanzar();
     }

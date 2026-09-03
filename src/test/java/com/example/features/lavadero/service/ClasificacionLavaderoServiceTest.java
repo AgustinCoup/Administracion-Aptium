@@ -1,5 +1,6 @@
 package com.example.features.lavadero.service;
 
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.dao.CatalogoElementosLavaderoDAO;
 import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
@@ -76,20 +77,22 @@ class ClasificacionLavaderoServiceTest {
     // ── guardar — camino feliz ────────────────────────────────────────────────
 
     @Test
-    void guardar_datosValidos_delegaADAOYRetornaTrue() {
+    void guardar_datosValidos_delegaADAO() {
         List<ElementoClasificacion> elementos = List.of(new ElementoClasificacion(1, 3));
-        when(clasificacionDAO.guardar(5, elementos)).thenReturn(true);
 
-        assertTrue(service.guardar(5, elementos));
+        service.guardar(5, elementos);
+
         verify(clasificacionDAO).guardar(5, elementos);
     }
 
+    /** El conflicto del DAO sale tal cual: el service no lo traduce ni lo convierte en un boolean. */
     @Test
-    void guardar_daoRetornaFalse_retornaFalse() {
+    void guardar_daoChoca_propagaElConflicto() {
         List<ElementoClasificacion> elementos = List.of(new ElementoClasificacion(2, 1));
-        when(clasificacionDAO.guardar(3, elementos)).thenReturn(false);
+        doThrow(new ConflictoConcurrenciaException("otro operador ya lo clasificó"))
+            .when(clasificacionDAO).guardar(3, elementos);
 
-        assertFalse(service.guardar(3, elementos));
+        assertThrows(ConflictoConcurrenciaException.class, () -> service.guardar(3, elementos));
     }
 
     // ── agregarElementoCatalogo ───────────────────────────────────────────────

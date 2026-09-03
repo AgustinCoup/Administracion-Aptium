@@ -62,7 +62,12 @@ public class ClasificacionLavaderoService {
         return false;
     }
 
-    public boolean guardar(int ingresoId, List<ElementoClasificacion> elementos) {
+    /**
+     * Valida y delega. Un choque con otro operador sale como
+     * {@link com.example.common.exception.ConflictoConcurrenciaException} desde el DAO: acá no
+     * se traduce ni se traga, para que el controller pueda distinguirlo de un error técnico.
+     */
+    public void guardar(int ingresoId, List<ElementoClasificacion> elementos) {
         ValidationException.Builder builder = ValidationException.builder()
             .addErrorIf(ingresoId <= 0, "Debe seleccionar un ingreso.")
             .addErrorIf(elementos == null || elementos.isEmpty(), "Debe agregar al menos un elemento.")
@@ -76,6 +81,6 @@ public class ClasificacionLavaderoService {
             );
         builder.throwIfHasErrors();
 
-        return clasificacionDAO.guardar(ingresoId, elementos);
+        clasificacionDAO.guardar(ingresoId, elementos);
     }
 }

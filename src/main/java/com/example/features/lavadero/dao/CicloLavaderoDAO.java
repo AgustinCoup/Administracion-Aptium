@@ -1,5 +1,7 @@
 package com.example.features.lavadero.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.dao.helpers.LineaSobregirada;
 import com.example.features.lavadero.model.CicloLavadero;
@@ -81,6 +83,41 @@ public class CicloLavaderoDAO {
         "GROUP BY ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, c.nombre, cel.categoria " +
         "HAVING ya_procesada < ecl.cantidad " +
         "ORDER BY il.id, cel.nombre";
+
+    /**
+     * Bloqueo de la línea de clasificación antes de leer su saldo.
+     *
+     * <p>Releer el saldo sin bloquear la línea no alcanza: dos tandas que abren su transacción a
+     * la vez leerían las dos el mismo saldo, las dos lo encontrarían suficiente y las dos
+     * escribirían. El {@code FOR UPDATE} serializa las tandas que compiten por la misma línea, y
+     * como es la <b>primera</b> sentencia de la transacción, la lectura de saldo que viene
+     * después ve lo que la tanda anterior ya commiteó.</p>
+     *
+     * <p>Las líneas se toman en orden ascendente de id (ver {@link #consumoPorLinea}) para que
+     * dos tandas que comparten más de una línea no puedan tomárselas cruzadas y trabarse.</p>
+     */
+    private static final String SQL_BLOQUEAR_LINEA =
+        "SELECT id FROM elementos_clasificacion_lavadero WHERE id = ? FOR UPDATE";
+
+    /**
+     * Saldo todavía disponible de una línea de clasificación, releído dentro de la transacción
+     * del lanzamiento.
+     *
+     * <p><b>Deriva de {@link #SQL_DISPONIBLES}</b> y usa su misma aritmética: lo procesado son
+     * las unidades regulares más <em>una</em> por instancia de equipo repartido, no una por
+     * fracción (decisión C del blueprint de fracciones de equipo). Escribir acá una fórmula
+     * propia haría que el bloqueo optimista rechace tandas legítimas en cuanto las dos
+     * divergieran. Lo que sí se saca es el filtro por estado del ingreso: acá la línea se
+     * identifica por id, no se está armando la lista de lo que se puede lavar.</p>
+     */
+    private static final String SQL_SALDO_DE_LINEA =
+        "SELECT ecl.cantidad " +
+        "     - (COALESCE(SUM(CASE WHEN eci.instancia_equipo_id IS NULL THEN eci.cantidad ELSE 0 END), 0) " +
+        "        + COUNT(DISTINCT eci.instancia_equipo_id)) AS saldo " +
+        "FROM elementos_clasificacion_lavadero ecl " +
+        "LEFT JOIN elementos_ciclo_lavadero eci ON eci.elemento_clasificacion_id = ecl.id " +
+        "WHERE ecl.id = ? " +
+        "GROUP BY ecl.id, ecl.cantidad";
 
     /**
      * Detecta líneas de clasificación cuyo total procesado supera la cantidad clasificada
@@ -195,10 +232,18 @@ public class CicloLavaderoDAO {
      * distintas, no fracciones) mientras que Salidas nunca la aceptaba como completa, así que el
      * equipo desaparecía de las dos pantallas y el ingreso no podía llegar a FINALIZADO.
      * Reintentar tampoco servía: acuñaba una segunda instancia para el mismo equipo.
+     *
+     * <p>El saldo de las líneas de clasificación que la tanda consume se <b>relee dentro de la
+     * transacción</b> antes de escribir nada: la pantalla lo calculó con {@link #SQL_DISPONIBLES}
+     * y entre esa lectura y el botón "Lanzar" otro operador puede haberse llevado la misma ropa.
+     * Sin la relectura, las dos tandas sobregiran la línea sin que nada falle — la basura que
+     * {@link #detectarLineasSobregiradas()} sale a buscar a posteriori. Un solo saldo insuficiente
+     * tira la tanda entera, por el mismo motivo que la hace atómica.</p>
      */
     public void lanzarTanda(List<LanzamientoCiclo> tanda) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            exigirSaldoSuficiente(conn, tanda);
             Map<Integer, Integer> instancias = crearInstancias(conn, tanda);
             for (LanzamientoCiclo ciclo : tanda) {
                 int cicloId = insertarCiclo(conn, ciclo.lavarropasNumero(), ciclo.config());
@@ -257,6 +302,77 @@ public class CicloLavaderoDAO {
                 ps.addBatch();
             }
             ps.executeBatch();
+        }
+    }
+
+    /**
+     * Rechaza la tanda entera si alguna línea de clasificación ya no tiene saldo para lo que la
+     * tanda pretende consumir.
+     *
+     * <p>El chequeo y el consumo comparten conexión y transacción, así que <b>dos líneas de la
+     * misma tanda que apuntan a la misma clasificación se ven entre sí</b>: es el mismo
+     * razonamiento del javadoc de {@code SalidaLavaderoDAO.marcarListo}, resuelto de otra forma.
+     * Ahí las marcas se intercalan chequeo-escritura porque llegan de a una; acá la tanda se
+     * conoce entera de antemano, así que su consumo se agrega por línea
+     * ({@link #consumoPorLinea}) y se compara de una sola vez contra el saldo. El efecto es el
+     * mismo — dos líneas de la misma tanda no pueden sobregirar juntas — sin depender de que el
+     * orden de escritura las cruce.</p>
+     */
+    private void exigirSaldoSuficiente(Connection conn, List<LanzamientoCiclo> tanda) throws SQLException {
+        Map<Integer, Integer> consumo = consumoPorLinea(tanda);
+        try (PreparedStatement psBloquear = conn.prepareStatement(SQL_BLOQUEAR_LINEA);
+             PreparedStatement psSaldo    = conn.prepareStatement(SQL_SALDO_DE_LINEA)) {
+            for (Map.Entry<Integer, Integer> linea : consumo.entrySet()) {
+                bloquearLinea(psBloquear, linea.getKey());
+                int saldo = saldoDeLinea(psSaldo, linea.getKey());
+                if (linea.getValue() > saldo) {
+                    log.warn("Tanda rechazada: la línea de clasificación {} tiene saldo {} y la "
+                        + "tanda pretende consumir {}", linea.getKey(), saldo, linea.getValue());
+                    throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_TANDA);
+                }
+            }
+        }
+    }
+
+    /**
+     * Cuánto consume la tanda de cada línea de clasificación, con la misma aritmética que
+     * {@link #SQL_DISPONIBLES} descuenta: las líneas regulares suman su cantidad y cada instancia
+     * de equipo repartido cuenta <b>1</b>, esté en uno o en N lavarropas de la tanda.
+     *
+     * <p>{@link TreeMap} y no un {@code HashMap}: recorrer las líneas siempre en el mismo orden
+     * (id ascendente) es lo que evita que dos tandas que comparten líneas se traben tomándoselas
+     * cruzadas (ver {@link #SQL_BLOQUEAR_LINEA}).</p>
+     */
+    private static Map<Integer, Integer> consumoPorLinea(List<LanzamientoCiclo> tanda) {
+        Map<Integer, Integer> consumo = new TreeMap<>();
+        Map<Integer, Set<Integer>> instanciasPorLinea = new TreeMap<>();
+        for (LanzamientoCiclo ciclo : tanda) {
+            for (LineaLanzamiento linea : ciclo.lineas()) {
+                int lineaId = linea.elementoClasificacionId();
+                if (linea.esFraccionDeEquipo()) {
+                    instanciasPorLinea.computeIfAbsent(lineaId, k -> new HashSet<>())
+                        .add(linea.instanciaStagingId());
+                } else {
+                    consumo.merge(lineaId, linea.cantidad(), Integer::sum);
+                }
+            }
+        }
+        instanciasPorLinea.forEach((lineaId, ids) -> consumo.merge(lineaId, ids.size(), Integer::sum));
+        return consumo;
+    }
+
+    private void bloquearLinea(PreparedStatement psBloquear, int elementoClasificacionId) throws SQLException {
+        psBloquear.setInt(1, elementoClasificacionId);
+        try (ResultSet rs = psBloquear.executeQuery()) {
+            rs.next();   // sin fila, la línea dejó de existir: saldoDeLinea devuelve 0 y choca
+        }
+    }
+
+    /** Saldo actual de la línea. Sin fila (línea inexistente) es saldo cero. */
+    private int saldoDeLinea(PreparedStatement psSaldo, int elementoClasificacionId) throws SQLException {
+        psSaldo.setInt(1, elementoClasificacionId);
+        try (ResultSet rs = psSaldo.executeQuery()) {
+            return rs.next() ? rs.getInt("saldo") : 0;
         }
     }
 
