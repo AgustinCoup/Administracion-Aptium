@@ -106,7 +106,7 @@ public class ClienteService {
         }
     }
 
-    public void fusionarClientes(int idOrigen, int idDestino) {
+    public void fusionarClientes(int idOrigen, String nombreOrigen, int idDestino, String nombreDestino) {
         if (idOrigen == idDestino) {
             throw new ValidationException("No se puede fusionar un cliente consigo mismo");
         }
@@ -116,7 +116,7 @@ public class ClienteService {
         if (!clienteDAO.existe(idDestino)) {
             throw new ResourceNotFoundException("Cliente destino", idDestino);
         }
-        fusionClientesDAO.fusionar(idOrigen, idDestino);
+        fusionClientesDAO.fusionar(idOrigen, nombreOrigen, idDestino, nombreDestino);
     }
 }
 

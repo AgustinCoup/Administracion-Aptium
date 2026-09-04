@@ -203,14 +203,14 @@ class ClienteServiceTest {
         when(clienteDAO.existe(1)).thenReturn(true);
         when(clienteDAO.existe(2)).thenReturn(true);
 
-        service.fusionarClientes(1, 2);
+        service.fusionarClientes(1, "Origen", 2, "Destino");
 
-        verify(fusionClientesDAO).fusionar(1, 2);
+        verify(fusionClientesDAO).fusionar(1, "Origen", 2, "Destino");
     }
 
     @Test
     void fusionarClientes_mismoId_lanzaValidationException() {
-        assertThrows(ValidationException.class, () -> service.fusionarClientes(5, 5));
+        assertThrows(ValidationException.class, () -> service.fusionarClientes(5, "A", 5, "A"));
         verifyNoInteractions(fusionClientesDAO);
     }
 
@@ -218,7 +218,8 @@ class ClienteServiceTest {
     void fusionarClientes_origenNoExiste_lanzaResourceNotFoundException() {
         when(clienteDAO.existe(99)).thenReturn(false);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.fusionarClientes(99, 2));
+        assertThrows(ResourceNotFoundException.class,
+            () -> service.fusionarClientes(99, "Origen", 2, "Destino"));
         verifyNoInteractions(fusionClientesDAO);
     }
 
@@ -227,7 +228,8 @@ class ClienteServiceTest {
         when(clienteDAO.existe(1)).thenReturn(true);
         when(clienteDAO.existe(99)).thenReturn(false);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.fusionarClientes(1, 99));
+        assertThrows(ResourceNotFoundException.class,
+            () -> service.fusionarClientes(1, "Origen", 99, "Destino"));
         verifyNoInteractions(fusionClientesDAO);
     }
 }
