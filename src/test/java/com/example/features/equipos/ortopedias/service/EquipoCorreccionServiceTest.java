@@ -225,6 +225,7 @@ class EquipoCorreccionServiceTest {
     void eliminarEquipo_snapshotFalla_lanzaDatabaseException() {
         Equipo e = equipoConEstado(EstadoEquipo.NUEVO);
         when(equipoDAO.obtenerPorId("1")).thenReturn(e);
+        when(equipoDAO.eliminar("1")).thenReturn(true);
         when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
             any(), any(), any(), anyString(), anyString())).thenReturn(false);
 
@@ -251,13 +252,14 @@ class EquipoCorreccionServiceTest {
     void eliminarEquipo_borradoNoAfectaFilas_lanzaDatabaseException() {
         Equipo e = equipoConEstado(EstadoEquipo.NUEVO);
         when(equipoDAO.obtenerPorId("1")).thenReturn(e);
-        when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
-            any(), any(), any(), anyString(), anyString())).thenReturn(true);
-        // El DELETE no toca ninguna fila (o falla): el service no debe reportar éxito.
+        // El DELETE no toca ninguna fila (o falla): el service no debe reportar éxito, y como el
+        // DELETE va antes que la auditoría, ésta ni se intenta.
         when(equipoDAO.eliminar("1")).thenReturn(false);
 
         assertThrows(DatabaseException.class,
             () -> service.eliminarEquipo(1, "motivo"));
+
+        verifyNoInteractions(auditoriaDAO);
     }
 
     // ── eliminarMaterial ──────────────────────────────────────────────────────

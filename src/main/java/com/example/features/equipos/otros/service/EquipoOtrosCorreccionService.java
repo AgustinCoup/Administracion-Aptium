@@ -156,19 +156,28 @@ public class EquipoOtrosCorreccionService {
             throw new ValidationException("No hay materiales con esa descripción en el equipo");
         }
 
-        // Los snapshots se escriben ANTES del DELETE: después las filas ya no existen.
-        for (MaterialOtros m : materiales) {
-            auditoriaDAO.registrarMaterialEliminado(
-                equipoId, m.getId(), null,
-                m.getDescripcion(), m.getCantidad(),
-                m.getEstado() != null ? m.getEstado().getNombre() : null,
-                motivo.trim(), TIPO);
-        }
-
         equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoId, descripcion.trim());
 
-        auditoriaDAO.registrarCambio(equipoId, null, "ELIMINACION_MATERIAL",
-            "material", null, null, motivo.trim(), TIPO);
+        // Auditoría DESPUÉS del DELETE: `materiales` ya está en memoria. Si falla acá, los
+        // materiales ya no están — se informa la verdad, no se revierte el borrado.
+        try {
+            for (MaterialOtros m : materiales) {
+                auditoriaDAO.registrarMaterialEliminado(
+                    equipoId, m.getId(), null,
+                    m.getDescripcion(), m.getCantidad(),
+                    m.getEstado() != null ? m.getEstado().getNombre() : null,
+                    motivo.trim(), TIPO);
+            }
+
+            auditoriaDAO.registrarCambio(equipoId, null, "ELIMINACION_MATERIAL",
+                "material", null, null, motivo.trim(), TIPO);
+        } catch (RuntimeException e) {
+            log.error("Material '{}' eliminado del equipo {} pero falló el registro de auditoría. "
+                    + "Snapshot: [{}], motivo={}",
+                descripcion, equipoId, describirMateriales(materiales), motivo.trim(), e);
+            throw new DatabaseException(
+                "El material se eliminó, pero no se pudo registrar la auditoría. Avisá al administrador.", e);
+        }
 
         log.info("Material '{}' eliminado del equipo {} — motivo: {}", descripcion, equipoId, motivo);
         return true;
@@ -183,31 +192,54 @@ public class EquipoOtrosCorreccionService {
 
         EquipoOtros equipo = cargarYValidarNuevo(equipoId);
 
-        boolean snapEquipo = auditoriaDAO.registrarEquipoEliminado(
-            equipo.getId(), equipo.getNroCliente(), equipo.getClienteNombre(),
-            null, null, null, null,
-            equipo.getEstado().getNombre(), motivo.trim(), TIPO);
-        if (!snapEquipo) throw new DatabaseException("No se pudo registrar el snapshot del equipo eliminado");
-
-        for (MaterialOtros m : equipo.getMateriales()) {
-            boolean snapMat = auditoriaDAO.registrarMaterialEliminado(
-                equipo.getId(), m.getId(), null,
-                m.getDescripcion(), m.getCantidad(),
-                m.getEstado() != null ? m.getEstado().getNombre() : null,
-                motivo.trim(), TIPO);
-            if (!snapMat) throw new DatabaseException("No se pudo registrar el snapshot del material eliminado");
-        }
-
         equipoOtrosDAO.eliminarEquipo(equipoId);
 
-        auditoriaDAO.registrarCambio(equipoId, null, "ELIMINACION_EQUIPO",
-            "equipo", null, null, motivo.trim(), TIPO);
+        // Auditoría DESPUÉS del DELETE: las filas ya están en memoria (equipo.getMateriales()).
+        // Si falla acá, el equipo ya no está — se informa la verdad, no se revierte el borrado.
+        try {
+            boolean snapEquipo = auditoriaDAO.registrarEquipoEliminado(
+                equipo.getId(), equipo.getNroCliente(), equipo.getClienteNombre(),
+                null, null, null, null,
+                equipo.getEstado().getNombre(), motivo.trim(), TIPO);
+            if (!snapEquipo) throw new DatabaseException("No se pudo registrar el snapshot del equipo eliminado");
+
+            for (MaterialOtros m : equipo.getMateriales()) {
+                boolean snapMat = auditoriaDAO.registrarMaterialEliminado(
+                    equipo.getId(), m.getId(), null,
+                    m.getDescripcion(), m.getCantidad(),
+                    m.getEstado() != null ? m.getEstado().getNombre() : null,
+                    motivo.trim(), TIPO);
+                if (!snapMat) throw new DatabaseException("No se pudo registrar el snapshot del material eliminado");
+            }
+
+            auditoriaDAO.registrarCambio(equipoId, null, "ELIMINACION_EQUIPO",
+                "equipo", null, null, motivo.trim(), TIPO);
+        } catch (RuntimeException e) {
+            log.error("EquipoOtros id={} eliminado pero falló el registro de auditoría. "
+                    + "Snapshot: cliente={}/{}, estado={}, materiales=[{}], motivo={}",
+                equipoId, equipo.getNroCliente(), equipo.getClienteNombre(), equipo.getEstado().getNombre(),
+                describirMateriales(equipo.getMateriales()), motivo.trim(), e);
+            throw new DatabaseException(
+                "El equipo se eliminó, pero no se pudo registrar la auditoría. Avisá al administrador.", e);
+        }
 
         log.info("EquipoOtros id={} eliminado — motivo: {}", equipoId, motivo);
         return true;
     }
 
     // ── Helpers privados ─────────────────────────────────────────────────────
+
+    /** Describe materiales para el log de auditoría fallida: {@link MaterialOtros} no tiene {@code toString}. */
+    private static String describirMateriales(List<MaterialOtros> materiales) {
+        StringBuilder sb = new StringBuilder();
+        for (MaterialOtros m : materiales) {
+            if (sb.length() > 0) sb.append("; ");
+            sb.append("id=").append(m.getId())
+              .append(" descripcion=").append(m.getDescripcion())
+              .append(" cantidad=").append(m.getCantidad());
+        }
+        return sb.toString();
+    }
 
     private EquipoOtros cargarYValidarNuevo(int equipoId) {
         EquipoOtros equipo = equipoOtrosDAO.obtenerPorId(equipoId);

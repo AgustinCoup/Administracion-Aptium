@@ -327,7 +327,7 @@ class EquipoOtrosCorreccionServiceTest {
     // ── Camino feliz: el service orquesta DAO + auditoría ─────────────────────
 
     @Test
-    void eliminarMaterial_conCoincidencias_snapshotAntesDelDelete() {
+    void eliminarMaterial_conCoincidencias_snapshotDespuesDelDelete() {
         when(equipoOtrosDAO.obtenerPorId(1)).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         MaterialOtros m = new MaterialOtros(7, null, "Guante", 3, EstadoEquipo.NUEVO, null);
         when(equipoOtrosDAO.obtenerMaterialesPorDescripcion(1, "Guante"))
@@ -336,9 +336,9 @@ class EquipoOtrosCorreccionServiceTest {
         assertTrue(service.eliminarMaterial(1, "Guante", "motivo"));
 
         InOrder orden = inOrder(auditoriaDAO, equipoOtrosDAO);
+        orden.verify(equipoOtrosDAO).eliminarMaterialesPorDescripcion(1, "Guante");
         orden.verify(auditoriaDAO).registrarMaterialEliminado(
             1, 7, null, "Guante", 3, EstadoEquipo.NUEVO.getNombre(), "motivo", "OTROS");
-        orden.verify(equipoOtrosDAO).eliminarMaterialesPorDescripcion(1, "Guante");
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
