@@ -355,9 +355,10 @@ public class EquipoDAO implements DAO<Equipo, String> {
      *
      * <p>Escribe {@code estado} sin derivarlo de los materiales, así que no pasa por
      * {@link EquipoMaterialHelper#recalcularEstadoEquipo} y tiene que mantener la columna
-     * {@code version} (V21) por su cuenta. Hoy no tiene llamador de producción — sólo implementa
-     * {@code DAO<T,ID>} — pero el bump va igual para que quien lo cablee no herede un agujero en
-     * el token de bloqueo optimista.
+     * {@code version} (V21) por su cuenta. Su único llamador es
+     * {@code EquipoService.actualizar}, que a su vez no tiene llamador — ni en
+     * {@code src/main} ni en {@code src/test}: la cadena entera está muerta. El bump va igual
+     * para que quien la reconecte mañana no herede un agujero en el token de bloqueo optimista.
      */
     @Override
     public boolean actualizar(Equipo equipo) {

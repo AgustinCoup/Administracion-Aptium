@@ -246,16 +246,31 @@ dos por **falso positivo**, y el operador aprendería a ignorar el cartel — qu
 guarda, porque desactiva también los avisos verdaderos. La guarda va sobre el campo que se consume
 (`estado`, `destino`, saldo), que detecta el choque **real** y deja pasar al concurrente legítimo.
 
-**`equipos` y `equipo_otros` sí tienen `version` (V21), se mantiene, y NO se usa como guarda.**
-Ningún `WHERE` la lleva. No es un olvido: guardar con la `version` del agregado reintroduce el mismo
-falso positivo un nivel más arriba — dos operadores avanzando materiales **distintos del mismo
-equipo** chocarían sin pisarse en nada. La columna existe porque el `estado` de esas cabeceras es
-**derivado** (se recalcula desde los materiales), así que no sirve de guarda para su consumidor
-previsto: **`Correcciones`**, que reemplaza la fila entera desde un snapshot y hoy escribe a ciegas.
-Para activarla hay que cubrir antes todas las rutas de Correcciones; la auditoría de qué bumpea y
-qué no está en el javadoc de `EquipoOtrosMaterialHelper.recalcularEstadoEquipo`. El bump vive en un
-solo lugar por agregado (los dos `recalcularEstadoEquipo` de los helpers) más los `bumpVersion`
-explícitos de las rutas que no pasan por el recálculo.
+**`equipos` y `equipo_otros` tienen `version` (V21), y la usan como guarda — pero sólo en
+Correcciones.** La misma columna es asimétrica a propósito, y esa asimetría es la que hay que
+preservar al tocar cualquiera de los dos lados:
+
+- **Registrar Estado sigue sin usarla.** Ningún `WHERE` de `EquipoMaterialHelper`/
+  `EquipoOtrosMaterialHelper` ni de `MaterialDAO.aplicarMovimientos`/`EquipoOtrosDAO.aplicarMovimientos`
+  la lleva. Guardar con la `version` del agregado ahí reintroduce el falso positivo un nivel más
+  arriba — dos operadores avanzando materiales **distintos del mismo equipo** chocarían sin
+  pisarse en nada. La guarda real de esos flujos sigue siendo el `estado` de cada material.
+- **Correcciones sí la usa como guarda**, en las diez rutas de `EquipoCorreccionService`/
+  `EquipoOtrosCorreccionService` y en la fusión de clientes (`FusionClientesDAO`, que mueve
+  `equipos`/`equipo_otros` de un cliente a otro). Ahí el mismo falso positivo se **acepta a
+  propósito**: dos operadores corrigiendo materiales distintos del mismo equipo van a chocar,
+  porque Correcciones reemplaza la fila entera desde un snapshot del formulario (no consume por
+  cantidad) y es una pantalla de uso esporádico y auditado, donde "otro tocó esto mientras lo
+  mirabas" es información que el operador quiere ver, no ruido.
+- **Eliminar** (`EquipoDAO.eliminarConVersion`, `EquipoOtrosDAO.eliminarEquipo`,
+  `ClienteDAO.eliminarConNombre`) es CAS de una sola sentencia sobre `equipos`/`equipo_otros`/
+  `clientes` — no bumpea nada, porque la fila desaparece y no queda token que invalidar.
+
+El bump vive en un solo lugar por agregado para los caminos derivados (los dos
+`recalcularEstadoEquipo` de los helpers), más `bumpVersionConGuarda` para las rutas de
+Correcciones (bump + CAS en una sentencia) y el `UPDATE ... version = version + 1` explícito de
+`FusionClientesDAO`. Detalle completo, incluida la auditoría de qué ruta bumpea y cuál no, en el
+javadoc de `EquipoOtrosMaterialHelper.recalcularEstadoEquipo`.
 
 `lotes` e `ingresos_lavadero` tampoco llevan `version`: ya tienen una guarda natural más informativa
 que un número (`lotes.fecha_fin IS NULL`, y la máquina de estados persistida del ingreso).
@@ -270,9 +285,13 @@ Compara **máximos**, no continuidad: una migración atrasada que se aplica desp
 `outOfOrder(true)` que existe porque dos ramas se pisaron los números) no es una base adelantada.
 
 **Dónde hay guarda hoy:** Registrar Estado (ortopedias y otros), Lanzar Lote, Clasificación de
-Lavadero, Lanzar Tanda, y Salidas + derivación al CDE. **Qué quedó afuera:** `Correcciones` y los
-ABM de catálogo, clientes, instituciones, profesionales y ajustes — anotados en
-`plans/hallazgos-arquitectura-pendientes.md`.
+Lavadero, Lanzar Tanda, Salidas + derivación al CDE, las diez rutas de Correcciones (ortopedias y
+otros), fusionar clientes y eliminar cliente. **Qué quedó afuera:** el resto de los ABM (catálogo,
+instituciones, profesionales, y el resto de Ajustes) — sin ruta alcanzable desde la UI, no sin
+superficie de escritura; anotado en `plans/hallazgos-arquitectura-pendientes.md`. `obtenerSiguienteSecuencia`
+de `LoteDAO` no es un caso de esta regla: no hay dato leído por el operador que se esté pisando,
+es asignación de identidad, y se resuelve con reintento sobre la violación de `UNIQUE`
+(`LoteDAO.lanzarLote`, ver su javadoc).
 
 **La única guarda que no lanza** es `SalidaLavaderoDAO.SQL_FINALIZAR_INGRESO`
 (`AND estado <> 'FINALIZADO'`): finalizar es idempotente, y que otro lo haya finalizado es el

@@ -72,20 +72,26 @@ public final class EquipoOtrosMaterialHelper {
      *   <li><b>{@code EquipoOtrosDAO:338} — {@code SET estado} del camino REMITO sin materiales
      *       reales:</b> asignada al Paso 4 del plan, que la hace bumpear a mano — no hay materiales
      *       que recalcular, así que este helper no aplica.</li>
-     *   <li><b>{@code FusionClientesDAO} — {@code SET nro_cliente}:</b> ABM de clientes, fuera del
-     *       alcance acordado del plan.</li>
+     *   <li><b>{@code FusionClientesDAO} — {@code SET nro_cliente}: cubierta.</b> Ya no es
+     *       excepción: bumpea la {@code version} de los equipos que mueve, dentro de la misma
+     *       transacción que verifica los nombres vigentes de origen y destino.</li>
      *   <li><b>Rutas de {@code Correcciones} ({@code actualizarCantidadRemito},
      *       {@code actualizarCantidadMaterial}, {@code insertarMaterial},
      *       {@code eliminarMaterialesPorDescripcion}, {@code eliminarEquipo}, y en ortopedias
-     *       {@code MaterialDAO.actualizarCantidad} / {@code actualizarCodigo}):</b> ver la nota de
-     *       abajo. Son escrituras ciegas hoy y siguen siéndolo; <b>bumpean</b> para que la columna
-     *       quede honesta, pero no llevan guarda.</li>
+     *       {@code MaterialDAO.actualizarCantidad} / {@code actualizarCodigo} /
+     *       {@code agregarMaterial} / {@code eliminarMaterialesPorCodigo} /
+     *       {@code EquipoDAO.eliminarConVersion}):</b> dejaron de ser escrituras ciegas. Además de
+     *       bumpear, la {@code version} es ahora la <b>guarda</b>: la que el operador tenía a la
+     *       vista viaja hasta el {@code WHERE}.</li>
      * </ul>
      *
      * <p>Esas rutas de Correcciones no pueden pasar por este recálculo: deriva {@code estado} desde
      * los materiales, y sobre un REMITO sin materiales reales pisaría la cabecera con
-     * {@code NUEVO}. Tampoco se las puede documentar como inocuas: son exactamente las escrituras
-     * que reemplazan lo que un snapshot de Correcciones mostraba. Por eso llevan bump a mano.
+     * {@code NUEVO}. Tampoco son inocuas: son exactamente las escrituras que reemplazan lo que un
+     * snapshot de Correcciones mostraba, y por eso son las únicas donde la {@code version} del
+     * agregado sirve de guarda — el falso positivo que este helper descarta más arriba (dos
+     * operadores avanzando materiales distintos del mismo equipo) se acepta a propósito acá, porque
+     * Correcciones es de uso esporádico y auditado. Por eso llevan bump a mano, guardado.
      *
      * @param conn          conexión activa con {@code autoCommit=false}
      * @param equipoOtrosId ID del equipo "otros" a recalcular

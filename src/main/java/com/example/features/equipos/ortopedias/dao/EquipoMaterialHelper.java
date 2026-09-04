@@ -40,15 +40,16 @@ public final class EquipoMaterialHelper {
      * de una línea en vez de veinte que alguien va a olvidar de tocar el día que agregue una ruta
      * nueva. Las excepciones auditadas están listadas abajo.
      *
-     * <p><b>La {@code version} se mantiene pero NO se usa como guarda en ningún {@code WHERE}</b>
-     * — ni acá ni en los flujos que este helper sirve. Es deliberado: guardar con la version del
-     * agregado haría chocar a dos operadores que avanzan materiales <em>distintos</em> del mismo
-     * equipo, un falso positivo que enseña al operador a ignorar el cartel. La protección real de
-     * esos flujos es la guarda sobre el {@code estado} de cada material, que es precisa. El
-     * consumidor previsto de la columna es {@code Correcciones}, que reemplaza la fila entera
-     * desde un snapshot. <b>Antes de activar esa guarda hay que cubrir las rutas de Correcciones</b>
-     * (ver el javadoc de {@link com.example.features.equipos.otros.dao.EquipoOtrosMaterialHelper#recalcularEstadoEquipo},
-     * que lleva la auditoría completa), o dará falsos negativos.
+     * <p><b>La {@code version} se mantiene pero NO se usa como guarda en ningún {@code WHERE} de
+     * este helper ni de Registrar Estado.</b> Es deliberado: guardar con la version del agregado
+     * haría chocar a dos operadores que avanzan materiales <em>distintos</em> del mismo equipo, un
+     * falso positivo que enseña al operador a ignorar el cartel. La protección real de esos flujos
+     * es la guarda sobre el {@code estado} de cada material, que es precisa. El consumidor
+     * previsto de la columna es {@code Correcciones}, que reemplaza la fila entera desde un
+     * snapshot — <b>y ahí sí es guarda</b>: el falso positivo que acá se descarta se acepta a
+     * propósito en Correcciones, por ser una pantalla de uso esporádico y auditado (ver el javadoc
+     * de {@link com.example.features.equipos.otros.dao.EquipoOtrosMaterialHelper#recalcularEstadoEquipo},
+     * que lleva la auditoría completa de rutas).
      *
      * @param conn      conexión activa con {@code autoCommit=false}
      * @param equipoId  ID del equipo a recalcular

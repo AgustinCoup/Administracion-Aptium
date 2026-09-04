@@ -15,7 +15,8 @@ pasada contra la app real ese mismo día. Del plan de sesiones queda **sólo el 
 | #6 concurrencia / EDT | **hecho (2026-08-27)** — Fases 1-6, **4b**, el hallazgo derivado de Lavadero y la **checklist manual de la Fase 5 pasada**: 30 WARN de `EdtGuard`, los 30 de los autocompletados documentados, cero fuera de la lista. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md#resultado-de-la-fase-5--pasada-2026-08-27) | Fase 4b: `14354a2` · Lavadero: `95c9e33` |
 | #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
 | #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | hecho (2026-08-27) — `CiclosController` colapsó sus 4 lecturas en un `recargar()` con el record `DatosCiclos` + `ConstructorVistaCiclos`, y sus 3 escrituras van por un helper `ejecutar(...)`; `ClasificacionController` y `LavaderoController.guardar()` al patrón de 4b. 970 tests, smoke pasado | `95c9e33` |
-| #9 huecos que dejó abierto el bloqueo optimista (agregado 2026-09-04) | **abierto, con plan escrito** — tres: `Correcciones` sin guarda, `obtenerSiguienteSecuencia`, y los ABM. Decisiones cerradas y pasos en [`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md) | — |
+| #9 huecos que dejó abierto el bloqueo optimista (agregado 2026-09-04) | **hecho (2026-09-04)** — las diez rutas de Correcciones, el reintento de secuencia de lotes, y las dos rutas alcanzables de ABM (eliminar/fusionar clientes). 11 pasos en [`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md) | `e0876db`..`6aaca8f` |
+| #10 código muerto destapado por #9 (agregado 2026-09-04) | **anotado, no tocado** — ver más abajo | — |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -269,20 +270,36 @@ No es deuda de ese plan: es anterior, del plan de ciclos.
 
 ---
 
-## #9 — Huecos que dejó abiertos el bloqueo optimista (agregado 2026-09-04)
+## #9 — Huecos que dejó abiertos el bloqueo optimista  ✅ HECHO (2026-09-04)
 
-Los tres los dejó **explícitamente fuera de alcance** el plan
-[`bloqueo-optimista-concurrencia.md`](bloqueo-optimista-concurrencia.md), que sí cerró los cuatro
+Los tres los había dejado **explícitamente fuera de alcance** el plan
+[`bloqueo-optimista-concurrencia.md`](bloqueo-optimista-concurrencia.md), que cerró los cuatro
 flujos críticos (Registrar Estado × 2, Lanzar Lote, Lanzar Tanda, Salidas + derivación al CDE) más
-Clasificación. Se anotan acá para que sean decisiones y no olvidos.
+Clasificación. Los tres se cerraron con el plan de 11 pasos
+[`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md):
 
-> **Plan escrito el 2026-09-04, sin ejecutar:**
-> [`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md)
-> — 11 pasos, decisiones cerradas. Dos cosas que ese plan corrige de lo escrito acá abajo:
-> **(c) tiene mucha menos superficie de la que dice** (`SimpleEntityDAO.actualizar` y todo
-> `CatalogoDAO`/`CatalogoOtrosDAO` no tienen llamadores; las únicas escrituras pisables son
-> `eliminarCliente` y `fusionarClientes`), y activar la `version` en Correcciones **rompe la
-> simetría** con Registrar Estado a propósito — el falso positivo se acepta ahí y se rechaza acá.
+- **(a) `Correcciones` sin guarda** — las diez rutas (ortopedias y "otros") pasan a guardar por
+  `version` del agregado, reemplazando lo que un snapshot del formulario mostraba. Es asimétrico a
+  propósito respecto de Registrar Estado: ahí el mismo falso positivo (dos operadores tocando
+  materiales distintos del mismo equipo) se **rechaza**; en Correcciones se **acepta**, por ser una
+  pantalla de uso esporádico y auditado. Ver `CLAUDE.md` § *Concurrencia — bloqueo optimista*.
+- **(b) `LoteDAO.obtenerSiguienteSecuencia`** — reintento sobre la violación de `UNIQUE`
+  (`id_negocio`), con la clase `23` discriminada **fuera** de la transacción fallida (adentro lee
+  el snapshot viejo bajo `REPEATABLE READ` y el reintento no se dispara nunca en MySQL; H2 no lo
+  delata). No es un lost update, es asignación de identidad: no lleva `ConflictoConcurrenciaException`
+  salvo al agotar los tres reintentos.
+- **(c) Los ABM** — medidos contra el código, sólo dos operaciones eran alcanzables y pisables:
+  `eliminarCliente` (CAS por nombre) y `fusionarClientes` (verificación de los dos nombres +
+  `FOR UPDATE`, y de paso bumpea `equipos`/`equipo_otros` — era el único `UPDATE` de agregado sin
+  bump que quedaba). El resto de lo que nombraba el hallazgo original no tenía ruta de llamada; ver
+  **#10**.
+
+**Verificación:** `mvn test` en verde (suite completa). Nueve casos nuevos en
+`ConcurrenciaOptimistaTest` con la forma *A lee → B modifica y commitea → A escribe → conflicto, y
+el estado final es el de B*. **Sin verificar contra MySQL real** (sólo H2): los dos puntos ciegos
+de la Parte B (bloqueo del índice único en el segundo `INSERT`, y que la discriminación de la
+clase `23` esté afuera de la transacción) no se pueden reproducir en H2 — ver la sección
+"Verificación" del plan.
 
 ### (a) `Correcciones` sigue escribiendo a ciegas — y ya tiene la `version` esperándola  (MEDIO)
 
@@ -319,6 +336,31 @@ Catálogo, clientes, instituciones, profesionales y ajustes escriben sin guarda.
 pantallas de mantenimiento, con un solo operador editándolas en la práctica, y meterles guardas
 tendría más costo de UX (carteles de conflicto en lugares donde nadie choca) que beneficio. Si algún
 día dos personas mantienen catálogos a la vez, el mecanismo ya está armado y es agregar el `WHERE`.
+
+---
+
+## #10 — Código muerto destapado al medir #9 (agregado 2026-09-04)  BAJO, anotado
+
+La medición de qué ABM eran alcanzables (#9c) encontró código sin ningún llamador de producción.
+No se tocó: borrarlo es una decisión del usuario, no de este plan — el mismo criterio que dejó
+viva `PantallaVerCDEv1` en el punto 4 del plan de sesiones de abajo.
+
+- **`SimpleEntityDAO.actualizar`** (renombrar cliente / institución / profesional) — cero
+  llamadores. No existe pantalla de renombrado para ninguna de las tres entidades.
+- **`CatalogoDAO.guardarDescripcion`** — **no es un `INSERT`, es un upsert**
+  (`ON DUPLICATE KEY UPDATE`), así que a diferencia del resto de esta lista sí tiene superficie de
+  lost update. Pero es **inalcanzable, no inofensivo**: sólo lo llama `CatalogoService.guardarDescripcion`,
+  que a su vez no tiene llamador de UI. Si algún día se cablea una pantalla de edición de catálogo,
+  revisar esto primero — es la única entrada de esta lista que necesitaría guarda el día que deje
+  de estar muerta.
+- **`CatalogoDAO.eliminar`, `guardar`, `actualizar`** — cero llamadores; `guardar` y `actualizar`
+  son stubs que devuelven `false`.
+- **`CatalogoOtrosDAO`** — no tiene `update` ni `delete`: sólo lookup + `obtenerOCrear`
+  (`INSERT IGNORE`), sin superficie de escritura que guardar.
+- **`EquipoDAO.actualizar` → `EquipoService.actualizar`** — la cadena entera está muerta (ninguno
+  de los dos tiene llamador, ni en `src/main` ni en `src/test`). No es el mismo caso que los de
+  arriba: `EquipoDAO.actualizar` sí bumpea `version` correctamente (ver su javadoc), así que no es
+  un agujero de bloqueo optimista si algún día se reconecta — es puro código sin ruta de llamada.
 
 ---
 

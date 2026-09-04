@@ -79,6 +79,11 @@ Los DAOs con guarda nueva: `MaterialDAO` 267/283 (94 %), `SalidaLavaderoDAO` 223
 (86 %) y `EquipoOtrosDAO` 359/447 (80 %). Los dos últimos son los archivos más grandes y arrastran
 código previo sin cubrir; ninguna de las guardas agregadas queda fuera de los tests.
 
+**Los tres huecos que este plan dejó abiertos a propósito** (`Correcciones` sin guarda,
+`obtenerSiguienteSecuencia` y los ABM) se cerraron en
+[`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md).
+Este plan queda cerrado tal cual — no reabrir.
+
 ---
 
 **Objetivo:** que dos operadores trabajando contra la misma base al mismo tiempo no puedan pisarse
