@@ -76,40 +76,40 @@ class MaterialDAOTest extends AbstractDAOTest {
 
     @Test
     void actualizarCantidad_existente_retornaTrue() {
-        assertTrue(dao.actualizarCantidad(materialId, 5));
+        assertTrue(dao.actualizarCantidad(equipo.getId(), materialId, 5, 0));
         assertEquals(5, dao.obtenerCantidad(materialId));
     }
 
     @Test
     void actualizarCantidad_inexistente_retornaFalse() {
-        assertFalse(dao.actualizarCantidad(999999, 5));
+        assertFalse(dao.actualizarCantidad(equipo.getId(), 999999, 5, 0));
     }
 
     // ── actualizarCodigo ──────────────────────────────────────────────────────
 
     @Test
     void actualizarCodigo_existente_retornaTrue() {
-        assertTrue(dao.actualizarCodigo(materialId, 401));
+        assertTrue(dao.actualizarCodigo(equipo.getId(), materialId, 401, 0));
         assertEquals(401, dao.obtenerMaterial(materialId).codigo());
     }
 
     @Test
     void actualizarCodigo_inexistente_retornaFalse() {
-        assertFalse(dao.actualizarCodigo(999999, 400));
+        assertFalse(dao.actualizarCodigo(equipo.getId(), 999999, 400, 0));
     }
 
     // ── agregarMaterial ───────────────────────────────────────────────────────
 
     @Test
     void agregarMaterial_nuevo_retornaIdPositivo() {
-        Integer nuevoId = dao.agregarMaterial(equipo.getId(), 400, 2);
+        Integer nuevoId = dao.agregarMaterial(equipo.getId(), 400, 2, 0);
         assertNotNull(nuevoId);
         assertTrue(nuevoId > 0);
     }
 
     @Test
     void agregarMaterial_insertaMovimiento() {
-        dao.agregarMaterial(equipo.getId(), 400, 2);
+        dao.agregarMaterial(equipo.getId(), 400, 2, 0);
         // El equipo ahora debería tener 2 filas para el código 400 (el original + el nuevo)
         List<FilaMaterial> materiales = dao.obtenerMaterialesPorCodigo(equipo.getId(), 400);
         assertTrue(materiales.size() >= 2);
@@ -234,13 +234,13 @@ class MaterialDAOTest extends AbstractDAOTest {
 
     @Test
     void eliminarMaterialesPorCodigo_existente_retornaTrue() {
-        assertTrue(dao.eliminarMaterialesPorCodigo(equipo.getId(), 400));
+        assertTrue(dao.eliminarMaterialesPorCodigo(equipo.getId(), 400, 0));
         assertTrue(dao.obtenerMaterialesPorCodigo(equipo.getId(), 400).isEmpty());
     }
 
     @Test
     void eliminarMaterialesPorCodigo_codigoNoExistente_retornaFalse() {
-        assertFalse(dao.eliminarMaterialesPorCodigo(equipo.getId(), 9999));
+        assertFalse(dao.eliminarMaterialesPorCodigo(equipo.getId(), 9999, 0));
     }
 
     // ── entregarInstitucionCompleta ───────────────────────────────────────────

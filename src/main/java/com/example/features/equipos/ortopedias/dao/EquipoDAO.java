@@ -1,5 +1,7 @@
 package com.example.features.equipos.ortopedias.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
 import com.example.common.dao.DAO;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ResourceNotFoundException;
@@ -391,6 +393,26 @@ public class EquipoDAO implements DAO<Equipo, String> {
             return filasEliminadas > 0;
         } catch (SQLException e) {
             throw new DatabaseException("Error al eliminar equipo con ID: " + id, e);
+        }
+    }
+
+    /**
+     * Borrado guardado para {@code Correcciones}: CAS de una sola sentencia contra la
+     * {@code version} que la pantalla tenía a la vista. No bumpea nada — la fila desaparece, así
+     * que no queda token que invalidar.
+     *
+     * <p>El {@link #eliminar(String)} de la interfaz sigue siendo el borrado ciego. No lo use
+     * ninguna ruta de Correcciones.
+     */
+    public void eliminarConVersion(int equipoId, int versionEsperada) {
+        String sql = "DELETE FROM equipos WHERE id = ? AND version = ?";
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, equipoId);
+            ps.setInt(2, versionEsperada);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CORRECCION);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al eliminar equipo con ID: " + equipoId, e);
         }
     }
 

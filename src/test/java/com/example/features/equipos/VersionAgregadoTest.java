@@ -144,7 +144,7 @@ class VersionAgregadoTest extends AbstractDAOTest {
         int versionAntes = versionDeEquipo(equipo.getId());
 
         new com.example.features.equipos.ortopedias.dao.MaterialDAO()
-            .actualizarCantidad(materialId, 7);
+            .actualizarCantidad(equipo.getId(), materialId, 7, versionAntes);
 
         assertEquals(versionAntes + 1, versionDeEquipo(equipo.getId()));
     }
@@ -154,7 +154,7 @@ class VersionAgregadoTest extends AbstractDAOTest {
         int versionAntes = versionDeEquipo(equipo.getId());
 
         boolean actualizado = new com.example.features.equipos.ortopedias.dao.MaterialDAO()
-            .actualizarCantidad(999_999, 7);
+            .actualizarCantidad(equipo.getId(), 999_999, 7, versionAntes);
 
         assertFalse(actualizado);
         assertEquals(versionAntes, versionDeEquipo(equipo.getId()));

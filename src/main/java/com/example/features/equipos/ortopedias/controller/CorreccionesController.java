@@ -173,35 +173,48 @@ public class CorreccionesController {
 
     private void modificarCantidadMaterial(Integer equipoId, Integer materialId,
                                            Integer cantidadNueva, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.ORTOPEDIA, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         aplicarCorreccion("modificar-cantidad",
-            () -> correccionService.modificarCantidadMaterial(equipoId, materialId, cantidadNueva, motivo),
+            () -> correccionService.modificarCantidadMaterial(
+                      equipoId, materialId, cantidadNueva, version.getAsInt(), motivo),
             "Cantidad modificada correctamente", "No se pudo modificar la cantidad");
     }
 
     private void modificarCodigoMaterial(Integer equipoId, Integer materialId,
                                          Integer codigoNuevo, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.ORTOPEDIA, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         aplicarCorreccion("modificar-codigo",
-            () -> correccionService.modificarCodigoMaterial(equipoId, materialId, codigoNuevo, motivo),
+            () -> correccionService.modificarCodigoMaterial(
+                      equipoId, materialId, codigoNuevo, version.getAsInt(), motivo),
             "Código modificado correctamente", "No se pudo modificar el código");
     }
 
     private void agregarMaterial(Integer equipoId, Integer codigoCatalogo,
                                  Integer cantidad, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.ORTOPEDIA, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         aplicarCorreccion("agregar-material",
-            () -> correccionService.agregarMaterialAEquipo(equipoId, codigoCatalogo, cantidad, motivo),
+            () -> correccionService.agregarMaterialAEquipo(
+                      equipoId, codigoCatalogo, cantidad, version.getAsInt(), motivo),
             "Material agregado correctamente", "No se pudo agregar el material");
     }
 
     private void eliminarEquipo(Integer equipoId, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.ORTOPEDIA, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         if (!confirmarEliminacionDeEquipo()) return;
         aplicarCorreccion("eliminar-equipo",
-            () -> correccionService.eliminarEquipo(equipoId, motivo),
+            () -> correccionService.eliminarEquipo(equipoId, version.getAsInt(), motivo),
             "Equipo eliminado correctamente", "No se pudo eliminar el equipo");
     }
 
     private void eliminarMaterial(Integer equipoId, Integer codigoCatalogo, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.ORTOPEDIA, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         aplicarCorreccion("eliminar-material",
-            () -> correccionService.eliminarMaterial(equipoId, codigoCatalogo, motivo),
+            () -> correccionService.eliminarMaterial(equipoId, codigoCatalogo, version.getAsInt(), motivo),
             "Material eliminado correctamente", "No se pudo eliminar el material");
     }
 

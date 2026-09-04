@@ -56,7 +56,7 @@ public class EquipoCorreccionService {
      * Modifica la cantidad de un material de un equipo.
      */
     public boolean modificarCantidadMaterial(Integer equipoId, Integer materialId,
-                                             Integer cantidadNueva, String motivo) {
+                                             Integer cantidadNueva, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(equipoId      == null, "El ID del equipo es obligatorio")
          .addErrorIf(materialId    == null, "El ID del material es obligatorio")
@@ -74,7 +74,7 @@ public class EquipoCorreccionService {
             Integer cantidadAnterior = materialDAO.obtenerCantidad(materialId);
             if (cantidadAnterior == null) throw new ValidationException("El material no existe");
 
-            materialDAO.actualizarCantidad(materialId, cantidadNueva);
+            materialDAO.actualizarCantidad(equipoId, materialId, cantidadNueva, versionEsperada);
             auditoriaDAO.registrarCambio(equipoId, materialId, "MODIFICACION_CANTIDAD",
                 "cantidad", String.valueOf(cantidadAnterior), String.valueOf(cantidadNueva), motivo.trim(), "ORTOPEDIA");
 
@@ -93,7 +93,7 @@ public class EquipoCorreccionService {
      * Modifica el código de catálogo de un material de un equipo.
      */
     public boolean modificarCodigoMaterial(Integer equipoId, Integer materialId,
-                                           Integer codigoNuevo, String motivo) {
+                                           Integer codigoNuevo, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(equipoId   == null, "El ID del equipo es obligatorio")
          .addErrorIf(materialId == null, "El ID del material es obligatorio")
@@ -119,7 +119,7 @@ public class EquipoCorreccionService {
                 throw new ValidationException("El código de catálogo " + codigoNuevo + " no existe o fue dado de baja");
             }
 
-            materialDAO.actualizarCodigo(materialId, codigoNuevo);
+            materialDAO.actualizarCodigo(equipoId, materialId, codigoNuevo, versionEsperada);
             String valAnterior = codigoAnterior + " (" + (descripcionAnterior != null ? descripcionAnterior : "N/A") + ")";
             String valNuevo    = codigoNuevo    + " (" + descripcionNueva + ")";
             auditoriaDAO.registrarCambio(equipoId, materialId, "MODIFICACION_CODIGO",
@@ -141,7 +141,7 @@ public class EquipoCorreccionService {
     /**
      * Elimina un equipo completo (hard delete) y registra en auditoría.
      */
-    public boolean eliminarEquipo(Integer equipoId, String motivo) {
+    public boolean eliminarEquipo(Integer equipoId, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(equipoId == null, "El ID del equipo es obligatorio")
          .addErrorIf(motivo == null || motivo.trim().isEmpty(), "El motivo de la eliminación es obligatorio");
@@ -153,10 +153,7 @@ public class EquipoCorreccionService {
         }
 
         try {
-            boolean eliminado = equipoDAO.eliminar(equipoId.toString());
-            if (!eliminado) {
-                throw new DatabaseException("No se pudo eliminar el equipo " + equipoId);
-            }
+            equipoDAO.eliminarConVersion(equipoId, versionEsperada);
 
             // Snapshots DESPUÉS del DELETE: las filas ya están en memoria (equipo.getMateriales()),
             // así que un DELETE que no encuentra fila no deja auditoría de una eliminación que nunca
@@ -213,7 +210,8 @@ public class EquipoCorreccionService {
     /**
      * Elimina todos los materiales de un código específico dentro de un equipo.
      */
-    public boolean eliminarMaterial(Integer equipoId, Integer codigoCatalogo, String motivo) {
+    public boolean eliminarMaterial(Integer equipoId, Integer codigoCatalogo, int versionEsperada,
+                                    String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(equipoId       == null, "El ID del equipo es obligatorio")
          .addErrorIf(codigoCatalogo == null, "El código de catálogo es obligatorio")
@@ -231,7 +229,7 @@ public class EquipoCorreccionService {
         }
 
         try {
-            materialDAO.eliminarMaterialesPorCodigo(equipoId, codigoCatalogo);
+            materialDAO.eliminarMaterialesPorCodigo(equipoId, codigoCatalogo, versionEsperada);
 
             // Snapshots DESPUÉS del DELETE: `materiales` ya está en memoria. Si la auditoría falla
             // acá, los materiales ya no están — se informa la verdad, no se revierte el borrado.
@@ -285,7 +283,7 @@ public class EquipoCorreccionService {
      * @throws DatabaseException   si hay error en BD
      */
     public boolean agregarMaterialAEquipo(Integer equipoId, Integer codigoCatalogo,
-                                          Integer cantidad, String motivo) {
+                                          Integer cantidad, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(equipoId       == null, "El ID del equipo es obligatorio")
          .addErrorIf(codigoCatalogo == null, "El código de catálogo es obligatorio")
@@ -306,7 +304,7 @@ public class EquipoCorreccionService {
         }
 
         try {
-            Integer nuevoMaterialId = materialDAO.agregarMaterial(equipoId, codigoCatalogo, cantidad);
+            Integer nuevoMaterialId = materialDAO.agregarMaterial(equipoId, codigoCatalogo, cantidad, versionEsperada);
 
             // Registrar en auditoría: valor_nuevo = "cantidad uds." para que la vista
             // muestre el dato en la columna Valor Nuevo; material_info se resuelve

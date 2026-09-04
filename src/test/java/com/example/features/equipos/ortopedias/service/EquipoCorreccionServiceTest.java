@@ -1,5 +1,6 @@
 package com.example.features.equipos.ortopedias.service;
 
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ValidationException;
 import com.example.features.catalogo.dao.CatalogoDAO;
@@ -70,50 +71,50 @@ class EquipoCorreccionServiceTest {
     @Test
     void modificarCantidad_equipoIdNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(null, 1, 5, "motivo"));
+            () -> service.modificarCantidadMaterial(null, 1, 5, 0, "motivo"));
     }
 
     @Test
     void modificarCantidad_materialIdNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(1, null, 5, "motivo"));
+            () -> service.modificarCantidadMaterial(1, null, 5, 0, "motivo"));
     }
 
     @Test
     void modificarCantidad_cantidadNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(1, 1, null, "motivo"));
+            () -> service.modificarCantidadMaterial(1, 1, null, 0, "motivo"));
     }
 
     @Test
     void modificarCantidad_cantidadCero_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(1, 1, 0, "motivo"));
+            () -> service.modificarCantidadMaterial(1, 1, 0, 0, "motivo"));
     }
 
     @Test
     void modificarCantidad_cantidadNegativa_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(1, 1, -3, "motivo"));
+            () -> service.modificarCantidadMaterial(1, 1, -3, 0, "motivo"));
     }
 
     @Test
     void modificarCantidad_motivoVacio_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(1, 1, 5, "  "));
+            () -> service.modificarCantidadMaterial(1, 1, 5, 0, "  "));
     }
 
     @Test
     void modificarCantidad_motivoNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(1, 1, 5, null));
+            () -> service.modificarCantidadMaterial(1, 1, 5, 0, null));
     }
 
     @Test
     void modificarCantidad_equipoNoEsNuevo_lanzaValidation() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.LAVANDO));
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(1, 1, 5, "motivo"));
+            () -> service.modificarCantidadMaterial(1, 1, 5, 0, "motivo"));
     }
 
     @Test
@@ -122,7 +123,7 @@ class EquipoCorreccionServiceTest {
         when(materialDAO.obtenerCantidad(1)).thenReturn(null);
 
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(1, 1, 5, "motivo"));
+            () -> service.modificarCantidadMaterial(1, 1, 5, 0, "motivo"));
     }
 
     @Test
@@ -130,10 +131,10 @@ class EquipoCorreccionServiceTest {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(materialDAO.obtenerCantidad(2)).thenReturn(3);
 
-        boolean resultado = service.modificarCantidadMaterial(1, 2, 5, "corrección");
+        boolean resultado = service.modificarCantidadMaterial(1, 2, 5, 0, "corrección");
 
         assertTrue(resultado);
-        verify(materialDAO).actualizarCantidad(2, 5);
+        verify(materialDAO).actualizarCantidad(1, 2, 5, 0);
         verify(auditoriaDAO).registrarCambio(eq(1), eq(2), eq("MODIFICACION_CANTIDAD"),
             eq("cantidad"), eq("3"), eq("5"), eq("corrección"), eq("ORTOPEDIA"));
     }
@@ -143,26 +144,26 @@ class EquipoCorreccionServiceTest {
     @Test
     void modificarCodigo_equipoIdNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCodigoMaterial(null, 1, 200, "motivo"));
+            () -> service.modificarCodigoMaterial(null, 1, 200, 0, "motivo"));
     }
 
     @Test
     void modificarCodigo_codigoNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCodigoMaterial(1, 1, null, "motivo"));
+            () -> service.modificarCodigoMaterial(1, 1, null, 0, "motivo"));
     }
 
     @Test
     void modificarCodigo_codigoCero_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCodigoMaterial(1, 1, 0, "motivo"));
+            () -> service.modificarCodigoMaterial(1, 1, 0, 0, "motivo"));
     }
 
     @Test
     void modificarCodigo_equipoNoEsNuevo_lanzaValidation() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.EMPAQUETADO));
         assertThrows(ValidationException.class,
-            () -> service.modificarCodigoMaterial(1, 1, 200, "motivo"));
+            () -> service.modificarCodigoMaterial(1, 1, 200, 0, "motivo"));
     }
 
     @Test
@@ -171,7 +172,7 @@ class EquipoCorreccionServiceTest {
         when(materialDAO.obtenerMaterial(1)).thenReturn(null);
 
         assertThrows(ValidationException.class,
-            () -> service.modificarCodigoMaterial(1, 1, 200, "motivo"));
+            () -> service.modificarCodigoMaterial(1, 1, 200, 0, "motivo"));
     }
 
     @Test
@@ -182,7 +183,7 @@ class EquipoCorreccionServiceTest {
         when(catalogoDAO.obtenerDescripcionVigente(200)).thenReturn(null);
 
         assertThrows(ValidationException.class,
-            () -> service.modificarCodigoMaterial(1, 1, 200, "motivo"));
+            () -> service.modificarCodigoMaterial(1, 1, 200, 0, "motivo"));
     }
 
     @Test
@@ -192,10 +193,10 @@ class EquipoCorreccionServiceTest {
             new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
         when(catalogoDAO.obtenerDescripcionVigente(200)).thenReturn("DescNueva");
 
-        boolean resultado = service.modificarCodigoMaterial(1, 1, 200, "motivo");
+        boolean resultado = service.modificarCodigoMaterial(1, 1, 200, 0, "motivo");
 
         assertTrue(resultado);
-        verify(materialDAO).actualizarCodigo(1, 200);
+        verify(materialDAO).actualizarCodigo(1, 1, 200, 0);
         verify(auditoriaDAO).registrarCambio(eq(1), eq(1), eq("MODIFICACION_CODIGO"),
             eq("codigo_catalogo"), anyString(), anyString(), eq("motivo"), eq("ORTOPEDIA"));
     }
@@ -205,32 +206,31 @@ class EquipoCorreccionServiceTest {
     @Test
     void eliminarEquipo_equipoIdNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.eliminarEquipo(null, "motivo"));
+            () -> service.eliminarEquipo(null, 0, "motivo"));
     }
 
     @Test
     void eliminarEquipo_motivoVacio_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.eliminarEquipo(1, ""));
+            () -> service.eliminarEquipo(1, 0, ""));
     }
 
     @Test
     void eliminarEquipo_equipoNoEsNuevo_lanzaValidation() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.ESTERILIZANDO));
         assertThrows(ValidationException.class,
-            () -> service.eliminarEquipo(1, "motivo"));
+            () -> service.eliminarEquipo(1, 0, "motivo"));
     }
 
     @Test
     void eliminarEquipo_snapshotFalla_lanzaDatabaseException() {
         Equipo e = equipoConEstado(EstadoEquipo.NUEVO);
         when(equipoDAO.obtenerPorId("1")).thenReturn(e);
-        when(equipoDAO.eliminar("1")).thenReturn(true);
         when(auditoriaDAO.registrarEquipoEliminado(any(), anyInt(), any(), any(), any(),
             any(), any(), any(), anyString(), anyString())).thenReturn(false);
 
         assertThrows(DatabaseException.class,
-            () -> service.eliminarEquipo(1, "motivo"));
+            () -> service.eliminarEquipo(1, 0, "motivo"));
     }
 
     @Test
@@ -242,22 +242,22 @@ class EquipoCorreccionServiceTest {
             any(), any(), any(), anyString(), anyString())).thenReturn(true);
         when(auditoriaDAO.registrarMaterialEliminado(any(), any(), anyInt(), any(), any(),
             any(), anyString(), anyString())).thenReturn(true);
-        when(equipoDAO.eliminar("1")).thenReturn(true);
 
-        assertTrue(service.eliminarEquipo(1, "baja por error"));
-        verify(equipoDAO).eliminar("1");
+        assertTrue(service.eliminarEquipo(1, 0, "baja por error"));
+        verify(equipoDAO).eliminarConVersion(1, 0);
     }
 
     @Test
-    void eliminarEquipo_borradoNoAfectaFilas_lanzaDatabaseException() {
+    void eliminarEquipo_versionDesactualizada_propagaConflicto() {
         Equipo e = equipoConEstado(EstadoEquipo.NUEVO);
         when(equipoDAO.obtenerPorId("1")).thenReturn(e);
-        // El DELETE no toca ninguna fila (o falla): el service no debe reportar éxito, y como el
-        // DELETE va antes que la auditoría, ésta ni se intenta.
-        when(equipoDAO.eliminar("1")).thenReturn(false);
+        // El DELETE guardado no matchea la version: el DAO lanza el conflicto antes de la
+        // auditoría, así que ésta ni se intenta.
+        doThrow(new ConflictoConcurrenciaException("conflicto"))
+            .when(equipoDAO).eliminarConVersion(1, 0);
 
-        assertThrows(DatabaseException.class,
-            () -> service.eliminarEquipo(1, "motivo"));
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> service.eliminarEquipo(1, 0, "motivo"));
 
         verifyNoInteractions(auditoriaDAO);
     }
@@ -267,20 +267,20 @@ class EquipoCorreccionServiceTest {
     @Test
     void eliminarMaterial_equipoIdNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.eliminarMaterial(null, 100, "motivo"));
+            () -> service.eliminarMaterial(null, 100, 0, "motivo"));
     }
 
     @Test
     void eliminarMaterial_codigoNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.eliminarMaterial(1, null, "motivo"));
+            () -> service.eliminarMaterial(1, null, 0, "motivo"));
     }
 
     @Test
     void eliminarMaterial_equipoNoEsNuevo_lanzaValidation() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.LAVANDO));
         assertThrows(ValidationException.class,
-            () -> service.eliminarMaterial(1, 100, "motivo"));
+            () -> service.eliminarMaterial(1, 100, 0, "motivo"));
     }
 
     @Test
@@ -289,7 +289,7 @@ class EquipoCorreccionServiceTest {
         when(materialDAO.obtenerMaterialesPorCodigo(1, 100)).thenReturn(Collections.emptyList());
 
         assertThrows(ValidationException.class,
-            () -> service.eliminarMaterial(1, 100, "motivo"));
+            () -> service.eliminarMaterial(1, 100, 0, "motivo"));
     }
 
     @Test
@@ -302,8 +302,8 @@ class EquipoCorreccionServiceTest {
         when(auditoriaDAO.registrarMaterialEliminado(any(), any(), anyInt(), any(), any(),
             any(), anyString(), anyString())).thenReturn(true);
 
-        assertTrue(service.eliminarMaterial(1, 100, "motivo"));
-        verify(materialDAO).eliminarMaterialesPorCodigo(1, 100);
+        assertTrue(service.eliminarMaterial(1, 100, 0, "motivo"));
+        verify(materialDAO).eliminarMaterialesPorCodigo(1, 100, 0);
     }
 
     // ── agregarMaterialAEquipo ────────────────────────────────────────────────
@@ -311,38 +311,38 @@ class EquipoCorreccionServiceTest {
     @Test
     void agregarMaterial_equipoIdNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.agregarMaterialAEquipo(null, 100, 2, "motivo"));
+            () -> service.agregarMaterialAEquipo(null, 100, 2, 0, "motivo"));
     }
 
     @Test
     void agregarMaterial_codigoNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.agregarMaterialAEquipo(1, null, 2, "motivo"));
+            () -> service.agregarMaterialAEquipo(1, null, 2, 0, "motivo"));
     }
 
     @Test
     void agregarMaterial_codigoCero_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.agregarMaterialAEquipo(1, 0, 2, "motivo"));
+            () -> service.agregarMaterialAEquipo(1, 0, 2, 0, "motivo"));
     }
 
     @Test
     void agregarMaterial_cantidadNull_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.agregarMaterialAEquipo(1, 100, null, "motivo"));
+            () -> service.agregarMaterialAEquipo(1, 100, null, 0, "motivo"));
     }
 
     @Test
     void agregarMaterial_cantidadCero_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.agregarMaterialAEquipo(1, 100, 0, "motivo"));
+            () -> service.agregarMaterialAEquipo(1, 100, 0, 0, "motivo"));
     }
 
     @Test
     void agregarMaterial_equipoNoEsNuevo_lanzaValidation() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.LAVADO));
         assertThrows(ValidationException.class,
-            () -> service.agregarMaterialAEquipo(1, 100, 2, "motivo"));
+            () -> service.agregarMaterialAEquipo(1, 100, 2, 0, "motivo"));
     }
 
     @Test
@@ -351,16 +351,16 @@ class EquipoCorreccionServiceTest {
         when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn(null);
 
         assertThrows(ValidationException.class,
-            () -> service.agregarMaterialAEquipo(1, 100, 2, "motivo"));
+            () -> service.agregarMaterialAEquipo(1, 100, 2, 0, "motivo"));
     }
 
     @Test
     void agregarMaterial_valido_insertaYAudita() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(catalogoDAO.obtenerDescripcionVigente(100)).thenReturn("Guante");
-        when(materialDAO.agregarMaterial(1, 100, 2)).thenReturn(99);
+        when(materialDAO.agregarMaterial(1, 100, 2, 0)).thenReturn(99);
 
-        assertTrue(service.agregarMaterialAEquipo(1, 100, 2, "reposición"));
+        assertTrue(service.agregarMaterialAEquipo(1, 100, 2, 0, "reposición"));
         verify(auditoriaDAO).registrarCambio(eq(1), eq(99), eq("ADICION_MATERIAL"),
             eq("material_nuevo"), isNull(), eq("2"), eq("reposición"), eq("ORTOPEDIA"));
     }
