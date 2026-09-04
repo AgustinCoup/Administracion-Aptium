@@ -149,6 +149,13 @@ public class LotesController {
                 if (!dndConfigurado) {
                     SwingUtilities.invokeLater(() -> { configurarDnD(); dndConfigurado = true; });
                 }
+                // Releer al entrar, igual que las otras dos pantallas del grupo `operativo`
+                // (RegistrarEstado, EquiposParaEntregar). La única ruta de entrada es el botón
+                // "Gestionar Lotes" de Registrar Estado, y entre ese click y este show puede
+                // haber pasado el tiempo de permanencia del operador en la pantalla anterior:
+                // sin esto, el staging se arma sobre disponibles viejos. `repintar()` descuenta
+                // el staging del snapshot, así que un refresco con ítems ya arrastrados es seguro.
+                solicitarRefresco.run();
             }
         });
     }

@@ -53,6 +53,15 @@ Features: `equipos/ortopedias`, `equipos/otros`, `lavadero`, `lotes`, `autoclave
 
 **Navegación UI:** `PantallaPrincipal` usa `CardLayout`; los nombres de los paneles están en `Constantes.Pantallas.*`.
 
+**Refresco al entrar a una pantalla — dos convenciones conviven** (no unificadas a propósito; unificarlas es un refactor transversal aparte):
+
+| Convención | Dónde | Cómo |
+|---|---|---|
+| `componentShown` en el controller | Pantallas del CDE y las de consulta (`EquiposParaEntregarController`, `EstadoProcesosController`, `VerEquiposController`, `VerLotesController`, `VerCiclosController`, `HistorialLavaderoController`) y las del grupo `operativo` `RegistrarEstadoController` y `LotesController` | El `ComponentAdapter` del panel pide la relectura al mostrarse |
+| `ActionListener` del botón de menú en `UiCoordinator` | Pantallas operativas de Lavadero (`ClasificacionController`, `CiclosController`, `SalidasLavaderoController`) | El listener del botón hace `navegador.show(...)` **y** llama al método de carga (`cargarIngresosSinClasificar()`, `abrirPantalla()`, `cargarDatos()`) — `UiCoordinator:198-201`, `:209-212`, `:227-230` |
+
+Las tres pantallas de Lavadero se muestran **sólo** desde esos tres listeners (no hay `navegador.show(CLASIFICACION_LAVADERO|CICLOS_LAVADERO|SALIDAS_LAVADERO)` en ningún otro lado), así que la segunda convención cubre el 100 % de sus rutas de entrada. `CiclosController.componentShown` **no** relee (sólo colapsa cards / configura DnD): la relectura va en `abrirPantalla()`, que resetea sólo las cards libres para no pisar lo que el operador tipea en otra card — ver su javadoc.
+
 ## Ortopedias vs. Otros
 
 Son dos tipos de equipo con modelos, tablas y flujos distintos pero comparten la misma máquina de estados. `RegistrarEstadoController` los maneja polimórficamente mediante `EquipoRegistrableInterface` (discrimina con `getTipo()`).
