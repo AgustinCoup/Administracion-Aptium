@@ -1,6 +1,7 @@
 package com.example.features.equipos.otros.dao;
 
 import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
@@ -660,22 +661,23 @@ public class EquipoOtrosDAO {
     /**
      * Actualiza {@code remito_cantidad} del encabezado.
      *
-     * <p>Ruta de {@code Correcciones}. Bumpea {@code version} a mano porque el recálculo del
+     * <p>Ruta de {@code Correcciones}: CAS de una sola sentencia contra la {@code version} que el
+     * operador tenía a la vista. Bumpea a mano en la misma sentencia porque el recálculo del
      * helper no aplica: deriva {@code estado} desde los materiales, y sobre un REMITO sin
-     * materiales reales pisaría la cabecera con {@code NUEVO}. Sigue siendo una escritura ciega
-     * — no lleva guarda, que es lo acordado para Correcciones — pero mantiene el token honesto
-     * para el día que la guarda se active. Ver la auditoría en
+     * materiales reales pisaría la cabecera con {@code NUEVO}. Ver la auditoría en
      * {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}.
      *
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la fila ya no tiene esa version
      * @throws DatabaseException si falla el UPDATE
      */
-    public void actualizarCantidadRemito(int equipoId, int cantidadNueva) {
+    public void actualizarCantidadRemito(int equipoId, int cantidadNueva, int versionEsperada) {
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "UPDATE equipo_otros SET remito_cantidad = ?, version = version + 1 WHERE id = ?")) {
+                 "UPDATE equipo_otros SET remito_cantidad = ?, version = version + 1 WHERE id = ? AND version = ?")) {
             ps.setInt(1, cantidadNueva);
             ps.setInt(2, equipoId);
-            ps.executeUpdate();
+            ps.setInt(3, versionEsperada);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CORRECCION);
         } catch (SQLException e) {
             log.error("Error al modificar remito_cantidad equipo={}", equipoId, e);
             throw new DatabaseException("Error al modificar la cantidad del remito", e);
@@ -685,16 +687,19 @@ public class EquipoOtrosDAO {
     /**
      * Actualiza la cantidad de un material del equipo.
      *
-     * <p>Ruta de {@code Correcciones}: bumpea la {@code version} del agregado dentro de la misma
-     * transacción, para que el cambio y la invalidación del token se vean juntos. No lleva guarda
-     * — ver {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}.
+     * <p>Ruta de {@code Correcciones}: guarda por {@code version} del agregado, primero, antes de
+     * tocar el detalle. Con {@code 0} filas no se commitea — el rollback del try-with-resources
+     * revierte el bump.
      *
      * @return filas afectadas — 0 si el material no pertenece al equipo
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la version no matchea
      * @throws DatabaseException si falla el UPDATE
      */
-    public int actualizarCantidadMaterial(int equipoId, int materialId, int cantidadNueva) {
+    public int actualizarCantidadMaterial(int equipoId, int materialId, int cantidadNueva, int versionEsperada) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            EquipoOtrosMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
+
             int filas;
             try (PreparedStatement ps = conn.prepareStatement(
                      "UPDATE equipo_otros_materiales SET cantidad = ? WHERE id = ? AND equipo_otros_id = ?")) {
@@ -703,7 +708,7 @@ public class EquipoOtrosDAO {
                 ps.setInt(3, equipoId);
                 filas = ps.executeUpdate();
             }
-            if (filas > 0) EquipoOtrosMaterialHelper.bumpVersion(conn, equipoId);
+            if (filas == 0) return 0;   // sin commit: el bump guardado se revierte con la transacción
             tx.commit();
             return filas;
         } catch (SQLException e) {
@@ -716,10 +721,13 @@ public class EquipoOtrosDAO {
      * Inserta un material en estado NUEVO junto con su movimiento inicial,
      * en una única transacción. Crea la entrada de catálogo si no existe.
      *
+     * <p>Ruta de {@code Correcciones}: bump guardado como primera sentencia.
+     *
      * @return id del material insertado
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la version no matchea
      * @throws DatabaseException si falla la transacción
      */
-    public int insertarMaterial(int equipoId, String descripcion, int cantidad) {
+    public int insertarMaterial(int equipoId, String descripcion, int cantidad, int versionEsperada) {
         String sqlMat =
             "INSERT INTO equipo_otros_materiales " +
             "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
@@ -731,6 +739,7 @@ public class EquipoOtrosDAO {
 
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            EquipoOtrosMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
 
             int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, descripcion);
 
@@ -756,9 +765,6 @@ public class EquipoOtrosDAO {
                 ps.executeUpdate();
             }
 
-            // Ruta de Correcciones: no pasa por el recálculo, así que mantiene el token a mano.
-            EquipoOtrosMaterialHelper.bumpVersion(conn, equipoId);
-
             tx.commit();
             return nuevoMaterialId;
 
@@ -771,15 +777,21 @@ public class EquipoOtrosDAO {
     /**
      * Elimina todas las filas del equipo con la descripción indicada.
      *
-     * <p>Ruta de {@code Correcciones}: bumpea la {@code version} del agregado en la misma
-     * transacción que el {@code DELETE}.
+     * <p>Ruta de {@code Correcciones}: bump guardado primero. Un {@code DELETE} de 0 filas después
+     * de un bump que sí matcheó es contradictorio — la version dice que nadie tocó el equipo, pero
+     * las filas que la pantalla mostraba no están — así que lleva su propio
+     * {@link ControlConcurrencia#exigirFilaAfectada}: no commitea el bump y nada aguas abajo se
+     * ejecuta.
      *
      * @return filas eliminadas
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la version no matchea o el DELETE no encuentra fila
      * @throws DatabaseException si falla el DELETE
      */
-    public int eliminarMaterialesPorDescripcion(int equipoId, String descripcion) {
+    public int eliminarMaterialesPorDescripcion(int equipoId, String descripcion, int versionEsperada) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            EquipoOtrosMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
+
             int filas;
             try (PreparedStatement ps = conn.prepareStatement(
                      "DELETE FROM equipo_otros_materiales WHERE equipo_otros_id = ? AND descripcion = ?")) {
@@ -787,7 +799,7 @@ public class EquipoOtrosDAO {
                 ps.setString(2, descripcion);
                 filas = ps.executeUpdate();
             }
-            if (filas > 0) EquipoOtrosMaterialHelper.bumpVersion(conn, equipoId);
+            ControlConcurrencia.exigirFilaAfectada(filas, Constantes.Mensajes.CONFLICTO_CORRECCION);
             tx.commit();
             return filas;
         } catch (SQLException e) {
@@ -799,16 +811,19 @@ public class EquipoOtrosDAO {
     /**
      * Elimina el encabezado del equipo.
      *
-     * <p>No bumpea {@code version}: la fila desaparece, así que no queda token que invalidar.
+     * <p>Ruta de {@code Correcciones}: CAS de una sola sentencia. No bumpea nada — la fila
+     * desaparece, así que no queda token que invalidar.
      *
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la version no matchea
      * @throws DatabaseException si falla el DELETE
      */
-    public void eliminarEquipo(int equipoId) {
+    public void eliminarEquipo(int equipoId, int versionEsperada) {
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "DELETE FROM equipo_otros WHERE id = ?")) {
+                 "DELETE FROM equipo_otros WHERE id = ? AND version = ?")) {
             ps.setInt(1, equipoId);
-            ps.executeUpdate();
+            ps.setInt(2, versionEsperada);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CORRECCION);
         } catch (SQLException e) {
             log.error("Error al eliminar equipo_otros id={}", equipoId, e);
             throw new DatabaseException("Error al eliminar el equipo", e);

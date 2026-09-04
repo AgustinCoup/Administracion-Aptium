@@ -221,36 +221,46 @@ public class CorreccionesController {
     // ── Operaciones otros ────────────────────────────────────────────────────
 
     private void modificarCantidadRemito(Integer equipoId, Integer cantidadNueva, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.OTROS, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         aplicarCorreccion("modificar-cantidad-remito",
-            () -> otrosService.modificarCantidadRemito(equipoId, cantidadNueva, motivo),
+            () -> otrosService.modificarCantidadRemito(equipoId, cantidadNueva, version.getAsInt(), motivo),
             "Cantidad del remito modificada correctamente",
             "No se pudo modificar la cantidad del remito");
     }
 
     private void modificarCantidadMaterialOtros(Integer equipoId, Integer materialId,
                                                 Integer cantidadNueva, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.OTROS, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         aplicarCorreccion("modificar-cantidad-otros",
-            () -> otrosService.modificarCantidadMaterial(equipoId, materialId, cantidadNueva, motivo),
+            () -> otrosService.modificarCantidadMaterial(equipoId, materialId, cantidadNueva, version.getAsInt(), motivo),
             "Cantidad modificada correctamente", "No se pudo modificar la cantidad");
     }
 
     private void agregarMaterialOtros(Integer equipoId, String descripcion,
                                       Integer cantidad, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.OTROS, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         aplicarCorreccion("agregar-material-otros",
-            () -> otrosService.agregarMaterial(equipoId, descripcion, cantidad, motivo),
+            () -> otrosService.agregarMaterial(equipoId, descripcion, cantidad, version.getAsInt(), motivo),
             "Material agregado correctamente", "No se pudo agregar el material");
     }
 
     private void eliminarMaterialOtros(Integer equipoId, String descripcion, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.OTROS, equipoId);
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         aplicarCorreccion("eliminar-material-otros",
-            () -> otrosService.eliminarMaterial(equipoId, descripcion, motivo),
+            () -> otrosService.eliminarMaterial(equipoId, descripcion, version.getAsInt(), motivo),
             "Material eliminado correctamente", "No se pudo eliminar el material");
     }
 
     private void eliminarEquipoOtros(Integer equipoId, String motivo) {
+        OptionalInt version = versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo.OTROS, equipoId);  // ← antes del modal
+        if (version.isEmpty()) { avisarSnapshotPerdido(); return; }
         if (!confirmarEliminacionDeEquipo()) return;
         aplicarCorreccion("eliminar-equipo-otros",
-            () -> otrosService.eliminarEquipo(equipoId, motivo),
+            () -> otrosService.eliminarEquipo(equipoId, version.getAsInt(), motivo),
             "Equipo eliminado correctamente", "No se pudo eliminar el equipo");
     }
 

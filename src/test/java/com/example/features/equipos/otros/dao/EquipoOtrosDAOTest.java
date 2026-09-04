@@ -428,7 +428,7 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
     }
 
     private void agregarFila(int equipoId, String descripcion, String estado) throws SQLException {
-        int materialId = dao.insertarMaterial(equipoId, descripcion, 1);
+        int materialId = dao.insertarMaterial(equipoId, descripcion, 1, 0);
         ejecutarSQL("UPDATE equipo_otros_materiales SET estado = '" + estado + "' WHERE id = " + materialId);
     }
 

@@ -366,7 +366,7 @@ class SalidaLavaderoDerivacionTest extends AbstractDAOTest {
         dao.derivar(cdeCliente, dao.obtenerListasSinDestino());
         int equipoId = escalar("SELECT MAX(id) FROM equipo_otros WHERE nro_cliente = " + clienteA);
 
-        equipoOtrosDAO.eliminarEquipo(equipoId);
+        equipoOtrosDAO.eliminarEquipo(equipoId, 0);
 
         assertEquals(0, contar("equipo_otros WHERE id = " + equipoId));
         assertEquals(1, contar("salidas_lavadero WHERE destino = 'CDE_OTROS'"));

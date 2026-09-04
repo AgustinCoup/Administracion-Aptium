@@ -57,7 +57,7 @@ public class EquipoOtrosCorreccionService {
      * Modifica remito_cantidad de un REMITO que todavía no tuvo movimientos.
      * Si ya hay filas en equipo_otros_materiales la operación es bloqueada.
      */
-    public boolean modificarCantidadRemito(int equipoId, int cantidadNueva, String motivo) {
+    public boolean modificarCantidadRemito(int equipoId, int cantidadNueva, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(cantidadNueva <= 0, "La cantidad debe ser mayor a 0")
          .addErrorIf(motivo == null || motivo.trim().isEmpty(), "El motivo es obligatorio");
@@ -75,7 +75,7 @@ public class EquipoOtrosCorreccionService {
 
         int cantidadAnterior = equipo.getRemitoCantidad() != null ? equipo.getRemitoCantidad() : 0;
 
-        equipoOtrosDAO.actualizarCantidadRemito(equipoId, cantidadNueva);
+        equipoOtrosDAO.actualizarCantidadRemito(equipoId, cantidadNueva, versionEsperada);
 
         auditoriaDAO.registrarCambio(equipoId, null, "MODIFICACION_CANTIDAD",
             "remito_cantidad",
@@ -91,7 +91,7 @@ public class EquipoOtrosCorreccionService {
     // ── DETALLES: modificar cantidad de material ─────────────────────────────
 
     public boolean modificarCantidadMaterial(int equipoId, int materialId,
-                                              int cantidadNueva, String motivo) {
+                                              int cantidadNueva, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(cantidadNueva <= 0, "La cantidad debe ser mayor a 0")
          .addErrorIf(motivo == null || motivo.trim().isEmpty(), "El motivo es obligatorio");
@@ -104,7 +104,7 @@ public class EquipoOtrosCorreccionService {
             throw new ValidationException("El material no existe en el equipo");
         }
 
-        int rows = equipoOtrosDAO.actualizarCantidadMaterial(equipoId, materialId, cantidadNueva);
+        int rows = equipoOtrosDAO.actualizarCantidadMaterial(equipoId, materialId, cantidadNueva, versionEsperada);
         if (rows == 0) throw new ValidationException("Material no encontrado en el equipo");
 
         auditoriaDAO.registrarCambio(equipoId, materialId, "MODIFICACION_CANTIDAD",
@@ -120,7 +120,7 @@ public class EquipoOtrosCorreccionService {
 
     // ── DETALLES: agregar material ───────────────────────────────────────────
 
-    public boolean agregarMaterial(int equipoId, String descripcion, int cantidad, String motivo) {
+    public boolean agregarMaterial(int equipoId, String descripcion, int cantidad, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(descripcion == null || descripcion.trim().isEmpty(), "La descripción es obligatoria")
          .addErrorIf(cantidad <= 0, "La cantidad debe ser mayor a 0")
@@ -129,7 +129,7 @@ public class EquipoOtrosCorreccionService {
 
         cargarYValidarNuevo(equipoId);
 
-        int nuevoMaterialId = equipoOtrosDAO.insertarMaterial(equipoId, descripcion.trim(), cantidad);
+        int nuevoMaterialId = equipoOtrosDAO.insertarMaterial(equipoId, descripcion.trim(), cantidad, versionEsperada);
 
         auditoriaDAO.registrarCambio(equipoId, nuevoMaterialId, "ADICION_MATERIAL",
             "material_nuevo", null, String.valueOf(cantidad), motivo.trim(), TIPO);
@@ -142,7 +142,7 @@ public class EquipoOtrosCorreccionService {
     // ── DETALLES: eliminar material por descripción ──────────────────────────
 
     /** Elimina todas las filas del equipo con la descripción indicada y genera snapshots. */
-    public boolean eliminarMaterial(int equipoId, String descripcion, String motivo) {
+    public boolean eliminarMaterial(int equipoId, String descripcion, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(descripcion == null || descripcion.trim().isEmpty(), "La descripción es obligatoria")
          .addErrorIf(motivo == null || motivo.trim().isEmpty(), "El motivo es obligatorio");
@@ -156,7 +156,7 @@ public class EquipoOtrosCorreccionService {
             throw new ValidationException("No hay materiales con esa descripción en el equipo");
         }
 
-        equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoId, descripcion.trim());
+        equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoId, descripcion.trim(), versionEsperada);
 
         // Auditoría DESPUÉS del DELETE: `materiales` ya está en memoria. Si falla acá, los
         // materiales ya no están — se informa la verdad, no se revierte el borrado.
@@ -185,14 +185,14 @@ public class EquipoOtrosCorreccionService {
 
     // ── Eliminar equipo ──────────────────────────────────────────────────────
 
-    public boolean eliminarEquipo(int equipoId, String motivo) {
+    public boolean eliminarEquipo(int equipoId, int versionEsperada, String motivo) {
         ValidationException.Builder v = ValidationException.builder();
         v.addErrorIf(motivo == null || motivo.trim().isEmpty(), "El motivo es obligatorio");
         v.throwIfHasErrors();
 
         EquipoOtros equipo = cargarYValidarNuevo(equipoId);
 
-        equipoOtrosDAO.eliminarEquipo(equipoId);
+        equipoOtrosDAO.eliminarEquipo(equipoId, versionEsperada);
 
         // Auditoría DESPUÉS del DELETE: las filas ya están en memoria (equipo.getMateriales()).
         // Si falla acá, el equipo ya no está — se informa la verdad, no se revierte el borrado.

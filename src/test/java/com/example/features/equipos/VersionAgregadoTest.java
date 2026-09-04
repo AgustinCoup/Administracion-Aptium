@@ -165,7 +165,7 @@ class VersionAgregadoTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtrosDetalles()[0];
         int versionAntes = versionDeEquipoOtros(equipoOtrosId);
 
-        equipoOtrosDAO.insertarMaterial(equipoOtrosId, "Sabanas", 2);
+        equipoOtrosDAO.insertarMaterial(equipoOtrosId, "Sabanas", 2, versionAntes);
 
         assertEquals(versionAntes + 1, versionDeEquipoOtros(equipoOtrosId));
     }
@@ -175,7 +175,7 @@ class VersionAgregadoTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtrosDetalles()[0];
         int versionAntes = versionDeEquipoOtros(equipoOtrosId);
 
-        equipoOtrosDAO.actualizarCantidadRemito(equipoOtrosId, 9);
+        equipoOtrosDAO.actualizarCantidadRemito(equipoOtrosId, 9, versionAntes);
 
         assertEquals(versionAntes + 1, versionDeEquipoOtros(equipoOtrosId));
     }
@@ -185,17 +185,23 @@ class VersionAgregadoTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtrosDetalles()[0];
         int versionAntes = versionDeEquipoOtros(equipoOtrosId);
 
-        equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoOtrosId, "Elementos");
+        equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoOtrosId, "Elementos", versionAntes);
 
         assertEquals(versionAntes + 1, versionDeEquipoOtros(equipoOtrosId));
     }
 
+    /**
+     * Con guarda, un DELETE de 0 filas después de un bump que sí matcheó es contradictorio
+     * (la version dice que nadie tocó el equipo, pero las filas que se buscaban no están):
+     * lanza conflicto y no commitea el bump, en vez de fallar en silencio.
+     */
     @Test
-    void correcciones_eliminarSinFilasQueBorrar_noBumpea() throws SQLException {
+    void correcciones_eliminarSinFilasQueBorrar_lanzaConflictoYNoBumpea() throws SQLException {
         int equipoOtrosId = insertarEquipoOtrosDetalles()[0];
         int versionAntes = versionDeEquipoOtros(equipoOtrosId);
 
-        equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoOtrosId, "No existe");
+        assertThrows(com.example.common.exception.ConflictoConcurrenciaException.class,
+            () -> equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoOtrosId, "No existe", versionAntes));
 
         assertEquals(versionAntes, versionDeEquipoOtros(equipoOtrosId));
     }
