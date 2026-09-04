@@ -158,29 +158,28 @@ class ClienteServiceTest {
     @Test
     void eliminarCliente_existente_delegaADAO() {
         when(clienteDAO.existe(7)).thenReturn(true);
-        when(clienteDAO.eliminar(7)).thenReturn(true);
 
-        service.eliminarCliente(7);
+        service.eliminarCliente(7, "Carlos");
 
-        verify(clienteDAO).eliminar(7);
+        verify(clienteDAO).eliminarConNombre(7, "Carlos");
     }
 
     @Test
     void eliminarCliente_noExiste_lanzaResourceNotFoundException() {
         when(clienteDAO.existe(99)).thenReturn(false);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.eliminarCliente(99));
-        verify(clienteDAO, never()).eliminar(anyInt());
+        assertThrows(ResourceNotFoundException.class, () -> service.eliminarCliente(99, "Carlos"));
+        verify(clienteDAO, never()).eliminarConNombre(anyInt(), anyString());
     }
 
     @Test
     void eliminarCliente_conReferencias_mensajeEspecificoDeNegocio() {
         when(clienteDAO.existe(3)).thenReturn(true);
-        when(clienteDAO.eliminar(3)).thenThrow(
-            new ReferentialIntegrityException("Cliente con ID 3 está referenciado", null));
+        doThrow(new ReferentialIntegrityException("Cliente con ID 3 está referenciado", null))
+            .when(clienteDAO).eliminarConNombre(3, "Carlos");
 
         ApplicationException e = assertThrows(ApplicationException.class,
-            () -> service.eliminarCliente(3));
+            () -> service.eliminarCliente(3, "Carlos"));
 
         assertTrue(e.getMessage().contains("no puede eliminarse"));
     }
@@ -188,10 +187,11 @@ class ClienteServiceTest {
     @Test
     void eliminarCliente_errorDeBDGenerico_mensajeGenerico() {
         when(clienteDAO.existe(3)).thenReturn(true);
-        when(clienteDAO.eliminar(3)).thenThrow(new DatabaseException("conexión perdida"));
+        doThrow(new DatabaseException("conexión perdida"))
+            .when(clienteDAO).eliminarConNombre(3, "Carlos");
 
         ApplicationException e = assertThrows(ApplicationException.class,
-            () -> service.eliminarCliente(3));
+            () -> service.eliminarCliente(3, "Carlos"));
 
         assertTrue(e.getMessage().contains("Error de base de datos"));
     }

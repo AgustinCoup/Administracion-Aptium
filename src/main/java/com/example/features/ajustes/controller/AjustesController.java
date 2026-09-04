@@ -97,8 +97,8 @@ public class AjustesController {
         if (resp != JOptionPane.YES_OPTION) return;
 
         mutar("ajustes-eliminar",
-            () -> clienteService.eliminarCliente(cliente.getId()),
-            "", "No se puede eliminar");
+            () -> clienteService.eliminarCliente(cliente.getId(), cliente.getNombre()),
+            "", "Eliminar cliente");
     }
 
     private void fusionarCliente() {
