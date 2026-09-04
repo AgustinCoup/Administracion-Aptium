@@ -1,7 +1,9 @@
 package com.example.features.lotes.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.constants.Constantes;
 import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.common.exception.DatabaseException;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
@@ -776,6 +778,75 @@ class LoteDAOTest extends AbstractDAOTest {
         EquipoOtros cargado = equipoOtrosDAO.obtenerTodos().stream()
             .filter(e -> e.getId() == equipoOtrosId).findFirst().orElseThrow();
         assertNotEquals(EstadoEquipo.ESTERILIZANDO, cargado.getMateriales().get(0).getEstado());
+    }
+
+    // ── Paso 7: secuencia de lotes bajo concurrencia ──────────────────────────
+    //
+    // LO QUE ESTOS DOS TESTS **NO** PUEDEN PROBAR, Y NO HAY QUE LEERLOS COMO SI LO PROBARAN:
+    //
+    // 1. Que la discriminación de la clase 23 esté FUERA de la transacción del intento fallido.
+    //    H2 corre en READ COMMITTED, así que el SELECT de existeIdNegocio ve la fila ajena esté
+    //    adentro del try o afuera: los dos tests quedan verdes también con el SELECT movido
+    //    adentro, que es la versión que en MySQL (REPEATABLE READ) leería el snapshot fijado por
+    //    obtenerSiguienteSecuencia, no vería la fila del otro operador, y no reintentaría NUNCA.
+    //    Lo único que protege esa decisión es el comentario de LoteDAO.lanzarLote. Correr estos
+    //    dos casos una vez contra un MySQL de desarrollo es la única verificación real.
+    //
+    // 2. El bloqueo del índice único del segundo INSERT: MySQL hace esperar al segundo operador
+    //    hasta que el primero termina; H2 no reproduce eso.
+    //
+    // Y no hay un tercer caso "el reintento resuelve y el lote sale con la secuencia siguiente":
+    // la secuencia es MAX(secuencia) + 1, así que un reintento sólo avanza si entre los dos
+    // intentos aparece una fila committeada por otra transacción. En un test secuencial la base
+    // no cambia entre intentos, y un test con dos hilos dependería del timeout de lock de H2.
+
+    @Test
+    void lanzarLote_idNegocioDuplicado_reintentaYTerminaEnConflictoDeSecuencia() throws SQLException {
+        // Una fila de otro año ocupando el id_negocio que le toca al próximo lote de este año:
+        // es la única forma secuencial de forzar el choque, porque una fila coherente del año en
+        // curso movería el MAX(secuencia) y no habría colisión. Los tres intentos recalculan lo
+        // mismo, así que el bucle se agota — que es justo lo que este test mira.
+        int anio = LocalDate.now().getYear();
+        insertarLoteCrudo(anio + "1", anio - 1, 1);
+
+        ConflictoConcurrenciaException e = assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.lanzarLote("E01", 120, 45,
+                List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of()));
+
+        assertEquals(Constantes.Mensajes.CONFLICTO_SECUENCIA_LOTE, e.getMessage(),
+            "agotar los reintentos llega al operador como conflicto de secuencia, no como error técnico");
+        assertEquals(1, contarLotes(), "ningún intento dejó un lote a medio hacer");
+        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
+        assertEquals(EstadoEquipo.NUEVO, cargado.getMateriales().get(0).getEstado(),
+            "cada intento revirtió su transacción entera");
+    }
+
+    @Test
+    void lanzarLote_autoclaveInexistente_fallaEnElActoSinCartelDeSecuencia() throws SQLException {
+        // La FK a autoclaves da clase 23 en la MISMA sentencia que el UNIQUE (id_negocio). Sin
+        // discriminar, esto se llevaría los tres intentos y saldría como conflicto de secuencia.
+        // Que salga DatabaseException prueba que la discriminación cortó en el primer fallo:
+        // ConflictoConcurrenciaException no hereda de DatabaseException.
+        DatabaseException e = assertThrows(DatabaseException.class,
+            () -> dao.lanzarLote("NO_EXISTE", 120, 45,
+                List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of()));
+
+        assertTrue(e.getMessage().contains("NO_EXISTE"), "el mensaje señala el autoclave, no la secuencia");
+        assertInstanceOf(SQLException.class, e.getCause(), "la SQLException original viaja como causa");
+        assertEquals(0, contarLotes());
+    }
+
+    /** Inserta una fila de lotes a mano, sin pasar por lanzarLote. */
+    private void insertarLoteCrudo(String idNegocio, int anio, int secuencia) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "INSERT INTO lotes (id_negocio, anio, secuencia, autoclave_nombre, " +
+                 "capacidad_total, capacidad_usada) VALUES (?, ?, ?, 'E01', 120, 45)")) {
+            ps.setString(1, idNegocio);
+            ps.setInt(2, anio);
+            ps.setInt(3, secuencia);
+            ps.executeUpdate();
+        }
     }
 
     /** Inserta un equipo_otros DETALLES con 1 material (cantidad=5). Devuelve [equipoOtrosId, materialId]. */

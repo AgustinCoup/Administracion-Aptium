@@ -233,6 +233,9 @@ public final class Constantes {
         public static final String CONFLICTO_CORRECCION =
             "Otro usuario modificó este equipo mientras preparabas la corrección.\n"
                 + "La corrección no se aplicó. La pantalla se actualizó: revisá el equipo y volvé a corregirlo.";
+        public static final String CONFLICTO_SECUENCIA_LOTE =
+            "Se lanzaron varios lotes al mismo tiempo y no se pudo asignar un número de lote libre.\n"
+                + "El lote no se lanzó. Esperá unos segundos y volvé a lanzarlo.";
 
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y

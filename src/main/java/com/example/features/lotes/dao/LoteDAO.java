@@ -1,6 +1,7 @@
 package com.example.features.lotes.dao;
 
 import com.example.common.constants.Constantes;
+import com.example.common.dao.ErroresSql;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.dao.EquipoMaterialHelper;
@@ -24,6 +25,34 @@ import java.util.Map;
 import java.util.Set;
 
 public class LoteDAO {
+
+    /** Cuántas veces se recalcula la secuencia antes de darse por vencido. Ver {@link #lanzarLote}. */
+    private static final int MAX_INTENTOS_SECUENCIA = 3;
+
+    /**
+     * El {@code INSERT INTO lotes} violó una restricción de integridad. Interna al DAO.
+     *
+     * <p>Extiende {@link RuntimeException} y no {@link SQLException} a propósito:
+     * {@link #intentarLanzarLote} tiene un {@code catch (SQLException)} que la traduciría a
+     * {@link DatabaseException} antes de que el bucle de reintentos la viera, y el reintento no se
+     * dispararía nunca.</p>
+     *
+     * <p>Lleva el {@code idNegocio} que se intentó para que el bucle pueda averiguar, ya fuera de la
+     * transacción, si la restricción violada fue el {@code UNIQUE} o la FK a {@code autoclaves}.</p>
+     */
+    private static final class SecuenciaDuplicadaException extends RuntimeException {
+        private final String idNegocio;
+        private final SQLException causaSql;
+
+        SecuenciaDuplicadaException(String idNegocio, SQLException causaSql) {
+            super("Violación de integridad al insertar el lote " + idNegocio, causaSql);
+            this.idNegocio = idNegocio;
+            this.causaSql  = causaSql;
+        }
+
+        String getIdNegocio()    { return idNegocio; }
+        SQLException getCausaSql() { return causaSql; }
+    }
 
     // ── Consultas ────────────────────────────────────────────────────────────
 
@@ -388,6 +417,28 @@ public class LoteDAO {
         }
     }
 
+    /**
+     * Lanza un lote, reintentando si la secuencia que calculó ya se la llevó otro operador.
+     *
+     * <p><b>Por qué hay reintento acá y en ninguna guarda.</b> {@link #obtenerSiguienteSecuencia}
+     * es un {@code MAX(secuencia) + 1}: dos lanzamientos simultáneos calculan el mismo número y el
+     * segundo choca contra el {@code UNIQUE (id_negocio)}. Eso <b>no</b> es un lost update — no hay
+     * ningún dato que el operador haya visto y se esté pisando, sólo una identidad que hay que
+     * asignar. Recalcularla y volver a intentar da exactamente el resultado que el operador pidió,
+     * así que reintentar es correcto. En una guarda no lo sería: ahí el {@code 0 filas} significa
+     * que la realidad cambió, y reintentar pisaría el trabajo del otro.</p>
+     *
+     * <p><b>Qué NO se reintenta.</b> El bucle sólo captura {@link SecuenciaDuplicadaException}.
+     * Un {@link ConflictoConcurrenciaException} de las guardas de materiales propaga en el acto.</p>
+     *
+     * <p><b>Qué cubre en MySQL real, y qué no.</b> Con dos lanzamientos simultáneos el segundo
+     * {@code INSERT} <b>bloquea</b> en el índice único hasta que el primero termina; recién ahí sale
+     * la clase {@code 23} y el reintento hace su trabajo. Ése es el caso común, porque estas
+     * transacciones son cortas. Si el primero tarda más que {@code innodb_lock_wait_timeout}, lo que
+     * sale es un <i>lock wait timeout</i> ({@code 40001}/{@code HY000}), que <b>no</b> se reintenta y
+     * se sigue reportando como {@link DatabaseException}: reintentar una espera de lock agotada es
+     * apilar minutos de espera sobre una base ya trabada.</p>
+     */
     public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
                            List<LoteMovimiento> movimientos,
                            Map<Integer, Integer> volumenesPorIngreso) {
@@ -395,6 +446,51 @@ public class LoteDAO {
             throw new IllegalArgumentException("La lista de movimientos no puede ser nula o vacía");
         }
 
+        for (int intento = 1; intento <= MAX_INTENTOS_SECUENCIA; intento++) {
+            try {
+                return intentarLanzarLote(autoclaveNombre, capacidadTotal, capacidadUsada,
+                                          movimientos, volumenesPorIngreso);
+            } catch (SecuenciaDuplicadaException e) {
+                // ── LA LECTURA VA ACÁ AFUERA A PROPÓSITO. NO LA MUEVA ADENTRO DEL INTENTO. ──
+                // La clase 23 del INSERT INTO lotes no dice QUÉ restricción se violó: puede ser el
+                // UNIQUE (id_negocio) — el choque de secuencia que este bucle resuelve — o la FK a
+                // autoclaves (V1__baseline.sql:61), que un autoclave borrado o renombrado dispara en
+                // la MISMA sentencia. Sin discriminar, un problema de autoclave se llevaría los tres
+                // intentos y terminaría con un cartel de "conflicto de secuencia" que diagnostica
+                // cualquier cosa menos el problema.
+                //
+                // El chequeo tiene que correr sobre una conexión nueva y DESPUÉS de que la
+                // transacción del intento revirtió. Adentro del intento leería el snapshot que esa
+                // transacción fijó en su primera lectura (obtenerSiguienteSecuencia), y bajo el
+                // REPEATABLE READ de MySQL la fila que el otro operador committeó es INVISIBLE: el
+                // chequeo daría vacío, concluiría "no era el duplicado" y el reintento no se
+                // dispararía NUNCA en producción. Que el INSERT sí haya visto la fila no es
+                // contradicción: la verificación de unicidad del índice no pasa por el snapshot.
+                //
+                // Y los tests NO defienden esto: H2 corre en READ COMMITTED, ve la fila ajena esté
+                // el SELECT adentro o afuera, así que la versión rota queda verde. Lo único que
+                // protege esta decisión es este comentario.
+                if (!existeIdNegocio(e.getIdNegocio())) {
+                    throw new DatabaseException(
+                        "Error al lanzar lote para autoclave: " + autoclaveNombre, e.getCausaSql());
+                }
+                // Era el duplicado de secuencia: el próximo intento la recalcula con la fila ajena
+                // ya visible.
+            }
+        }
+        throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_SECUENCIA_LOTE);
+    }
+
+    /**
+     * Un intento de lanzamiento, con su propia transacción.
+     *
+     * <p>El {@code try (TransactionalConnection …)} va acá adentro y no en el bucle: si los intentos
+     * compartieran la transacción, el reintento releería el mismo {@code MAX(secuencia)} — el del
+     * snapshot ya fijado — y chocaría para siempre contra el mismo {@code id_negocio}.</p>
+     */
+    private Lote intentarLanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
+                                    List<LoteMovimiento> movimientos,
+                                    Map<Integer, Integer> volumenesPorIngreso) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
 
@@ -455,6 +551,30 @@ public class LoteDAO {
             }
         }
         return 1;
+    }
+
+    /**
+     * ¿Ya existe un lote con ese {@code id_negocio}?
+     *
+     * <p>Abre su <b>propia</b> conexión del pool a propósito: no recibe la del intento fallido —
+     * que además ya está cerrada — porque el punto de esta lectura es ver el estado committeado por
+     * el otro operador, y bajo {@code REPEATABLE READ} el snapshot de aquella transacción no lo
+     * incluye. Ver el comentario largo en {@link #lanzarLote}.</p>
+     *
+     * <p>Es un {@code SELECT} común, sin {@code FOR UPDATE}: no hay nada que bloquear — la fila es
+     * del lote ajeno y no se va a tocar.</p>
+     */
+    private boolean existeIdNegocio(String idNegocio) {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(
+                 "SELECT 1 FROM lotes WHERE id_negocio = ?")) {
+            pstmt.setString(1, idNegocio);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al verificar el id de negocio del lote: " + idNegocio, e);
+        }
     }
 
     private String construirIdNegocio(int anio, int secuencia) {
@@ -665,6 +785,13 @@ public class LoteDAO {
         }
     }
 
+    /**
+     * Inserta la cabecera del lote.
+     *
+     * <p>El {@code catch} está acotado al {@code executeUpdate()} de <b>esta</b> sentencia: una
+     * violación de integridad de otra sentencia de la transacción no tiene nada que ver con la
+     * secuencia y no debe confundirse con ella.</p>
+     */
     private int insertarLote(Connection conn, String idNegocio, int anio, int secuencia,
                              String autoclaveNombre, int capacidadTotal, int capacidadUsada) throws SQLException {
         String sql = "INSERT INTO lotes (id_negocio, anio, secuencia, autoclave_nombre, " +
@@ -677,7 +804,16 @@ public class LoteDAO {
             pstmt.setString(4, autoclaveNombre);
             pstmt.setInt(5, capacidadTotal);
             pstmt.setInt(6, capacidadUsada);
-            pstmt.executeUpdate();
+            try {
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                // Puede ser el UNIQUE (id_negocio) o la FK a autoclaves: quién fue lo decide
+                // lanzarLote, fuera de esta transacción.
+                if (ErroresSql.esViolacionDeIntegridad(e)) {
+                    throw new SecuenciaDuplicadaException(idNegocio, e);
+                }
+                throw e;
+            }
             try (ResultSet rs = pstmt.getGeneratedKeys()) {
                 if (rs.next()) return rs.getInt(1);
             }
