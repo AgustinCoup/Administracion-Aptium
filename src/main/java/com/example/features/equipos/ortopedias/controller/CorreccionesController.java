@@ -1,5 +1,7 @@
 package com.example.features.equipos.ortopedias.controller;
 
+import com.example.common.exception.BusinessException;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ValidationException;
 import com.example.common.constants.Constantes;
@@ -288,7 +290,14 @@ public class CorreccionesController {
                     panel.mostrarError(mensajeFallo);
                 }
             })
-            .siFalla(e -> panel.mostrarError(describirError(e)))
+            .siFalla(e -> {
+                panel.mostrarError(describirError(e));
+                // Recarga SÓLO ante conflicto: la pantalla ya prometió "se actualizó" en el
+                // mensaje. Ante cualquier otro fallo (p.ej. validación) recargar sería
+                // destructivo — cargarEquiposNuevos() termina en limpiarPantalla() y le
+                // borraría al operador lo que tipeó, incluido el motivo.
+                if (e instanceof ConflictoConcurrenciaException) cargarEquiposNuevos();
+            })
             .antes(()  -> panel.mostrarCargando(true))
             .despues(() -> panel.mostrarCargando(false))
             .lanzar();
@@ -302,7 +311,15 @@ public class CorreccionesController {
             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION;
     }
 
+    /**
+     * La rama de {@link BusinessException} va antes que las otras dos y a propósito: es la
+     * jerarquía de {@link ConflictoConcurrenciaException}, y su mensaje ya está redactado para
+     * el operador — prefijarlo con "Error" lo empeora. Es seguro ponerla primero porque
+     * {@link ValidationException} <b>no</b> hereda de {@code BusinessException}, así que esta
+     * rama no la tapa.
+     */
     private static String describirError(Throwable e) {
+        if (e instanceof BusinessException)   return e.getMessage();
         if (e instanceof ValidationException) return "Error de validación: " + e.getMessage();
         if (e instanceof DatabaseException)   return "Error en la base de datos: " + e.getMessage();
         return "Error inesperado: " + e.getMessage();
