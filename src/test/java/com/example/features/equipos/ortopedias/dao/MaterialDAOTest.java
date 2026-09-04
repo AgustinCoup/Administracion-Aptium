@@ -239,8 +239,11 @@ class MaterialDAOTest extends AbstractDAOTest {
     }
 
     @Test
-    void eliminarMaterialesPorCodigo_codigoNoExistente_retornaFalse() {
-        assertFalse(dao.eliminarMaterialesPorCodigo(equipo.getId(), 9999, 0));
+    void eliminarMaterialesPorCodigo_codigoNoExistente_lanzaConflicto() {
+        // La guarda matcheó (version 0 es la correcta) pero no hay filas con ese código: es
+        // contradictorio, no un "no había nada que borrar" silencioso.
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.eliminarMaterialesPorCodigo(equipo.getId(), 9999, 0));
     }
 
     // ── entregarInstitucionCompleta ───────────────────────────────────────────

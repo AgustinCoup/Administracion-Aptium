@@ -500,7 +500,9 @@ public class MaterialDAO {
                 }
             }
 
-            if (idsMateriales.isEmpty()) return false;
+            if (idsMateriales.isEmpty()) {
+                ControlConcurrencia.exigirFilaAfectada(0, Constantes.Mensajes.CONFLICTO_CORRECCION);
+            }
 
             int filasEliminadas = 0;
             try (PreparedStatement psMov = conn.prepareStatement(sqlDeleteMovimientos);

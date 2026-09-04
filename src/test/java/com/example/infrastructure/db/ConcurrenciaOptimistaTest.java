@@ -2,13 +2,18 @@ package com.example.infrastructure.db;
 
 import com.example.AbstractDAOTest;
 import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
+import com.example.features.clientes.dao.ClienteDAO;
+import com.example.features.clientes.dao.FusionClientesDAO;
+import com.example.features.equipos.ortopedias.dao.AuditoriaDAO;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.Material;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
+import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.MaterialOtros;
@@ -39,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -87,6 +93,12 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
     private final ClasificacionLavaderoDAO clasificacionDAO = new ClasificacionLavaderoDAO();
     private final CicloLavaderoDAO         cicloDAO         = new CicloLavaderoDAO();
     private final SalidaLavaderoDAO        salidaDAO        = new SalidaLavaderoDAO();
+
+    /** Para el caso del Paso 5: sólo necesita ver el conflicto propagar antes de auditar. */
+    private final EquipoCorreccionService correccionService =
+        new EquipoCorreccionService(equipoDAO, materialDAO, new AuditoriaDAO(), new CatalogoDAO());
+    private final FusionClientesDAO fusionDAO  = new FusionClientesDAO();
+    private final ClienteDAO        clienteDAO = new ClienteDAO();
 
     /** Los ids de instancia del staging son locales a la tanda: cualquiera sirve. */
     private static final int STAGING_ID = 1;
@@ -306,11 +318,194 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
             "queda sólo lo de B: la marca de A no se aplicó ni parcialmente");
     }
 
+    // ── Correcciones: ortopedias ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Correcciones (ortopedias): la segunda corrección con version vieja no aplica")
+    void correccionOrtopediasChocaConVersionVieja() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+
+        // B corrige la cantidad y commitea: la version del equipo pasa de 0 a 1.
+        materialDAO.actualizarCantidad(equipo.getId(), materialId, 5, 0);
+
+        // A tenía el mismo snapshot (version 0) cuando B ya había corregido.
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> materialDAO.actualizarCantidad(equipo.getId(), materialId, 9, 0));
+
+        assertEquals(5, escalar("SELECT cantidad FROM equipo_materiales WHERE id = " + materialId),
+            "queda la cantidad de B, no la de A");
+        assertEquals(1, escalar("SELECT version FROM equipos WHERE id = " + equipo.getId()),
+            "el bump de A no se commiteó: la guarda revirtió su transacción entera");
+    }
+
+    // ── Correcciones: otros ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Correcciones (otros): mismo choque, mismo resultado que en ortopedias")
+    void correccionOtrosChocaConVersionVieja() {
+        EquipoOtros equipo = equipoOtrosConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+
+        equipoOtrosDAO.actualizarCantidadMaterial(equipo.getId(), materialId, 5, 0);
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> equipoOtrosDAO.actualizarCantidadMaterial(equipo.getId(), materialId, 9, 0));
+
+        assertEquals(5, escalar("SELECT cantidad FROM equipo_otros_materiales WHERE id = " + materialId),
+            "queda la cantidad de B");
+        assertEquals(1, escalar("SELECT version FROM equipo_otros WHERE id = " + equipo.getId()));
+    }
+
+    // ── Correcciones: eliminar equipo ─────────────────────────────────────────
+
+    @Test
+    @DisplayName("Correcciones: eliminar equipo con version vieja no borra")
+    void eliminarEquipoConVersionViejaNoBorra() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+
+        materialDAO.actualizarCantidad(equipo.getId(), materialId, 5, 0);   // B corrige y commitea
+
+        // A intenta eliminar con el snapshot viejo (version 0).
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> equipoDAO.eliminarConVersion(equipo.getId(), 0));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM equipos WHERE id = " + equipo.getId()),
+            "el DELETE guardado no encontró la version 0: el equipo sigue existiendo");
+    }
+
+    // ── Paso 5: la auditoría no queda huérfana ────────────────────────────────
+
+    @Test
+    @DisplayName("Correcciones: un conflicto no deja auditoría de una eliminación que no ocurrió")
+    void conflictoDeCorreccionNoDejaAuditoriaHuerfana() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+
+        materialDAO.actualizarCantidad(equipo.getId(), materialId, 5, 0);   // B corrige y commitea
+
+        // A confirma "Eliminar equipo" con el snapshot viejo (version 0), vía el service completo:
+        // es el camino que pasa por Paso 5 (snapshots después del DELETE).
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> correccionService.eliminarEquipo(equipo.getId(), 0, "motivo de prueba"));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM equipos_eliminados"),
+            "el DELETE guardado nunca corrió: no hay snapshot de un equipo que sigue vivo");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM materiales_eliminados"));
+        assertEquals(1, escalar("SELECT COUNT(*) FROM equipos WHERE id = " + equipo.getId()));
+    }
+
+    // ── Paso 9: fusión de clientes ────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Fusión: mueve equipos de los dos tipos y bumpea su version")
+    void fusionMueveEquiposYBumpeaVersion() {
+        int origenId  = crearCliente("TestConcFusionOrigen");
+        int destinoId = crearCliente("TestConcFusionDestino");
+        Equipo equipo = equipoOrtopediaConMaterial(3, origenId);
+        EquipoOtros equipoOtros = equipoOtrosConMaterial(3, origenId);
+
+        fusionDAO.fusionar(origenId, "TestConcFusionOrigen", destinoId, "TestConcFusionDestino");
+
+        assertEquals(destinoId, escalar("SELECT nro_cliente FROM equipos WHERE id = " + equipo.getId()));
+        assertEquals(1, escalar("SELECT version FROM equipos WHERE id = " + equipo.getId()),
+            "el agujero del Paso 9: la fusión también tiene que bumpear");
+        assertEquals(destinoId,
+            escalar("SELECT nro_cliente FROM equipo_otros WHERE id = " + equipoOtros.getId()));
+        assertEquals(1, escalar("SELECT version FROM equipo_otros WHERE id = " + equipoOtros.getId()));
+    }
+
+    @Test
+    @DisplayName("Fusión: si cambió el nombre del origen, aborta y no mueve nada")
+    void fusionarClientesConNombreCambiadoAborta() {
+        int origenId  = crearCliente("TestConcFusionRenombrado");
+        int destinoId = crearCliente("TestConcFusionDestino2");
+        Equipo equipo = equipoOrtopediaConMaterial(3, origenId);
+
+        // B renombra el cliente origen mientras A tenía el diálogo de fusión abierto.
+        ejecutarSinChecked("UPDATE clientes SET nombre = 'TestConcOtroNombre' WHERE id = " + origenId);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> fusionDAO.fusionar(
+            origenId, "TestConcFusionRenombrado", destinoId, "TestConcFusionDestino2"));
+
+        assertEquals(origenId, escalar("SELECT nro_cliente FROM equipos WHERE id = " + equipo.getId()),
+            "el equipo no se movió");
+        assertEquals(1, escalar("SELECT COUNT(*) FROM clientes WHERE id = " + origenId),
+            "el cliente origen sigue vivo");
+    }
+
+    // ── Paso 8: eliminar cliente ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Eliminar cliente: si lo renombraron, el CAS no borra")
+    void eliminarClienteRenombradoNoBorra() {
+        int clienteId = crearCliente("TestConcClienteA");
+
+        // B renombra el cliente mientras A tenía la grilla de Ajustes abierta.
+        ejecutarSinChecked("UPDATE clientes SET nombre = 'TestConcClienteB' WHERE id = " + clienteId);
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> clienteDAO.eliminarConNombre(clienteId, "TestConcClienteA"));
+
+        assertEquals("TestConcClienteB", texto("SELECT nombre FROM clientes WHERE id = " + clienteId),
+            "el cliente sigue vivo, con el nombre que B le puso");
+    }
+
+    // ── Paso 4: scope por equipo_id y DELETE por clave sin filas ──────────────
+
+    @Test
+    @DisplayName("Correcciones: un material de otro equipo no bumpea ni escribe nada — un caso por lado")
+    void materialAjenoAlEquipoNoBumpeaVersion() {
+        Equipo equipoA = equipoOrtopediaConMaterial(3);
+        Equipo equipoB = equipoOrtopediaConMaterial(3);
+        int materialDeB = equipoB.getMateriales().get(0).getId();
+
+        boolean aplico = materialDAO.actualizarCantidad(equipoA.getId(), materialDeB, 9, 0);
+
+        assertFalse(aplico, "el WHERE ... AND equipo_id = ? no encontró el par equipo/material");
+        assertEquals(0, escalar("SELECT version FROM equipos WHERE id = " + equipoA.getId()),
+            "sin cambio de dato, el bump no se commitea");
+
+        EquipoOtros otrosA = equipoOtrosConMaterial(3);
+        EquipoOtros otrosB = equipoOtrosConMaterial(3);
+        int materialOtrosDeB = otrosB.getMateriales().get(0).getId();
+
+        int filas = equipoOtrosDAO.actualizarCantidadMaterial(otrosA.getId(), materialOtrosDeB, 9, 0);
+
+        assertEquals(0, filas);
+        assertEquals(0, escalar("SELECT version FROM equipo_otros WHERE id = " + otrosA.getId()));
+    }
+
+    @Test
+    @DisplayName("Correcciones: el DELETE por clave que no encuentra filas es conflicto, no silencio")
+    void deleteDeCeroFilasConVersionValidaEsConflicto() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+
+        // version 0 es la correcta a la vista; el código de catálogo 999 no existe en este equipo.
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> materialDAO.eliminarMaterialesPorCodigo(equipo.getId(), 999, 0));
+
+        assertEquals(0, escalar("SELECT version FROM equipos WHERE id = " + equipo.getId()),
+            "el bump guardado que sí matcheó no quedó committeado");
+
+        EquipoOtros equipoOtros = equipoOtrosConMaterial(3);
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoOtros.getId(), "NoExiste", 0));
+
+        assertEquals(0, escalar("SELECT version FROM equipo_otros WHERE id = " + equipoOtros.getId()));
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
     private Equipo equipoOrtopediaConMaterial(int cantidad) {
+        return equipoOrtopediaConMaterial(cantidad, 1);
+    }
+
+    private Equipo equipoOrtopediaConMaterial(int cantidad, int nroCliente) {
         Equipo equipo = new Equipo();
-        equipo.setNroCliente(1);
+        equipo.setNroCliente(nroCliente);
         equipo.setNroInstitucion(1);
         equipo.agregarMaterial(new Material(400, "Tornillera", cantidad));
         equipoDAO.guardarEquipo(equipo);
@@ -318,14 +513,23 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
     }
 
     private EquipoOtros equipoOtrosConMaterial(int cantidad) {
+        return equipoOtrosConMaterial(cantidad, 1);
+    }
+
+    private EquipoOtros equipoOtrosConMaterial(int cantidad, int nroCliente) {
         EquipoOtros equipo = new EquipoOtros();
-        equipo.setNroCliente(1);
+        equipo.setNroCliente(nroCliente);
         equipo.setTipoIngreso(TipoIngresoOtros.DETALLES);
         equipo.agregarMaterial(new MaterialOtros("TestConcMaterial", cantidad));
         equipoOtrosDAO.guardar(equipo);
         return equipoOtrosDAO.obtenerTodos().stream()
             .filter(e -> e.getId().equals(equipo.getId()))
             .findFirst().orElseThrow();
+    }
+
+    private int crearCliente(String nombre) {
+        ejecutarSinChecked("INSERT INTO clientes (nombre) VALUES ('" + nombre + "')");
+        return escalar("SELECT id FROM clientes WHERE nombre = '" + nombre + "'");
     }
 
     private int ingresoDeLavadero(String nombreCliente, String estado) {
