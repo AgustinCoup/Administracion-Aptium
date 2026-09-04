@@ -89,9 +89,17 @@ public class CicloLavaderoDAO {
      *
      * <p>Releer el saldo sin bloquear la línea no alcanza: dos tandas que abren su transacción a
      * la vez leerían las dos el mismo saldo, las dos lo encontrarían suficiente y las dos
-     * escribirían. El {@code FOR UPDATE} serializa las tandas que compiten por la misma línea, y
-     * como es la <b>primera</b> sentencia de la transacción, la lectura de saldo que viene
-     * después ve lo que la tanda anterior ya commiteó.</p>
+     * escribirían. El {@code FOR UPDATE} serializa las tandas que compiten por la misma línea.</p>
+     *
+     * <p><b>Se toman TODOS los bloqueos antes de leer el primer saldo</b>, no de a una línea por
+     * vez. En {@code REPEATABLE READ} (el default de MySQL) la vista de lectura de la transacción
+     * se fija en la <b>primera lectura no bloqueante</b>: si se intercalara bloqueo-lectura línea
+     * por línea, el saldo de la segunda línea se leería con la vista fijada antes de tomar su
+     * bloqueo, y una tanda que hubiera commiteado mientras tanto quedaría invisible — la guarda
+     * miraría un saldo viejo y dejaría sobregirar. Tomando todos los bloqueos primero, cualquier
+     * tanda que compita por estas líneas ya commiteó (y por eso soltó el bloqueo) o está frenada
+     * detrás nuestro. <b>H2 no lo delata</b>: corre en {@code READ COMMITTED}, donde cada
+     * sentencia ve un snapshot fresco, así que este orden hay que sostenerlo por razonamiento.</p>
      *
      * <p>Las líneas se toman en orden ascendente de id (ver {@link #consumoPorLinea}) para que
      * dos tandas que comparten más de una línea no puedan tomárselas cruzadas y trabarse.</p>
@@ -317,13 +325,19 @@ public class CicloLavaderoDAO {
      * ({@link #consumoPorLinea}) y se compara de una sola vez contra el saldo. El efecto es el
      * mismo — dos líneas de la misma tanda no pueden sobregirar juntas — sin depender de que el
      * orden de escritura las cruce.</p>
+     *
+     * <p>Las dos pasadas —bloquear todo, después leer todo— no son estilo: son la condición para
+     * que el saldo de la segunda línea no se lea con una vista anterior a su propio bloqueo. Ver
+     * {@link #SQL_BLOQUEAR_LINEA}.</p>
      */
     private void exigirSaldoSuficiente(Connection conn, List<LanzamientoCiclo> tanda) throws SQLException {
         Map<Integer, Integer> consumo = consumoPorLinea(tanda);
         try (PreparedStatement psBloquear = conn.prepareStatement(SQL_BLOQUEAR_LINEA);
              PreparedStatement psSaldo    = conn.prepareStatement(SQL_SALDO_DE_LINEA)) {
+            for (Integer lineaId : consumo.keySet()) {
+                bloquearLinea(psBloquear, lineaId);
+            }
             for (Map.Entry<Integer, Integer> linea : consumo.entrySet()) {
-                bloquearLinea(psBloquear, linea.getKey());
                 int saldo = saldoDeLinea(psSaldo, linea.getKey());
                 if (linea.getValue() > saldo) {
                     log.warn("Tanda rechazada: la línea de clasificación {} tiene saldo {} y la "

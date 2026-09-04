@@ -752,8 +752,11 @@ public class LoteDAO {
             // REMITO: leer estado actual y cantidad total original
             String estadoActual;
             int remitoCantidad;
+            // FOR UPDATE por el mismo motivo que en el camino de DETALLES: la guarda de abajo
+            // compara contra este `estado`, y sin el lock dos lotes armados a la vez lo leerían
+            // los dos del mismo snapshot y pasarían los dos.
             try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT estado, remito_cantidad FROM equipo_otros WHERE id = ?")) {
+                    "SELECT estado, remito_cantidad FROM equipo_otros WHERE id = ? FOR UPDATE")) {
                 ps.setInt(1, equipoOtrosId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) throw new SQLException("equipo_otros no encontrado: " + equipoOtrosId);

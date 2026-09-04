@@ -1,5 +1,86 @@
 # Plan — Bloqueo optimista para acceso concurrente
 
+## ✅ CERRADO — 2026-09-04
+
+| Paso | Commit | Mensaje |
+|---|---|---|
+| 0 | `d22281d` | Plan de concurrencia *(quedó en `RetoquesFinalesL`, el punto de ramificación)* |
+| 1 | `11bd915` | feat: tipo y helper de conflicto de concurrencia |
+| 2 (refactor previo) | `aa92a8a` | refactor: unificar el recálculo de estado de equipo_otros |
+| 2 | `f8f7159` | feat: columna version en equipos y equipo_otros (V21) |
+| 2b | `fbf6b44` | feat: la app se niega a arrancar contra una base más nueva que el JAR |
+| 3 | `1657a14` | feat: bloqueo optimista en Registrar Estado (ortopedias) |
+| 4 | `de8744a` | feat: bloqueo optimista en Registrar Estado (otros) |
+| 5 | `18e9152` | feat: bloqueo optimista al lanzar lotes |
+| 6 | `260957f` | feat: bloqueo optimista en clasificación y lanzamiento de tandas |
+| 7 | `d2476b5` | feat: conflictos de concurrencia explícitos en salidas de lavadero |
+| 8 | `49d4041` | fix: releer disponibles al entrar a Lotes + documentar convenciones de refresco |
+| 9 | *(este commit)* | docs: bloqueo optimista para acceso concurrente |
+
+### Revisión adversarial del Paso 9 — dos arreglos aplicados
+
+Antes de documentar se revisaron los Pasos 3-8 buscando guardas que no miren filas afectadas,
+`catch` que se traguen un conflicto, y asimetrías ortopedias/otros. **Los `catch` y las filas
+afectadas salieron limpios** — el único `catch (ConflictoConcurrenciaException)` de producción es el
+de `AplicadorMovimientosPendientes`, que lo contabiliza aparte a propósito, y las dos guardas que
+descartan el número de filas (`entregarClienteCompleto` sobre un REMITO ya no esterilizado y
+`SQL_FINALIZAR_INGRESO`) tienen su porqué escrito en el código. Aparecieron **dos guardas que no
+podían detectar lo que decían detectar**:
+
+1. **Asimetría real ortopedias/otros: la relectura del encabezado del REMITO no era `FOR UPDATE`.**
+   `EquipoOtrosDAO.aplicarMovimientos` y `LoteDAO.aplicarMovimientoLoteOtros` comparaban el
+   `estadoOrigenEsperado` contra un `SELECT ... FROM equipo_otros WHERE id = ?` **sin lock**,
+   mientras que el camino de DETALLES y todo ortopedias releen `FOR UPDATE`. Bajo el
+   `REPEATABLE READ` de MySQL los dos operadores leen el mismo snapshot, los dos pasan la guarda y
+   los dos materializan el split — el bug que el paso venía a cerrar, intacto en la rama REMITO.
+   H2 no lo delata porque corre en `READ COMMITTED`. **Arreglado:** `FOR UPDATE` en las dos.
+
+2. **`CicloLavaderoDAO.exigirSaldoSuficiente` intercalaba bloqueo y lectura línea por línea.** La
+   vista de lectura de la transacción se fija en la **primera lectura no bloqueante**: con
+   `bloquear(A) → saldo(A) → bloquear(B) → saldo(B)`, el saldo de B se leía con una vista anterior a
+   su propio bloqueo, así que una tanda que hubiera commiteado mientras esperábamos el lock de B
+   quedaba invisible y B se sobregiraba igual. Se necesitan **al menos dos líneas** en la tanda para
+   reproducirlo, y de nuevo H2 no lo muestra. **Arreglado:** dos pasadas — todos los bloqueos
+   primero, todas las lecturas después.
+
+Las dos son la misma clase de error: **una guarda escrita correctamente que lee de un lugar donde el
+dato que la contradice todavía no llegó.** Vale la pena tenerlo presente al agregar la próxima: no
+alcanza con comparar, hay que comparar contra una lectura que vea lo ya commiteado.
+
+### Cierre: `mvn verify` y cobertura JaCoCo
+
+`mvn verify` en verde: **1094 tests, 0 fallos, 0 errores** (eran ~970 antes de la rama).
+
+Cobertura de línea de lo que agregó este plan, medida a nivel método porque el número de clase
+mezcla código preexistente que la rama no tocó:
+
+| Clase / método | Líneas | Nota |
+|---|---|---|
+| `ControlConcurrencia` (clase completa) | **12/12 · 100 %** | ramas 6/6, métodos 3/3 |
+| `ConflictoConcurrenciaException(String)` | **2/2 · 100 %** | |
+| `ConflictoConcurrenciaException(String, Throwable)` | 0/2 | ninguna guarda encadena una causa todavía; queda por simetría con el padre |
+| `EsquemaDesactualizadoException` (clase completa) | **2/2 · 100 %** | |
+| `EquipoMaterialHelper.recalcularEstadoEquipo` | **16/16 · 100 %** | donde vive el bump de ortopedias |
+| `EquipoMaterialHelper.bumpVersion` | **4/4 · 100 %** | |
+| `EquipoOtrosMaterialHelper.recalcularEstadoEquipo` | **16/16 · 100 %** | el recalculador unificado del Paso 2 |
+| `EquipoOtrosMaterialHelper.bumpVersion` | **4/4 · 100 %** | |
+| `DatabaseInitializer.verificarEsquemaNoAdelantado` | **5/5 · 100 %** | el guard del Paso 2b |
+| `DatabaseInitializer.verificarNoAdelantado` | **6/6 · 100 %** | |
+| `DatabaseInitializer.maxVersion` | 11/14 | falta la rama "sin ninguna migración local", inalcanzable con el JAR armado |
+
+**Las clases enteras dan más bajo y no es de este trabajo.** `EquipoMaterialHelper` marca 29/85 y
+`EquipoOtrosMaterialHelper` 58/113 porque `unificarGrupo` (0/46) y `unificarMaterialesDuplicados`
+(8/63 y 8/18) están sin cubrir desde antes de esta rama; ninguno de los dos se tocó acá.
+`DatabaseInitializer.inicializar` (0/11) tampoco se cubre: abre el pool real, y por eso el Paso 2b
+extrajo el chequeo a métodos testeables en vez de testear el arranque entero.
+
+Los DAOs con guarda nueva: `MaterialDAO` 267/283 (94 %), `SalidaLavaderoDAO` 223/237 (94 %),
+`LoteDAO` 508/545 (93 %), `ClasificacionLavaderoDAO` 22/24 (92 %), `CicloLavaderoDAO` 195/227
+(86 %) y `EquipoOtrosDAO` 359/447 (80 %). Los dos últimos son los archivos más grandes y arrastran
+código previo sin cubrir; ninguna de las guardas agregadas queda fuera de los tests.
+
+---
+
 **Objetivo:** que dos operadores trabajando contra la misma base al mismo tiempo no puedan pisarse
 en silencio. Cuando una escritura se apoya en datos que ya cambiaron, tiene que **fallar, avisar y
 recargar** — nunca aplicarse sobre un estado distinto del que el operador vio.

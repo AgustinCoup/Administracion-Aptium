@@ -208,6 +208,81 @@ Nada de eso puede tocarse desde el hilo de fondo.
 
 **Jerarquía de excepciones:** `AptiumException` → `BusinessException`, `DataAccessException`, `ValidationException` (con builder), `ResourceNotFoundException`, `DatabaseException`.
 
+## Concurrencia — bloqueo optimista
+
+Hermana de la regla del EDT de arriba, pero de otra cosa: aquélla es sobre **hilos dentro de un
+cliente**; ésta es sobre **dos operadores contra la misma base**. Plan completo:
+`plans/bloqueo-optimista-concurrencia.md`.
+
+**Regla dura:** toda escritura que dependa de un dato leído antes lleva **guarda**, y toda guarda
+**mira las filas afectadas**. El `WHERE` incluye una condición que sólo es verdadera si nadie tocó
+la fila desde que la pantalla la leyó; `0 filas afectadas` no es un error de base, es *"la realidad
+ya no es la que viste"*: se aborta la transacción entera, se avisa y se recarga. Sin reintento
+automático.
+
+```java
+// Guarda de campo (CAS): el estado que el operador vio viaja con el movimiento
+UPDATE equipo_materiales SET estado = ? WHERE id = ? AND estado = ?
+ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Mensajes.CONFLICTO_MATERIAL);
+```
+
+- **Helper:** `ControlConcurrencia` (`common/dao/`) — `exigirFilaAfectada` / `exigirFilasAfectadas`.
+  Más de una fila no es conflicto pero sí un bug: loguea `warn` y sigue.
+- **Excepción:** `ConflictoConcurrenciaException extends BusinessException` (`common/exception/`).
+  Es subclase a propósito: los controllers ya rutean `BusinessException` como aviso al usuario, así
+  que el conflicto llega bien sin tocar un `catch`; quien lo quiera distinguir usa `instanceof`.
+- **Mensajes:** `Constantes.Mensajes.CONFLICTO_*`. Van al operador y dicen **qué cambió y qué
+  hacer**, no qué falló.
+- **La relectura que alimenta la guarda va `FOR UPDATE`.** Comparar contra un `SELECT` común no
+  sirve: bajo el `REPEATABLE READ` de MySQL los dos operadores leen el mismo snapshot y la guarda
+  los deja pasar a los dos. **H2 no lo delata** — corre en `READ COMMITTED`, donde cada sentencia ve
+  un snapshot fresco.
+
+**Por qué las tablas de detalle NO llevan columna `version`** — la decisión que más fácil se
+revierte por error. `equipo_materiales`, `equipo_otros_materiales`, `elementos_clasificacion_lavadero`
+y `salidas_lavadero` se **consumen por cantidad**: dos operadores sacando 3 y 4 unidades de una fila
+de 10 son dos operaciones **válidas y compatibles**. Una `version` de fila las haría chocar a las
+dos por **falso positivo**, y el operador aprendería a ignorar el cartel — que es peor que no tener
+guarda, porque desactiva también los avisos verdaderos. La guarda va sobre el campo que se consume
+(`estado`, `destino`, saldo), que detecta el choque **real** y deja pasar al concurrente legítimo.
+
+**`equipos` y `equipo_otros` sí tienen `version` (V21), se mantiene, y NO se usa como guarda.**
+Ningún `WHERE` la lleva. No es un olvido: guardar con la `version` del agregado reintroduce el mismo
+falso positivo un nivel más arriba — dos operadores avanzando materiales **distintos del mismo
+equipo** chocarían sin pisarse en nada. La columna existe porque el `estado` de esas cabeceras es
+**derivado** (se recalcula desde los materiales), así que no sirve de guarda para su consumidor
+previsto: **`Correcciones`**, que reemplaza la fila entera desde un snapshot y hoy escribe a ciegas.
+Para activarla hay que cubrir antes todas las rutas de Correcciones; la auditoría de qué bumpea y
+qué no está en el javadoc de `EquipoOtrosMaterialHelper.recalcularEstadoEquipo`. El bump vive en un
+solo lugar por agregado (los dos `recalcularEstadoEquipo` de los helpers) más los `bumpVersion`
+explícitos de las rutas que no pasan por el recálculo.
+
+`lotes` e `ingresos_lavadero` tampoco llevan `version`: ya tienen una guarda natural más informativa
+que un número (`lotes.fecha_fin IS NULL`, y la máquina de estados persistida del ingreso).
+
+**Un JAR anterior a la V21 no puede escribir en una base ya migrada.** `DatabaseInitializer` compara
+después de migrar la máxima versión aplicada contra la máxima que el JAR trae, y aborta el arranque
+con `EsquemaDesactualizadoException` si la base está adelante. Hace falta el chequeo explícito
+porque **no sale gratis de Flyway**: `ignoreFutureMigrations` está en `true` por defecto, así que ve
+la migración desconocida y arranca igual. Cada máquina se autoactualiza cuando quiere, y un cliente
+viejo escribe sin guardas y sin bumpear `version` — el mismo bug, reintroducido por el despliegue.
+Compara **máximos**, no continuidad: una migración atrasada que se aplica después (el
+`outOfOrder(true)` que existe porque dos ramas se pisaron los números) no es una base adelantada.
+
+**Dónde hay guarda hoy:** Registrar Estado (ortopedias y otros), Lanzar Lote, Clasificación de
+Lavadero, Lanzar Tanda, y Salidas + derivación al CDE. **Qué quedó afuera:** `Correcciones` y los
+ABM de catálogo, clientes, instituciones, profesionales y ajustes — anotados en
+`plans/hallazgos-arquitectura-pendientes.md`.
+
+**La única guarda que no lanza** es `SalidaLavaderoDAO.SQL_FINALIZAR_INGRESO`
+(`AND estado <> 'FINALIZADO'`): finalizar es idempotente, y que otro lo haya finalizado es el
+resultado buscado, no un choque. Está documentado en su javadoc — es la excepción, no el patrón.
+
+**Tests:** `ConcurrenciaOptimistaTest` (`infrastructure/db/`) tiene un caso por flujo con la misma
+forma — *A lee → B modifica y commitea → A escribe → conflicto, y el estado final es exactamente el
+de B*. Verifica **la guarda**, que es idéntica en H2 y MySQL, no el comportamiento del lock, que no
+lo es: un test de deadlock pasaría en H2 y mentiría sobre producción.
+
 ## Tests
 
 JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~970 tests en 94 clases de `src/test/java`,

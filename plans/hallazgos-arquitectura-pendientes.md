@@ -15,6 +15,7 @@ pasada contra la app real ese mismo día. Del plan de sesiones queda **sólo el 
 | #6 concurrencia / EDT | **hecho (2026-08-27)** — Fases 1-6, **4b**, el hallazgo derivado de Lavadero y la **checklist manual de la Fase 5 pasada**: 30 WARN de `EdtGuard`, los 30 de los autocompletados documentados, cero fuera de la lista. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md#resultado-de-la-fase-5--pasada-2026-08-27) | Fase 4b: `14354a2` · Lavadero: `95c9e33` |
 | #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
 | #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | hecho (2026-08-27) — `CiclosController` colapsó sus 4 lecturas en un `recargar()` con el record `DatosCiclos` + `ConstructorVistaCiclos`, y sus 3 escrituras van por un helper `ejecutar(...)`; `ClasificacionController` y `LavaderoController.guardar()` al patrón de 4b. 970 tests, smoke pasado | `95c9e33` |
+| #9 huecos que dejó abierto el bloqueo optimista (agregado 2026-09-04) | **abierto** — tres, todos fuera del alcance acordado: `Correcciones` sin guarda, `obtenerSiguienteSecuencia`, y los ABM. Ver la sección #9 | — |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -265,6 +266,51 @@ No es deuda de ese plan: es anterior, del plan de ciclos.
 [`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md).
 
 </details>
+
+---
+
+## #9 — Huecos que dejó abiertos el bloqueo optimista (agregado 2026-09-04)
+
+Los tres los dejó **explícitamente fuera de alcance** el plan
+[`bloqueo-optimista-concurrencia.md`](bloqueo-optimista-concurrencia.md), que sí cerró los cuatro
+flujos críticos (Registrar Estado × 2, Lanzar Lote, Lanzar Tanda, Salidas + derivación al CDE) más
+Clasificación. Se anotan acá para que sean decisiones y no olvidos.
+
+### (a) `Correcciones` sigue escribiendo a ciegas — y ya tiene la `version` esperándola  (MEDIO)
+
+**Qué pasa.** `MaterialDAO.actualizarCantidad` / `actualizarCodigo` y sus equivalentes de "otros"
+(`EquipoOtrosDAO.actualizarCantidadRemito`, `actualizarCantidadMaterial`, `insertarMaterial`,
+`eliminarMaterialesPorDescripcion`) reemplazan lo que un formulario mostraba, sin ninguna guarda:
+dos operadores corrigiendo el mismo equipo, gana el último en apretar Guardar.
+
+**Por qué es distinto de lo ya cerrado.** Corrección **no consume por cantidad**: reemplaza el valor
+entero desde un snapshot del formulario. Ahí la `version` del agregado es exactamente la guarda
+correcta, y es el motivo por el que la V21 la creó.
+
+**Qué falta para activarla.** La columna ya se mantiene en todas las rutas (la auditoría completa
+está en el javadoc de `EquipoOtrosMaterialHelper.recalcularEstadoEquipo`). Falta: hacer viajar la
+`version` leída con el formulario hasta el DAO, agregar `AND version = ?` a esos `UPDATE`, y
+`ControlConcurrencia.exigirFilaAfectada` sobre el resultado. **No** es un cambio de esquema.
+Antes de hacerlo, verificar que ninguna ruta de escritura quedó sin bumpear: un bump con agujeros da
+**falsos negativos silenciosos**, que son peores que no tener guarda.
+
+### (b) `LoteDAO.obtenerSiguienteSecuencia` es `SELECT MAX(secuencia) + 1`  (MEDIO)
+
+Dos lotes lanzados en el mismo segundo pueden calcular la misma secuencia. Hoy los salva el
+`UNIQUE (id_negocio)` de la V1, que los hace fallar con un error técnico feo en vez de un mensaje
+claro.
+
+**No es un lost update**, es **asignación de identidad**, y por eso no lo resuelve el bloqueo
+optimista: no hay ningún dato leído por el operador que se esté pisando. Se arregla con otra
+técnica — reintento sobre la violación de UNIQUE, o una tabla de secuencias — y merece su propia
+decisión.
+
+### (c) Los ABM quedaron fuera  (BAJO)
+
+Catálogo, clientes, instituciones, profesionales y ajustes escriben sin guarda. Es lo acordado: son
+pantallas de mantenimiento, con un solo operador editándolas en la práctica, y meterles guardas
+tendría más costo de UX (carteles de conflicto en lugares donde nadie choca) que beneficio. Si algún
+día dos personas mantienen catálogos a la vez, el mecanismo ya está armado y es agregar el `WHERE`.
 
 ---
 

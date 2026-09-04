@@ -428,9 +428,14 @@ public class EquipoOtrosDAO {
                 if (matId == 0) {
                     String estadoActual;
                     int remitoCant;
+                    // FOR UPDATE, igual que la relectura del material en el camino de DETALLES y
+                    // en ortopedias: sin el lock, dos operadores abren su transacción a la vez,
+                    // leen los dos el mismo `estado` del snapshot y la guarda de abajo los deja
+                    // pasar a los dos. El lock los serializa y el segundo lee el estado que el
+                    // primero ya commiteó.
                     try (PreparedStatement ps = conn.prepareStatement(
                             "SELECT estado, remito_cantidad, requiere_lavado, requiere_empaque " +
-                            "FROM equipo_otros WHERE id = ?")) {
+                            "FROM equipo_otros WHERE id = ? FOR UPDATE")) {
                         ps.setInt(1, equipoId);
                         try (ResultSet rs = ps.executeQuery()) {
                             if (!rs.next()) throw new SQLException("equipo_otros no encontrado: " + equipoId);
