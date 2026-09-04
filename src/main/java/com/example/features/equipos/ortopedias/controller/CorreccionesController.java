@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory;
 import javax.swing.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.concurrent.Callable;
 
 public class CorreccionesController {
@@ -281,6 +283,44 @@ public class CorreccionesController {
         if (e instanceof ValidationException) return "Error de validación: " + e.getMessage();
         if (e instanceof DatabaseException)   return "Error en la base de datos: " + e.getMessage();
         return "Error inesperado: " + e.getMessage();
+    }
+
+    /**
+     * Version del agregado que el operador tenía a la vista, para usar como guarda, o vacío si la
+     * selección se perdió o pasó a ser otro equipo.
+     *
+     * <p><b>La rama que se dispara hoy es {@code sel == null}.</b> Entre que la view captura el
+     * equipo y que la operación llega acá hay diálogos modales, y un modal bombea la cola del EDT:
+     * un {@code pintar} de {@code cargarEquiposNuevos} en vuelo puede correr con el diálogo
+     * abierto, y termina en {@code panel.limpiarPantalla()}, que limpia la selección. El operador
+     * confirma sobre un snapshot que ya no existe, y eso es un conflicto.
+     *
+     * <p><b>Por qué igual se comparan {@code tipo} e {@code id}.</b> Que la selección quede en
+     * {@code null} lo sostiene esa llamada a {@code limpiarPantalla()}, no Swing:
+     * {@code fireTableDataChanged()} <b>no</b> limpia la selección de la {@code JTable}. Si algún
+     * día se deja de limpiar, la selección sobrevive por <b>índice de fila</b> mientras
+     * {@code EquipoTableModel.actualizarDatos} reordena por estado, y devolvería otro equipo. Las
+     * {@code version} arrancan todas en {@code 0}, así que la del equipo equivocado es muy probable
+     * que coincida; y el {@code id} solo tampoco alcanza, porque la grilla mezcla ortopedias y
+     * "otros" y las dos tablas tienen {@code AUTO_INCREMENT} independientes ({@code Equipo#7} y
+     * {@code EquipoOtros#7} conviven). Los dos términos juntos son identidad completa y cuestan un
+     * {@code &&}: no los saque por parecer redundantes hoy.
+     *
+     * <p>Devuelve vacío en vez de lanzar porque el llamador corre en el EDT desde un
+     * {@code ActionListener}: una excepción acá subiría al manejador del EDT y el operador no
+     * vería nada. El early return con {@link #avisarSnapshotPerdido()} sí le muestra el cartel.
+     */
+    private OptionalInt versionDelEquipoAlaVista(EquipoRegistrableInterface.TipoEquipo tipo, Integer equipoId) {
+        EquipoRegistrableInterface sel = panel.getEquipoSeleccionado();
+        return (sel != null && sel.getTipo() == tipo && Objects.equals(sel.getId(), equipoId))
+            ? OptionalInt.of(sel.getVersion())
+            : OptionalInt.empty();
+    }
+
+    /** Mismo cartel y misma recarga que un conflicto de base: para el operador es lo mismo. */
+    private void avisarSnapshotPerdido() {
+        panel.mostrarError(Constantes.Mensajes.CONFLICTO_CORRECCION);
+        cargarEquiposNuevos();
     }
 
     private void notificarCambiosAplicados() {

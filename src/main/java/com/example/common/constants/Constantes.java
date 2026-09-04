@@ -230,6 +230,9 @@ public final class Constantes {
         public static final String CONFLICTO_CLASIFICACION =
             "Otro usuario ya clasificó este ingreso mientras trabajabas.\n"
                 + "La clasificación no se guardó. La pantalla se actualizó: revisá lo que quedó cargado.";
+        public static final String CONFLICTO_CORRECCION =
+            "Otro usuario modificó este equipo mientras preparabas la corrección.\n"
+                + "La corrección no se aplicó. La pantalla se actualizó: revisá el equipo y volvé a corregirlo.";
 
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y

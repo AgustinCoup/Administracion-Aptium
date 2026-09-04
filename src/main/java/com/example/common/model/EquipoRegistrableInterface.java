@@ -30,6 +30,7 @@ public interface EquipoRegistrableInterface {
     Integer getId();
     String getClienteNombre();
     int getNroCliente();
+    int getVersion();
 
     // ── Columna secundaria para la tabla (institución / vacío) ─────────────────
 

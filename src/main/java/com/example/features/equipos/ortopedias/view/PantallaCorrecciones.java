@@ -565,6 +565,11 @@ public class PantallaCorrecciones extends JPanel {
 
     public void recargarMateriales()  { panelTablas.recargarMateriales(); }
 
+    /** Equipo seleccionado en la grilla, o {@code null} si la selección se perdió. */
+    public EquipoRegistrableInterface getEquipoSeleccionado() {
+        return panelTablas.getEquipoSeleccionado();
+    }
+
     public void limpiarPantalla() {
         limpiarFormulario();
         lblEstado.setText("Listo");
