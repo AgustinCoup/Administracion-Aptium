@@ -15,7 +15,7 @@ pasada contra la app real ese mismo día. Del plan de sesiones queda **sólo el 
 | #6 concurrencia / EDT | **hecho (2026-08-27)** — Fases 1-6, **4b**, el hallazgo derivado de Lavadero y la **checklist manual de la Fase 5 pasada**: 30 WARN de `EdtGuard`, los 30 de los autocompletados documentados, cero fuera de la lista. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md#resultado-de-la-fase-5--pasada-2026-08-27) | Fase 4b: `14354a2` · Lavadero: `95c9e33` |
 | #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
 | #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | hecho (2026-08-27) — `CiclosController` colapsó sus 4 lecturas en un `recargar()` con el record `DatosCiclos` + `ConstructorVistaCiclos`, y sus 3 escrituras van por un helper `ejecutar(...)`; `ClasificacionController` y `LavaderoController.guardar()` al patrón de 4b. 970 tests, smoke pasado | `95c9e33` |
-| #9 huecos que dejó abierto el bloqueo optimista (agregado 2026-09-04) | **abierto** — tres, todos fuera del alcance acordado: `Correcciones` sin guarda, `obtenerSiguienteSecuencia`, y los ABM. Ver la sección #9 | — |
+| #9 huecos que dejó abierto el bloqueo optimista (agregado 2026-09-04) | **abierto, con plan escrito** — tres: `Correcciones` sin guarda, `obtenerSiguienteSecuencia`, y los ABM. Decisiones cerradas y pasos en [`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md) | — |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -275,6 +275,14 @@ Los tres los dejó **explícitamente fuera de alcance** el plan
 [`bloqueo-optimista-concurrencia.md`](bloqueo-optimista-concurrencia.md), que sí cerró los cuatro
 flujos críticos (Registrar Estado × 2, Lanzar Lote, Lanzar Tanda, Salidas + derivación al CDE) más
 Clasificación. Se anotan acá para que sean decisiones y no olvidos.
+
+> **Plan escrito el 2026-09-04, sin ejecutar:**
+> [`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md)
+> — 11 pasos, decisiones cerradas. Dos cosas que ese plan corrige de lo escrito acá abajo:
+> **(c) tiene mucha menos superficie de la que dice** (`SimpleEntityDAO.actualizar` y todo
+> `CatalogoDAO`/`CatalogoOtrosDAO` no tienen llamadores; las únicas escrituras pisables son
+> `eliminarCliente` y `fusionarClientes`), y activar la `version` en Correcciones **rompe la
+> simetría** con Registrar Estado a propósito — el falso positivo se acepta ahí y se rechaza acá.
 
 ### (a) `Correcciones` sigue escribiendo a ciegas — y ya tiene la `version` esperándola  (MEDIO)
 
