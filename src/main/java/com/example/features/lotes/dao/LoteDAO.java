@@ -542,7 +542,17 @@ public class LoteDAO {
 
     // ── Helpers privados de LoteDAO ──────────────────────────────────────────
 
-    private int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
+    /**
+     * Próxima secuencia del año, como {@code MAX(secuencia) + 1}.
+     *
+     * <p><b>Es package-private y no {@code private} por una sola razón: el test del reintento.</b>
+     * El bucle de {@link #lanzarLote} sólo avanza si entre dos intentos aparece una fila que otro
+     * operador committeó — y en un test secuencial la base no cambia sola, así que sin un punto
+     * donde simular "A leyó el MAX antes de que B commiteara" el camino feliz del reintento no
+     * tiene test posible (ver {@code LoteDAOTest}). No la use ningún otro colaborador: la secuencia
+     * se calcula acá adentro, dentro de la transacción del intento.</p>
+     */
+    int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
         try (PreparedStatement pstmt = conn.prepareStatement(
                 "SELECT COALESCE(MAX(secuencia), 0) AS max_seq FROM lotes WHERE anio = ?")) {
             pstmt.setInt(1, anio);

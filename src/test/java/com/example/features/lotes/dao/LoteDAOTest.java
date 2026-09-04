@@ -795,10 +795,56 @@ class LoteDAOTest extends AbstractDAOTest {
     // 2. El bloqueo del índice único del segundo INSERT: MySQL hace esperar al segundo operador
     //    hasta que el primero termina; H2 no reproduce eso.
     //
-    // Y no hay un tercer caso "el reintento resuelve y el lote sale con la secuencia siguiente":
-    // la secuencia es MAX(secuencia) + 1, así que un reintento sólo avanza si entre los dos
-    // intentos aparece una fila committeada por otra transacción. En un test secuencial la base
-    // no cambia entre intentos, y un test con dos hilos dependería del timeout de lock de H2.
+    // El caso del camino feliz (reintento que resuelve) necesita un seam, y por eso
+    // LoteDAO.obtenerSiguienteSecuencia es package-private: la secuencia es MAX(secuencia) + 1, así
+    // que el reintento sólo avanza si entre los dos intentos aparece una fila committeada por otro.
+    // En un test secuencial la base no cambia sola, y un test con dos hilos dependería del timeout
+    // de lock de H2. Simular la lectura obsoleta de A es determinista y no miente sobre nada.
+
+    @Test
+    void lanzarLote_secuenciaObsoleta_reintentaConLaSiguienteYLanza() throws SQLException {
+        // B ya committeó su lote del año en curso; A había leído MAX(secuencia) = 0 antes de eso.
+        int anio = LocalDate.now().getYear();
+        insertarLoteCrudo(anio + "1", anio, 1);
+        LoteDAOPrimeraSecuenciaObsoleta daoConLecturaObsoleta = new LoteDAOPrimeraSecuenciaObsoleta(1);
+
+        Lote lote = daoConLecturaObsoleta.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
+
+        // Sin este conteo el test no discrimina: un lote con secuencia 2 es también lo que sale si
+        // el primer intento nunca chocó. Dos resoluciones = hubo colisión y hubo reintento.
+        assertEquals(2, daoConLecturaObsoleta.resoluciones(), "el lanzamiento necesitó dos intentos");
+        assertEquals(2, lote.getSecuencia(), "el reintento recalculó la secuencia con la fila de B visible");
+        assertEquals(anio + "2", lote.getIdNegocio());
+        assertEquals(2, contarLotes(), "el intento fallido no dejó fila propia");
+        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
+        assertEquals(EstadoEquipo.ESTERILIZANDO, cargado.getMateriales().get(0).getEstado(),
+            "el segundo intento aplicó el lanzamiento entero, no sólo la cabecera");
+    }
+
+    /**
+     * A leyó {@code MAX(secuencia)} antes de que B commiteara: el primer intento calcula la
+     * secuencia que B ya se llevó, y del segundo en adelante la resolución es la real.
+     */
+    private static final class LoteDAOPrimeraSecuenciaObsoleta extends LoteDAO {
+        private final int secuenciaObsoleta;
+        private int resoluciones = 0;
+
+        LoteDAOPrimeraSecuenciaObsoleta(int secuenciaObsoleta) {
+            this.secuenciaObsoleta = secuenciaObsoleta;
+        }
+
+        /** Cuántos intentos resolvieron una secuencia: es el contador de intentos del bucle. */
+        int resoluciones() {
+            return resoluciones;
+        }
+
+        @Override
+        int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
+            if (resoluciones++ == 0) return secuenciaObsoleta;
+            return super.obtenerSiguienteSecuencia(conn, anio);
+        }
+    }
 
     @Test
     void lanzarLote_idNegocioDuplicado_reintentaYTerminaEnConflictoDeSecuencia() throws SQLException {
