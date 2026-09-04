@@ -1,5 +1,7 @@
 package com.example.features.equipos.otros.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 
 import java.sql.Connection;
@@ -126,13 +128,15 @@ public final class EquipoOtrosMaterialHelper {
     }
 
     /**
-     * Incrementa la {@code version} del agregado sin tocar ninguna otra columna.
+     * Incrementa la {@code version} del agregado sin tocar ninguna otra columna, sin comparar
+     * contra un valor esperado.
      *
      * <p>Para las rutas que mutan {@code equipo_otros_materiales} <b>sin</b> pasar por
      * {@link #recalcularEstadoEquipo} — las de {@code Correcciones}. No pueden usar el recálculo
      * porque deriva {@code estado} desde los materiales y sobre un REMITO sin materiales reales
-     * pisaría la cabecera con {@code NUEVO}; pero sí tienen que mantener el token, porque
-     * {@code Correcciones} es justamente su consumidor previsto.
+     * pisaría la cabecera con {@code NUEVO}. Para esas rutas, {@link #bumpVersionConGuarda} es la
+     * variante que corresponde: además de mantener el token, lo usa como guarda de bloqueo
+     * optimista contra la {@code version} que el operador tenía a la vista.
      *
      * <p>Llamar dentro de la misma transacción que la escritura que lo motiva, para que el bump
      * y el cambio se vean o no se vean juntos.
@@ -145,6 +149,36 @@ public final class EquipoOtrosMaterialHelper {
                 "UPDATE equipo_otros SET version = version + 1 WHERE id = ?")) {
             ps.setInt(1, equipoOtrosId);
             ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Incrementa la {@code version} del agregado, guardada: sólo si sigue valiendo lo que el
+     * operador tenía a la vista.
+     *
+     * <p>CAS de una sola sentencia sobre {@code equipo_otros} — no {@code equipos}, la tabla del
+     * helper análogo de ortopedias. {@code 0} filas afectadas significa que otro operador tocó
+     * el equipo desde que la pantalla lo leyó — {@link ControlConcurrencia#exigirFilaAfectada}
+     * revierte la transacción entera con {@link com.example.common.exception.ConflictoConcurrenciaException}.
+     *
+     * <p>Va <b>primero</b>, antes de tocar el detalle: toma el lock de la fila de
+     * {@code equipo_otros} al principio, así que un segundo operador se bloquea ahí y no hace
+     * trabajo que va a descartar.
+     *
+     * <p>Llamar dentro de la misma transacción que la escritura que lo motiva.
+     *
+     * @param conn            conexión activa con {@code autoCommit=false}
+     * @param equipoOtrosId   ID del equipo "otros" cuyo token se invalida
+     * @param versionEsperada la {@code version} que el operador tenía a la vista
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la fila ya no tiene esa version
+     */
+    public static void bumpVersionConGuarda(Connection conn, int equipoOtrosId, int versionEsperada)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE equipo_otros SET version = version + 1 WHERE id = ? AND version = ?")) {
+            ps.setInt(1, equipoOtrosId);
+            ps.setInt(2, versionEsperada);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CORRECCION);
         }
     }
 
