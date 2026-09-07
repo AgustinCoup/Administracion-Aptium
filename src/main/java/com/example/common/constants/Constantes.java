@@ -111,6 +111,24 @@ public final class Constantes {
             + "podría haber dejado de estar disponible si otro puesto lo movió.\n"
             + "¿Actualizar igual?";
 
+        /**
+         * Confirmación del botón "Actualizar" en Clasificación de Lavadero.
+         * {@code refrescar} reconstruye el panel de elementos: lo cargado se pierde.
+         */
+        public static final String REFRESCO_CLASIFICACION =
+            "Tenés elementos cargados en el formulario.\n"
+            + "Si actualizás, se descartan y se relee la lista de ingresos desde la base.\n"
+            + "¿Actualizar igual?";
+
+        /**
+         * Confirmación del botón "Actualizar" en Ciclos de Lavadero. La config tipeada
+         * en cada card se conserva; sólo se rehacen disponibles y lavarropas ocupados.
+         */
+        public static final String REFRESCO_CICLOS =
+            "Vas a releer disponibles y lavarropas ocupados desde la base.\n"
+            + "La configuración que tipeaste en cada lavarropas se mantiene.\n"
+            + "¿Actualizar igual?";
+
         public static final String CANTIDAD_AVANZAR_PROMPT = "Cantidad a avanzar para: %s (disponible: %d)";
         public static final String CANTIDAD_AVANZAR_VACIA  = "Ingrese una cantidad válida.";
         public static final String CANTIDAD_AVANZAR_RANGO  = "La cantidad debe estar entre 1 y %d.";

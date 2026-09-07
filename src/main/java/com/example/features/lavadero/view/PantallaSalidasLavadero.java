@@ -27,6 +27,8 @@ public class PantallaSalidasLavadero extends JPanel {
     private final ElementoLavadoTableModel modeloLavados = new ElementoLavadoTableModel();
     private final SalidaListaTableModel    modeloListos  = new SalidaListaTableModel();
 
+    private final PanelHeader header;
+
     private final JTable tablaLavados;
     private final JTable tablaListos;
 
@@ -38,7 +40,7 @@ public class PantallaSalidasLavadero extends JPanel {
     public PantallaSalidasLavadero(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
 
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
             Constantes.Titulos.SALIDAS_LAVADERO,
             navegador,
             contenedor,
@@ -144,6 +146,18 @@ public class PantallaSalidasLavadero extends JPanel {
         return new JScrollPane(c,
             JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
             JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+    }
+
+    // ── Refresco ─────────────────────────────────────────────────────────────
+
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
     }
 
     // ── Datos ────────────────────────────────────────────────────────────────

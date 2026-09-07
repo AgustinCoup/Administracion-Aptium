@@ -62,6 +62,14 @@ public class SalidasLavaderoController {
 
     private TablaOrigen arrastreOrigen = null;
 
+    /**
+     * Carga en vuelo, para descartar su resultado si se dispara otra. {@code cargarDatos()}
+     * no pasa por {@code RefrescadorPantallas} (sin debounce): con F5 mantenido serían N
+     * lecturas concurrentes y ganaría la que termine última. Calcado de
+     * {@code CiclosController.cargaEnCurso}.
+     */
+    private TareaUI.Ejecucion cargaEnCurso = null;
+
     /** Las dos tablas se leen y se pintan juntas para que no queden desincronizadas. */
     private record DatosSalidas(List<ElementoLavadoPendiente> lavados, List<SalidaLista> listos) { }
 
@@ -78,6 +86,11 @@ public class SalidasLavaderoController {
         pantalla.getBtnVolverALavado().addActionListener(e -> volverALavado(pantalla.getSeleccionListos()));
         pantalla.getBtnSaleDelFlujo().addActionListener(e -> saleDelFlujo());
         pantalla.getBtnIngresarACde().addActionListener(e -> ingresarACde());
+
+        // Botón "Actualizar" / F5: misma carga que dispara el listener del menú. Sin guard:
+        // el único estado mutable es arrastreOrigen, un flag transitorio de DnD; las acciones
+        // escriben en el acto, no hay staging.
+        pantalla.setAccionRefrescar(this::cargarDatos);
 
         configurarDnD();
     }
@@ -144,12 +157,16 @@ public class SalidasLavaderoController {
 
     /** Lee las dos tablas de una sola vez, fuera del hilo de la interfaz. */
     public void cargarDatos() {
-        TareaUI.<DatosSalidas>nueva()
+        if (cargaEnCurso != null) cargaEnCurso.cancelar();
+        cargaEnCurso = TareaUI.<DatosSalidas>nueva()
             .nombre("carga-salidas-lavadero")
             .leer(() -> new DatosSalidas(
                 salidaLavaderoService.obtenerLavadosPendientesDeListo(),
                 salidaLavaderoService.obtenerListasSinDestino()))
-            .pintar(datos -> pantalla.refrescar(datos.lavados(), datos.listos()))
+            .pintar(datos -> {
+                pantalla.refrescar(datos.lavados(), datos.listos());
+                pantalla.marcarActualizado();
+            })
             .siFalla(e -> pantalla.mostrarError(e.getMessage()))
             .lanzar();
     }

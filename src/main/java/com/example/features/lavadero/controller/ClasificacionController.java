@@ -35,6 +35,14 @@ public class ClasificacionController {
     private final JPanel                        contenedor;
     private final OnEquipoGuardadoListener      onGuardado;
 
+    /**
+     * Carga en vuelo, para descartar su resultado si se dispara otra. {@code cargarIngresosSinClasificar()}
+     * no pasa por {@code RefrescadorPantallas} (sin debounce): con F5 mantenido serían N lecturas
+     * concurrentes y ganaría la que termine última, no la última lanzada. Calcado de
+     * {@code CiclosController.cargaEnCurso}.
+     */
+    private TareaUI.Ejecucion cargaEnCurso = null;
+
     /** El combo de ingresos y el catálogo se pintan juntos: la vista los reemplaza de una. */
     private record DatosClasificacion(List<IngresoLavaderoResumen> ingresos,
                                       List<ElementoCatalogo> catalogo) { }
@@ -55,15 +63,28 @@ public class ClasificacionController {
         panel.getBtnGuardar().addActionListener(e -> guardar());
         panel.getBtnCancelar().addActionListener(e -> cancelar());
         panel.getBtnNuevoCatalogo().addActionListener(e -> agregarElementoCatalogo());
+
+        // Botón "Actualizar" / F5: misma carga que dispara el listener del menú. Con guard,
+        // porque panel.refrescar() reconstruye el PanelElementosClasificacion (C1 del plan):
+        // lo cargado en el formulario se descarta.
+        panel.setGuardRefresco(
+            () -> !panel.getPanelElementos().getFilas().isEmpty(),
+            Constantes.Mensajes.REFRESCO_CLASIFICACION,
+            panel::limpiarFormulario);
+        panel.setAccionRefrescar(this::cargarIngresosSinClasificar);
     }
 
     public void cargarIngresosSinClasificar() {
-        TareaUI.<DatosClasificacion>nueva()
+        if (cargaEnCurso != null) cargaEnCurso.cancelar();
+        cargaEnCurso = TareaUI.<DatosClasificacion>nueva()
             .nombre("carga-clasificacion-lavadero")
             .leer(() -> new DatosClasificacion(
                 lavaderoService.obtenerIngresosSinClasificar(),
                 clasificacionLavaderoService.obtenerCatalogo()))
-            .pintar(datos -> panel.refrescar(datos.ingresos(), datos.catalogo()))
+            .pintar(datos -> {
+                panel.refrescar(datos.ingresos(), datos.catalogo());
+                panel.marcarActualizado();
+            })
             .siFalla(e -> panel.mostrarError(Constantes.Mensajes.ERROR_CARGAR_DATOS))
             .lanzar();
     }

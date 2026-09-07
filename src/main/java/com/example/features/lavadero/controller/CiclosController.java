@@ -145,6 +145,11 @@ public class CiclosController {
             this::descartarPendientes
         );
 
+        // Botón "Actualizar" / F5: recargar() (no abrirPantalla()) para no pisar la config
+        // que el operador está tipeando. El guard avisa sin descartar: la config se conserva.
+        pantalla.setGuardRefresco(this::tienePendientes, Constantes.Mensajes.REFRESCO_CICLOS, null);
+        pantalla.setAccionRefrescar(this::recargar);
+
         pantalla.addComponentListener(new ComponentAdapter() {
             private boolean dndConfigurado = false;
 
@@ -188,8 +193,13 @@ public class CiclosController {
      * elementos de cada ciclo en curso y —la primera vez— el catálogo de jabones salen de
      * una sola tarea de fondo. El armado de la vista queda entero en el hilo de la interfaz
      * porque necesita el staging (ver {@link ConstructorVistaCiclos}).
+     *
+     * <p><b>Es lo que dispara el botón "Actualizar" / F5</b>, no {@link #abrirPantalla()}:
+     * {@code recargar()} respeta la config que el operador está tipeando en las cards libres,
+     * {@code abrirPantalla()} la resetea. Cablear el botón a {@code abrirPantalla()} le borraría
+     * ese trabajo — es el error clásico de este flujo.
      */
-    private void recargar() {
+    public void recargar() {
         if (cargaEnCurso != null) cargaEnCurso.cancelar();
         // La decisión de traer los jabones se toma acá, en el EDT: si esta carga se cancela,
         // jabonesCargados sigue en false y la siguiente los vuelve a pedir.
@@ -243,6 +253,7 @@ public class CiclosController {
         pantalla.getBtnLanzarTodos().setEnabled(vista.hayPendientes());
         pantalla.getBtnDescartarTodos().setEnabled(vista.hayPendientes());
         pantalla.getBtnFinalizarTodos().setEnabled(vista.hayActivos());
+        pantalla.marcarActualizado();
     }
 
     // ── DnD ───────────────────────────────────────────────────────────────────

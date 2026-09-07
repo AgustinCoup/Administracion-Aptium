@@ -16,6 +16,7 @@ public class PantallaClasificacionLavadero extends JPanel {
     /** Resultado del diálogo de alta de catálogo. */
     public record NuevoElementoCatalogo(String nombre, CategoriaElementoLavadero categoria) { }
 
+    private final PanelHeader                       header;
     private final JComboBox<IngresoLavaderoResumen> cmbIngreso;
     private       PanelElementosClasificacion       panelElementos;
     private final JButton                           btnGuardar;
@@ -26,7 +27,7 @@ public class PantallaClasificacionLavadero extends JPanel {
     public PantallaClasificacionLavadero(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
 
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
             Constantes.Titulos.CLASIFICACION_LAVADERO,
             navegador,
             contenedor,
@@ -79,6 +80,26 @@ public class PantallaClasificacionLavadero extends JPanel {
         south.add(southWest, BorderLayout.WEST);
         south.add(southEast, BorderLayout.CENTER);
         add(south, BorderLayout.SOUTH);
+    }
+
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /**
+     * Guarda del botón "Actualizar": {@link #refrescar} reconstruye el
+     * {@code PanelElementosClasificacion}, así que los elementos cargados se
+     * descartan — {@code onDescartar} lo hace explícito.
+     */
+    public void setGuardRefresco(java.util.function.Supplier<Boolean> hayPendientes, String mensaje,
+                                 Runnable onDescartar) {
+        header.setGuardRefresco(hayPendientes, mensaje, onDescartar);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
     }
 
     public void refrescar(List<IngresoLavaderoResumen> ingresos, List<ElementoCatalogo> catalogo) {

@@ -155,6 +155,25 @@ public class PantallaCiclos extends JPanel {
         header.setGuardNavegacion(hayPendientes, mensaje, onDescartar);
     }
 
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /**
+     * Guarda del botón "Actualizar": pregunta antes de refrescar si hay staging sin
+     * lanzar. En Ciclos la config tipeada <b>se conserva</b> ({@code recargar()} no la
+     * toca), así que {@code onDescartar} va en {@code null}.
+     */
+    public void setGuardRefresco(Supplier<Boolean> hayPendientes, String mensaje, Runnable onDescartar) {
+        header.setGuardRefresco(hayPendientes, mensaje, onDescartar);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
+    }
+
     public boolean confirmar(String msg, String titulo) {
         return JOptionPane.showConfirmDialog(this, msg, titulo,
             JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION;
