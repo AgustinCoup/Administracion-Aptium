@@ -169,4 +169,24 @@ public class PantallaRegistrarEstado extends JPanel {
                                Runnable onDescartarConfirmado) {
         header.setGuardNavegacion(hayPendientes, mensajeBloqueo, onDescartarConfirmado);
     }
+
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /**
+     * Guarda del botón "Actualizar": los movimientos armados sin confirmar
+     * <b>se descartan</b> al refrescar (misma semántica que entrar de nuevo a la
+     * pantalla), así que {@code onDescartar} hace el descarte.
+     */
+    public void setGuardRefresco(Supplier<Boolean> hayPendientes, String mensaje,
+                                 Runnable onDescartar) {
+        header.setGuardRefresco(hayPendientes, mensaje, onDescartar);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
+    }
 }

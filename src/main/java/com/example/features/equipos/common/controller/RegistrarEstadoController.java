@@ -101,6 +101,16 @@ public class RegistrarEstadoController {
             Constantes.Mensajes.GUARD_REGISTRAR_ESTADO_CAMBIOS,
             this::descartarCambiosPendientes
         );
+
+        // Botón "Actualizar" / F5: "descartar + releer". Un repintado del grupo operativo
+        // deja cambiosPendientes vivo pero invisible (ver "buffer zombi" en el plan); el
+        // guard descarta el buffer —vía onDescartar, que sincroniza contador y botones—
+        // antes de que la acción dispare la relectura.
+        panel.setGuardRefresco(
+            () -> !cambiosPendientes.isEmpty(),
+            Constantes.Mensajes.REFRESCO_REGISTRAR_ESTADO,
+            this::descartarCambiosPendientes);
+        panel.setAccionRefrescar(solicitarRefresco);
     }
 
     // ── Carga de datos ────────────────────────────────────────────────────────
@@ -112,6 +122,7 @@ public class RegistrarEstadoController {
     public void pintar(DatosOperativos datos) {
         this.ultimoSnapshot = datos;
         repintar();
+        panel.marcarActualizado();
     }
 
     /** Repinta desde el último snapshot, sin volver a la base. */

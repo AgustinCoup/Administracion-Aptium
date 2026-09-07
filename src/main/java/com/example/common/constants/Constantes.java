@@ -129,6 +129,16 @@ public final class Constantes {
             + "La configuración que tipeaste en cada lavarropas se mantiene.\n"
             + "¿Actualizar igual?";
 
+        /**
+         * Confirmación del botón "Actualizar" en Registrar Estado. Los movimientos
+         * armados sin confirmar se descartan — lo mismo que ya pasa al reentrar a la
+         * pantalla (ver "buffer zombi" en el plan).
+         */
+        public static final String REFRESCO_REGISTRAR_ESTADO =
+            "Tenés movimientos armados sin confirmar.\n"
+            + "Si actualizás, se descartan y la tabla se repuebla desde la base.\n"
+            + "¿Actualizar igual?";
+
         public static final String CANTIDAD_AVANZAR_PROMPT = "Cantidad a avanzar para: %s (disponible: %d)";
         public static final String CANTIDAD_AVANZAR_VACIA  = "Ingrese una cantidad válida.";
         public static final String CANTIDAD_AVANZAR_RANGO  = "La cantidad debe estar entre 1 y %d.";
