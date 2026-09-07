@@ -45,6 +45,7 @@ public class LotesController {
 
     private static final Logger log = LoggerFactory.getLogger(LotesController.class);
 
+    private final PantallaLotes       pantallaLotes;
     private final PanelLotesContenido panel;
     private final LoteService         loteService;
     private final Runnable            solicitarRefresco;
@@ -98,6 +99,7 @@ public class LotesController {
                            LoteService loteService,
                            OnEstadosActualizadosListener listener,
                            Runnable solicitarRefresco) {
+        this.pantallaLotes     = pantallaLotes;
         this.panel             = pantallaLotes.getPanelContenido();
         this.loteService       = loteService;
         this.solicitarRefresco = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
@@ -111,6 +113,13 @@ public class LotesController {
             Constantes.Mensajes.GUARD_LOTES_CAMBIOS,
             this::descartarCambiosPendientes
         );
+
+        // Botón "Actualizar": reusa el mismo disparador del componentShown. El staging
+        // sobrevive al repintado (repintar() lo descuenta del snapshot), así que el guard
+        // avisa sin descartar nada — REFRESCO_LOTES lo dice, no GUARD_LOTES_CAMBIOS.
+        pantallaLotes.setGuardRefresco(this::tieneCambiosPendientes,
+                Constantes.Mensajes.REFRESCO_LOTES, null);
+        pantallaLotes.setAccionRefrescar(solicitarRefresco);
     }
 
     public void setOnEstadosActualizados(OnEstadosActualizadosListener listener) {
@@ -164,6 +173,7 @@ public class LotesController {
     public void pintar(DatosOperativos datos) {
         this.ultimoSnapshot = datos;
         repintar();
+        pantallaLotes.marcarActualizado();
     }
 
     /**

@@ -153,6 +153,26 @@ public class PantallaLotes extends JPanel {
         header.setGuardNavegacion(hayPendientes, mensajeBloqueo, onDescartarConfirmado);
     }
 
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /**
+     * Guarda del botón "Actualizar": pregunta antes de refrescar si hay staging sin
+     * lanzar. En Lotes el staging <b>se conserva</b> tras el refresco, así que
+     * {@code onDescartar} va en {@code null}.
+     */
+    public void setGuardRefresco(Supplier<Boolean> hayPendientes, String mensaje,
+                                 Runnable onDescartar) {
+        header.setGuardRefresco(hayPendientes, mensaje, onDescartar);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
+    }
+
     // Acceso directo al panel para operaciones avanzadas si es necesario
     public PanelLotesContenido getPanelContenido() {
         return panelContenido;

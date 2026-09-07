@@ -100,6 +100,17 @@ public final class Constantes {
         /** Prefijo del cartelito de última actualización que muestra {@code PanelHeader}. */
         public static final String REFRESCO_TIMESTAMP_PREFIJO   = "Actualizado ";
 
+        /**
+         * Confirmación del botón "Actualizar" en Lotes. A diferencia de
+         * {@link #GUARD_LOTES_CAMBIOS}, acá lo arrastrado NO se pierde: el staging
+         * sobrevive al repintado. Lo que puede cambiar es la disponibilidad en la base.
+         */
+        public static final String REFRESCO_LOTES =
+            "Vas a releer los equipos disponibles desde la base.\n"
+            + "Lo que ya arrastraste a un autoclave se mantiene, pero algún material\n"
+            + "podría haber dejado de estar disponible si otro puesto lo movió.\n"
+            + "¿Actualizar igual?";
+
         public static final String CANTIDAD_AVANZAR_PROMPT = "Cantidad a avanzar para: %s (disponible: %d)";
         public static final String CANTIDAD_AVANZAR_VACIA  = "Ingrese una cantidad válida.";
         public static final String CANTIDAD_AVANZAR_RANGO  = "La cantidad debe estar entre 1 y %d.";

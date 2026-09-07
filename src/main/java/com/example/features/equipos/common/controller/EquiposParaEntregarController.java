@@ -54,6 +54,9 @@ public class EquiposParaEntregarController {
         this.solicitarRefresco  = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
         this.onEstadosActualizadosListener = onEstadosActualizadosListener;
         inicializarEventos();
+        // Botón "Actualizar": reusa el mismo disparador del componentShown. Sin guard:
+        // no acumula estado en memoria entre lecturas.
+        panel.setAccionRefrescar(solicitarRefresco);
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) { solicitarRefresco.run(); }
         });
@@ -107,6 +110,7 @@ public class EquiposParaEntregarController {
 
         panel.actualizarInstituciones(agrupado.filas());
         panel.limpiarMateriales();
+        panel.marcarActualizado();
     }
 
     private void entregarInstitucion() {
