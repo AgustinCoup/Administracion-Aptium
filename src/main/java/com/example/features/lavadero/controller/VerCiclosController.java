@@ -25,6 +25,9 @@ public class VerCiclosController extends AbstractFilterController<CicloLavadero>
         pantalla.setOnFiltrosChanged(this::aplicarFiltros);
         pantalla.setOnLimpiar(pantalla::limpiarFiltros);
 
+        // El botón "Actualizar" reusa el mismo disparador del componentShown.
+        pantalla.setAccionRefrescar(solicitarRefresco);
+
         pantalla.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) { solicitarRefresco.run(); }
         });
@@ -33,6 +36,7 @@ public class VerCiclosController extends AbstractFilterController<CicloLavadero>
     /** Vuelca el snapshot a la grilla. Sin I/O. */
     public void pintar(List<CicloLavadero> ciclos) {
         recargarCache(ciclos);
+        pantalla.marcarActualizado();
     }
 
     @Override

@@ -50,6 +50,9 @@ public class HistorialLavaderoController extends AbstractFilterController<Ingres
 
         pantalla.setOnFiltrosChanged(this::aplicarFiltros);
 
+        // El botón "Actualizar" reusa el mismo disparador del componentShown.
+        pantalla.setAccionRefrescar(solicitarRefresco);
+
         pantalla.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
                 // Entrar a Historial siempre da la misma vista. El restablecimiento no notifica:
@@ -70,6 +73,7 @@ public class HistorialLavaderoController extends AbstractFilterController<Ingres
     /** Vuelca el snapshot a la grilla. Sin I/O. */
     public void pintar(List<IngresoHistorial> historial) {
         recargarCache(historial);
+        pantalla.marcarActualizado();
     }
 
     @Override

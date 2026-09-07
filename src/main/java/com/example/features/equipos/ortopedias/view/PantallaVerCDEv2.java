@@ -20,6 +20,7 @@ import java.util.List;
  */
 public class PantallaVerCDEv2 extends JPanel {
 
+    private PanelHeader                header;
     private PanelEquipoMaterial        panelTablas;
     private JButton                    btnVerLotes;
     private JTextField                 txtFiltroCliente;
@@ -32,7 +33,7 @@ public class PantallaVerCDEv2 extends JPanel {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
             Constantes.Titulos.ESTADO_PROCESOS,
             navegador, contenedor,
             Constantes.Pantallas.ESTERILIZACION
@@ -50,6 +51,16 @@ public class PantallaVerCDEv2 extends JPanel {
         );
         add(panelTablas, BorderLayout.CENTER);
         add(crearPanelSur(navegador, contenedor), BorderLayout.SOUTH);
+    }
+
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
     }
 
     private JPanel crearPanelSur(CardLayout navegador, JPanel contenedor) {

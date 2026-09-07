@@ -26,6 +26,8 @@ public class PantallaVerEquipos extends JPanel {
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
+    private final PanelHeader header;
+
     // ── Filtros compartidos ────────────────────────────────────────────────────
     private final CheckableComboBox<String> cmbEstados;
     private final JTextField                txtCliente;
@@ -68,7 +70,7 @@ public class PantallaVerEquipos extends JPanel {
     public PantallaVerEquipos(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout(5, 5));
 
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
                 "Ver Equipos", navegador, contenedor, Constantes.Pantallas.ESTERILIZACION);
 
         // ── Filtros compartidos ──────────────────────────────────────────────
@@ -201,6 +203,16 @@ public class PantallaVerEquipos extends JPanel {
     }
 
     // ── API pública ───────────────────────────────────────────────────────────
+
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
+    }
 
     public void setDatosOrtopedia(List<Equipo> lista) {
         listaOrtopedias = lista;

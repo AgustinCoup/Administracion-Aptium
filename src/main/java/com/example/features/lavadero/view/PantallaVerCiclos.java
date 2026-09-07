@@ -28,6 +28,7 @@ public class PantallaVerCiclos extends JPanel {
     /** Derivado del array: agregar una columna antes de "Estado" no vuelve a romper el renderer. */
     private static final int COL_ESTADO = List.of(COLUMNAS).indexOf("Estado");
 
+    private PanelHeader             header;
     private final DefaultTableModel modeloTabla;
     private final JTable            tablaCiclos;
 
@@ -43,7 +44,7 @@ public class PantallaVerCiclos extends JPanel {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
             Constantes.Titulos.VER_CICLOS_LAVADERO,
             navegador,
             contenedor,
@@ -67,6 +68,16 @@ public class PantallaVerCiclos extends JPanel {
         tablaCiclos.setFillsViewportHeight(true);
 
         add(new JScrollPane(tablaCiclos), BorderLayout.CENTER);
+    }
+
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
     }
 
     private JPanel crearPanelFiltros() {

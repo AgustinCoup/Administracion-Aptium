@@ -40,6 +40,7 @@ public class PantallaHistorialLavadero extends JPanel {
         EstadoIngresoLavadero.CLASIFICADO.name(),
         EstadoIngresoLavadero.LAVADO.name());
 
+    private PanelHeader             header;
     private final DefaultTableModel modeloTabla;
     private final JTable            tablaIngresos;
 
@@ -68,7 +69,7 @@ public class PantallaHistorialLavadero extends JPanel {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
             Constantes.Titulos.HISTORIAL_LAVADERO,
             navegador,
             contenedor,
@@ -99,6 +100,16 @@ public class PantallaHistorialLavadero extends JPanel {
         JPanel panelSur = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
         panelSur.add(lblHint);
         add(panelSur, BorderLayout.SOUTH);
+    }
+
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
     }
 
     private JPanel crearPanelFiltros() {

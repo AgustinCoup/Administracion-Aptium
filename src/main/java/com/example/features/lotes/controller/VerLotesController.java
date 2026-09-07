@@ -39,6 +39,9 @@ public class VerLotesController extends AbstractFilterController<Lote> {
         this.panel.setOnFiltrosChanged(this::aplicarFiltros);
         this.panel.setOnImprimir(this::abrirDialogoImprimir);
 
+        // El botón "Actualizar" reusa el mismo disparador del componentShown.
+        this.panel.setAccionRefrescar(solicitarRefresco);
+
         this.panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) { solicitarRefresco.run(); }
         });
@@ -53,6 +56,7 @@ public class VerLotesController extends AbstractFilterController<Lote> {
         panel.setEquiposFiltro(autoclaves);
 
         recargarCache(datos.todosLosLotes());
+        panel.marcarActualizado();
     }
 
     @Override

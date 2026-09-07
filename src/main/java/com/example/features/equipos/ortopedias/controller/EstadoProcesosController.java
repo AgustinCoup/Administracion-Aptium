@@ -41,6 +41,9 @@ public class EstadoProcesosController extends AbstractFilterController<EquipoReg
         Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
 
         this.panel.setOnFiltrosChanged(this::aplicarFiltros);
+        // El botón "Actualizar" reusa el mismo disparador del componentShown; no
+        // toca aplicarFiltroInicial() para no pisar los filtros que el operador puso.
+        this.panel.setAccionRefrescar(solicitarRefresco);
         this.panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
                 // Sin notificar: pintar() es el único que filtra y repinta, para no
@@ -57,6 +60,7 @@ public class EstadoProcesosController extends AbstractFilterController<EquipoReg
         todos.addAll(datos.equipos());
         todos.addAll(datos.equiposOtros());
         recargarCache(todos);
+        panel.marcarActualizado();
     }
 
     @Override
