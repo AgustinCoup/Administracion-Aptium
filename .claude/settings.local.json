@@ -50,7 +50,9 @@
       "Bash(mvn -q -DskipTests=false -Dtest=EquipoCorreccionServiceTest test)",
       "Bash(mvn -q -Dtest=EquipoCorreccionServiceTest test)",
       "Bash(mvn -q -Dtest=EquipoCorreccionServiceTest,MaterialDAOTest test)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(mvn -q test -Dtest=GuardaRefrescoTest,PanelHeaderTest)",
+      "Bash(grep -E \"Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$\")"
     ]
   }
 }
