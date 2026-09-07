@@ -130,6 +130,7 @@ class EquipoCorreccionServiceTest {
     void modificarCantidad_valido_actualizaYAudita() {
         when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
         when(materialDAO.obtenerCantidad(2)).thenReturn(3);
+        when(materialDAO.actualizarCantidad(1, 2, 5, 0)).thenReturn(true);
 
         boolean resultado = service.modificarCantidadMaterial(1, 2, 5, 0, "corrección");
 
@@ -137,6 +138,18 @@ class EquipoCorreccionServiceTest {
         verify(materialDAO).actualizarCantidad(1, 2, 5, 0);
         verify(auditoriaDAO).registrarCambio(eq(1), eq(2), eq("MODIFICACION_CANTIDAD"),
             eq("cantidad"), eq("3"), eq("5"), eq("corrección"), eq("ORTOPEDIA"));
+    }
+
+    @Test
+    void modificarCantidad_materialDeOtroEquipo_lanzaValidationYNoAudita() {
+        when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
+        when(materialDAO.obtenerCantidad(2)).thenReturn(3);
+        when(materialDAO.actualizarCantidad(1, 2, 5, 0)).thenReturn(false);
+
+        assertThrows(ValidationException.class,
+            () -> service.modificarCantidadMaterial(1, 2, 5, 0, "corrección"));
+
+        verifyNoInteractions(auditoriaDAO);
     }
 
     // ── modificarCodigoMaterial — validaciones ────────────────────────────────
@@ -192,6 +205,7 @@ class EquipoCorreccionServiceTest {
         when(materialDAO.obtenerMaterial(1)).thenReturn(
             new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
         when(catalogoDAO.obtenerDescripcionVigente(200)).thenReturn("DescNueva");
+        when(materialDAO.actualizarCodigo(1, 1, 200, 0)).thenReturn(true);
 
         boolean resultado = service.modificarCodigoMaterial(1, 1, 200, 0, "motivo");
 
@@ -199,6 +213,20 @@ class EquipoCorreccionServiceTest {
         verify(materialDAO).actualizarCodigo(1, 1, 200, 0);
         verify(auditoriaDAO).registrarCambio(eq(1), eq(1), eq("MODIFICACION_CODIGO"),
             eq("codigo_catalogo"), anyString(), anyString(), eq("motivo"), eq("ORTOPEDIA"));
+    }
+
+    @Test
+    void modificarCodigo_materialDeOtroEquipo_lanzaValidationYNoAudita() {
+        when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
+        when(materialDAO.obtenerMaterial(1)).thenReturn(
+            new FilaMaterial(1, 1, 100, "DescVieja", 3, "Nuevo"));
+        when(catalogoDAO.obtenerDescripcionVigente(200)).thenReturn("DescNueva");
+        when(materialDAO.actualizarCodigo(1, 1, 200, 0)).thenReturn(false);
+
+        assertThrows(ValidationException.class,
+            () -> service.modificarCodigoMaterial(1, 1, 200, 0, "motivo"));
+
+        verifyNoInteractions(auditoriaDAO);
     }
 
     // ── eliminarEquipo ────────────────────────────────────────────────────────

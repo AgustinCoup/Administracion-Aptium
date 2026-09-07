@@ -74,7 +74,9 @@ public class EquipoCorreccionService {
             Integer cantidadAnterior = materialDAO.obtenerCantidad(materialId);
             if (cantidadAnterior == null) throw new ValidationException("El material no existe");
 
-            materialDAO.actualizarCantidad(equipoId, materialId, cantidadNueva, versionEsperada);
+            boolean actualizado = materialDAO.actualizarCantidad(equipoId, materialId, cantidadNueva, versionEsperada);
+            if (!actualizado) throw new ValidationException("Material no encontrado en el equipo");
+
             auditoriaDAO.registrarCambio(equipoId, materialId, "MODIFICACION_CANTIDAD",
                 "cantidad", String.valueOf(cantidadAnterior), String.valueOf(cantidadNueva), motivo.trim(), "ORTOPEDIA");
 
@@ -119,7 +121,9 @@ public class EquipoCorreccionService {
                 throw new ValidationException("El código de catálogo " + codigoNuevo + " no existe o fue dado de baja");
             }
 
-            materialDAO.actualizarCodigo(equipoId, materialId, codigoNuevo, versionEsperada);
+            boolean actualizado = materialDAO.actualizarCodigo(equipoId, materialId, codigoNuevo, versionEsperada);
+            if (!actualizado) throw new ValidationException("Material no encontrado en el equipo");
+
             String valAnterior = codigoAnterior + " (" + (descripcionAnterior != null ? descripcionAnterior : "N/A") + ")";
             String valNuevo    = codigoNuevo    + " (" + descripcionNueva + ")";
             auditoriaDAO.registrarCambio(equipoId, materialId, "MODIFICACION_CODIGO",

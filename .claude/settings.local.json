@@ -31,7 +31,26 @@
       "Bash(grep -nEi \"pass|user|clave|contrase|[0-9]{1,3}\\(\\\\.[0-9]{1,3}\\){3}\" README-DEPLOY.md)",
       "Bash(git commit -q -m '@ *)",
       "Bash(mvn -q test -Dtest=TareaUITest)",
-      "Bash(grep -E \"Tests run:.*Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$|BUILD\")"
+      "Bash(grep -E \"Tests run:.*Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$|BUILD\")",
+      "Bash(mvn -q -o test-compile)",
+      "Bash(mvn -o test-compile)",
+      "Bash(mvn -o test-compile -Dmaven.compiler.useIncrementalCompilation=false)",
+      "Bash(mvn -o clean test-compile)",
+      "Bash(mvn -o test)",
+      "Bash(git commit -m ' *)",
+      "Bash(mvn -q -o compile)",
+      "Bash(mvn -o compile)",
+      "Bash(mvn -o clean test)",
+      "Bash(mvn -o -q test -Dtest=LoteDAOTest)",
+      "Bash(mvn -o test -Dtest=LoteDAOTest)",
+      "Bash(mvn -q -Dtest=ClienteDAOTest,ClienteServiceTest,FusionClientesDAOTest test)",
+      "Bash(mvn -Dtest=ClienteDAOTest,ClienteServiceTest,FusionClientesDAOTest test)",
+      "Bash(mvn -q clean test)",
+      "Bash(mvn -Dtest=FusionClientesDAOTest,ClienteServiceTest,ClienteDAOTest test)",
+      "Bash(mvn -q -DskipTests=false -Dtest=EquipoCorreccionServiceTest test)",
+      "Bash(mvn -q -Dtest=EquipoCorreccionServiceTest test)",
+      "Bash(mvn -q -Dtest=EquipoCorreccionServiceTest,MaterialDAOTest test)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }
