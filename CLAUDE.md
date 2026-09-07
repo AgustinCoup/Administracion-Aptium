@@ -53,14 +53,59 @@ Features: `equipos/ortopedias`, `equipos/otros`, `lavadero`, `lotes`, `autoclave
 
 **Navegación UI:** `PantallaPrincipal` usa `CardLayout`; los nombres de los paneles están en `Constantes.Pantallas.*`.
 
-**Refresco al entrar a una pantalla — dos convenciones conviven** (no unificadas a propósito; unificarlas es un refactor transversal aparte):
+**Tres disparadores de relectura conviven.** Los dos primeros son "al entrar" y no están unificados
+a propósito (unificarlos es un refactor transversal aparte); el tercero es a pedido del operador:
 
-| Convención | Dónde | Cómo |
+| Disparador | Dónde | Cómo |
 |---|---|---|
 | `componentShown` en el controller | Pantallas del CDE y las de consulta (`EquiposParaEntregarController`, `EstadoProcesosController`, `VerEquiposController`, `VerLotesController`, `VerCiclosController`, `HistorialLavaderoController`) y las del grupo `operativo` `RegistrarEstadoController` y `LotesController` | El `ComponentAdapter` del panel pide la relectura al mostrarse |
 | `ActionListener` del botón de menú en `UiCoordinator` | Pantallas operativas de Lavadero (`ClasificacionController`, `CiclosController`, `SalidasLavaderoController`) | El listener del botón hace `navegador.show(...)` **y** llama al método de carga (`cargarIngresosSinClasificar()`, `abrirPantalla()`, `cargarDatos()`) — `UiCoordinator:198-201`, `:209-212`, `:227-230` |
+| Botón "Actualizar" / **F5** en el `PanelHeader` | Las 11 pantallas que muestran datos de BD | `setAccionRefrescar(Runnable)` cablea **la función de carga que la pantalla ya tenía**; `setGuardRefresco(...)` interpone la confirmación donde hace falta. Plan: `plans/botones-refresco-por-pantalla.md` |
 
 Las tres pantallas de Lavadero se muestran **sólo** desde esos tres listeners (no hay `navegador.show(CLASIFICACION_LAVADERO|CICLOS_LAVADERO|SALIDAS_LAVADERO)` en ningún otro lado), así que la segunda convención cubre el 100 % de sus rutas de entrada. `CiclosController.componentShown` **no** relee (sólo colapsa cards / configura DnD): la relectura va en `abrirPantalla()`, que resetea sólo las cards libres para no pisar lo que el operador tipea en otra card — ver su javadoc.
+
+**El botón no agrega un camino de lectura.** Invoca el mismo `Disparador` o el mismo método de carga
+que usa la pantalla al entrar; lo único propio del botón es *cuándo* se dispara y qué pasa con el
+trabajo en curso. El `marcarActualizado()` del cartelito va dentro del `pintar()` de cada controller
+(donde el repintado efectivamente ocurrió), nunca en el click: hay debounce de 150 ms en
+`RefrescadorPantallas` y la lectura puede fallar.
+
+**Qué le pasa a lo pendiente — es el texto del cartel, no documentación.** Un cartel que miente
+entrena al operador a apretar "Sí" sin leer, y desactiva también los avisos verdaderos (mismo
+argumento que "por qué las tablas de detalle no llevan `version`"). Por eso hay un
+`Mensajes.REFRESCO_*` por pantalla y **no** se reusan los `GUARD_*_CAMBIOS`, que dicen "se perderán":
+
+| Pantalla | Guarda | Qué pasa con el trabajo en curso |
+|---|---|---|
+| Lotes | sí, sin descarte | Lo arrastrado **se conserva** (`repintar()` descuenta el staging); puede haber dejado de estar disponible en la base |
+| Ciclos | sí, sin descarte | La config tipeada **se conserva** — el botón va a `recargar()`, **no** a `abrirPantalla()`, que la resetea |
+| Registrar Estado | sí, **con descarte** | Los movimientos armados **se descartan** (`descartarCambiosPendientes` antes de releer) |
+| Clasificación | sí, **con descarte** | Los elementos del formulario **se descartan**: `PantallaClasificacionLavadero.refrescar()` reconstruye el `PanelElementosClasificacion` entero |
+| Las otras 7 | no | No acumulan estado entre lecturas |
+
+**La regla para decidir si una pantalla necesita guarda:** *toda pantalla que acumule estado en
+memoria entre lecturas la necesita; el guard de Volver (`setGuardVolver`) es una pista de dónde
+buscarla, no la lista.* La tentación es escribirla al revés — "sin guard de Volver ⇒ sin guarda de
+refresco" — y es **falsa**: Clasificación no tiene guard de Volver y sí destruye el formulario al
+refrescar. Antes de exponer cualquier método de carga como acción del usuario, mirar qué hace su
+`pintar` con el estado en curso.
+
+**Dos asimetrías que hay que preservar:**
+- `RegistrarEstadoController.componentShown` **no relee** cuando hay cambios pendientes: descarta el
+  buffer y repinta local. Por eso el botón es "descartar + releer" y no sólo "releer" — un repintado
+  del grupo `operativo` con el buffer vivo deja el contador y los botones Confirmar/Cancelar
+  mintiendo sobre movimientos que ya no se ven, y confirmarlos pasaría en silencio (la guarda de esa
+  pantalla es CAS sobre `estado` del material, no sobre `version`).
+- `ClasificacionController` y `SalidasLavaderoController` guardan la `TareaUI.Ejecucion` en vuelo y
+  la cancelan antes de lanzar otra (`cargaEnCurso`, calcado de `CiclosController`). No pasan por
+  `RefrescadorPantallas`, así que no tienen debounce: sin eso, F5 mantenido apretado da N lecturas
+  concurrentes y gana la que **termine** última, no la última lanzada.
+
+`GuardaRefresco` (`ui/common/`) es la clase plana donde vive la decisión — sin Swing, porque
+`JOptionPane` tira `HeadlessException` en los tests; `PanelHeader` la delega con un confirmador que
+apunta a `JOptionPane`. Que 19 headers registren F5 no colisiona por la misma razón que ESC no
+colisiona hoy: `WHEN_IN_FOCUSED_WINDOW` sólo dispara en componentes *showing* y el `CardLayout` deja
+invisibles las cards que no son la actual.
 
 ## Ortopedias vs. Otros
 

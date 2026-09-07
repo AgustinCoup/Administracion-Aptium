@@ -3,9 +3,14 @@
 **Objetivo:** que el operador pueda pedir explícitamente una relectura de la base desde cada
 pantalla que muestra datos, sin salir y volver a entrar.
 
-**Estado:** planificado, sin empezar. Revisado adversarialmente (2026-09-07); los hallazgos
-están incorporados y los que cambiaron el diseño quedan marcados abajo.
-**Rama sugerida:** `BotonesRefresco` (desde `main`).
+**Estado: EJECUTADO Y CERRADO (2026-09-07).** Los seis pasos están hechos y smokeados. Los
+commits son `b110d8c` (paso 1), `603dfa6` (2), `4ec467d` (3), `8f4990c` (5), `bd16fe0` (4) sobre
+`GuardasCorrecciones`, más la documentación del paso 6 en `CLAUDE.md`. Lo que quedó implementado
+coincide con lo planificado, incluido lo que no toca `UiCoordinator`. Este archivo queda como
+registro de las decisiones y de la revisión; **la documentación viva es `CLAUDE.md`**.
+
+Revisado adversarialmente antes de ejecutar; los hallazgos están incorporados y los que cambiaron
+el diseño quedan marcados abajo.
 **Modo:** commits directos sobre la rama; no hay `gh` CLI instalado en esta máquina, así que el
 plan no asume PRs ni CI remoto. Verificación = `mvn test` local + smoke manual.
 
