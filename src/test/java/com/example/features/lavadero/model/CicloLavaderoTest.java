@@ -43,12 +43,12 @@ class CicloLavaderoTest {
         BigDecimal litrosJabon = new BigDecimal("2.00");
         BigDecimal litrosTotales = new BigDecimal("30.00");
 
-        CicloLavadero ciclo = new CicloLavadero(5, 7, TipoLavado.PODRIDO, LIDER,
+        CicloLavadero ciclo = new CicloLavadero(5, 7, TipoLavado.SUCIO, LIDER,
                 litrosJabon, true, true, litrosTotales, inicio, null);
 
         assertEquals(5, ciclo.getId());
         assertEquals(7, ciclo.getLavarropasNumero());
-        assertEquals(TipoLavado.PODRIDO, ciclo.getTipoLavado());
+        assertEquals(TipoLavado.SUCIO, ciclo.getTipoLavado());
         assertEquals(LIDER, ciclo.getJabon());
         assertEquals(0, litrosJabon.compareTo(ciclo.getLitrosJabon()));
         assertTrue(ciclo.isSuavizante());

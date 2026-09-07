@@ -7,14 +7,13 @@ import org.slf4j.LoggerFactory;
  * Tipo de lavado con el que se lanza un ciclo. Es sólo un dato descriptivo: se elige, se guarda
  * y se muestra. No condiciona el jabón, los litros ni qué elementos pueden mezclarse.
  *
- * <p>Se persiste {@link #name()} ({@code LIMPIO}/{@code SUCIO}/{@code PODRIDO}) y no
+ * <p>Se persiste {@link #name()} ({@code LIMPIO}/{@code SUCIO}) y no
  * {@link #getNombre()}, para desacoplar el texto visible del valor almacenado.</p>
  */
 public enum TipoLavado {
 
     LIMPIO("Limpio"),
-    SUCIO("Sucio"),
-    PODRIDO("Podrido");
+    SUCIO("Sucio");
 
     private static final Logger log = LoggerFactory.getLogger(TipoLavado.class);
 

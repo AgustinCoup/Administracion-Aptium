@@ -144,33 +144,33 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Test
     void tipoLavado_sePersisteElName_yNoElNombreDeUi() throws SQLException {
-        lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), linea(3));
+        lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.SUCIO), linea(3));
 
-        assertEquals("PODRIDO", tipoLavadoPersistido());
+        assertEquals("SUCIO", tipoLavadoPersistido());
     }
 
     @Test
     void tipoLavado_roundTrip_enCiclosActivos() {
         lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.LIMPIO),  linea(1));
         lanzarCiclo(2, config(new BigDecimal("1.5"), TipoLavado.SUCIO),   linea(1));
-        lanzarCiclo(3, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), linea(1));
+        lanzarCiclo(3, config(new BigDecimal("1.5"), TipoLavado.LIMPIO),  linea(1));
 
         Map<Integer, CicloLavadero> activos = dao.obtenerCiclosActivosPorLavarropas();
 
-        assertEquals(TipoLavado.LIMPIO,  activos.get(1).getTipoLavado());
-        assertEquals(TipoLavado.SUCIO,   activos.get(2).getTipoLavado());
-        assertEquals(TipoLavado.PODRIDO, activos.get(3).getTipoLavado());
+        assertEquals(TipoLavado.LIMPIO, activos.get(1).getTipoLavado());
+        assertEquals(TipoLavado.SUCIO,  activos.get(2).getTipoLavado());
+        assertEquals(TipoLavado.LIMPIO, activos.get(3).getTipoLavado());
     }
 
     @Test
     void tipoLavado_roundTrip_enCiclosFinalizados() throws SQLException {
-        lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.PODRIDO), linea(1));
+        lanzarCiclo(1, config(new BigDecimal("1.5"), TipoLavado.SUCIO), linea(1));
         dao.finalizarCiclo(lastInsertIdDeCiclos());
 
         List<CicloLavadero> finalizados = dao.obtenerCiclosFinalizados();
 
         assertEquals(1, finalizados.size());
-        assertEquals(TipoLavado.PODRIDO, finalizados.get(0).getTipoLavado());
+        assertEquals(TipoLavado.SUCIO, finalizados.get(0).getTipoLavado());
     }
 
     @Test

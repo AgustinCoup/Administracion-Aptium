@@ -69,12 +69,25 @@ class LavarropasCardTest {
     }
 
     @Test
-    void configuracionConTipoJabonYMililitrosEstaCompleta() throws Exception {
+    void configuracionSinLitrosTotalesNoEstaCompleta() throws Exception {
         LavarropasCard card = new LavarropasCard(1);
         card.setJabones(List.of(SKIP));
         field(card, "cmbTipoLavado", JComboBox.class).setSelectedItem(TipoLavado.values()[0]);
         field(card, "cmbJabon", JComboBox.class).setSelectedItem(SKIP);
         field(card, "txtLitrosJabon", JTextField.class).setText("500");
+
+        assertFalse(card.tieneConfiguracionCompleta(),
+            "con los otros tres campos pero sin litros totales el ciclo no se puede lanzar");
+    }
+
+    @Test
+    void configuracionConLosCuatroCamposObligatoriosEstaCompleta() throws Exception {
+        LavarropasCard card = new LavarropasCard(1);
+        card.setJabones(List.of(SKIP));
+        field(card, "cmbTipoLavado", JComboBox.class).setSelectedItem(TipoLavado.values()[0]);
+        field(card, "cmbJabon", JComboBox.class).setSelectedItem(SKIP);
+        field(card, "txtLitrosJabon", JTextField.class).setText("500");
+        field(card, "txtLitrosTotales", JTextField.class).setText("20");
 
         assertTrue(card.tieneConfiguracionCompleta());
     }

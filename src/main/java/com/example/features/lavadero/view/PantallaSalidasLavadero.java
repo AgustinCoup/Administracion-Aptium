@@ -52,7 +52,31 @@ public class PantallaSalidasLavadero extends JPanel {
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
             panelLavados(), panelListos());
         split.setResizeWeight(0.5);
+        repartirMitadYMitadAlDimensionar(split);
         add(split, BorderLayout.CENTER);
+    }
+
+    /**
+     * {@code setResizeWeight(0.5)} sólo reparte el sobrante al redimensionar; la posición
+     * inicial del divisor sale del ancho preferido de cada panel, y el de la derecha —tres
+     * botones contra uno— se queda con casi todo. Fijar {@code setDividerLocation(0.5d)} recién
+     * cuando el split ya tiene tamaño (en el constructor mide 0). El flag lo corre una sola vez,
+     * para no pisar al operador si después mueve el divisor a mano — mismo patrón que el
+     * {@code dndConfigurado} de {@code CiclosController}.
+     */
+    private void repartirMitadYMitadAlDimensionar(JSplitPane split) {
+        split.addComponentListener(new java.awt.event.ComponentAdapter() {
+            private boolean repartido = false;
+
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                if (repartido || split.getWidth() <= 0) {
+                    return;
+                }
+                repartido = true;
+                split.setDividerLocation(0.5d);
+            }
+        });
     }
 
     private JPanel panelLavados() {

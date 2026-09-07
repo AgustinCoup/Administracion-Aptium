@@ -492,7 +492,7 @@ public class CiclosController {
 
     /**
      * {@code Optional.empty()} si el lavarropas no tiene nada que lanzar o le falta config;
-     * en el segundo caso además deja el motivo en {@code faltantes}. Los tres campos que se
+     * en el segundo caso además deja el motivo en {@code faltantes}. Los cuatro campos que se
      * piden acá son los mismos que enciende {@link LavarropasCard#tieneConfiguracionCompleta()}:
      * lo que cambia es que ahí se decide si el botón se prende y acá se dice qué falta.
      */
@@ -516,9 +516,14 @@ public class CiclosController {
             faltantes.add("Lavarropas #" + num + ": ingrese los mililitros de jabón.");
             return Optional.empty();
         }
+        BigDecimal litrosTotales = card.getLitrosTotales();
+        if (litrosTotales == null) {
+            faltantes.add("Lavarropas #" + num + ": ingrese los litros totales.");
+            return Optional.empty();
+        }
 
         ConfiguracionCiclo config = new ConfiguracionCiclo(tipoLavado, jabon, litrosJabon,
-            card.isSuavizante(), card.isPotenciador(), card.getLitrosTotales());
+            card.isSuavizante(), card.isPotenciador(), litrosTotales);
 
         Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
         List<LineaLanzamiento> lineas = new ArrayList<>();

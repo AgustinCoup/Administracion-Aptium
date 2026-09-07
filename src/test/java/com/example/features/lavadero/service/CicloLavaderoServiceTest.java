@@ -155,7 +155,7 @@ class CicloLavaderoServiceTest {
     @Test
     void lanzarTanda_conSuavizanteYPotenciadorYLitrosTotales_delegaADAO() {
         ConfiguracionCiclo config = new ConfiguracionCiclo(
-            TipoLavado.PODRIDO, LIDER, new BigDecimal("2.0"), true, true, new BigDecimal("30.00"));
+            TipoLavado.SUCIO, LIDER, new BigDecimal("2.0"), true, true, new BigDecimal("30.00"));
         List<LanzamientoCiclo> tanda = tandaDe(ciclo(7, config));
         service.lanzarTanda(tanda);
         verify(dao).lanzarTanda(tanda);

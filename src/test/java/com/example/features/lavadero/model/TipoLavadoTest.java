@@ -8,15 +8,14 @@ class TipoLavadoTest {
 
     @Test
     void desdeBD_valorValido_devuelveElEnum() {
-        assertEquals(TipoLavado.LIMPIO,  TipoLavado.desdeBD("LIMPIO"));
-        assertEquals(TipoLavado.SUCIO,   TipoLavado.desdeBD("SUCIO"));
-        assertEquals(TipoLavado.PODRIDO, TipoLavado.desdeBD("PODRIDO"));
+        assertEquals(TipoLavado.LIMPIO, TipoLavado.desdeBD("LIMPIO"));
+        assertEquals(TipoLavado.SUCIO,  TipoLavado.desdeBD("SUCIO"));
     }
 
     @Test
     void desdeBD_ignoraMayusculasYEspacios() {
-        assertEquals(TipoLavado.PODRIDO, TipoLavado.desdeBD("podrido"));
-        assertEquals(TipoLavado.LIMPIO,  TipoLavado.desdeBD("  Limpio  "));
+        assertEquals(TipoLavado.SUCIO,  TipoLavado.desdeBD("sucio"));
+        assertEquals(TipoLavado.LIMPIO, TipoLavado.desdeBD("  Limpio  "));
     }
 
     @Test
@@ -32,14 +31,13 @@ class TipoLavadoTest {
 
     @Test
     void getNombre_esElTextoDeUi() {
-        assertEquals("Limpio",  TipoLavado.LIMPIO.getNombre());
-        assertEquals("Sucio",   TipoLavado.SUCIO.getNombre());
-        assertEquals("Podrido", TipoLavado.PODRIDO.getNombre());
+        assertEquals("Limpio", TipoLavado.LIMPIO.getNombre());
+        assertEquals("Sucio",  TipoLavado.SUCIO.getNombre());
     }
 
     @Test
     void toString_devuelveElNombreLegible_paraElCombo() {
-        assertEquals("Podrido", TipoLavado.PODRIDO.toString());
+        assertEquals("Sucio", TipoLavado.SUCIO.toString());
     }
 
     @Test

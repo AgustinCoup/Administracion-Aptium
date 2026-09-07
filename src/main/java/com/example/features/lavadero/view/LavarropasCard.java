@@ -143,16 +143,18 @@ public class LavarropasCard extends JPanel {
         config.add(chkRow);
         config.add(rowPanel("L Tot.:", txtLitrosTotales));
 
-        txtLitrosJabon.getDocument().addDocumentListener(new DocumentListener() {
+        DocumentListener notificador = new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e)  { notificarConfiguracionChanged(); }
             @Override public void removeUpdate(DocumentEvent e)  { notificarConfiguracionChanged(); }
             @Override public void changedUpdate(DocumentEvent e) { notificarConfiguracionChanged(); }
-        });
+        };
+        txtLitrosJabon.getDocument().addDocumentListener(notificador);
+        txtLitrosTotales.getDocument().addDocumentListener(notificador);
 
         return config;
     }
 
-    /** Un solo canal para todos los campos obligatorios de la config (tipo, jabón y mL de jabón). */
+    /** Un solo canal para todos los campos obligatorios de la config (tipo, jabón, mL de jabón y L totales). */
     private void notificarConfiguracionChanged() {
         if (onConfiguracionChanged != null) SwingUtilities.invokeLater(onConfiguracionChanged);
     }
@@ -331,12 +333,14 @@ public class LavarropasCard extends JPanel {
     }
 
     /**
-     * Los tres campos obligatorios del ciclo: tipo de lavado, jabón y mililitros de jabón. Es
-     * la <b>única</b> definición de "config completa" de la pantalla: la usa esta card para
-     * decidir si se puede lanzar y {@code CiclosController} para validar los grupos repartidos.
+     * Los cuatro campos obligatorios del ciclo: tipo de lavado, jabón, mililitros de jabón y
+     * litros totales. Es la <b>única</b> definición de "config completa" de la pantalla: la usa
+     * esta card para decidir si se puede lanzar y {@code CiclosController} para validar los
+     * grupos repartidos.
      */
     public boolean tieneConfiguracionCompleta() {
-        return getTipoLavado() != null && getJabon() != null && getLitrosJabon() != null;
+        return getTipoLavado() != null && getJabon() != null
+            && getLitrosJabon() != null && getLitrosTotales() != null;
     }
 
     public void actualizarBtnAccion() {
