@@ -97,6 +97,9 @@ public final class Constantes {
         public static final String GUARD_REGISTRAR_ESTADO_CAMBIOS = "Tenés cambios sin confirmar. Si volvés ahora, se perderán.\n¿Querés salir de todas formas?";
         public static final String GUARD_LOTES_CAMBIOS          = "Tenés materiales cargados en un equipo de esterilización sin lanzar.\nSi volvés ahora, esos cambios se perderán.\n¿Querés salir de todas formas?";
 
+        /** Prefijo del cartelito de última actualización que muestra {@code PanelHeader}. */
+        public static final String REFRESCO_TIMESTAMP_PREFIJO   = "Actualizado ";
+
         public static final String CANTIDAD_AVANZAR_PROMPT = "Cantidad a avanzar para: %s (disponible: %d)";
         public static final String CANTIDAD_AVANZAR_VACIA  = "Ingrese una cantidad válida.";
         public static final String CANTIDAD_AVANZAR_RANGO  = "La cantidad debe estar entre 1 y %d.";
@@ -337,6 +340,7 @@ public final class Constantes {
         public static final String SALE_DEL_FLUJO   = "Sale del flujo";
         public static final String INGRESAR_A_CDE   = "Ingresar al CDE";
         public static final String ANADIR_ELEMENTO_CATALOGO = "Añadir elemento al catálogo";
+        public static final String ACTUALIZAR               = "Actualizar";
 
         private Botones() {}
     }

@@ -24,6 +24,24 @@ public class Hotkeys {
     }
 
     /**
+     * Registra F5 en el botón "Actualizar" dado. Calca a {@link #registrarVolver}:
+     * simula un clic, así respeta cualquier {@code GuardaRefresco} configurada encima.
+     *
+     * <p>Que 19 headers registren F5 no colisiona: los bindings
+     * {@code WHEN_IN_FOCUSED_WINDOW} sólo disparan en componentes <em>showing</em>,
+     * y el {@code CardLayout} deja invisibles todas las cards menos la actual —
+     * exactamente por eso ESC ya funciona hoy en los 19 sin pisarse.
+     */
+    public static void registrarRefrescar(JButton btnRefrescar) {
+        InputMap  im = btnRefrescar.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = btnRefrescar.getActionMap();
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0), "refrescar-f5");
+        am.put("refrescar-f5", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) { btnRefrescar.doClick(); }
+        });
+    }
+
+    /**
      * Registra Ctrl+Plus y Ctrl+Minus en el panel dado para agregar/quitar filas
      * de materiales. Incluye los equivalentes del teclado numérico.
      * Los bindings usan WHEN_IN_FOCUSED_WINDOW: se activan mientras la ventana
