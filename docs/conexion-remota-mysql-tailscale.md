@@ -1,7 +1,19 @@
 # Conexión remota a MySQL vía Tailscale — runbook
 
-Comandos usados para probar la conexión de una PC de desarrollo (cliente) contra
-el MySQL de otra PC (servidor), ambas en el mismo tailnet.
+Cómo hacer que una PC alcance el MySQL de otra, estando las dos en el mismo tailnet.
+
+**Quién aplica qué:**
+
+| Rol | Máquina | Secciones |
+|---|---|---|
+| **Servidor** | La PC que hoy tiene la app y la base (pasa a alojar MySQL para todos) | **§1** completa |
+| **Cliente** | Cada puesto nuevo | **§2** (y §4 si algo no conecta) |
+
+La PC servidor sigue conectando por `localhost` — no necesita la §2. Su IP de Tailscale
+es la que van a usar los clientes.
+
+> Para el procedimiento de deploy completo (migraciones, orden de actualización, rollback),
+> ver [../README-DEPLOY.md](../README-DEPLOY.md). Este runbook cubre solo la conectividad.
 
 ## 1. PC servidor (la que aloja MySQL)
 
@@ -23,7 +35,23 @@ foreach ($p in $paths) { if (Test-Path $p) { Write-Output "FOUND: $p"; Select-St
 Debe ser `0.0.0.0` (o la IP de Tailscale puntual). Si está en `127.0.0.1`, cambiarlo
 y reiniciar el servicio.
 
-### 1.4 Verificar grants del usuario MySQL
+### 1.4 Verificar que el servidor ofrece TLS (obligatorio desde `aad4dfc`)
+```sql
+SHOW GLOBAL VARIABLES LIKE 'have_ssl';   -- tiene que decir YES
+```
+La app arma las URLs JDBC con `sslMode=REQUIRED`, así que **no conecta** si el
+servidor no ofrece TLS — falla en el primer paso del arranque, en todos los puestos
+a la vez. No es un problema de red ni de credenciales, y el síntoma no lo aclara.
+
+Si da `DISABLED`, hay que habilitar TLS **en el servidor** (`ssl_cert` / `ssl_key`
+en `my.ini` y reiniciar el servicio), nunca bajar el modo en el cliente. MySQL 8
+genera certificados autofirmados al inicializar el datadir, así que normalmente ya
+viene en `YES`.
+
+Sobre una sesión ya conectada desde el puesto, la línea `SSL:` de `STATUS;` muestra
+el cifrado en uso.
+
+### 1.5 Verificar grants del usuario MySQL
 ```powershell
 $mysqlExe = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
 & $mysqlExe -u<ADMIN> -p<PASSWORD_ADMIN> -N -e "SELECT user, host FROM mysql.user WHERE user='<USUARIO>';"
@@ -42,7 +70,13 @@ solo si en producción la DB sigue siendo accedida a través del tailnet. Si el
 deploy real usa otra red (LAN, VPC, otra VPN), reemplazar por la subred/host
 que corresponda a ese entorno.
 
-### 1.5 Abrir el puerto en el firewall (requiere PowerShell como Administrador)
+⚠️ **`ALL PRIVILEGES` acotado al schema es el mínimo, no un exceso.** La app hace
+`CREATE DATABASE IF NOT EXISTS` y Flyway ejecuta DDL (CREATE TABLE, ALTER, índices)
+en cada arranque con migraciones pendientes. Un usuario con solo
+SELECT/INSERT/UPDATE/DELETE conecta bien y después **muere en la migración**. Lo que
+no hay que hacer es `ON *.*`.
+
+### 1.6 Abrir el puerto en el firewall (requiere PowerShell como Administrador)
 ```powershell
 New-NetFirewallRule -DisplayName "MySQL (Tailscale)" -Direction Inbound -Protocol TCP -LocalPort 3306 -RemoteAddress 100.64.0.0/10 -Action Allow -Profile Any
 ```
@@ -54,11 +88,26 @@ Verificar que quedó creada:
 Get-NetFirewallRule -DisplayName "MySQL (Tailscale)" | Select-Object DisplayName, Enabled, Direction, Action
 ```
 
-### 1.6 Probar que el puerto responde
+### 1.7 Probar que el puerto responde
 ```powershell
 Test-NetConnection -ComputerName <IP_TAILSCALE_DE_ESTA_PC> -Port 3306
 ```
 `TcpTestSucceeded` debe dar `True`.
+
+### 1.8 Permanencia del nodo (hacerlo una vez, antes de producción)
+
+Dos cosas que no fallan el día del deploy sino meses después, y cuyo síntoma no
+apunta a Tailscale:
+
+- **Desactivar la expiración de clave del nodo servidor** en la consola de Tailscale
+  (Machines → el nodo → *Disable key expiry*). Por defecto la clave expira a los
+  ~180 días: ese día **todos los puestos pierden la base a la vez**, sin que haya
+  cambiado nada en la app ni en MySQL. Conviene hacerlo también en los puestos.
+- **Confirmar que Tailscale arranca solo al bootear**, en el servidor y en cada
+  puesto — si no, alcanza un reinicio de la PC servidor para dejar a todos afuera:
+  ```powershell
+  Get-Service Tailscale | Select-Object Name, Status, StartType   # StartType: Automatic
+  ```
 
 ## 2. PC cliente (la que se conecta remotamente)
 
@@ -78,7 +127,7 @@ db.user=<USUARIO>
 db.pass=<PASSWORD>
 ```
 `root`/`root` son solo los valores por defecto de este entorno de dev — en
-producción usar el usuario dedicado creado en el paso 1.4, nunca `root`.
+producción usar el usuario dedicado creado en el paso 1.5, nunca `root`.
 
 ⚠️ Las claves son `db.ip`, `db.port`, `db.name`, `db.user`, `db.pass`, en
 minúscula con puntos. **No** `DB_HOST` / `DB_USER` / etc. — esos son los
@@ -107,7 +156,7 @@ Para chequear si ya hay algo seteado antes de asumir que manda el archivo:
 [System.Environment]::GetEnvironmentVariable("DB_HOST","Machine")
 ```
 
-## 3. VSCode — cwd del launch
+## 3. VSCode — cwd del launch *(solo máquina de desarrollo)*
 
 Si se lanza desde VSCode, agregar `"cwd": "${workspaceFolder}"` a las
 configuraciones de `.vscode/launch.json` para que la búsqueda relativa de
@@ -133,6 +182,15 @@ dos líneas, está usando los defaults hardcodeados.
 
 ## Notas para el día del deploy
 
+> El procedimiento completo (release, migraciones, orden de actualización de los
+> puestos, backup y rollback) está en [../README-DEPLOY.md](../README-DEPLOY.md).
+> Acá quedan solo los puntos de red y configuración.
+
+- **`have_ssl = YES` verificado antes de mañana** (§1.4). Es lo único de esta lista
+  que deja la app sin arrancar en todos los puestos a la vez, y nunca corrió así en
+  producción.
+- **Grants con `ALL PRIVILEGES ON sistema_empresa.*`** (§1.5): menos que eso rompe
+  Flyway; `ON *.*` es de más.
 - No dejar `root@'%'` en producción — usuario específico con grants acotados
   al host/subred real del cliente.
 - La regla de firewall no persiste entre migraciones de servidor: hay que
@@ -140,4 +198,6 @@ dos líneas, está usando los defaults hardcodeados.
 - Confirmar que no hay `DB_HOST`/`DB_USER`/etc. viejas seteadas en la máquina
   de producción antes de confiar en que `config.properties` manda.
 - Para producción, usar `C:\Aptium\config.properties` (o `/etc/aptium/` en
-  Linux) en vez de depender del `cwd` con el que se lance el proceso.
+  Linux) en vez de depender del `cwd` con el que se lance el proceso. La ruta está
+  **fija en el código**: el JAR puede vivir en cualquier carpeta, el config no.
+- Expiración de clave del nodo desactivada y Tailscale en arranque automático (§1.8).

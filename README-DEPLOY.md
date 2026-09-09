@@ -1,1134 +1,967 @@
-# 📋 GUÍA DE DEPLOY - Administración Aptium
+# Guía de deploy — Administración Aptium
 
-**Última actualización**: 24/02/2026
+**Última actualización**: 09/09/2026
+**Válida para**: el salto desde `v1.1.6.1` (última versión en producción) al release que incluye Lavadero, bloqueo optimista y TLS obligatorio.
 
----
-
-## 📑 Tabla de Contenidos
-
-1. [ARQUITECTURA Y ESTRUCTURA](#1-arquitectura-y-estructura)
-2. [REQUISITOS PREVIOS](#2-requisitos-previos)
-3. [CONFIGURACIÓN DE BASE DE DATOS](#3-configuración-de-base-de-datos)
-4. [INSTALACIÓN EN PRODUCCIÓN](#4-instalación-en-producción)
-5. [VALIDACIÓN ANTES DE DEPLOY](#5-validación-antes-de-deploy)
-6. [STARTUP Y SHUTDOWN](#6-startup-y-shutdown)
-7. [MONITOREO Y TROUBLESHOOTING](#7-monitoreo-y-troubleshooting)
-8. [CHECKLIST DE DEPLOY](#8-checklist-de-deploy)
+> Este documento son **instrucciones para ejecutar**, no documentación de arquitectura.
+> Para cómo está construida la app, ver [CLAUDE.md](CLAUDE.md) y `plans/`.
+> Para la conexión remota a MySQL por Tailscale, ver
+> [docs/conexion-remota-mysql-tailscale.md](docs/conexion-remota-mysql-tailscale.md).
 
 ---
 
-## 1. ARQUITECTURA Y ESTRUCTURA
+## 0. Cómo leer esto
 
-### 1.1 Componentes Principales
+Hay **dos documentos** y se usan en **dos máquinas distintas**. Nunca hacen falta los dos
+completos en la misma PC.
 
-```
-APLICACIÓN JAVA (JAR)
-├── Connection Pool (HikariCP - OPTIMIZADO PARA PRODUCCIÓN)
-│   ├── Variables de Entorno (Mayor prioridad)
-│   ├── config.properties (Si existe)
-│   └── Valores por defecto (Dev only)
-│   │
-│   ├── CONFIGURACIÓN DEL POOL:
-│   │   ├── Max Conexiones: 10
-│   │   ├── Min Idle: 5 (pre-conectadas)
-│   │   ├── Connection Timeout: 30s
-│   │   ├── Idle Timeout: 10min
-│   │   ├── Max Lifetime: 30min
-│   │   ├── Leak Detection: 60s (detecta conexiones no cerradas)
-│   │   └── Test Query: SELECT 1 (valida conexión antes de usar)
-│   │
-│   └── CICLO DE VIDA:
-│       ├── Startup: Crea 5 conexiones idle automáticamente
-│       ├── Uso: Obtiene conexión del pool o espera (timeout 30s)
-│       ├── Devolución: try-with-resources cierra automáticamente
-│       └── Shutdown: ConnectionPool.shutdown() cierra todas
-│
-├── Features (Feature-based modular)
-│   ├── equipos (DAO, Service, Model, View)
-│   ├── lotes
-│   ├── autoclaves
-│   ├── catalogo
-│   ├── clientes
-│   ├── profesionales
-│   └── instituciones
-├── UI Layer (Swing)
-│   ├── PantallaPrincipal (Main window)
-│   ├── UiCoordinator (Wiring)
-│   └── Componentes (Vistas específicas)
-└── Persistencia (MySQL + HikariCP)
-```
+### Si estás en la PC servidor (la que ya tiene la app y la base)
 
-### 1.2 Archivos Generados
+Leer **en este orden**, de arriba abajo, sin saltear:
 
-```
-target/
-└── aptium.jar   (JAR EJECUTABLE con dependencias)
-```
+| Orden | Dónde | Qué hacés |
+|---|---|---|
+| 1 | **§2** de este doc | Entender qué cambia. 5 minutos de lectura, sin tocar nada |
+| 2 | **§3** de este doc | Pre-deploy: los 4 bloqueantes (TLS, grants, backup, disco) |
+| 3 | **§1 completa** del [runbook de Tailscale](docs/conexion-remota-mysql-tailscale.md) | Convertir esta PC en servidor: bind-address, usuario MySQL, firewall, permanencia del nodo |
+| 4 | **§4.1 a §4.5** de este doc (Tramo A) | Publicar el release, cerrar la app, actualizar el JAR → **acá se migra la base** |
+| 5 | **§5** de este doc | Verificar antes de tocar ninguna otra PC |
 
-### 1.3 Gestión de Conexiones y Pooling
+Si algo falla en el paso 4 → **§9** (troubleshooting) y, si hace falta, **§6** (rollback).
+No sigas con las PCs nuevas hasta que el paso 5 esté en verde.
 
-La aplicación utiliza **HikariCP** (Connection Pool de última generación) para:
+> Esta PC **no** usa la §2 del runbook de Tailscale: sigue conectando por `localhost`.
 
-- ✅ **Reutilización de conexiones**: Evita overhead de crear/cerrar conexiones
-- ✅ **Pool de 10 conexiones**: Máximo concurrente configurable
-- ✅ **5 conexiones siempre activas**: Reduce latencia inicial
-- ✅ **Leak detection**: Detecta conexiones no cerradas (60s threshold)
-- ✅ **Validation queries**: Verifica que la conexión sea válida (SELECT 1)
-- ✅ **Timeouts configurados**: 30s para obtener conexión, 10min idle
+### Si estás en una PC nueva
 
-**Típicos mejores patrones de uso:**
+El Tramo A ya tiene que estar terminado y verificado. Después:
 
-```java
-// ✅ CORRECTO: Try-with-resources (conexión se devuelve automáticamente)
-try (Connection conn = ConnectionPool.getConnection()) {
-    Statement stmt = conn.createStatement();
-    ResultSet rs = stmt.executeQuery("SELECT ...");
-    // ...
-} // La conexión se cierra automáticamente y se devuelve al pool
+| Orden | Dónde | Qué hacés |
+|---|---|---|
+| 1 | **§3.8** de este doc | Requisitos previos: Java 17 y Tailscale instalados |
+| 2 | **§2** del [runbook de Tailscale](docs/conexion-remota-mysql-tailscale.md) | Apuntar la PC al servidor (Opción A: `config.properties`) |
+| 3 | **§4.6 a §4.8** de este doc (Tramo B) | Crear el config, copiar el JAR, `ejecutar.bat`, primer arranque |
+| 4 | **§5.1** de este doc | Confirmar que el arranque quedó limpio |
 
-// ❌ INCORRECTO: Sin try-with-resources (connection leak!)
-Connection conn = ConnectionPool.getConnection();
-Statement stmt = conn.createStatement();
-// ... if algo falla, la conexión nunca se devuelve al pool
-```
+Si no conecta → **§4** del runbook de Tailscale, y después **§9.3** de este doc.
 
-**Estadísticas del pool (visible en logs):**
+> Una PC nueva **no** toca nada de la §1 del runbook (eso es del servidor) ni migra la base.
 
-```log
-[INFO] Pool Stats: Total=10, Activas=3, Idle=7, Esperando=0
-```
+### Convención de rutas
 
-Estas métricas indican:
-- `Total=10`: Pool con 10 conexiones totales
-- `Activas=3`: 3 en uso en este momento
-- `Idle=7`: 7 disponibles
-- `Esperando=0`: 0 conexiones esperando (si > 0, necesitas más conexiones)
+Todo lo que aparece entre `<...>` **hay que reemplazarlo por el valor real de tu máquina**.
+Las rutas que sí están fijas y no se eligen son sólo dos:
 
-**Shutdown graceful:**
+- `C:\Aptium\config.properties` — la busca el código, está hardcodeada
+- `logs\` relativo al directorio del JAR — lo define `logback.xml`
 
-La aplicación registra un shutdown hook (`Runtime.getRuntime().addShutdownHook()`) que:
-1. Corre cuando se presiona Ctrl+C o se cierran los servicios
-2. Llama a `ConnectionPool.shutdown()`
-3. Cierra todas las conexiones de forma ordenada
-4. Libera los recursos del pool
+Cualquier otra ruta de este documento (dónde vive el JAR, dónde van los backups, dónde
+está `mysqldump.exe`) es una **convención sugerida**, no un dato observado de tu
+instalación: verificala en la máquina antes de usarla.
 
 ---
 
-## 2. REQUISITOS PREVIOS
+## Índice
 
-### 2.1 En el Servidor de Producción
+0. [Cómo leer esto](#0-cómo-leer-esto)
+1. [Topología real](#1-topología-real)
+2. [Qué cambia en este deploy](#2-qué-cambia-en-este-deploy)
+3. [Pre-deploy — hacer HOY](#3-pre-deploy--hacer-hoy)
+4. [Deploy day — paso a paso](#4-deploy-day--paso-a-paso)
+5. [Verificación post-deploy](#5-verificación-post-deploy)
+6. [Rollback](#6-rollback)
+7. [Configuración de la app](#7-configuración-de-la-app)
+8. [Logs](#8-logs)
+9. [Troubleshooting](#9-troubleshooting)
+10. [Seguridad](#10-seguridad)
+11. [Actualizaciones futuras](#11-actualizaciones-futuras)
+12. [Backups](#12-backups)
+
+---
+
+## 1. Topología real
+
+**Es una aplicación de escritorio Swing, no un servidor.** Una copia del JAR corre en
+**cada puesto**, y todas apuntan a **una sola base MySQL** compartida.
+
+### 1.1 Hoy: una sola PC
 
 ```
-Java:       OpenJDK 17+ (requerido: el build compila a bytecode 17)
-MySQL:      8.0+ (o MariaDB 10.5+)
-Memoria:    Mínimo 1GB, recomendado 2GB
-Disco:      50MB para aplicación + espacio para BD
-Puertos:    3306 (MySQL), puerto interno Java disponible
+PC única ──► MySQL en localhost
+(app + base en la misma máquina, sin red de por medio)
 ```
 
-### 2.2 Verificar Java y Maven Localmente
+### 1.2 Después de este deploy: esa PC pasa a ser el servidor
+
+```
+PC actual  ──► MySQL local (localhost)   ← sigue siendo un puesto de trabajo,
+   │                ▲                       y además aloja la base
+   │                │  Tailscale
+Puesto nuevo 1 ─────┤
+Puesto nuevo N ─────┘
+```
+
+La PC actual cumple **dos roles a la vez**: sigue siendo un puesto donde se trabaja, y
+además es el servidor de base de datos de los demás. Eso implica:
+
+- **Tiene que estar encendida** mientras haya alguien trabajando en cualquier otro puesto.
+  Si se apaga o se suspende, los demás pierden la base en el acto.
+- Conviene **desactivar la suspensión automática** en esa PC
+  (Configuración → Sistema → Inicio/apagado → Suspensión: Nunca).
+- Ella misma sigue conectando por `localhost`, no por Tailscale.
+
+### 1.3 Consecuencias del modelo
+
+Consecuencias prácticas, todas relevantes para el deploy:
+
+- **No se instala como servicio de Windows.** Un servicio corre en la sesión 0, sin
+  escritorio: la ventana de Swing no se vería. Cada puesto la abre con `ejecutar.bat`
+  como cualquier programa. *(Si alguna vez se instaló un `AptiumService` con NSSM
+  siguiendo una versión anterior de este documento, desinstalarlo:
+  `nssm remove AptiumService confirm`.)*
+- **El pool de 10 conexiones es por puesto**, no del sistema. Con 6 puestos son ~60
+  conexiones contra MySQL (5 idle por puesto apenas abre). Verificar que
+  `max_connections` del servidor las banque (default 151 → alcanza hasta ~15 puestos).
+- **Todos los puestos comparten el esquema**, así que la versión del JAR tiene que ser
+  la misma en todos. Ver §2.
+- **Este deploy estrena el uso concurrente.** Hasta hoy hubo un solo operador, así que
+  todas las guardas de concurrencia (V21, los `FOR UPDATE` del lavadero, los CAS por
+  estado) nunca se ejercitaron contra dos personas reales. No es un riesgo de arranque
+  —está cubierto por tests— pero sí lo primero a mirar si aparece algo raro en las
+  primeras semanas: ver el smoke de dos puestos en §5.3.
+
+---
+
+## 2. Qué cambia en este deploy
+
+Son **132 commits** desde `v1.1.6.1`. Tres cosas cambian el procedimiento respecto de
+cualquier actualización anterior:
+
+### 2.1 La base salta de V16 a V22 (13 migraciones)
+
+Producción tiene aplicadas V1–V6, V13, V14, V16. Este build trae hasta **V22**, así que
+al primer arranque Flyway aplica, en una sola pasada:
+
+| Migraciones | Qué traen |
+|---|---|
+| V7–V12, V15, V17 | Todo el feature de **Lavadero** (ingresos, clasificación, ciclos, salidas) |
+| V18 | Cliente APTIUM (derivación de ropa lavada al CDE) |
+| V19, V20 | Fracciones de equipo repartidas entre lavarropas |
+| **V21** | Columna `version` en `equipos` / `equipo_otros` — **bloqueo optimista** |
+| V22 | Índice de ciclos de lavarropas abiertos |
+
+V7–V12 y V15 se aplican **fuera de orden** (`outOfOrder(true)` en `DatabaseInitializer`),
+que es exactamente el caso para el que esa opción está activada. No requiere nada especial.
+
+**Las migraciones no tienen rollback.** El único camino de vuelta es restaurar un dump.
+Por eso el backup del §3.4 no es opcional.
+
+### 2.2 Un JAR viejo contra la base nueva escribe sin guardas
+
+Desde este build, si la base está más adelantada que el JAR, la app **aborta el arranque**
+(`EsquemaDesactualizadoException`) y ofrece actualizarse sola. Pero ese chequeo **recién
+existe a partir de este build**: los puestos que sigan en `v1.1.6.1` después de que la base
+migre a V22 **no se enteran de nada** y siguen escribiendo sin las guardas de concurrencia
+que V21 introdujo.
+
+> **Regla del día:** todos los puestos se actualizan en la misma jornada. No se deja
+> ninguno "para mañana". A partir del próximo deploy, la app misma lo va a impedir.
+
+### 2.3 TLS pasó a ser obligatorio
+
+`ConnectionPool` arma las URLs JDBC con `sslMode=REQUIRED`
+([ConnectionPool.java:55](src/main/java/com/example/infrastructure/db/ConnectionPool.java#L55)).
+Si el MySQL de producción no ofrece TLS, la app **no conecta** — falla en el primer paso
+del arranque, en todos los puestos a la vez. Nunca corrió así en producción, así que hay
+que verificarlo **antes** (§3.2), no descubrirlo mañana.
+
+---
+
+## 3. Pre-deploy — hacer HOY
+
+### 3.1 Compilar y verificar el build
 
 ```powershell
-# Verificar Java
-java -version
-
-# Verificar Maven
-mvn --version
-
-# Si Maven no está disponible, instalar desde https://maven.apache.org/download.cgi
+mvn clean package
 ```
+
+Esperado: `BUILD SUCCESS`, **1138 tests, 0 failures, 0 errors**, y el artefacto en
+`target\aptium.jar` (~24 MB). El plugin `antrun` deja además una copia en `app\aptium.jar`.
+
+> El JAR generado localmente lleva `app.version=dev-SNAPSHOT`. **No es el que se instala**
+> — el que va a producción es el que publica el release de GitHub (§4.1), que lleva la
+> versión real embebida y su `.sha256`.
+
+### 3.2 Verificar que MySQL ofrece TLS ← **bloqueante**
+
+En la PC que aloja MySQL:
+
+```sql
+SHOW GLOBAL VARIABLES LIKE 'have_ssl';    -- tiene que decir YES
+```
+
+- `YES` → listo, no hay nada que hacer (MySQL 8 genera certificados autofirmados y
+  habilita TLS al inicializar el datadir).
+- `DISABLED` → hay que habilitar TLS **en el servidor** (`ssl_cert` / `ssl_key` en
+  `my.ini` y reiniciar el servicio). **No** bajar el modo en el cliente.
+
+Si querés confirmarlo de punta a punta antes de mañana, conectá un puesto de prueba y
+mirá la línea `SSL:` de `STATUS;`.
+
+### 3.3 Verificar los permisos del usuario MySQL ← **bloqueante**
+
+La app hace `CREATE DATABASE IF NOT EXISTS` y **Flyway ejecuta DDL** (CREATE TABLE,
+ALTER, índices). Un usuario con solo SELECT/INSERT/UPDATE/DELETE **rompe el arranque en
+la migración**.
+
+```sql
+SHOW GRANTS FOR 'usuario_app'@'host';
+```
+
+Tiene que incluir, como mínimo:
+
+```sql
+GRANT ALL PRIVILEGES ON sistema_empresa.* TO 'usuario_app'@'<host_o_subred>';
+FLUSH PRIVILEGES;
+```
+
+`ALL` acotado **a ese schema** (nunca `ON *.*`) es lo correcto acá: incluye el DDL que
+Flyway necesita y el CREATE de la base, sin dar acceso a nada más.
+
+### 3.4 Backup de la base ← **bloqueante**
+
+Es el único rollback que existe para las migraciones. **Este dump es aparte de tus backups
+automáticos** — es el punto de retorno exacto de este deploy, y conviene que esté en una
+carpeta que no toque ninguna tarea programada.
+
+```powershell
+# Ubicar mysqldump (la ruta depende de la versión de MySQL instalada)
+$dump = (Get-ChildItem "C:\Program Files\MySQL" -Filter mysqldump.exe -Recurse -ErrorAction SilentlyContinue |
+         Select-Object -First 1).FullName
+$dump    # confirmar que encontró algo
+
+$destino = "<CARPETA_PARA_ESTE_DUMP>\sistema_empresa_pre_v1.2.sql"
+
+& $dump -h localhost -u <USUARIO> -p `
+  --single-transaction --routines --triggers `
+  sistema_empresa > $destino
+```
+
+Verificar que no quedó vacío y que **termina completo** — un dump truncado por disco lleno
+es un archivo que existe y no sirve:
+
+```powershell
+Get-Item $destino | Select-Object Length
+Get-Content $destino -Tail 3      # tiene que aparecer "-- Dump completed"
+```
+
+### 3.5 Espacio en disco de la PC servidor ← **bloqueante**
+
+Una migración que se queda sin disco a mitad de un `ALTER TABLE` es la peor forma de
+fallar: deja el historial de Flyway con una fila en `success = 0` y hay que restaurar.
+
+```powershell
+Get-PSDrive C | Select-Object Used, Free
+```
+
+Regla práctica: dejar libre **al menos 3× el tamaño de la base** antes de migrar
+(las migraciones que agregan columnas reescriben la tabla, y el dump del §3.4 ocupa lo suyo).
+
+Si hay **tareas programadas de backup** en esa PC, revisarlas ahora: una copia diaria sin
+política de retención llena el disco con el tiempo, y este es justo el día en que eso
+importa. Ver §3.7.
+
+### 3.6 Dónde vive el JAR hoy
+
+```powershell
+Get-ChildItem C:\ -Filter "aptium.jar" -Recurse -ErrorAction SilentlyContinue -Depth 4 |
+  Select-Object FullName, LastWriteTime
+```
+
+La ruta histórica de instalación es `C:\Sistema\app\aptium.jar`, lanzado por un
+`ejecutar.bat` que hace `cd /d` a esa carpeta. **No hace falta moverlo**: la app resuelve
+su propia ruta en runtime (`RutaJarResolver`), así que el auto-update funciona esté donde
+esté. Importa saber la ruta real para el backup del JAR y para encontrar los logs (§8).
+
+Hacer copia del JAR actual antes de tocarlo:
+
+```powershell
+Copy-Item C:\Sistema\app\aptium.jar C:\Sistema\app\aptium.jar.v1.1.6.1
+```
+
+### 3.7 Tareas de backup existentes
+
+Si ya hay tareas programadas de backup en la PC servidor, verificar que **siguen
+corriendo** (son una red de seguridad extra para mañana) y que **no están llenando el
+disco**:
+
+```powershell
+# Listar las tareas propias (no las de Windows)
+Get-ScheduledTask | Where-Object { $_.TaskPath -notlike '\Microsoft\*' } |
+  Select-Object TaskPath, TaskName, State
+
+# Para cada una: qué ejecuta y cuándo
+$t = Get-ScheduledTask -TaskName "<NOMBRE>"
+$t.Actions   | Format-List Execute, Arguments, WorkingDirectory
+$t.Triggers  | Format-List
+Get-ScheduledTaskInfo -TaskName "<NOMBRE>" |
+  Select-Object LastRunTime, LastTaskResult, NextRunTime   # LastTaskResult 0 = OK
+
+# Peso de la carpeta de destino y antigüedad de los archivos
+$dir = "<CARPETA_DE_BACKUPS>"
+"{0:N2} GB" -f ((Get-ChildItem $dir -Recurse -File | Measure-Object Length -Sum).Sum / 1GB)
+Get-ChildItem $dir -File | Sort-Object LastWriteTime |
+  Select-Object -First 3 Name, LastWriteTime, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+Get-ChildItem $dir -File | Measure-Object | Select-Object Count
+```
+
+Si la carpeta creció sin límite, para **hoy** alcanza con liberar espacio a mano y que la
+migración tenga aire. La solución de fondo (retención) es aparte del deploy — ver §12.
+
+### 3.8 Preparar las PCs nuevas (puede hacerse hoy)
+
+En cada puesto nuevo, antes del día del deploy:
+
+- [ ] **Java 17 o superior instalado** (`java -version`). Es el único requisito previo real
+      de la app; si falta, el JAR no arranca. OpenJDK/Temurin 17 alcanza — no hace falta
+      Maven ni nada más.
+- [ ] **Tailscale instalado**, unido al mismo tailnet y con arranque automático.
+- [ ] Ping al servidor por su IP de Tailscale (`tailscale status` y
+      `Test-NetConnection <IP_SERVIDOR> -Port 3306`).
+
+### 3.9 Checklist pre-deploy
+
+**En la PC servidor (la actual):**
+- [ ] `have_ssl = YES`
+- [ ] Usuario de app con `ALL PRIVILEGES ON sistema_empresa.*`
+- [ ] Dump de la base hecho y verificado (§3.4)
+- [ ] Espacio libre ≥ 3× el tamaño de la base
+- [ ] Tareas de backup existentes revisadas (§3.7)
+- [ ] Copia del JAR actual (`aptium.jar.v1.1.6.1`)
+- [ ] Suspensión automática desactivada
+- [ ] Tailscale instalado, con expiración de clave desactivada y arranque automático
+
+**En cada PC nueva:**
+- [ ] Java 17+ instalado
+- [ ] Tailscale instalado y conectado al tailnet
+- [ ] Llega al puerto 3306 del servidor
+
+**En tu máquina de desarrollo:**
+- [ ] `mvn clean package` en verde (1138 tests)
 
 ---
 
-## 3. CONFIGURACIÓN DE BASE DE DATOS
+## 4. Deploy day — paso a paso
 
-### 3.1 Estructura de Configuración
-
-La aplicación usa este orden de precedencia:
-
-```
-1. VARIABLES DE ENTORNO (Sistema Operativo)
-   ├─ DB_HOST      → Host/IP MySQL
-   ├─ DB_PORT      → Puerto MySQL (default 3306)
-   ├─ DB_NAME      → Nombre base de datos
-   ├─ DB_USER      → Usuario MySQL
-   └─ DB_PASS      → Contraseña MySQL
-   
-2. ARCHIVO config.properties
-   ├─ C:\Aptium\config.properties       (Ubicación recomendada)
-   └─ .\config.properties               (Directorio actual - DEV)
-   
-3. VALORES POR DEFECTO (Desarrollo ONLY)
-   └─ localhost:3306, usuario: root, BD: sistema_empresa
-```
-
-### 3.2 Variables de Entorno (RECOMENDADO PARA PRODUCCIÓN - WINDOWS)
-
-#### Opción A: Command Prompt
-
-```batch
-REM Establecer variables de entorno (requiere Admin)
-setx DB_HOST "192.168.1.100"
-setx DB_PORT "3306"
-setx DB_NAME "sistema_empresa"
-setx DB_USER "aptium_user"
-setx DB_PASS "TuContraseñaFuerte123!"
-
-REM Verificar (en nueva terminal):
-echo %DB_HOST%
-```
-
-#### Opción B: PowerShell (recomendado)
+### 4.1 Publicar el release
 
 ```powershell
-# Ejecutar como Administrator
-[System.Environment]::SetEnvironmentVariable("DB_HOST", "192.168.1.100", "Machine")
-[System.Environment]::SetEnvironmentVariable("DB_PORT", "3306", "Machine")
-[System.Environment]::SetEnvironmentVariable("DB_NAME", "sistema_empresa", "Machine")
-[System.Environment]::SetEnvironmentVariable("DB_USER", "aptium_user", "Machine")
-[System.Environment]::SetEnvironmentVariable("DB_PASS", "TuContraseñaFuerte123!", "Machine")
-
-# Verificar en nueva sesión PowerShell:
-$env:DB_HOST
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
-**Nota**: Después de establecer variables de entorno, iniciar una nueva terminal para que se apliquen.
+El workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) compila con
+`-Dapp.version=1.2.0`, y publica `aptium.jar` + `aptium.jar.sha256` como assets del release.
 
-### 3.3 Método Alternativo: Archivo config.properties (Windows)
+Esperar a que el workflow termine en verde y confirmar que el release aparece en GitHub con
+**los dos** assets. El nombre del asset tiene que ser exactamente `aptium.jar` (sin versión
+en el nombre) — de eso depende el auto-update.
 
-Si prefieres usar archivo en lugar de variables de entorno:
+> El número de versión es decisión tuya; `v1.2.0` es coherente con el tamaño del cambio
+> (la última fue `v1.1.6.1`). El único requisito técnico es que sea **mayor** que la que
+> corre hoy, comparada segmento por segmento.
+
+El deploy tiene **dos tramos**, y el orden entre ellos importa: primero se actualiza la PC
+actual (que es la que migra la base) y recién cuando eso está verde se suman los puestos
+nuevos. Un problema a la vez.
+
+---
+
+## Tramo A — la PC actual pasa a ser servidor
+
+### 4.2 Preparar la red, con la app vieja todavía andando
+
+Aplicar la **sección 1 completa** del
+[runbook de Tailscale](docs/conexion-remota-mysql-tailscale.md): `bind-address`, usuario
+MySQL dedicado, TLS, regla de firewall, y la permanencia del nodo (§1.8 de ese doc).
+
+Se hace **antes** de actualizar la app, y a propósito: son cambios de red reversibles que
+se pueden verificar con la versión vieja todavía en producción. Después de cada cambio,
+abrir la app actual y confirmar que sigue funcionando.
+
+> Dos avisos para esta PC en particular:
+> - Sigue conectando por **`localhost`**, no por su IP de Tailscale. No hace falta cambiarle
+>   el `db.ip`.
+> - Si hoy corre con los defaults (`root`/`root`) y creás el usuario dedicado, **también
+>   hay que actualizarle la configuración a esta PC** (§7), o deja de conectar. El WARN
+>   `⚠️ USANDO CREDENCIALES DE DESARROLLO` en su log de arranque te dice si está con los
+>   defaults.
+> - `sslMode=REQUIRED` aplica **también a localhost**: con el JAR nuevo, esta PC tampoco
+>   conecta si `have_ssl` no da `YES`.
+
+### 4.3 Cerrar la app
+
+Antes de tocar la base:
 
 ```powershell
-# Crear directorio
-mkdir C:\Aptium -Force
+Get-Process java -ErrorAction SilentlyContinue | Select-Object Id, Path
+```
 
-# Crear archivo config.properties
+### 4.4 Actualizar la PC servidor — acá se migra la base
+
+Es la PC que tiene la base, así que es la que aplica las 13 migraciones.
+
+**Opción A — desde la app (recomendada).** El JAR `v1.1.6.1` ya tiene el botón:
+> Ajustes → **Buscar actualizaciones** → confirmar → la app se cierra, se reemplaza sola y
+> se vuelve a abrir con la versión nueva.
+
+Puede pedir permiso de administrador (UAC) si el JAR está en una carpeta protegida — es
+esperado, hay que aceptarlo. Si se cancela, el JAR queda intacto y la app se relanza con la
+versión vieja.
+
+**Opción B — manual.** Descargar `aptium.jar` del release, verificar el checksum contra el
+`.sha256` publicado, y reemplazar el archivo:
+
+```powershell
+(Get-FileHash .\aptium.jar -Algorithm SHA256).Hash.ToLower()
+Get-Content .\aptium.jar.sha256      # los dos valores tienen que coincidir
+Copy-Item C:\Sistema\app\aptium.jar C:\Sistema\app\aptium.jar.v1.1.6.1
+Copy-Item .\aptium.jar C:\Sistema\app\aptium.jar -Force
+```
+
+**Al primer arranque, Flyway aplica las 13 migraciones.** Puede tardar. En el log tiene
+que aparecer:
+
+```
+PASO 2/4: Inicializando esquema de base de datos...
+Migraciones Flyway aplicadas (schema + seeds)
+✓ Esquema BD verificado/creado
+```
+
+Si falla acá, **parar el deploy** y ver §9.1 antes de seguir con las PCs nuevas.
+
+### 4.5 Verificar la base migrada
+
+```sql
+SELECT MAX(version + 0) AS version_maxima FROM sistema_empresa.flyway_schema_history
+WHERE success = 1;                          -- tiene que dar 22
+
+SELECT version, description, success FROM sistema_empresa.flyway_schema_history
+ORDER BY installed_rank DESC LIMIT 15;      -- ninguna con success = 0
+```
+
+Confirmar también que V21 quedó aplicada:
+
+```sql
+SHOW COLUMNS FROM sistema_empresa.equipos LIKE 'version';
+SHOW COLUMNS FROM sistema_empresa.equipo_otros LIKE 'version';
+```
+
+Antes de seguir, abrir la app en esta PC y hacer el smoke de §5.2. **Si algo no anda, es el
+momento de frenar**: todavía no hay puestos nuevos que revertir.
+
+---
+
+## Tramo B — instalar los puestos nuevos
+
+Recién cuando el Tramo A está verde. En cada PC nueva:
+
+### 4.6 Configuración
+
+Con Java 17 y Tailscale ya instalados (§3.8):
+
+```powershell
+# 1. Carpeta de configuración
+New-Item -ItemType Directory -Force C:\Aptium | Out-Null
+
+# 2. config.properties apuntando al servidor por su IP de Tailscale
 @"
-db.ip=192.168.1.100
+db.ip=<IP_TAILSCALE_DEL_SERVIDOR>
 db.port=3306
 db.name=sistema_empresa
-db.user=aptium_user
-db.pass=TuContraseñaFuerte123!
+db.user=<USUARIO_DEDICADO>
+db.pass=<PASSWORD>
 "@ | Set-Content C:\Aptium\config.properties -Encoding UTF8
 
-# Establecer permisos restrictivos (ejecutar como Admin)
-icacls C:\Aptium\config.properties /inheritance:r /grant:r "$env:USERNAME`:F"
+# 3. Permisos restrictivos
+icacls C:\Aptium\config.properties /inheritance:r /grant:r "$env:USERNAME:F"
 ```
 
-### 3.4 Preparar Base de Datos MySQL
+⚠️ Las claves van en **minúscula con puntos** (`db.ip`, `db.user`, …). Con los nombres de
+las variables de entorno (`DB_HOST`, `DB_USER`) el archivo se ignora **en silencio** y el
+puesto cae a `localhost` — donde no hay ninguna base. Ver §7.2.
 
-La aplicación crea automáticamente la BD, pero debes:
+### 4.7 Instalar la app
 
-1. **Crear usuario específico para la aplicación:**
+```powershell
+# Carpeta de la app (misma estructura que el servidor, para que no haya dos convenciones)
+New-Item -ItemType Directory -Force C:\Sistema\app | Out-Null
+
+# Copiar el aptium.jar descargado del release (no un build local: ver §3.1)
+Copy-Item <ruta>\aptium.jar C:\Sistema\app\aptium.jar
+
+# ejecutar.bat — el cd /d es lo que hace que los logs queden junto al JAR (§8)
+@"
+@echo off
+cd /d "C:\Sistema\app"
+if not exist "aptium.jar" (
+    echo Error: no se encuentra C:\Sistema\app\aptium.jar
+    pause
+    exit /b 1
+)
+java -jar "aptium.jar"
+if errorlevel 1 (
+    echo.
+    echo Error al ejecutar. Revise C:\Sistema\app\logs\error.log
+    pause
+)
+"@ | Set-Content C:\Sistema\app\ejecutar.bat -Encoding OEM
+```
+
+Crear un acceso directo a `ejecutar.bat` en el escritorio del usuario.
+
+### 4.8 Primer arranque de cada puesto nuevo
+
+Abrir la app y confirmar en el log (§5.1):
+
+- Aparece `config.properties cargado desde: C:\Aptium\config.properties`
+- **No** aparece `⚠️ USANDO CREDENCIALES DE DESARROLLO`
+- La secuencia de arranque llega a `Aplicación inicializada correctamente`
+- Los datos que se ven son los mismos que en la PC servidor
+
+En este puesto la migración **no corre**: la base ya está en V22 y sólo se verifica que el
+build la conoce.
+
+### 4.9 Checklist del día
+
+**Tramo A — PC servidor:**
+- [ ] Release publicado con `aptium.jar` y `aptium.jar.sha256`
+- [ ] Sección 1 del runbook de Tailscale aplicada, con la app vieja andando
+- [ ] App cerrada
+- [ ] JAR actualizado y migración aplicada sin errores
+- [ ] `flyway_schema_history` en V22, sin filas con `success = 0`
+- [ ] Smoke de §5.2 en verde en esta PC
+
+**Tramo B — cada PC nueva:**
+- [ ] `C:\Aptium\config.properties` con las claves `db.*` y la IP de Tailscale
+- [ ] JAR del release + `ejecutar.bat` + acceso directo
+- [ ] Arranque limpio, sin el WARN de credenciales de desarrollo
+- [ ] Ve los mismos datos que el servidor
+- [ ] Ningún puesto quedó en `v1.1.6.1`
+
+---
+
+## 5. Verificación post-deploy
+
+### 5.1 Arranque limpio
+
+En el log del puesto (§8) tiene que aparecer la secuencia completa:
+
+```
+PASO 1/4: Conectando a base de datos...
+✓ Connection Pool inicializado
+Pool Stats: Total=..., Activas=..., Idle=..., Esperando=0
+PASO 2/4: Inicializando esquema de base de datos...
+✓ Esquema BD verificado/creado
+PASO 3/4: Creando contexto de dependencias...
+✓ Contexto creado con DAOs y Services
+PASO 4/4: Iniciando interfaz de usuario...
+Aplicación inicializada correctamente
+```
+
+Y **no** tiene que aparecer `⚠️ USANDO CREDENCIALES DE DESARROLLO` — si sale, el puesto
+está apuntando a `localhost` con `root/root` (§7.3).
+
+### 5.2 Smoke funcional — en la PC servidor, cerrando el Tramo A
+
+Con la app sola, antes de sumar ningún puesto nuevo:
+
+- [ ] Los datos que ya existían siguen ahí (clientes, equipos, lotes)
+- [ ] Cargar un ingreso de ortopedias y uno de "otros"
+- [ ] Registrar Estado: avanzar un material
+- [ ] Lanzar un lote
+- [ ] Lavadero completo: ingreso → clasificación → lanzar tanda → finalizar ciclo → salida
+- [ ] Derivar una salida de lavadero al CDE y confirmar que aparece en las pantallas del CDE
+- [ ] Correcciones sobre un equipo (es la pantalla que usa la guarda de `version` de V21)
+- [ ] Historial de Lavadero: abrir, filtrar, y doble clic en un ingreso para ver el detalle
+
+Lavadero e Historial son features **nuevas en producción**: nunca corrieron acá. Si algo
+va a aparecer, aparece en estos dos.
+
+### 5.3 Concurrencia — al terminar el Tramo B
+
+Recién se puede probar con dos máquinas. Vale la pena hacerlo una vez, porque es lo único
+de este deploy que **nunca se ejercitó con dos personas reales** (hasta hoy hubo un solo
+operador):
+
+- [ ] Los dos puestos ven los mismos datos, y lo que carga uno aparece en el otro al
+      refrescar con **F5**
+- [ ] **Conflicto esperado:** A abre Correcciones sobre un equipo, B modifica y guarda ese
+      mismo equipo, A guarda. A tiene que recibir un aviso de conflicto y recargar — no
+      pisar el cambio de B en silencio. Ese es el comportamiento que V21 introduce
+- [ ] En Lavadero, dos operadores no pueden cargar ropa en el mismo lavarropas: el segundo
+      recibe el aviso de lavarropas ocupado
+
+### 5.4 Primeras horas
+
+- [ ] Sin `ERROR` ni `EXCEPTION` nuevos en `logs\error.log` de ningún puesto
+- [ ] Sin advertencias de `leak detection`
+- [ ] `Esperando=0` en las estadísticas del pool
+
+---
+
+## 6. Rollback
+
+**El orden importa.** El JAR viejo contra la base migrada arranca pero escribe sin guardas,
+así que un rollback parcial es peor que no hacer nada.
+
+### Si falla la migración (§4.4) y todavía no se operó
+
+Es el caso bueno: no hay trabajo nuevo que perder.
+
+```powershell
+$bin = Split-Path (Get-ChildItem "C:\Program Files\MySQL" -Filter mysqldump.exe -Recurse |
+                   Select-Object -First 1).FullName
+
+# 1. Cerrar la app
+# 2. Restaurar la base desde el dump del §3.4
+& "$bin\mysql.exe" -h localhost -u <USUARIO> -p sistema_empresa < "<RUTA_DEL_DUMP_DEL_3.4>"
+
+# 3. Restaurar el JAR viejo
+Copy-Item <RUTA_DEL_JAR>\aptium.jar.v1.1.6.1 <RUTA_DEL_JAR>\aptium.jar -Force
+```
+
+Después de restaurar, la base vuelve a estar en V16 y el JAR viejo vuelve a ser el
+correcto para ella. Nada queda desalineado.
+
+### Si ya se operó con la versión nueva
+
+Restaurar el dump **descarta todo el trabajo hecho desde el backup**. Antes de decidirlo,
+hacer un dump del estado actual para no perderlo:
+
+```powershell
+& "$bin\mysqldump.exe" -h localhost -u <USUARIO> -p --single-transaction `
+  sistema_empresa > "<CARPETA>\sistema_empresa_rollback_$(Get-Date -Format yyyyMMdd_HHmm).sql"
+```
+
+Y volver atrás **todos** los puestos junto con la base, nunca sólo algunos: un JAR viejo
+contra una base V22 escribe sin las guardas.
+
+> Casi siempre es mejor arreglar hacia adelante que revertir. Antes de restaurar, mirá §9
+> — la mayoría de los fallos de este deploy (TLS, grants, config mal leída) se resuelven
+> sin tocar la base.
+
+---
+
+## 7. Configuración de la app
+
+### 7.1 Precedencia
+
+```
+1. Variables de entorno   DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS
+2. config.properties      buscado en este orden:
+                            /etc/aptium/config.properties      (Linux)
+                            C:\Aptium\config.properties        (Windows)
+                            .\config.properties                (relativo al cwd)
+                            .\Administracion-Aptium\config.properties
+3. Defaults               localhost:3306 / root / root  ← solo dev, loguea un WARN
+```
+
+Las variables de entorno **ganan siempre**, clave por clave, sobre el archivo.
+
+### 7.2 Las claves del archivo NO son las de las variables de entorno
+
+```properties
+# C:\Aptium\config.properties
+db.ip=<IP_DEL_SERVIDOR_MYSQL>
+db.port=3306
+db.name=sistema_empresa
+db.user=<USUARIO>
+db.pass=<PASSWORD>
+```
+
+⚠️ En el archivo van en **minúscula con puntos** (`db.ip`, `db.user`, …), no `DB_HOST` /
+`DB_USER`. Si se escriben con los nombres de las variables de entorno, `ConnectionPool`
+**los ignora en silencio** y cae a los defaults de desarrollo sin ningún error visible.
+La única señal es el WARN de credenciales de desarrollo en el log.
+
+Nótese que la ruta `C:\Aptium\config.properties` está **fija en el código**: el JAR puede
+vivir en cualquier carpeta, pero el archivo de configuración se busca ahí (o en el cwd).
+
+Permisos, como Administrador:
+
+```powershell
+icacls C:\Aptium\config.properties /inheritance:r /grant:r "$env:USERNAME:F"
+```
+
+### 7.3 Diagnóstico de configuración
+
+```powershell
+# ¿Qué hay seteado a nivel usuario y máquina?
+[System.Environment]::GetEnvironmentVariable("DB_HOST","User")
+[System.Environment]::GetEnvironmentVariable("DB_HOST","Machine")
+
+# ¿Existe el archivo, y qué dice?
+Get-Content C:\Aptium\config.properties -ErrorAction SilentlyContinue
+
+# ¿Hay más de un config.properties dando vueltas?
+Get-ChildItem C:\ -Filter "config.properties" -Recurse -ErrorAction SilentlyContinue -Depth 4
+```
+
+En el log del arranque tiene que aparecer **una** de estas dos líneas:
+
+```
+config.properties cargado desde: <ruta>
+DB_HOST cargado desde variable de entorno
+```
+
+Si no aparece ninguna, el puesto está corriendo con los defaults de desarrollo.
+
+---
+
+## 8. Logs
+
+**Los logs se escriben en `logs\` relativo al directorio de trabajo del proceso**, no en
+una ruta absoluta ([logback.xml:24](src/main/resources/logback.xml#L24)). Como
+`ejecutar.bat` hace `cd /d` a la carpeta del JAR, quedan al lado del JAR:
+
+```
+<carpeta del JAR>\logs\
+├── app.log        INFO+   (rota a diario o a los 20 MB, 30 días, tope 1 GB)
+├── error.log      ERROR+  con stack traces (90 días, tope 2 GB)
+└── *.log.gz       históricos comprimidos
+```
+
+> Por eso conviene lanzar siempre desde `ejecutar.bat` y no desde un acceso directo con
+> otro "Iniciar en": si el cwd cambia, los logs aparecen en otra carpeta.
+
+```powershell
+$app = "C:\Sistema\app"          # ajustar a la ruta real del puesto
+
+Get-Content $app\logs\app.log -Tail 50
+Get-Content $app\logs\app.log -Wait                       # en vivo
+Select-String "ERROR|EXCEPTION" $app\logs\error.log
+@(Select-String "ERROR" $app\logs\error.log).Count
+```
+
+Nivel de log (default `INFO`):
+
+```powershell
+java -Dlogback.level=DEBUG -jar aptium.jar
+```
+
+> **No** usar `-Daptium.edt.strict=true` en producción: convierte en excepción lo que hoy
+> es un WARN, y los cinco autocompletados por tecla son síncronos a propósito.
+
+---
+
+## 9. Troubleshooting
+
+### 9.1 Falla la migración de Flyway
+
+El log de `error.log` dice qué migración y qué sentencia. Antes de reintentar:
 
 ```sql
--- En MySQL como root:
-CREATE USER 'aptium_user'@'%' IDENTIFIED BY 'TuContraseñaFuerte123!';
-
--- Permisos mínimos necesarios
-GRANT ALL PRIVILEGES ON sistema_empresa.* TO 'aptium_user'@'%';
-
--- Si MySQL está en servidor remoto, permitir conexión remota:
-GRANT ALL PRIVILEGES ON sistema_empresa.* TO 'aptium_user'@'192.168.1.x' IDENTIFIED BY 'TuContraseñaFuerte123!';
-
-FLUSH PRIVILEGES;
+SELECT version, description, success, installed_on
+FROM sistema_empresa.flyway_schema_history ORDER BY installed_rank DESC LIMIT 5;
 ```
 
-2. **Verificar conectividad desde servidor de aplicación Windows:**
+Una fila con `success = 0` deja el historial bloqueado: Flyway se niega a seguir hasta que
+se resuelva. **No editar `flyway_schema_history` a mano** — restaurar el dump (§6) y
+diagnosticar con calma.
 
-```batch
-REM Instalar MySQL Client tools primero (si no está disponible)
-REM O usar MySQL Workbench
+### 9.2 "Actualización requerida" al arrancar
 
-REM Desde Command Prompt:
-mysql -h 192.168.1.100 -u aptium_user -p
+> *Esta versión de la aplicación es más vieja que la base de datos.*
 
-REM Te pedirá contraseña, ingresala
-REM Si funciona, verás "mysql>" en la terminal
+Ese puesto quedó con un JAR anterior al de la base. Es el chequeo del §2.2 funcionando.
+La app ofrece actualizarse sola; si se rechaza, se cierra. Solución: actualizar ese puesto.
 
-REM Ejecutar query de prueba
-SELECT VERSION();
+### 9.3 No conecta a MySQL
 
-REM Salir
-exit
-```
-
-### 3.5 Logging y Monitoreo
-
-La aplicación utiliza **Logback** (SLF4J) con rotación automática de logs.
-
-#### Configuración de Logs Producción-Ready:
-
-- ✅ **Rotación diaria + por tamaño**: Archivos máximo 20MB, se comprimen en .gz
-- ✅ **Historial automático**: 30 días para logs generales, 90 para errores
-- ✅ **Límite de espacio**: Máximo 1GB logs generales, 2GB errores
-- ✅ **Separación de archivos**: 
-  - `app.log` → INFO y superiores
-  - `error.log` → Solo ERROR y FATAL with stack traces
-- ✅ **Ubicación segura**: `C:\Logs\Aptium\` (automáticamente detectada)
-
-#### Archivos de Log Generados:
-
-```
-C:\Logs\Aptium\
-├── app.log                          (Log actual - INFO+)
-├── error.log                        (Log actual - ERROR+)
-├── app.2026-02-24.1.log.gz         (Histórico comprimido)
-├── error.2026-02-24.1.log.gz       (Histórico comprimido)
-└── ...más archivos con rotación
-```
-
-#### Ver Logs en Tiempo Real (PowerShell):
+En orden:
 
 ```powershell
-# Ver últimas 50 líneas
-Get-Content C:\Logs\Aptium\app.log -Tail 50
+# 1. ¿El servicio está arriba? (en la PC del servidor)
+Get-Service -Name "*mysql*"
 
-# Seguir logs en vivo
-Get-Content C:\Logs\Aptium\app.log -Wait
+# 2. ¿Responde el puerto desde el puesto?
+Test-NetConnection -ComputerName <IP_SERVIDOR> -Port 3306      # TcpTestSucceeded: True
 
-# Buscar errores
-Select-String "ERROR|EXCEPTION" C:\Logs\Aptium\error.log
+# 3. ¿Tailscale está conectado en los dos extremos?
+tailscale status
 
-# Buscar patrón en logs
-Select-String "palabra" C:\Logs\Aptium\app.log
+# 4. ¿Qué dice el log?
+Select-String "Connection refused|timeout|SSL|Access denied" <carpeta>\logs\error.log
 ```
 
-#### Cambiar Nivel de Log (DEV vs PROD):
+Causas por orden de probabilidad en este deploy:
 
-```batch
-REM Por defecto: INFO (producción)
-java -jar app.jar
+| Síntoma en el log | Causa |
+|---|---|
+| Error de SSL / TLS al conectar | El servidor no ofrece TLS (§3.2) — habilitarlo en el servidor, no bajar el modo en el cliente |
+| `Access denied for user` | Credenciales, o el host del cliente no está en los grants |
+| `Connection refused` | MySQL caído, `bind-address` en `127.0.0.1`, firewall, o Tailscale abajo |
+| Arranca con `localhost` sin que nadie lo haya pedido | Configuración no leída (§7.2) |
 
-REM Con DEBUG (desarrollo)
-java -Dlogback.level=DEBUG -jar app.jar
+### 9.4 `Access denied` al ejecutar DDL
 
-REM INFO (verbose, pero sin debug)
-java -Dlogback.level=INFO -jar app.jar
-```
+Grants insuficientes (§3.3). La app conecta pero muere en la migración.
 
-#### Monitoreo de Logs Importantes:
-
-La aplicación loguea eventos críticos:
-
-```log
-# STARTUP exitoso
-[INFO] Connection Pool inicializado correctamente
-[INFO] Pool: AptiumPool
-[INFO] Max conexiones: 10
-[INFO] Min idle: 5
-
-# Error de conexión
-[ERROR] No se pudo verificar/crear la base de datos
-
-# Connection leak detectado
-[WARN] Connection Pool estima leak: conexión no cerrada desde hace 60s
-
-# Shutdown graceful
-[INFO] Cerrando aplicación...
-[INFO] Connection Pool cerrado correctamente
-```
-
-#### Alertas para Monitoreo (Windows):
+### 9.5 OutOfMemoryError
 
 ```powershell
-REM Buscar estos strings en logs para alertar:
-- "ERROR" o "EXCEPTION" → Problema crítico
-- "Connection refused" → BD inaccesible
-- "OutOfMemoryError" → Falta memoria
-- "Leak detection" → Conexiones no se cierran
-- "DatabaseInitializationException" → Problema con esquema BD
-
-# Buscar en PowerShell:
-Select-String "ERROR|EXCEPTION|Connection refused" C:\Logs\Aptium\error.log
-```
-
----
-
-## 4. INSTALACIÓN EN PRODUCCIÓN
-
-### 4.1 Compilar Localmente (Una sola vez)
-
-```batch
-REM En tu máquina local o servidor CI/CD
-cd C:\Trabajo\Administracion-Aptium
-
-REM Limpiar y compilar todo
-mvn clean package
-
-REM Resultado: target\aptium.jar
-REM Este JAR contiene TODO (código + dependencias) - es autosuficiente
-```
-
-**IMPORTANTE**: El JAR `aptium.jar` es completamente independiente y no requiere Maven ni código fuente en producción.
-
-### 4.2 Transferir JAR a Producción (Windows - Código Cerrado)
-
-Solo necesitas copiar el JAR compilado. **No copies código fuente**.
-
-#### Opción A: En servidor compartido en red
-
-```batch
-REM Desde tu máquina local:
-xcopy target\aptium.jar \\servidor-produccion\compartir\aptium\
-```
-
-#### Opción B: Por email, USB, o herramienta de deploy
-
-```batch
-REM Simplemente copia el archivo:
-target\aptium.jar
-```
-
-**QUÉ NO COPIAR a producción:**
-- ❌ Carpeta `src/` (código fuente)
-- ❌ `pom.xml` (config de compilación)
-- ❌ `.git/` (repositorio)
-- ❌ `target/` completo (solo necesitas el JAR)
-
-**QUÉ COPIAR a producción:**
-- ✅ `aptium.jar` (SOLO ESTO)
-
-### 4.3 Crear Estructura de Directorios en Servidor Windows
-
-```batch
-REM Crear directorio principal
-md C:\Aptium
-md C:\Aptium\app
-md C:\Logs\Aptium
-md C:\Aptium\backup
-
-REM Establecer permisos (ejecutar como Admin)
-icacls C:\Aptium /grant "%USERNAME%":F /T
-
-REM Copiar JAR compilado
-copy C:\Ruta\donde\transferiste\aptium.jar C:\Aptium\app\aptium.jar
-
-REM Verificar que el JAR está ahí
-dir C:\Aptium\app\
-REM Crear archivo ejecutar.bat
-echo @echo off > C:\Aptium\app\ejecutar.bat
-echo cd /d "C:\Aptium\app" >> C:\Aptium\app\ejecutar.bat
-echo if not exist "aptium.jar" ( >> C:\Aptium\app\ejecutar.bat
-echo     echo Error: No se encuentra C:\Aptium\app\aptium.jar >> C:\Aptium\app\ejecutar.bat
-echo     echo Verifique que el JAR fue copiado correctamente al servidor. >> C:\Aptium\app\ejecutar.bat
-echo     pause >> C:\Aptium\app\ejecutar.bat
-echo     exit /b 1 >> C:\Aptium\app\ejecutar.bat
-echo ) >> C:\Aptium\app\ejecutar.bat
-echo java -jar "aptium.jar" >> C:\Aptium\app\ejecutar.bat
-echo if errorlevel 1 ( >> C:\Aptium\app\ejecutar.bat
-echo     echo. >> C:\Aptium\app\ejecutar.bat
-echo     echo Error: Verifique que Java esté instalado correctamente o revise C:\Logs\Aptium\error.log >> C:\Aptium\app\ejecutar.bat
-echo     pause >> C:\Aptium\app\ejecutar.bat
-echo ) >> C:\Aptium\app\ejecutar.bat
-```
-
-### 4.4 Error Handling y Recuperación
-
-La aplicación implementa **3 capas de manejo de errores**:
-
-#### Capa 1: DataAccess (DAOs)
-```java
-// ❌ VIEJO (silencia errores)
-try {
-    return dao.obtenerTodos();
-} catch (SQLException e) {
-    log.error("Error", e);
-    return List.of();  // Oculta el problema
-}
-
-// ✅ NUEVO (propaga errores correctamente)
-try {
-    return dao.obtenerTodos();
-} catch (SQLException e) {
-    log.error("No se pudo obtener datos", e);
-    throw DataAccessException.queryFallida(sql, e);
-}
-```
-
-#### Capa 2: Business (Services)
-```java
-// Services atrapan DataAccessException y convierten a BusinessException si es necesario
-try {
-    return dao.guardar(equipo);
-} catch (DataAccessException e) {
-    throw new BusinessException("INSERT_FAILED", "No se pudo guardar equipo", e.toString());
-}
-```
-
-#### Capa 3: Presentation (Controllers y UI)
-```java
-// Controllers atrapan excepciones y notifican al usuario
-try {
-    service.guardarEquipo(equipo);
-    JOptionPane.showMessageDialog(null, "Equipo guardado exitosamente", "Éxito", JOptionPane.INFORMATION_MESSAGE);
-} catch (BusinessException e) {
-    log.error("Error de negocio", e);
-    JOptionPane.showMessageDialog(null, "Error: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-} catch (DataAccessException e) {
-    log.error("Error de acceso a datos", e);
-    JOptionPane.showMessageDialog(null, "Error en base de datos", "Error", JOptionPane.ERROR_MESSAGE);
-}
-```
-
-#### Excepciones Personalizadas Disponibles:
-
-```
-AptiumException (base)
-├── DataAccessException (problemas de BD)
-│   ├── DB_CONNECTION_FAILED: No se conecta a BD
-│   ├── DB_QUERY_FAILED: Query falló
-│   ├── DB_INSERT_FAILED: Insert falló
-│   └── DB_NOT_FOUND: Registro no encontrado
-│
-└── BusinessException (problemas de lógica)
-    ├── VALIDATION_FAILED: Validación falló
-    ├── BUSINESS_RULE_VIOLATED: Regla violada
-    └── ESTADO_INVALIDO: Cambio de estado inválido
-```
-
-#### Estrategia de Errores en Producción:
-
-**NUNCA hacer esto:**
-```java
-try {
-    // código
-} catch (Exception e) {
-    // Silenciar sin logguear
-}
-```
-
-**SIEMPRE propagar ALGUNO de estos:**
-```java
-// Opción 1: Loguear y relanzar
-try { ... }
-catch (Exception e) {
-    log.error("Descripción del error", e);
-    throw new DataAccessException("OPERATION_FAILED", "Descripción para usuario", "Contexto", e);
-}
-
-// Opción 2: Loguear y retornar error conocido
-try { ... }
-catch (Exception e) {
-    log.error("Descripción del error", e);
-    return false;  // Solo si el método está diseñado para esto
-}
-
-// Opción 3: Loguear y continuar (solo si es seguro)
-try { ... }
-catch (Exception e) {
-    log.warn("Problema minor, continuando...", e);
-    // seguir
-}
-```
-
----
-
-## 5. VALIDACIÓN ANTES DE DEPLOY
-
-### 5.1 Tests Unitarios y de Integración
-
-```batch
-REM En máquina local (antes de deploy)
-mvn clean test
-
-REM Resultado esperado:
-REM Tests run: 252, Failures: 0, Errors: 0, Skipped: 0
-```
-
-### 5.2 Test de Compilación con Coverage
-
-```batch
-REM Verificar cobertura de código
-mvn clean verify jacoco:report
-
-REM Reportes en: target\site\jacoco\index.html
-```
-
-### 5.3 Verificar JAR Generado
-
-```batch
-REM Verificar que el JAR contiene todo
-jar tf target\Administracion-Aptium-1.0-SNAPSHOT-jar-with-dependencies.jar | findstr "com\\example\\app" | more
-
-REM Buscar clases principales
-jar tf target\Administracion-Aptium-1.0-SNAPSHOT-jar-with-dependencies.jar | findstr "HikariCP"
-```
-
-### 5.4 Test en Servidor de Staging (IMPORTANTE!)
-
-```batch
-REM 1. Establecer variables de entorno STAGING (Windows)
-setx DB_HOST "server-staging"
-setx DB_NAME "sistema_empresa_staging"
-REM ... etc (abrir nueva terminal para que se apliquen)
-
-REM 2. Ejecutar JAR en modo test
-java -jar C:\Aptium\app.jar
-
-REM 3. Verificar logs en PowerShell
-Get-Content C:\Logs\Aptium\app.log -Wait
-
-REM 4. Buscar errores críticos
-Select-String "ERROR|EXCEPTION" C:\Logs\Aptium\error.log
-```
-
-### 4.5 Inicialización Robusta de la Aplicación
-
-La clase `App.java` implementa **startup secuencial con error handling**:
-
-```
-PASO 1: Registrar shutdown hook
-  └─ Cierra Connection Pool gracefully al terminar
-
-PASO 2: Conectar a Base de Datos
-  └─ ConnectionPool se inicializa automáticamente
-  └─ Lee variables de entorno/config.properties
-  └─ Valida credenciales
-
-PASO 3: Inicializar Esquema BD
-  └─ Crea tablas si no existen
-  └─ Carga datos iniciales
-
-PASO 4: Crear Contexto de Dependencias
-  └─ Instancia todos los DAOs
-  └─ Instancia todos los Services
-  └─ Inyecta dependencias
-
-PASO 5: Crear AppController
-  └─ Wirea controllers a vistas, cada uno con los services de su alcance
-
-PASO 6: Iniciar UI
-  └─ Muestra ventana principal
-```
-
-#### Salida esperada en Logs:
-
-```log
-╔════════════════════════════════════════════════════════════╗
-║  Iniciando Administración de Aptium                        ║
-║  Versión 1.0 - PRODUCTION READY                           ║
-╚════════════════════════════════════════════════════════════╝
-[INFO] PASO 1/4: Conectando a base de datos...
-[INFO] ✓ Connection Pool inicializado
-[INFO] Pool Stats: Total=10, Activas=0, Idle=5, Esperando=0
-[INFO] PASO 2/4: Inicializando esquema de base de datos...
-[INFO] ✓ Esquema BD verificado/creado
-[INFO] PASO 3/4: Creando contexto de dependencias...
-[INFO] ✓ Contexto creado con DAOs y Services
-[INFO] PASO 4/4: Iniciando interfaz de usuario...
-[INFO] ✓ AppController creado
-[INFO] ═══════════════════════════════════════════════════════════
-[INFO] Aplicación inicializada correctamente
-[INFO] ═══════════════════════════════════════════════════════════
-```
-
-#### Si algo falla en PASO 1-6:
-
-```log
-╔════════════════════════════════════════════════════════════╗
-║  ✗ ERROR DE STARTUP                                       ║
-╚════════════════════════════════════════════════════════════╝
-[ERROR] ✗ Error inicializando esquema BD
-[ERROR] Error en Base de Datos: Not able to get a connection, pool error Timeout waiting for idle object
-```
-
-**El usuario ve diálogo de error y la aplicación termina con exit code 1.**
-
----
-
-## 6. STARTUP Y SHUTDOWN
-
-### 6.1 Ejecutar la Aplicación en Windows
-
-#### Opción A: Ejecución Simple (Terminal Interactiva)
-
-```batch
-REM Navegar al directorio
-cd C:\Aptium\app
-
-REM Ejecutar JAR
-java -jar aptium.jar
-
-REM O especificar nivel de log
-java -Dlogback.level=INFO -jar aptium.jar
-```
-
-#### Opción B: Ejecución en Background (PowerShell)
-
-```powershell
-REM Ejecutar en background
-Start-Process -NoNewWindow -FilePath "java" -ArgumentList "-jar C:\Aptium\app\aptium.jar" -RedirectStandardOutput "C:\Logs\Aptium\output.log"
-
-REM Ver procesos java
-Get-Process java
-```
-
-#### Opción C: Ejecutar como Servicio de Windows (NSSM - RECOMENDADO)
-> **Nota:** El servicio Windows (NSSM) debe instalarse únicamente en la **PC host** (servidor central), donde se ejecuta la aplicación y acceden los usuarios. Esta PC debe estar encendida y funcionando todo el tiempo para que la aplicación esté disponible. Si la PC host se apaga o reinicia, la aplicación y el servicio dejan de estar accesibles para los clientes.
-
-**Paso 1**: Descargar NSSM desde [https://nssm.cc](https://nssm.cc/)
-
-```batch
-REM Extraer nssm.exe en C:\nssm\
-REM O agregarlo al PATH
-
-REM Instalar servicio
-C:\nssm\nssm.exe install AptiumService "java" "-jar C:\Aptium\app\aptium.jar"
-
-REM Establecer directorio de trabajo
-C:\nssm\nssm.exe set AptiumService AppDirectory C:\Aptium\app
-
-REM Establecer variables de entorno del servicio
-C:\nssm\nssm.exe set AptiumService AppEnvironmentExtra DB_HOST=192.168.1.100
-C:\nssm\nssm.exe set AptiumService AppEnvironmentExtra DB_PORT=3306
-C:\nssm\nssm.exe set AptiumService AppEnvironmentExtra DB_NAME=sistema_empresa
-C:\nssm\nssm.exe set AptiumService AppEnvironmentExtra DB_USER=aptium_user
-C:\nssm\nssm.exe set AptiumService AppEnvironmentExtra DB_PASS=TuPassword
-
-REM Redireccionar salida a logs
-C:\nssm\nssm.exe set AptiumService AppStdout C:\Logs\Aptium\app.log
-C:\nssm\nssm.exe set AptiumService AppStderr C:\Logs\Aptium\error.log
-
-REM Configurar reinicio automático
-C:\nssm\nssm.exe set AptiumService RestartOnReboot SERVICE_AUTO_START
-C:\nssm\nssm.exe set AptiumService AppRestartDelay 5000
-
-REM Iniciar servicio
-net start AptiumService
-
-REM Ver estado
-sc query AptiumService
-
-REM Parar servicio
-net stop AptiumService
-
-REM Desinstalar servicio
-C:\nssm\nssm.exe remove AptiumService confirm
-```
-
-### 6.2 Graceful Shutdown
-
-La aplicación se cierra correctamente recibiendo señal de terminación:
-
-```batch
-REM Si la aplicación corre en terminal: Presiona Ctrl+C
-
-REM Si está como servicio Windows:
-net stop AptiumService
-
-REM O via NSSM:
-C:\nssm\nssm.exe stop AptiumService
-
-REM O taskkill:
-taskkill /IM java.exe /F
-
-REM Ver logs de shutdown en PowerShell:
-Get-Content C:\Logs\Aptium\app.log | Select-String "Cerrando|shutdown|closed"
-```
-
----
-
-## 7. MONITOREO Y TROUBLESHOOTING
-
-### 7.1 Procesos en Ejecución
-
-```powershell
-# Ver procesos Java en PowerShell
-Get-Process java
-
-# Ver puerto 3306 en uso (MySQL)
-Get-NetTCPConnection -LocalPort 3306 -ErrorAction SilentlyContinue
-
-# O en Command Prompt:
-tasklist | findstr java.exe
-netstat -ano | findstr :3306
-```
-
-### 7.2 Ver Logs (PowerShell)
-
-```powershell
-# Últimas 50 líneas
-Get-Content C:\Logs\Aptium\app.log -Tail 50
-
-# Seguir logs en tiempo real
-Get-Content C:\Logs\Aptium\app.log -Wait
-
-# Buscar errores
-Select-String "ERROR|EXCEPTION" C:\Logs\Aptium\error.log
-
-# Contar errores
-@(Select-String "ERROR" C:\Logs\Aptium\error.log).Count
-```
-
-### 7.3 Problemas Comunes
-
-#### ❌ "Connection refused" o "Connection timeout"
-
-**Causa**: No puede conectar a MySQL
-
-**Solución**:
-
-```batch
-REM 1. Verificar que MySQL está corriendo
-wmic service get name,state | find /i "mysql"
-
-REM 2. Verificar variables de entorno
-echo %DB_HOST%
-echo %DB_PORT%
-
-REM 3. Ver logs de error en PowerShell
-Select-String "Connection refused|timeout|database" C:\Logs\Aptium\error.log
-```
-
-#### ❌ "OutOfMemoryError"
-
-**Causa**: Aplicación corre sin memoria suficiente
-
-**Solución**: Aumentar heap size en el comando de startup
-
-```batch
-REM En lugar de:
-java -jar aptium.jar
-
-REM Usar (hasta 1GB de memoria):
 java -Xmx1024m -Xms512m -jar aptium.jar
-
-REM -Xmx1024m: Máximo 1GB
-REM -Xms512m: Mínimo 512MB
 ```
 
-#### ❌ "Access Denied: User 'aptium_user'"
+### 9.6 El auto-update no encuentra actualizaciones
 
-**Causa**: Credenciales incorrectas o host no permitido
+- El repo tiene que ser **público** (el cliente pega a la API de GitHub sin autenticar).
+- El asset tiene que llamarse exactamente `aptium.jar`, con su `aptium.jar.sha256`.
+- Límite no autenticado de GitHub: 60 requests/hora por IP. Con varios puestos detrás de
+  la misma salida a internet chequeando seguido, se puede tocar el techo — esperar.
+- El staging vive en `%LOCALAPPDATA%\Aptium\updates\`. Ahí queda también `reemplazo.log`,
+  que es lo primero que hay que mirar si un reemplazo falló.
 
-**Solución**:
+---
+
+## 10. Seguridad
+
+### 10.1 Credenciales
+
+- Nunca commitear `config.properties` con datos reales (ya está en `.gitignore`).
+- Nunca `root` como usuario de la app en producción.
+- `config.properties` con permisos restrictivos (§7.2), o variables de entorno.
+
+### 10.2 Usuario de MySQL
 
 ```sql
--- En MySQL (conectarse como administrador):
-SHOW GRANTS FOR 'aptium_user'@'%';
-
--- Si es necesario crear/re-crear:
-CREATE USER 'aptium_user'@'%' IDENTIFIED BY 'TuContraseñaFuerte123!';
-GRANT ALL PRIVILEGES ON sistema_empresa.* TO 'aptium_user'@'%';
+CREATE USER 'aptium_prod'@'<host_o_subred>' IDENTIFIED BY '<password_fuerte>';
+GRANT ALL PRIVILEGES ON sistema_empresa.* TO 'aptium_prod'@'<host_o_subred>';
 FLUSH PRIVILEGES;
 ```
 
-#### ❌ Logs no se generan
+`ALL` **acotado a `sistema_empresa.*`** — no menos (rompe Flyway, §3.3) y no `ON *.*`.
+El host tiene que ser el real de los puestos (la subred de Tailscale si se conecta por ahí),
+no `%`.
 
-**Causa**: Directorio de logs no existe o sin permisos
+### 10.3 TLS
 
-**Solución**:
+Ya resuelto en el código: las dos URLs JDBC llevan `sslMode=REQUIRED`, así que la app no
+conecta si el servidor no ofrece TLS, en vez de caer a texto plano en silencio como hace el
+default `PREFERRED` de Connector/J 8.x.
 
-```batch
-REM Crear directorio
-md C:\Logs\Aptium
+**Pendiente conocido (decisión, no defecto):** `REQUIRED` cifra pero **no valida** el
+certificado del servidor, así que no protege por sí solo contra un MITM activo — hoy eso lo
+cubre el túnel de Tailscale. Subir a `VERIFY_CA` exige distribuir un truststore a cada puesto.
 
-REM Establecer permisos (ejecutar como Admin)
-icacls C:\Logs\Aptium /grant "%USERNAME%":F /T
-
-REM Verificar
-dir C:\Logs\Aptium
-```
-
-### 7.4 Estadísticas del Pool de Conexiones
-
-La aplicación loguea estadísticas del pool:
-
-```log
-[2026-02-24 18:43:08] Connection Pool inicializado correctamente
-[2026-02-24 18:43:08] Pool: AptiumPool
-[2026-02-24 18:43:08] Max conexiones: 10
-[2026-02-24 18:43:08] Min idle: 5
-```
-
-Buscar en PowerShell:
+### 10.4 Permisos de archivos (como Administrador)
 
 ```powershell
-Get-Content C:\Logs\Aptium\app.log -Wait | Select-String "Pool Stats"
-```
-
--- Si no existe, crearla:
-CREATE USER 'aptium_user'@'%' IDENTIFIED BY 'TuContraseñaFuerte123!';
-GRANT ALL PRIVILEGES ON sistema_empresa.* TO 'aptium_user'@'%';
-FLUSH PRIVILEGES;
-```
-
----
-
-## 8. CHECKLIST DE DEPLOY
-
-### Pre-Deploy (24 horas antes)
-
-- [ ] Código compilado sin errores: `mvn clean package`
-- [ ] Todos los tests pasan: `mvn clean test` (252 tests)
-- [ ] JAR generado: `target\aptium.jar`
-- [ ] Se actualizó la fecha en este documento
-- [ ] Se creó backup de BD de producción
-- [ ] Se probó en ambiente staging
-- [ ] Se verificó que MySQL está accesible desde servidor de aplicación
-
-### Deploy Day (Windows)
-
-- [ ] Variables de entorno establecidas (DB_HOST, DB_USER, DB_PASS, etc.)
-- [ ] config.properties existe (si se usa método archivo) con permisos restrictivos
-- [ ] Directorio C:\Aptium creado con permisos adecuados
-- [ ] JAR copiado a C:\Aptium\app\
-- [ ] Permisos correctos en archivos (ejecutar como Admin):
-  - [ ] `icacls C:\Aptium\app\aptium.jar /grant "%USERNAME%":F`
-- [ ] Se probó startup manual: `java -jar C:\Aptium\app\aptium.jar`
-- [ ] Se verificó que se conecta a BD (ver logs)
-- [ ] Se creó servicio Windows usando NSSM
-- [ ] Se probó startup/stop del servicio varias veces
-- [ ] Se verifican los logs después de startup
-- [ ] Se confirma que MySQL está escribiendo datos
-
-### Post-Deploy (primeras 24 horas)
-
-- [ ] Aplicación está corriendo: `tasklist | findstr java.exe`
-- [ ] Logs muestran startup exitoso en C:\Logs\Aptium\app.log
-- [ ] No hay "ERROR" o "EXCEPTION" en logs
-- [ ] Connection Pool inicializó correctamente
-- [ ] Se puede conectar a la aplicación UI
-- [ ] Se prueba funcionalidad básica (crear equipo, etc.)
-- [ ] Se monitora consumo de memoria (Task Manager)
-- [ ] Se verifica que el pool no tiene memory leaks
-
-### Rollback Plan (si algo sale mal)
-
-```batch
-REM 1. Detener servicio
-net stop AptiumService
-
-REM 2. Restaurar versión anterior
-copy C:\Aptium\app\aptium.jar.backup C:\Aptium\app\aptium.jar
-
-REM 3. Iniciar servicio
-net start AptiumService
-
-REM 4. Restaurar BD desde backup (si es necesario)
-REM mysql -u root < backup_20260224.sql
-
-REM 5. Notificar al equipo
-```
-
----
-
-## 9. SEGURIDAD EN PRODUCCIÓN
-
-### 9.1 Manejo de Credenciales
-
-**NUNCA hacer esto:**
-```
-✗ config.properties con credenciales reales versionado en Git
-✗ Hardcoder contraseñas en el código
-✗ Transmitir contraseñas en comandos visibles (tasklist)
-✗ Permitir que cualquiera acceda a los archivos de config
-```
-
-**SIEMPRE hacer esto:**
-```
-✓ Variables de entorno: DB_HOST, DB_USER, DB_PASS establecidas en servidor
-✓ Archivo config.properties con permisos restrictivos (NTFS: solo usuario)
-✓ Usuario específico ejecutando la aplicación (NO SYSTEM)
-✓ Credenciales de BD limitadas a tabla/BD específica (NO root globales)
-```
-
-### 9.2 Acceso a Base de Datos
-
-**Usuario MySQL en Producción:**
-
-```sql
-CREATE USER 'aptium_prod'@'192.168.1.%' IDENTIFIED BY 'StrongPassword123!@#';
-GRANT SELECT, INSERT, UPDATE, DELETE ON sistema_empresa.* TO 'aptium_prod'@'192.168.1.%';
-FLUSH PRIVILEGES;
-```
-
-**QUÉ NO HACER:**
-```sql
-✗ GRANT ALL PRIVILEGES ON *.* TO 'aptium_user'@'%';  -- Puede modificar cualquier BD
-✗ CREATE USER 'aptium'@'%' IDENTIFIED BY 'root';     -- Acceso desde cualquier host
-```
-
-### 9.3 Permisos de Archivos en Servidor Windows
-
-Establecer permisos restrictivos en NTFS (ejecutar como Administrator):
-
-```batch
-REM Directorio principal
 icacls C:\Aptium /grant:r "Administrators:F" "SYSTEM:F" /inheritance:r
-icacls C:\Aptium /remove:d "Everyone" "Users" 2>nul
-
-REM Logs
-mkdir C:\Logs\Aptium
-icacls C:\Logs\Aptium /grant:r "SYSTEM:F" "Administrators:F" /inheritance:r
-
-REM Configuración (SECRETO - solo usuario ejecutante)
-icacls C:\Aptium\config.properties /grant "%USERNAME%:M" /inheritance:r
-icacls C:\Aptium\config.properties /remove:d "Everyone" "Users" 2>nul
-
-REM JAR
-icacls C:\Aptium\app\aptium.jar /grant "Administrators:F" /inheritance:r
-
-REM Verificar
-icacls C:\Aptium\config.properties
+icacls C:\Aptium\config.properties /inheritance:r /grant:r "$env:USERNAME:F"
 ```
 
-**Permisos esperados:**
-```
-C:\Aptium
-  NT AUTHORITY\SYSTEM:(OI)(CI)(F)
-  BUILTIN\Administrators:(OI)(CI)(F)
-```
-
-### 9.4 MySQL Remota con Certificados SSL/TLS
-
-**Ya está hecho en el código, no hay nada que configurar por puesto.** `ConnectionPool`
-arma las dos URLs JDBC con `sslMode=REQUIRED` (constante `PARAMS_JDBC`), así que la app
-**no conecta** si el servidor no ofrece TLS, en vez de caer a texto plano en silencio como
-hace el default `PREFERRED` de Connector/J 8.x.
-
-Requisito del lado del servidor: MySQL 8 genera certificados autofirmados y habilita TLS
-solo al inicializar el datadir, así que normalmente ya funciona. Verificarlo con:
-
-```sql
-SHOW GLOBAL VARIABLES LIKE 'have_ssl';   -- debe decir YES
--- Y sobre una sesión ya conectada desde el puesto:
-STATUS;                                   -- la línea SSL debe mostrar el cifrado en uso
-```
-
-Si `have_ssl` da `DISABLED`, la app va a fallar al arrancar con un error de conexión: hay
-que habilitar TLS en el servidor (`ssl_cert` / `ssl_key` en `my.ini`), no bajar el modo en
-el cliente.
-
-**Pendiente (decisión, no defecto):** `REQUIRED` cifra pero **no valida** el certificado del
-servidor, así que no protege por sí solo contra un MITM activo — hoy eso lo cubre el túnel
-de Tailscale. Subir a `VERIFY_CA` exige distribuir un truststore a cada puesto.
-
-**QUÉ NO HACER:**
-```sql
-✗ GRANT ALL PRIVILEGES ON *.* TO 'user'@'%';   -- Acceso global a todo
-✗ Usuario sin SSL en red remota                -- Credenciales en texto plano
-✗ Raíz (root) como usuario de la app           -- Acceso sin restricciones
-```
-
-### 9.5 Auditoría y Logs en Producción
-
-**Logs de aplicación (Windows):**
-- Guardar en `C:\Logs\Aptium\` con rotación automática (logback)
-- Mantener 30 días de logs generales (app.log)
-- Mantener 90 días de errores (error.log)
-- Revisar regularmente por "ERROR" y "EXCEPTION"
-
-**Ver logs en PowerShell:**
-```powershell
-# Errores en las últimas 24 horas
-Get-Content C:\Logs\Aptium\error.log | Select-String "$(Get-Date -Format 'yyyy-MM-dd')"
-
-# Contar errores
-@(Select-String "ERROR|EXCEPTION" C:\Logs\Aptium\error.log).Count
-
-# Exportar para análisis
-Get-Content C:\Logs\Aptium\app.log | Out-File C:\Temp\logs_backup.txt
-```
-
-**Logs de acceso BD (MySQL):**
-```sql
--- En MySQL (como root):
-SET GLOBAL general_log = 'ON';
-SET GLOBAL log_output = 'TABLE';
-SELECT * FROM mysql.general_log WHERE command_type = 'Query' LIMIT 100;
-
--- O desactivar después de auditoría:
-SET GLOBAL general_log = 'OFF';
-```
-
-### 9.6 Actualizaciones de Seguridad
-
-**Cadencia mensual:**
-- [ ] Revisar dependencias con vulnerabilidades conocidas
-- [ ] Actualizar MySQL Server si hay patches de seguridad
-- [ ] Actualizar OpenJDK si hay vulnerabilidades críticas
-- [ ] Revisar logs de error.log por patrones sospechosos
-
-```batch
-REM Escanear vulnerabilidades en pom.xml (si usas Maven plugins):
-mvn dependency-check:check
-
-REM O manualmente revisar:
-mvn clean dependency:tree | findstr "RELEASE\|SNAPSHOT"
-```
+> Ojo: si la carpeta del JAR queda sin permiso de escritura para el usuario, el
+> auto-update va a pedir UAC en cada actualización. Es un camino soportado y probado, pero
+> hay que saber que el prompt es esperado.
 
 ---
 
-## 📞 Soporte y Contacto en Producción
+## 11. Actualizaciones futuras
 
-**Errores comunes y soluciones:**
-- **Errores de compilación**: Revisar `target\maven-status\` o ejecutar `mvn clean -e compile`
-- **Errores de BD**: Ver `C:\Logs\Aptium\error.log` y `C:\Logs\Aptium\app.log`
-- **Problemas de Performance**: Revisar logs para estadísticas del pool de conexiones
-- **Startup lento**: Aumentar memoria: `java -Xmx2g -jar aptium.jar`
-- **Memory leaks**: Ver advertencias "Leak detection" en error.log
+A partir de esta versión, el ciclo normal es:
 
-**Pasos de diagnóstico rápido:**
-1. Verificar si MySQL está corriendo: `wmic service get name,state | find /i "mysql"`
-2. Ver proceso Java: `tasklist | findstr java.exe`
-3. Revisar logs recientes: `Get-Content C:\Logs\Aptium\app.log -Tail 100`
-4. Buscar errores: `Select-String "ERROR" C:\Logs\Aptium\error.log`
+1. `git tag vX.Y.Z && git push origin vX.Y.Z` → el workflow publica el release.
+2. En cada puesto: **Ajustes → Buscar actualizaciones**.
+3. Si la nueva versión trae migraciones, **el primer puesto que abra migra la base**, y
+   los demás quedan bloqueados con "Actualización requerida" hasta que se actualicen.
+   Ese bloqueo es la red de seguridad que este deploy estrena — conviene igual seguir
+   actualizando todos los puestos el mismo día.
+
+Antes de cada release con migraciones: **dump de la base** (§3.4).
 
 ---
 
-## 📊 Especificaciones Técnicas
+## 12. Backups
 
-### Stack Tecnológico:
-- **Lenguaje**: Java 17+
-- **BD**: MySQL 8.0+ / MariaDB 10.5+
-- **UI**: Swing (AWT)
-- **Build**: Maven 3.6+
-- **Pool Conexiones**: HikariCP 5.x
-- **Logging**: Logback / SLF4J
-- **Testing**: JUnit 4, Mockito
+> **Esto no es parte del deploy.** Lo único que el deploy necesita de acá es el dump del
+> §3.4 y que haya espacio en disco (§3.5). El resto es trabajo aparte, para después.
 
-### Arquitectura:
-- **Pattern**: Feature-based modular organization
-- **Layers**: DAO → Service → Controller → View
-- **DI**: Manual (sin Spring)
-- **Transactions**: Auto-commit por DAO
-- **Error Handling**: AptiumException, DataAccessException, BusinessException
+La PC servidor es la única que tiene los datos: si se pierde su disco, se perdió todo.
 
-### Performance y Límites:
-- **Max usuarios concurrentes**: 10 (limit de pool conexiones)
-- **Max queries simultáneas**: 10
-- **Memoria recomendada**: 1-2GB
-- **Disco para BD**: Depende de volumen de datos
-- **RPM máximo**: ~1000 por minuto (HDD)
+### 12.1 Lo que hay hoy (pendiente de revisar)
+
+Hay dos tareas programadas en la PC servidor, hechas hace tiempo: una manda una copia por
+mail y otra deja una copia local. La local **probablemente no tiene política de retención**
+y está llenando el disco.
+
+Los comandos para inventariarlas están en §3.7. Las preguntas a responder son dos:
+
+1. **¿Sigue corriendo?** `LastTaskResult = 0` y un `LastRunTime` reciente. Una tarea que
+   viene fallando hace meses es peor que no tenerla, porque uno cree que está cubierto.
+2. **¿Tiene retención?** Si la cantidad de archivos crece de a uno por día desde el
+   principio de los tiempos, no la tiene.
+
+Hasta no ver **dónde escribe, con qué nombres y con qué frecuencia**, cualquier limpieza
+automática es peligrosa: un borrado "por antigüedad" sobre archivos cuyo nombre no
+conocés puede no borrar nada (y no resolver el problema) o borrar el histórico entero.
+Lo que sí se puede hacer sin riesgo es liberar espacio a mano para que la migración tenga
+aire.
+
+### 12.2 Criterios para cuando se resuelva
+
+- **Comprimir.** Un dump SQL comprime entre 5x y 10x. Sólo eso ya cambia el orden de
+  magnitud del problema.
+- **La limpieza corre después del backup, y sólo si el backup salió bien.** Una tarea de
+  limpieza independiente que corre igual cuando el backup falló termina, con el tiempo,
+  sin backups y sin historial.
+- **Verificar que el dump esté completo** antes de darlo por bueno: `mysqldump` cierra
+  siempre con `-- Dump completed`. Un dump truncado por disco lleno es un archivo que
+  existe y no sirve.
+- **Nunca borrar por fecha un archivo cuyo origen no conocés.** El `LastWriteTime` cambia
+  si alguien copió o restauró la carpeta.
+- **Credenciales fuera de la línea de comandos** (quedan visibles en la lista de procesos):
+  usar un archivo de opciones estilo `my.cnf` con `--defaults-extra-file`, y un usuario de
+  MySQL sólo para backups (`SELECT, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER`).
+
+### 12.3 La tarea que manda la copia por mail
+
+Esa **no** conviene tocarla más que para confirmar que sigue funcionando: es el único
+backup que vive **fuera** de la PC servidor, y por eso es el que salva de un disco muerto,
+un ransomware o un incendio. Un backup local no cubre ninguno de esos casos.
+
+Dos cosas que vale la pena mirar:
+
+- Que el adjunto que llega **no esté vacío ni truncado** — abrir el último mail y mirar el
+  tamaño. Los proveedores de correo cortan adjuntos grandes (10–25 MB), y con Lavadero la
+  base va a crecer: es probable que en algún momento empiece a rebotar o a llegar cortado.
+  El reemplazo natural es sincronizar la carpeta a OneDrive/Drive en vez del mail.
+- Que mande el comprimido y no el `.sql` crudo, por lo mismo.
+
+### 12.4 Un backup sin restaurar no es un backup
+
+Al menos una vez, probar la restauración completa contra una base con otro nombre
+(`CREATE DATABASE prueba_restore`, restaurar ahí, verificar que las tablas tienen las filas
+esperadas, `DROP DATABASE prueba_restore`). Hasta que eso no se hizo una vez, no se sabe
+si los backups sirven.
 
 ---
 
-## 📅 Registros de Cambios
+## Referencia técnica
 
-### Versión 1.0 (24/02/2026)
-- ✅ Arquitectura feature-based implementada
-- ✅ HikariCP Connection Pool optimizado
-- ✅ Logback logging con rotación automática
-- ✅ Error handling multilayer
-- ✅ Startup robusta con JSON-style logging
-- ✅ Variables de entorno para configuración
-- ✅ Deploy guide completa
+| | |
+|---|---|
+| Lenguaje | Java 17 (bytecode 17; el workflow compila con Temurin 17) |
+| Base de datos | MySQL 8.0+ |
+| UI | Swing (FlatLaf) — escritorio, una instancia por puesto |
+| Build | Maven + `maven-shade-plugin` → `target\aptium.jar` (fat JAR) |
+| Migraciones | Flyway 8.5.13, `baselineOnMigrate` + `outOfOrder` + chequeo de esquema adelantado |
+| Pool | HikariCP 5.x — 10 conexiones máx., 5 idle, **por puesto** |
+| Transacciones | `TransactionalConnection` (commit/rollback manual, sin framework) |
+| Logging | Logback / SLF4J, rotación diaria + por tamaño |
+| Tests | JUnit 5 + Mockito + H2 en memoria — 1138 tests |
+| Concurrencia | Bloqueo optimista: guardas por fila; `version` en `equipos`/`equipo_otros` |
+| DI | Manual (`AppContext`), sin Spring |
 
-### Próximas mejoras (v1.1+):
-- [ ] Migration a Spring Boot para DI
-- [ ] Interceptors de transacción
-- [ ] REST API (JSON)
-- [ ] WebSocket para actualización en tiempo real
-- [ ] Docker/K8s support
-- [ ] Monitoring con Prometheus/Grafana
-
----
-
-**Documento finalizado**: 24/02/2026  
-**Versión**: 1.0 PRODUCTION READY  
-**Estado**: ✅ Listo para deploy
-
-Para reportar problemas o sugerencias, crear issue en repositorio.
-
+**Memoria recomendada por puesto**: 1–2 GB. **Disco**: 50 MB de app + logs.
