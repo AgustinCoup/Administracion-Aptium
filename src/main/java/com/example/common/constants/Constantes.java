@@ -248,6 +248,14 @@ public final class Constantes {
         public static final String TITULO_ERROR_ACTUALIZACION     = "Error al actualizar";
         public static final String ERROR_ACTUALIZACION            = "No se pudo completar la actualización: %s";
 
+        // Ofrecida en el arranque cuando el esquema quedó adelantado (ver
+        // OfertaActualizacionAlArrancar): a diferencia de ACTUALIZACION_DISPONIBLE, explica
+        // por qué hace falta actualizar ahora y no simplemente "cuando quieras".
+        public static final String ACTUALIZACION_REQUERIDA_POR_ESQUEMA =
+            "Tu versión de la aplicación quedó desactualizada: otro equipo ya actualizó la base de "
+                + "datos compartida.\n\nHay una nueva versión disponible: %s\n\n%s\n\n"
+                + "Instalala ahora para poder seguir trabajando.";
+
         // ── Clasificación de Lavadero ────────────────────────────────────────
         public static final String ELEMENTO_CATALOGO_AGREGADO = "Elemento \"%s\" agregado al catálogo.";
 

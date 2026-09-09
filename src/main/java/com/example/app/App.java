@@ -1,8 +1,13 @@
 package com.example.app;
 
 import com.example.app.ui.AppController;
+import com.example.common.VersionInfo;
 import com.example.common.constants.Constantes;
 import com.example.common.exception.EsquemaDesactualizadoException;
+import com.example.features.actualizaciones.service.ActualizacionInstaller;
+import com.example.features.actualizaciones.service.ActualizacionService;
+import com.example.features.actualizaciones.service.DescargaService;
+import com.example.features.actualizaciones.service.GithubReleaseClient;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.infrastructure.db.EdtGuard;
 import java.awt.EventQueue;
@@ -85,7 +90,7 @@ public class App {
                 log.info("✓ Esquema BD verificado/creado");
             } catch (EsquemaDesactualizadoException e) {
                 log.error("✗ Base más nueva que este build", e);
-                mostrarErrorYSalir(Constantes.Mensajes.TITULO_ESQUEMA_DESACTUALIZADO, e.getMessage());
+                ofrecerActualizacionOFallar(e);
                 return;
             } catch (Exception e) {
                 log.error("✗ Error inicializando esquema BD", e);
@@ -146,6 +151,26 @@ public class App {
         }
     }
     
+    /**
+     * Antes de rendirse con el error de esquema desactualizado, ofrece la actualización
+     * automática: si el build atrasado tiene un release más nuevo esperando en GitHub, es
+     * probablemente el mismo que trae la migración que falta. {@link ActualizacionService} no
+     * depende de la base ni de {@link AppContext}, así que se arma acá standalone —igual que lo
+     * hace {@code AppContext.createDefault()}— sin esperar a que el resto del arranque exista.
+     *
+     * <p>Si el chequeo falla, no hay actualización, o el usuario la rechaza,
+     * {@code fallback} deja al usuario exactamente donde estaba antes de este flujo: el diálogo
+     * de "esquema desactualizado" de siempre.
+     */
+    private static void ofrecerActualizacionOFallar(EsquemaDesactualizadoException causa) {
+        Runnable fallback = () ->
+            mostrarErrorYSalir(Constantes.Mensajes.TITULO_ESQUEMA_DESACTUALIZADO, causa.getMessage());
+
+        ActualizacionService actualizacionService = new ActualizacionService(
+            new GithubReleaseClient(), new VersionInfo(), new DescargaService(), new ActualizacionInstaller());
+        new OfertaActualizacionAlArrancar(actualizacionService, fallback).intentar();
+    }
+
     /**
      * Muestra un diálogo de error y termina la aplicación.
      * Usado durante startup si algo falla críticamente.
