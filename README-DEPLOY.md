@@ -3,6 +3,10 @@
 **Última actualización**: 09/09/2026
 **Válida para**: el salto desde `v1.1.6.1` (última versión en producción) al release que incluye Lavadero, bloqueo optimista y TLS obligatorio.
 
+> ### 👉 Si venís a desplegar, empezá por la [§0](#0-por-dónde-empezar), acá abajo.
+> Te dice **qué secciones leer y en qué orden** según en qué máquina estés parado.
+> No leas el documento entero de corrido: la mitad no aplica a la PC donde estás.
+
 > Este documento son **instrucciones para ejecutar**, no documentación de arquitectura.
 > Para cómo está construida la app, ver [CLAUDE.md](CLAUDE.md) y `plans/`.
 > Para la conexión remota a MySQL por Tailscale, ver
@@ -10,12 +14,17 @@
 
 ---
 
-## 0. Cómo leer esto
+## 0. POR DÓNDE EMPEZAR
 
 Hay **dos documentos** y se usan en **dos máquinas distintas**. Nunca hacen falta los dos
-completos en la misma PC.
+completos en la misma PC. Buscá abajo el caso que te toca.
 
-### Si estás en la PC servidor (la que ya tiene la app y la base)
+---
+
+### 🖥️ CASO A — Estás en la PC servidor (la que ya tiene la app y la base)
+
+Es la PC de siempre: la que hoy corre la app y aloja MySQL. Es la que **migra la base**,
+así que va primero y sola.
 
 Leer **en este orden**, de arriba abajo, sin saltear:
 
@@ -28,13 +37,16 @@ Leer **en este orden**, de arriba abajo, sin saltear:
 | 5 | **§5** de este doc | Verificar antes de tocar ninguna otra PC |
 
 Si algo falla en el paso 4 → **§9** (troubleshooting) y, si hace falta, **§6** (rollback).
-No sigas con las PCs nuevas hasta que el paso 5 esté en verde.
+**No sigas con las PCs nuevas hasta que el paso 5 esté en verde.**
 
 > Esta PC **no** usa la §2 del runbook de Tailscale: sigue conectando por `localhost`.
 
-### Si estás en una PC nueva
+---
 
-El Tramo A ya tiene que estar terminado y verificado. Después:
+### 💻 CASO B — Estás en una PC nueva
+
+El **Caso A tiene que estar terminado y verificado** antes de empezar acá. Esta PC no
+migra nada: sólo se conecta a la base que el servidor ya dejó lista.
 
 | Orden | Dónde | Qué hacés |
 |---|---|---|
@@ -46,6 +58,8 @@ El Tramo A ya tiene que estar terminado y verificado. Después:
 Si no conecta → **§4** del runbook de Tailscale, y después **§9.3** de este doc.
 
 > Una PC nueva **no** toca nada de la §1 del runbook (eso es del servidor) ni migra la base.
+
+---
 
 ### Convención de rutas
 
@@ -63,7 +77,7 @@ instalación: verificala en la máquina antes de usarla.
 
 ## Índice
 
-0. [Cómo leer esto](#0-cómo-leer-esto)
+0. [**POR DÓNDE EMPEZAR** — qué leer según la máquina](#0-por-dónde-empezar)
 1. [Topología real](#1-topología-real)
 2. [Qué cambia en este deploy](#2-qué-cambia-en-este-deploy)
 3. [Pre-deploy — hacer HOY](#3-pre-deploy--hacer-hoy)
