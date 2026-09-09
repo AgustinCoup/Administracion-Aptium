@@ -109,6 +109,21 @@ class HistorialLavaderoDAOTest extends AbstractDAOTest {
         assertEquals(3, fila.cantBolsas());
     }
 
+    /**
+     * El caso que la partición de {@code SQL_RESUMEN} en tres consultas puede romper: los
+     * elementos salen de la clasificación y los lavarropas de los ciclos, así que un ingreso
+     * clasificado y todavía sin lanzar tiene que traer el primer conjunto lleno y el segundo
+     * vacío. Con la consulta única eso lo daba el {@code LEFT JOIN}; con tres, que la de
+     * lavarropas lo deje afuera.
+     */
+    @Test
+    void ingresoClasificadoSinNingunCiclo_traeLosElementosYNingunLavarropas() {
+        IngresoHistorial fila = historialDe(ingresoId);
+
+        assertEquals(Set.of(nombreA, nombreB, nombreEquipo), fila.elementos());
+        assertTrue(fila.lavarropas().isEmpty());
+    }
+
     @Test
     void resumen_agregaLosElementosClasificadosYLosLavarropasQueLosLavaron() throws SQLException {
         lanzarYFinalizar(1, new LineaLanzamiento(clasifA, 4));

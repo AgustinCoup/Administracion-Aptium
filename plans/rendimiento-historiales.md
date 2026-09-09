@@ -1274,4 +1274,12 @@ Terminá con el commit del criterio de salida.
 
 ## Mutaciones aplicadas
 
-_(vacío al crear el plan — la revisión adversarial se aplicó antes del primer commit)_
+**2026-09-08 — Paso 5 ejecutado fuera de su sesión.** Salió como uno de los seis arreglos previos al
+merge de `Lavadero` → `main`: la revisión de código señaló `SQL_RESUMEN` (fan-out sin techo) y el
+Paso 5 ya lo tenía escrito, así que se aplicó tal cual estaba especificado en vez de inventar otro
+arreglo. Hecho: el test previo (`ingresoClasificadoSinNingunCiclo_traeLosElementosYNingunLavarropas`,
+verde **antes** del cambio de SQL), `SQL_RESUMEN` a una fila por ingreso, las dos consultas de
+agregados, el cruce en memoria en un solo helper genérico (`agruparPorIngreso`), el javadoc
+reescrito y el borrado del `Acumulador`, que quedó muerto. Los 4 tests de `obtenerHistorial()` pasan
+sin modificarse. **Sigue pendiente el resto del plan** (Pasos 1-4 y 6-10); en particular el Paso 4
+—los índices— no se hizo, así que la ganancia medida de este paso todavía no se tomó.

@@ -18,7 +18,6 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -56,29 +55,51 @@ public class HistorialLavaderoDAO {
     private final AgrupadorLineasHistorial agrupador = new AgrupadorLineasHistorial();
 
     /**
-     * Filas crudas de la tabla maestra: un ingreso repetido una vez por cada combinación de
-     * elemento clasificado y lavarropas que lo lavó. Se pliega en memoria a un
-     * {@link IngresoHistorial} por id, y como los agregados son <b>conjuntos</b> la repetición
-     * no molesta.
+     * La tabla maestra: <b>exactamente una fila por ingreso</b>, de la más reciente a la más
+     * vieja.
      *
-     * <p>La cantidad de bolsas <b>no</b> sale de acá: va en {@link #SQL_BOLSAS}. Metida en estos
-     * {@code LEFT JOIN}, {@code bolsas_lavadero} multiplicaría las filas y su {@code COUNT}
-     * saldría inflado por la clasificación y los ciclos — el bug clásico de esta consulta.</p>
+     * <p>Ninguno de los tres agregados que muestra la pantalla —bolsas, elementos y lavarropas—
+     * se calcula acá, y no es una omisión: colgar cualquiera de ellos de esta consulta la
+     * convierte en un producto. Enganchar {@code elementos_clasificacion_lavadero →
+     * elementos_ciclo_lavadero → ciclos_lavadero} con {@code LEFT JOIN} —que es lo que esta
+     * consulta hacía— multiplica cada ingreso por (líneas clasificadas × ciclos que las lavaron):
+     * un ingreso de 6 líneas lavadas en ~1,5 ciclos rinde ~9 filas para plegar a <b>una</b>, y el
+     * costo crece con la historia entera sin techo. {@code bolsas_lavadero} inflaría además el
+     * {@code COUNT}, que es el bug clásico de esta consulta.</p>
+     *
+     * <p>Cada agregado va en su propia consulta —{@link #SQL_BOLSAS},
+     * {@link #SQL_ELEMENTOS_POR_INGRESO}, {@link #SQL_LAVARROPAS_POR_INGRESO}— y se cruza en
+     * memoria por {@code ingreso_id}. Las tres son planas y se leen una sola vez por refresco.</p>
      */
     private static final String SQL_RESUMEN =
-        "SELECT il.id, c.nombre AS cliente, il.fecha_ingreso, il.peso_total_kg, il.estado, " +
-        "       cel.nombre AS elemento, cl.lavarropas_numero " +
+        "SELECT il.id, c.nombre AS cliente, il.fecha_ingreso, il.peso_total_kg, il.estado " +
         "FROM ingresos_lavadero il " +
-        "JOIN clientes c                                ON c.id   = il.cliente_id " +
-        "LEFT JOIN elementos_clasificacion_lavadero ecl ON ecl.ingreso_id = il.id " +
-        "LEFT JOIN catalogo_elementos_lavadero cel      ON cel.id = ecl.elemento_id " +
-        "LEFT JOIN elementos_ciclo_lavadero eci         ON eci.elemento_clasificacion_id = ecl.id " +
-        "LEFT JOIN ciclos_lavadero cl                   ON cl.id  = eci.ciclo_id " +
+        "JOIN clientes c ON c.id = il.cliente_id " +
         "ORDER BY il.fecha_ingreso DESC, il.id DESC";
 
     /** Bolsas por ingreso, sin ningún otro {@code JOIN} que pueda multiplicar el conteo. */
     private static final String SQL_BOLSAS =
         "SELECT ingreso_id, COUNT(*) AS cant_bolsas FROM bolsas_lavadero GROUP BY ingreso_id";
+
+    /**
+     * Qué elementos tiene clasificados cada ingreso. Alimenta sólo el filtro "Elemento:" de la
+     * pantalla — ninguna columna de la tabla los muestra.
+     */
+    private static final String SQL_ELEMENTOS_POR_INGRESO =
+        "SELECT DISTINCT ecl.ingreso_id, cel.nombre " +
+        "FROM elementos_clasificacion_lavadero ecl " +
+        "JOIN catalogo_elementos_lavadero cel ON cel.id = ecl.elemento_id";
+
+    /**
+     * En qué lavarropas se lavó cada ingreso. Los {@code JOIN} son internos: un ingreso
+     * clasificado y todavía sin lanzar no aparece acá, que es exactamente lo que corresponde —su
+     * conjunto de lavarropas queda vacío.
+     */
+    private static final String SQL_LAVARROPAS_POR_INGRESO =
+        "SELECT DISTINCT ecl.ingreso_id, cl.lavarropas_numero " +
+        "FROM elementos_clasificacion_lavadero ecl " +
+        "JOIN elementos_ciclo_lavadero eci ON eci.elemento_clasificacion_id = ecl.id " +
+        "JOIN ciclos_lavadero cl           ON cl.id = eci.ciclo_id";
 
     /**
      * Tandas regulares ya lanzadas de un ingreso, una línea por fila de
@@ -149,33 +170,91 @@ public class HistorialLavaderoDAO {
 
     // ── tabla maestra ────────────────────────────────────────────────────────
 
-    /** Todos los ingresos, del más reciente al más viejo. El filtrado es en memoria. */
+    /**
+     * Todos los ingresos, del más reciente al más viejo. El filtrado es en memoria.
+     *
+     * <p>Cuatro consultas planas en vez de una con fan-out (ver {@link #SQL_RESUMEN}): la maestra
+     * y los tres agregados, cruzados por {@code ingreso_id}. Un ingreso sin agregados —recién
+     * ingresado, o clasificado y todavía sin lavar— queda con esos conjuntos vacíos, que es lo que
+     * el {@code LEFT JOIN} daba antes.</p>
+     *
+     * <p><b>La maestra se lee primero, y no es indistinto.</b> Las cuatro consultas van en
+     * conexiones distintas, así que entre la primera y la última otro operador sigue trabajando.
+     * Con los agregados adelante, un ingreso clasificado en esa ventana aparecería como
+     * {@code CLASIFICADO} y con la lista de elementos vacía —o sea, invisible para el filtro
+     * "Elemento:"—, que es peor que no mostrarlo: la fila está y miente. Leyendo la maestra
+     * primero, el desfase sobra para el otro lado: los agregados pueden traer filas de ingresos
+     * que la maestra no tiene, y ésas simplemente no se usan.</p>
+     */
     public List<IngresoHistorial> obtenerHistorial() {
-        Map<Integer, Integer> bolsasPorIngreso = contarBolsas();
-        Map<Integer, Acumulador> porIngreso = new LinkedHashMap<>();
+        List<FilaResumen> maestra = leerResumen();
+
+        Map<Integer, Integer>      bolsas     = contarBolsas();
+        Map<Integer, Set<String>>  elementos  = agruparPorIngreso(
+            SQL_ELEMENTOS_POR_INGRESO, rs -> rs.getString("nombre"),
+            "Error al obtener los elementos clasificados de los ingresos de lavadero");
+        Map<Integer, Set<Integer>> lavarropas = agruparPorIngreso(
+            SQL_LAVARROPAS_POR_INGRESO, rs -> rs.getInt("lavarropas_numero"),
+            "Error al obtener los lavarropas de los ingresos de lavadero");
+
+        return maestra.stream()
+            .map(fila -> new IngresoHistorial(
+                fila.id(), fila.clienteNombre(), fila.fechaIngreso(), fila.pesoTotalKg(),
+                bolsas.getOrDefault(fila.id(), 0), fila.estado(),
+                elementos.getOrDefault(fila.id(), Set.of()),
+                lavarropas.getOrDefault(fila.id(), Set.of())))
+            .toList();
+    }
+
+    /** Un ingreso tal como sale de {@link #SQL_RESUMEN}, sin los agregados todavía. */
+    private record FilaResumen(int id, String clienteNombre, LocalDateTime fechaIngreso,
+                               BigDecimal pesoTotalKg, EstadoIngresoLavadero estado) {
+    }
+
+    private List<FilaResumen> leerResumen() {
+        List<FilaResumen> filas = new ArrayList<>();
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_RESUMEN);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                int id = rs.getInt("id");
-                Acumulador acumulador = porIngreso.get(id);
-                if (acumulador == null) {
-                    acumulador = new Acumulador(
-                        id,
-                        rs.getString("cliente"),
-                        fecha(rs, "fecha_ingreso"),
-                        rs.getBigDecimal("peso_total_kg"),
-                        bolsasPorIngreso.getOrDefault(id, 0),
-                        EstadoIngresoLavadero.desdeBD(rs.getString("estado")));
-                    porIngreso.put(id, acumulador);
-                }
-                acumulador.agregarElemento(rs.getString("elemento"));
-                acumulador.agregarLavarropas(entero(rs, "lavarropas_numero"));
+                filas.add(new FilaResumen(
+                    rs.getInt("id"),
+                    rs.getString("cliente"),
+                    fecha(rs, "fecha_ingreso"),
+                    rs.getBigDecimal("peso_total_kg"),
+                    EstadoIngresoLavadero.desdeBD(rs.getString("estado"))));
             }
         } catch (SQLException e) {
             throw new DatabaseException("Error al obtener el historial de lavadero", e);
         }
-        return porIngreso.values().stream().map(Acumulador::aIngreso).toList();
+        return filas;
+    }
+
+    /** Cómo sacar el valor de una fila {@code (ingreso_id, valor)}. */
+    @FunctionalInterface
+    private interface ExtractorValor<T> {
+        T extraer(ResultSet rs) throws SQLException;
+    }
+
+    /**
+     * Pliega una consulta de la forma {@code (ingreso_id, valor)} a
+     * {@code ingreso_id → conjunto de valores}. Los dos agregados tienen la misma forma y el
+     * mismo cruce posterior; escribirlo dos veces sería la copia que este refactor vino a evitar.
+     */
+    private <T> Map<Integer, Set<T>> agruparPorIngreso(String sql, ExtractorValor<T> extractor,
+                                                       String queFalla) {
+        Map<Integer, Set<T>> agrupado = new HashMap<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                agrupado.computeIfAbsent(rs.getInt("ingreso_id"), k -> new LinkedHashSet<>())
+                        .add(extractor.extraer(rs));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException(queFalla, e);
+        }
+        return agrupado;
     }
 
     private Map<Integer, Integer> contarBolsas() {
@@ -282,48 +361,4 @@ public class HistorialLavaderoDAO {
         return ts != null ? ts.toLocalDateTime() : null;
     }
 
-    private static Integer entero(ResultSet rs, String columna) throws SQLException {
-        int valor = rs.getInt(columna);
-        return rs.wasNull() ? null : valor;
-    }
-
-    /**
-     * Un ingreso a medio plegar: los datos fijos ya leídos y los dos conjuntos creciendo fila a
-     * fila. Los {@code LEFT JOIN} dejan {@code null} en elemento y lavarropas cuando el ingreso
-     * todavía no llegó a esa etapa, y esos nulos no entran a los conjuntos.
-     */
-    private static final class Acumulador {
-        private final int id;
-        private final String clienteNombre;
-        private final LocalDateTime fechaIngreso;
-        private final BigDecimal pesoTotalKg;
-        private final int cantBolsas;
-        private final EstadoIngresoLavadero estado;
-        private final Set<String> elementos = new LinkedHashSet<>();
-        private final Set<Integer> lavarropas = new LinkedHashSet<>();
-
-        private Acumulador(int id, String clienteNombre, LocalDateTime fechaIngreso,
-                           BigDecimal pesoTotalKg, int cantBolsas,
-                           EstadoIngresoLavadero estado) {
-            this.id = id;
-            this.clienteNombre = clienteNombre;
-            this.fechaIngreso = fechaIngreso;
-            this.pesoTotalKg = pesoTotalKg;
-            this.cantBolsas = cantBolsas;
-            this.estado = estado;
-        }
-
-        private void agregarElemento(String elemento) {
-            if (elemento != null) elementos.add(elemento);
-        }
-
-        private void agregarLavarropas(Integer numero) {
-            if (numero != null) lavarropas.add(numero);
-        }
-
-        private IngresoHistorial aIngreso() {
-            return new IngresoHistorial(id, clienteNombre, fechaIngreso, pesoTotalKg,
-                cantBolsas, estado, elementos, lavarropas);
-        }
-    }
 }
