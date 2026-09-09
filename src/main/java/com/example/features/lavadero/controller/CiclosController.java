@@ -2,6 +2,8 @@ package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
 import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.common.exception.LavarropasOcupadoException;
+import com.example.common.exception.SaldoConsumidoException;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos;
 import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos.VistaCard;
@@ -89,6 +91,31 @@ public class CiclosController {
      */
     private TareaUI.Ejecucion cargaEnCurso = null;
 
+    /**
+     * Hay una escritura en vuelo, así que los botones tienen que seguir apagados aunque una
+     * lectura falle. Lo lee {@link #rehabilitarAcciones()}: sin esta bandera, un F5 fallido
+     * lanzado mientras se escribe volvería a encender "Lanzar todos" con el staging intacto, que
+     * es exactamente el doble envío que {@link #deshabilitarAcciones()} existe para impedir.
+     */
+    private boolean escrituraEnVuelo = false;
+
+    /**
+     * Lavarropas cuyo descarte el operador <b>ya</b> vio explicado en el cartel de un choque, así
+     * que la relectura que viene detrás no tiene que abrir un segundo modal para contarle lo
+     * mismo.
+     *
+     * <p>Es un conjunto y no una bandera porque los dos carteles no dicen lo mismo cuando lo
+     * descartado era la fracción de un equipo repartido: ahí la relectura vacía también cards que
+     * <b>siguen libres</b>, y eso el cartel del choque no lo menciona. Guardando cuáles se
+     * avisaron, el aviso se saltea sólo si el descarte no se salió de ahí.</p>
+     *
+     * <p>Se consume en la primera relectura que termine, haya habido descarte o no (ver
+     * {@link #avisarStagingDescartado}), y también si esa relectura falla: si quedara puesto, se
+     * tragaría el próximo aviso legítimo. El descarte por ocupación también pasa sin que nadie
+     * haya apretado Lanzar —un F5, un arrastre— y ahí el aviso es lo único que hay.</p>
+     */
+    private Set<Integer> lavarropasYaAvisados = Set.of();
+
     public static final DataFlavor ELEMENTO_CICLO_FLAVOR = LocalObjectFlavors.forList();
 
     /**
@@ -97,10 +124,19 @@ public class CiclosController {
      * lo que ya se escribió está en la base y hay que reflejarlo. Lanzar no usa esto: una tanda
      * de lanzamiento es todo o nada (ver {@link #lanzar}).
      */
-    private record ResultadoEscritura(List<Integer> exitosos, int fallidos) {
+    private record ResultadoEscritura(List<Integer> exitosos, int fallidos, int conflictos) {
 
         boolean huboFallos() {
             return fallidos > 0;
+        }
+
+        /**
+         * Si <b>todo</b> lo que falló fue un choque, el mensaje del choque es el que corresponde:
+         * dice que otro ya lo finalizó y que la ropa está en Salidas. El genérico
+         * ("Intente nuevamente") sería falso — reintentar va a fallar igual.
+         */
+        boolean soloHuboConflictos() {
+            return fallidos > 0 && conflictos == fallidos;
         }
     }
 
@@ -200,7 +236,7 @@ public class CiclosController {
      * ese trabajo — es el error clásico de este flujo.
      */
     public void recargar() {
-        if (cargaEnCurso != null) cargaEnCurso.cancelar();
+        cancelarCargaEnCurso();
         // La decisión de traer los jabones se toma acá, en el EDT: si esta carga se cancela,
         // jabonesCargados sigue en false y la siguiente los vuelve a pedir.
         boolean conJabones = !jabonesCargados;
@@ -208,8 +244,27 @@ public class CiclosController {
             .nombre("carga-ciclos-lavadero")
             .leer(() -> leerDatos(conJabones))
             .pintar(this::pintar)
-            .siFalla(e -> pantalla.mostrarError(Constantes.Mensajes.ERROR_CARGAR_DATOS))
+            .siFalla(e -> {
+                pantalla.mostrarError(Constantes.Mensajes.ERROR_CARGAR_DATOS);
+                // Esta relectura no va a llegar a avisarStagingDescartado: si el pendiente
+                // quedara puesto, se tragaría el próximo aviso legítimo.
+                lavarropasYaAvisados = Set.of();
+                rehabilitarAcciones();
+            })
             .lanzar();
+    }
+
+    /**
+     * Descarta la lectura en vuelo, si hay una.
+     *
+     * <p>Además de encadenar refrescos sin pintar fuera de orden, es lo que hay que hacer
+     * <b>antes de abrir cualquier modal</b> de esta pantalla: un modal corre un bucle de eventos
+     * anidado, así que un {@code pintar()} pendiente se despacha con el diálogo abierto y toca el
+     * staging que ese mismo diálogo está por escribir —o le apila un cartel encima. Ninguna
+     * lectura nueva arranca hasta el {@code recargar()} con que terminan esos flujos.</p>
+     */
+    private void cancelarCargaEnCurso() {
+        if (cargaEnCurso != null) cargaEnCurso.cancelar();
     }
 
     /** Fuera del hilo de la interfaz. No toca ningún campo del controller. */
@@ -253,7 +308,33 @@ public class CiclosController {
         pantalla.getBtnLanzarTodos().setEnabled(vista.hayPendientes());
         pantalla.getBtnDescartarTodos().setEnabled(vista.hayPendientes());
         pantalla.getBtnFinalizarTodos().setEnabled(vista.hayActivos());
+        // Una escritura en vuelo manda sobre lo que acabamos de encender. La lectura que llega en
+        // el medio no es sólo la fallida: F5 no está deshabilitado, así que un refresco exitoso
+        // durante el guardado volvería a encender "Lanzar todos" con el staging intacto y la
+        // misma tanda se podría mandar dos veces. Los reenciende el `despues` de esa escritura.
+        if (escrituraEnVuelo) deshabilitarAcciones();
         pantalla.marcarActualizado();
+        avisarStagingDescartado(vista.stagingDescartadoDe());
+    }
+
+    /**
+     * El único caso en que esta pantalla pierde staging sin que el operador lo haya pedido: otro
+     * operador ocupó un lavarropas que él tenía cargado.
+     *
+     * <p><b>El modal se difiere y no se abre dentro de {@code pintar}.</b> Un modal arranca un
+     * bucle de eventos anidado, así que abrirlo a mitad del repintado deja la pantalla a medio
+     * pintar debajo del cartel y, peor, se apila arriba de un diálogo que el operador ya tenía
+     * abierto. Difiriéndolo, {@code pintar} termina —staging consistente, tablas al día— y el
+     * cartel aparece sobre la pantalla ya corregida, con la ropa de vuelta en disponibles.</p>
+     */
+    private void avisarStagingDescartado(List<Integer> lavarropas) {
+        Set<Integer> yaAvisados = lavarropasYaAvisados;
+        lavarropasYaAvisados = Set.of();                 // se consume acá, haya descarte o no
+        if (lavarropas.isEmpty()) return;
+        if (yaAvisados.containsAll(lavarropas)) return;  // el cartel del choque ya los nombró
+        String lista = lavarropas.stream().map(n -> "#" + n).collect(Collectors.joining(", "));
+        SwingUtilities.invokeLater(() -> pantalla.mostrarAdvertencia(
+            String.format(Constantes.Mensajes.STAGING_DESCARTADO_POR_OCUPACION, lista)));
     }
 
     // ── DnD ───────────────────────────────────────────────────────────────────
@@ -336,6 +417,7 @@ public class CiclosController {
      */
     private void procesarDrop(List<ElementoCicloItem> items, int lavarropasNum) {
         if (items == null || items.isEmpty()) return;
+        cancelarCargaEnCurso();
         for (ElementoCicloItem item : items) {
             if (item == null) continue;
             if (item.isEquipo()) procesarDropEquipo(item, lavarropasNum);
@@ -417,7 +499,13 @@ public class CiclosController {
      */
     private void devolverADisponibles(List<ElementoCicloItem> items, int lavarropasOrigen) {
         if (items == null || items.isEmpty()) return;
-        if (!confirmarDeshacerSubdivisiones(items)) return;
+        cancelarCargaEnCurso();
+        // Si el operador dice que no, hay que relanzar igual: la lectura que se canceló recién
+        // podía ser el refresco de una escritura, y TareaUI saltea `despues` en una tarea
+        // cancelada — o sea que nadie volvería a encender los botones y la pantalla quedaría
+        // muerta, con las tablas viejas y sin un solo cartel. Es la misma pantalla muerta que
+        // rehabilitarAcciones() vino a cerrar, entrando por otra puerta.
+        if (!confirmarDeshacerSubdivisiones(items)) { recargar(); return; }
         staging.quitar(items, lavarropasOrigen);
         recargar();
     }
@@ -476,6 +564,11 @@ public class CiclosController {
      * Reintentarlo tal cual no sirve —parte de esa ropa ya se la llevó otro operador y el
      * operador no tiene cómo saber qué parte—, así que se arranca de nuevo desde lo que el
      * refresco traiga de la base. Mismo criterio que en Lotes.
+     *
+     * <p><b>Menos si el choque es un lavarropas ocupado</b>: ahí la ropa sigue estando, lo único
+     * que se perdió es el destino. Descartar la tanda entera le borraría el reparto de los
+     * lavarropas que nadie tocó. La relectura descarta sólo el del ocupado, y lo avisa (ver
+     * {@link ConstructorVistaCiclos} y {@link #avisarStagingDescartado}).
      */
     private void lanzar(List<Integer> lavarropas) {
         List<String> faltantes = new ArrayList<>();
@@ -488,8 +581,33 @@ public class CiclosController {
 
         ejecutar("lanzar-ciclos",
             () -> escribirTanda(tanda),
-            lanzados -> lanzados.forEach(staging::limpiarLavarropas),
-            () -> tanda.forEach(ciclo -> staging.limpiarLavarropas(ciclo.lavarropasNumero())));
+            // La card se vacía acá y no en el refresco, por el mismo motivo que en finalizar: si
+            // la relectura falla, una card que todavía muestra los ítems que ya se lanzaron deja
+            // su botón "Lanzar" encendido (lo enciende tieneItems()), y volver a apretarlo
+            // confirmaría y no haría nada. Queda vacía y con el botón apagado —no dice "OCUPADO"
+            // porque el id del ciclo recién creado no vuelve hasta el refresco—, que es el estado
+            // honesto: no ofrece una acción que no existe.
+            lanzados -> lanzados.forEach(num -> {
+                staging.limpiarLavarropas(num);
+                LavarropasCard card = cards.get(num);
+                card.setItems(List.of(), Map.of());
+                card.actualizarBtnAccion();
+            }),
+            choque -> {
+                // Sólo el saldo consumido invalida el trabajo en curso. El marcador es positivo
+                // a propósito: ver SaldoConsumidoException.
+                if (choque instanceof SaldoConsumidoException) {
+                    tanda.forEach(ciclo -> staging.limpiarLavarropas(ciclo.lavarropasNumero()));
+                }
+                // Este cartel ya explica qué va a pasar con lo cargado en los lavarropas de la
+                // tanda; el aviso del descarte que trae la relectura sería el mismo modal por
+                // segunda vez. Si el descarte se sale de este conjunto —una fracción que vacía
+                // cards libres— el aviso igual sale, porque eso el cartel del choque no lo dice.
+                if (choque instanceof LavarropasOcupadoException) {
+                    lavarropasYaAvisados = tanda.stream()
+                        .map(LanzamientoCiclo::lavarropasNumero).collect(Collectors.toSet());
+                }
+            });
     }
 
     /**
@@ -619,29 +737,55 @@ public class CiclosController {
         ejecutar("finalizar-ciclos",
             () -> escribirFinalizaciones(ciclosPorLavarropas),
             resultado -> {
-                resultado.exitosos().forEach(num -> cards.get(num).resetConfiguracion());
+                // El ciclo se cerró de verdad: la card vuelve a LIBRE acá y no en el refresco.
+                // Si la relectura falla, dejarla en OCUPADO mostraría un ciclo que ya no existe y
+                // su botón Finalizar no haría nada (finalizarCiclo corta si el ciclo no está en
+                // ciclosActivos), que es la peor forma de fallar: sin efecto y sin aviso.
+                resultado.exitosos().forEach(num -> {
+                    ciclosActivos.remove(num);
+                    LavarropasCard card = cards.get(num);
+                    card.setModoStaging();
+                    card.setItems(staging.pendientesDe(num), staging.fraccionesPorInstancia());
+                    card.resetConfiguracion();
+                });
                 if (resultado.huboFallos()) {
-                    pantalla.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_CICLO);
+                    pantalla.mostrarError(resultado.soloHuboConflictos()
+                        ? Constantes.Mensajes.CONFLICTO_CICLO_FINALIZADO
+                        : Constantes.Mensajes.ERROR_FINALIZAR_CICLO);
                 }
             },
             // Finalizar no se apoya en ningún staging: no hay estado en memoria que descartar.
-            () -> { });
+            // (Y hoy tampoco llega acá: el choque de finalizar se cuenta en escribirFinalizaciones.)
+            choque -> { });
     }
 
-    /** Fuera del hilo de la interfaz. */
+    /**
+     * Fuera del hilo de la interfaz.
+     *
+     * <p>El choque se cuenta aparte de los demás fallos y no se deja propagar: finalizar de a
+     * varios no corta ante el primero (cada ciclo se cierra solo), pero "otro ya lo finalizó" y
+     * "no se pudo finalizar" son dos cosas distintas para el operador y el cartel tiene que
+     * decir cuál fue. Sin este {@code catch} aparte, {@code CONFLICTO_CICLO_FINALIZADO} sería
+     * inalcanzable.</p>
+     */
     private ResultadoEscritura escribirFinalizaciones(Map<Integer, Integer> ciclosPorLavarropas) {
         List<Integer> exitosos = new ArrayList<>();
         int fallidos = 0;
+        int conflictos = 0;
         for (Map.Entry<Integer, Integer> entry : ciclosPorLavarropas.entrySet()) {
             try {
                 cicloLavaderoService.finalizarCiclo(entry.getValue());
                 exitosos.add(entry.getKey());
+            } catch (ConflictoConcurrenciaException e) {
+                log.warn("El ciclo {} ya estaba finalizado: {}", entry.getValue(), e.getMessage());
+                fallidos++;
+                conflictos++;
             } catch (Exception e) {
                 log.error("Error al finalizar ciclo {}", entry.getValue(), e);
                 fallidos++;
             }
         }
-        return new ResultadoEscritura(exitosos, fallidos);
+        return new ResultadoEscritura(exitosos, fallidos, conflictos);
     }
 
     // ── Mecánica común de las escrituras ──────────────────────────────────────
@@ -656,20 +800,21 @@ public class CiclosController {
      *
      * @param alConflicto qué hacer con el estado en memoria si la escritura chocó con otro
      *                    operador (típicamente descartar el staging); además siempre se muestra
-     *                    el mensaje del conflicto y se recarga
+     *                    el mensaje del conflicto y se recarga. Recibe el choque porque no todos
+     *                    piden lo mismo: ver {@link #lanzar}
      */
     private <T> void ejecutar(String nombre, Callable<T> escritura, Consumer<T> alTerminar,
-                              Runnable alConflicto) {
+                              Consumer<ConflictoConcurrenciaException> alConflicto) {
         TareaUI.<T>nueva()
             .nombre(nombre)
-            .antes(this::deshabilitarAcciones)
+            .antes(() -> { escrituraEnVuelo = true; deshabilitarAcciones(); })
             .leer(escritura)
             .pintar(alTerminar)
             .siFalla(causa -> {
-                if (causa instanceof ConflictoConcurrenciaException) alConflicto.run();
+                if (causa instanceof ConflictoConcurrenciaException choque) alConflicto.accept(choque);
                 mostrarFallo(causa);
             })
-            .despues(this::recargar)
+            .despues(() -> { escrituraEnVuelo = false; recargar(); })
             .lanzar();
     }
 
@@ -678,6 +823,28 @@ public class CiclosController {
         pantalla.getBtnFinalizarTodos().setEnabled(false);
         pantalla.getBtnDescartarTodos().setEnabled(false);
         cards.values().forEach(LavarropasCard::deshabilitarAccion);
+    }
+
+    /**
+     * Vuelve a encender los botones a partir del estado en memoria, sin releer nada.
+     *
+     * <p>Va en el fallo de {@link #recargar()}, que es el único camino por el que
+     * {@link #deshabilitarAcciones()} puede quedar sin deshacerse: los apaga {@code antes} de
+     * cada escritura y quien los reenciende es {@link #pintar}, que en una lectura fallida no
+     * llega a correr. Sin esto la pantalla queda muerta —ni lanzar, ni finalizar, ni descartar—
+     * hasta salir y volver a entrar.</p>
+     *
+     * <p>No corre con una escritura en vuelo: ahí los botones están apagados a propósito y el que
+     * los tiene que volver a encender es el {@code despues} de esa escritura, no una lectura
+     * ajena que falló (ver {@link #escrituraEnVuelo}).</p>
+     */
+    private void rehabilitarAcciones() {
+        if (escrituraEnVuelo) return;
+        boolean hayPendientes = staging.hayPendientes();
+        pantalla.getBtnLanzarTodos().setEnabled(hayPendientes);
+        pantalla.getBtnDescartarTodos().setEnabled(hayPendientes);
+        pantalla.getBtnFinalizarTodos().setEnabled(!ciclosActivos.isEmpty());
+        cards.values().forEach(LavarropasCard::actualizarBtnAccion);
     }
 
     private void mostrarFallo(Throwable causa) {

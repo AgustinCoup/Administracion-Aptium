@@ -1,5 +1,6 @@
 package com.example.features.lavadero.dao;
 
+import com.example.common.constants.Constantes;
 import com.example.common.dao.ControlConcurrencia;
 import com.example.common.exception.BusinessException;
 import com.example.common.exception.ConflictoConcurrenciaException;
@@ -15,6 +16,8 @@ import com.example.features.lavadero.model.MarcaListo;
 import com.example.features.lavadero.model.SalidaLista;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.infrastructure.db.TransactionalConnection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -27,6 +30,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -60,6 +64,13 @@ import java.util.stream.Collectors;
  * de un mensaje de negocio que no explica nada.</p>
  */
 public class SalidaLavaderoDAO {
+
+    /**
+     * Este DAO no loguea errores —los propaga, que es su regla—; el logger existe sólo para el
+     * único evento que no llega a ninguna excepción con información útil: que la base haya
+     * cortado la espera de un lock.
+     */
+    private static final Logger log = LoggerFactory.getLogger(SalidaLavaderoDAO.class);
 
     private final AgrupadorInstanciasSalida agrupador = new AgrupadorInstanciasSalida();
 
@@ -148,6 +159,29 @@ public class SalidaLavaderoDAO {
         "WHERE sl.destino IS NULL AND sl.instancia_equipo_id IS NOT NULL";
 
     /**
+     * Bloqueo de una tanda regular antes de leer su saldo.
+     *
+     * <p>Releer el saldo sin bloquear <b>no alcanza</b>, y es exactamente el mismo razonamiento
+     * de {@code CicloLavaderoDAO.SQL_BLOQUEAR_LINEA}: dos marcados que abren su transacción a la
+     * vez leen el mismo saldo, los dos lo encuentran suficiente y los dos escriben, y la tanda
+     * queda sobregirada sin que nada falle a la vista. Peor todavía acá, porque un ingreso
+     * sobregirado puede pasar a {@code FINALIZADO} con ropa que nunca recibió destino.</p>
+     *
+     * <p><b>Se toman TODOS los bloqueos antes de leer el primer saldo</b> (ver
+     * {@link #bloquearAfectados}), no de a uno intercalado con su lectura: en el
+     * {@code REPEATABLE READ} de MySQL la vista de lectura se fija en la primera lectura no
+     * bloqueante, así que intercalar dejaría los saldos siguientes leídos con una vista anterior
+     * a su propio bloqueo. <b>H2 no lo delata</b> — corre en {@code READ COMMITTED}, donde cada
+     * sentencia ve un snapshot fresco.</p>
+     */
+    private static final String SQL_BLOQUEAR_TANDA =
+        "SELECT id FROM elementos_ciclo_lavadero WHERE id = ? FOR UPDATE";
+
+    /** Lo mismo que {@link #SQL_BLOQUEAR_TANDA} para el otro tipo de pendiente. */
+    private static final String SQL_BLOQUEAR_INSTANCIA =
+        "SELECT id FROM instancias_equipo_ciclo WHERE id = ? FOR UPDATE";
+
+    /**
      * Saldo pendiente de una tanda regular, releído dentro de la transacción.
      *
      * <p>Exige {@code fecha_fin IS NOT NULL}: una tanda de un ciclo todavía activo no está
@@ -193,9 +227,17 @@ public class SalidaLavaderoDAO {
     private static final String SQL_SALIDA_ABIERTA_DE_TANDA =
         "SELECT MIN(id) AS id FROM salidas_lavadero WHERE elemento_ciclo_id = ? AND destino IS NULL";
 
-    /** La fecha pasa a ser la del último agregado: es cuándo quedó listo todo lo que hay ahí. */
+    /**
+     * La fecha pasa a ser la del último agregado: es cuándo quedó listo todo lo que hay ahí.
+     *
+     * <p>El {@code AND destino IS NULL} es guarda, no filtro: entre que
+     * {@link #SQL_SALIDA_ABIERTA_DE_TANDA} eligió la fila y esta suma la escribe, otro operador
+     * puede haberla derivado desde Salidas. Sin la guarda se le sumarían unidades a una salida ya
+     * despachada, que es ropa que sale del circuito sin haber sido derivada.</p>
+     */
     private static final String SQL_SUMAR_A_SALIDA =
-        "UPDATE salidas_lavadero SET cantidad = cantidad + ?, fecha_listo = NOW() WHERE id = ?";
+        "UPDATE salidas_lavadero SET cantidad = cantidad + ?, fecha_listo = NOW() " +
+        "WHERE id = ? AND destino IS NULL";
 
     private static final String SQL_BORRAR_SALIDA_SIN_DESTINO =
         "DELETE FROM salidas_lavadero WHERE id = ? AND destino IS NULL";
@@ -382,10 +424,12 @@ public class SalidaLavaderoDAO {
      * Marca como Listo la selección entera en una sola transacción: o entran todas las marcas
      * o no entra ninguna.
      *
-     * <p>El saldo de cada tanda se relee <b>dentro</b> de la transacción; no se confía en el
-     * snapshot que tiene la pantalla. Sin esto, dos marcados seguidos sobre la misma lectura
-     * dejan la tabla sobregirada sin que nada falle a la vista, que es el peor resultado
-     * posible: no rompe nada visible, sólo deja los datos mal.</p>
+     * <p>El saldo de cada tanda se relee <b>dentro</b> de la transacción y sobre filas ya
+     * bloqueadas; no se confía en el snapshot que tiene la pantalla. Sin la relectura, dos
+     * marcados seguidos sobre la misma lectura dejan la tabla sobregirada sin que nada falle a la
+     * vista; sin el bloqueo, dos marcados <b>simultáneos</b> hacen lo mismo aunque la relectura
+     * esté (ver {@link #SQL_BLOQUEAR_TANDA}). Es el peor resultado posible: no rompe nada
+     * visible, sólo deja los datos mal.</p>
      *
      * <p>Como el chequeo y la inserción se intercalan sobre la misma conexión, dos marcas de la
      * misma tanda dentro de la misma llamada se ven entre sí y tampoco pueden sobregirar juntas.</p>
@@ -401,6 +445,7 @@ public class SalidaLavaderoDAO {
 
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            bloquearAfectados(conn, marcas);
             try (PreparedStatement psSaldoRegular   = conn.prepareStatement(SQL_SALDO_PENDIENTE);
                  PreparedStatement psSaldoInstancia = conn.prepareStatement(SQL_SALDO_PENDIENTE_INSTANCIA);
                  PreparedStatement psAbierta        = conn.prepareStatement(SQL_SALIDA_ABIERTA_DE_TANDA);
@@ -428,6 +473,18 @@ public class SalidaLavaderoDAO {
             }
             tx.commit();
         } catch (SQLException e) {
+            // Los FOR UPDATE de bloquearAfectados pueden esperar: si la base corta la espera, es
+            // porque otro operador tiene tomada esta misma tanda. Es un choque, no una falla
+            // técnica, y nada quedó escrito. Mismo tratamiento que en CicloLavaderoDAO.lanzarTanda
+            // — incluido el detalle de que el tipo de la excepción no alcanza para reconocerlo
+            // (ver ControlConcurrencia.esContencionDeLock). Se loguea con la causa: si esto se
+            // repite, el log es lo único que lo delata — el operador ve un cartel de choque como
+            // cualquier otro y no puede distinguir "otro se me adelantó" de "la base se traba".
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("Marcado de {} salida(s) abortado por la base (contención de lock)",
+                    marcas.size(), e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_SALIDA);
+            }
             throw new DatabaseException("Error al marcar salidas de lavadero como Listo", e);
         }
     }
@@ -525,6 +582,40 @@ public class SalidaLavaderoDAO {
 
     // ── privados ─────────────────────────────────────────────────────────────
 
+    /**
+     * Bloquea <b>todas</b> las filas que la selección va a consumir, antes de leer el primer
+     * saldo. Es la primera sentencia de la transacción a propósito: ver
+     * {@link #SQL_BLOQUEAR_TANDA}.
+     *
+     * <p>Dentro de cada tabla los ids se toman en orden ascendente ({@link TreeSet}) y las dos
+     * tablas siempre en el mismo orden, para que dos marcados que comparten filas no puedan
+     * tomárselas cruzados y trabarse. Mismo motivo que el {@code TreeMap} de
+     * {@code CicloLavaderoDAO.consumoPorLinea}.</p>
+     */
+    private void bloquearAfectados(Connection conn, List<MarcaListo> marcas) throws SQLException {
+        Set<Integer> tandas     = new TreeSet<>();
+        Set<Integer> instancias = new TreeSet<>();
+        for (MarcaListo marca : marcas) {
+            ElementoLavadoPendiente item = marca.item();
+            if (item.esInstanciaDeEquipo()) instancias.add(item.instanciaEquipoId());
+            else                            tandas.add(item.elementoCicloId());
+        }
+        bloquear(conn, SQL_BLOQUEAR_TANDA, tandas);
+        bloquear(conn, SQL_BLOQUEAR_INSTANCIA, instancias);
+    }
+
+    private void bloquear(Connection conn, String sql, Set<Integer> ids) throws SQLException {
+        if (ids.isEmpty()) return;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int id : ids) {
+                ps.setInt(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();   // sin fila, dejó de existir: el saldo da 0 y choca más abajo
+                }
+            }
+        }
+    }
+
     /** Ninguna salida de la selección puede tener destino ya asignado. */
     private void verificarSinDestino(Connection conn, List<SalidaLista> salidas) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(SQL_SIGUE_SIN_DESTINO)) {
@@ -618,7 +709,9 @@ public class SalidaLavaderoDAO {
      * junto.</p>
      *
      * <p>Sólo se acumula sobre salidas sin destino: una ya derivada es definitiva, así que lo
-     * que se marque después arranca una salida nueva.</p>
+     * que se marque después arranca una salida nueva. Que la fila elegida se derive entre la
+     * búsqueda y la suma es un choque, no un caso a reintentar en silencio: lo detecta el
+     * {@code AND destino IS NULL} de {@link #SQL_SUMAR_A_SALIDA} y tira la transacción entera.</p>
      */
     private void acumularOInsertar(PreparedStatement psAbierta, PreparedStatement psSumar,
                                    PreparedStatement psInsertar, int elementoCicloId,
@@ -627,7 +720,9 @@ public class SalidaLavaderoDAO {
         if (salidaAbierta != null) {
             psSumar.setInt(1, cantidad);
             psSumar.setInt(2, salidaAbierta);
-            psSumar.executeUpdate();
+            ControlConcurrencia.exigirFilaAfectada(psSumar.executeUpdate(),
+                "La salida #" + salidaAbierta + " ya se derivó mientras marcabas, así que no se "
+                + "marcó nada. Refrescá la pantalla.");
             return;
         }
         psInsertar.setInt(1, elementoCicloId);

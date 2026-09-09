@@ -266,6 +266,23 @@ public final class Constantes {
         public static final String CONFLICTO_TANDA =
             "Otro usuario ya usó parte de esta ropa mientras armabas la tanda.\n"
                 + "La tanda no se lanzó. La pantalla se actualizó: rearmala con lo que quedó disponible.";
+        /**
+         * No es un choque contra una escritura: el operador no apretó nada. Es trabajo suyo que
+         * la pantalla tuvo que descartar sola porque el lavarropas dejó de estar libre, y el
+         * aviso existe para que no lo descubra por ausencia. Nombra los lavarropas porque un
+         * equipo repartido se lleva puestas también las cards que seguían libres.
+         */
+        public static final String STAGING_DESCARTADO_POR_OCUPACION =
+            "Otro usuario lanzó un ciclo en un lavarropas que tenías cargado, así que se vació lo "
+                + "que habías puesto en: %s.\n"
+                + "Esa ropa volvió a la lista de disponibles. Si era un equipo repartido entre "
+                + "varios lavarropas, se deshizo el reparto entero.";
+        public static final String CONFLICTO_LAVARROPAS_OCUPADO =
+            "Otro usuario ya lanzó un ciclo en alguno de esos lavarropas mientras armabas la tanda.\n"
+                + "La tanda no se lanzó. La pantalla se actualizó: repartí la ropa en los que quedaron libres.";
+        public static final String CONFLICTO_CICLO_FINALIZADO =
+            "Otro usuario ya finalizó este ciclo mientras trabajabas.\n"
+                + "La pantalla se actualizó: la ropa que lavó ya está disponible en Salidas.";
         public static final String CONFLICTO_SALIDA =
             "Otro usuario ya procesó esta salida mientras trabajabas.\n"
                 + "La pantalla se actualizó: revisá el estado antes de volver a intentarlo.";

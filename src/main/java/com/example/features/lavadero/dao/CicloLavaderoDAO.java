@@ -1,8 +1,11 @@
 package com.example.features.lavadero.dao;
 
 import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
+import com.example.common.exception.LavarropasOcupadoException;
+import com.example.common.exception.SaldoConsumidoException;
 import com.example.features.lavadero.dao.helpers.LineaSobregirada;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
@@ -106,6 +109,39 @@ public class CicloLavaderoDAO {
      */
     private static final String SQL_BLOQUEAR_LINEA =
         "SELECT id FROM elementos_clasificacion_lavadero WHERE id = ? FOR UPDATE";
+
+    /**
+     * Ciclo sin finalizar de un lavarropas, bloqueado antes de crear nada.
+     *
+     * <p>Un lavarropas no puede tener dos ciclos {@code ACTIVO} a la vez, y hasta acá nadie lo
+     * exigía: {@link #obtenerCiclosActivosPorLavarropas()} los mete en un mapa por número, así que
+     * de los dos la pantalla sólo puede mostrar uno — el otro queda <b>invisible y sin forma de
+     * finalizarse</b>, y la ropa que se llevó no vuelve a aparecer ni en Disponibles ni en
+     * Salidas. La pantalla decide qué cards están libres con el snapshot del último refresco; entre
+     * ese refresco y el botón "Lanzar" el lavarropas pudo ocuparse.</p>
+     *
+     * <p>El {@code FOR UPDATE} no es decorativo ni redundante con la lectura: MySQL toma también
+     * el hueco del rango, y ese hueco es incompatible con el {@code INSERT} de otra transacción.
+     * Va antes que {@link #SQL_BLOQUEAR_LINEA} para que el orden entre las dos tablas sea siempre
+     * el mismo.</p>
+     *
+     * <p><b>No serializa en el caso perfectamente simultáneo</b>, y conviene saberlo antes de
+     * apoyarse en esto: dos gap locks <em>entre sí</em> son compatibles, así que dos lanzamientos
+     * que lean a la vez pasan los dos la guarda y chocan recién en el {@code INSERT}, donde cada
+     * uno espera el hueco del otro. MySQL corta ese abrazo abortando a uno. <b>El invariante se
+     * mantiene igual</b> —nunca quedan dos ciclos abiertos—; lo que cambia es por dónde sale el
+     * fallo, y por eso {@link #lanzarTanda} traduce el rollback a un choque en vez de dejarlo
+     * salir como error de base. H2 no puede reproducirlo: corre en {@code READ COMMITTED} y no
+     * toma gap locks.</p>
+     *
+     * <p><b>Los dos predicados tienen que estar en el índice</b>, y por eso existe
+     * {@code idx_ciclos_lavarropas_fin (lavarropas_numero, fecha_fin)} (V22). Con el índice de V10
+     * —{@code lavarropas_numero} solo— el {@code FOR UPDATE} bloqueaba en exclusiva <b>todas</b>
+     * las filas históricas de ese lavarropas para encontrar la única que puede estar abierta: la
+     * guarda era correcta y el bloqueo, desproporcionado y creciente con la historia.</p>
+     */
+    private static final String SQL_CICLO_ACTIVO_DE_LAVARROPAS =
+        "SELECT id FROM ciclos_lavadero WHERE lavarropas_numero = ? AND fecha_fin IS NULL FOR UPDATE";
 
     /**
      * Saldo todavía disponible de una línea de clasificación, releído dentro de la transacción
@@ -247,10 +283,15 @@ public class CicloLavaderoDAO {
      * Sin la relectura, las dos tandas sobregiran la línea sin que nada falle — la basura que
      * {@link #detectarLineasSobregiradas()} sale a buscar a posteriori. Un solo saldo insuficiente
      * tira la tanda entera, por el mismo motivo que la hace atómica.</p>
+     *
+     * <p>Lo mismo vale para el destino: ningún lavarropas de la tanda puede tener ya un ciclo sin
+     * finalizar (ver {@link #SQL_CICLO_ACTIVO_DE_LAVARROPAS}). Las dos guardas se toman antes de
+     * escribir nada y en orden fijo entre sus tablas.</p>
      */
     public void lanzarTanda(List<LanzamientoCiclo> tanda) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            exigirLavarropasLibres(conn, tanda);
             exigirSaldoSuficiente(conn, tanda);
             Map<Integer, Integer> instancias = crearInstancias(conn, tanda);
             for (LanzamientoCiclo ciclo : tanda) {
@@ -259,6 +300,21 @@ public class CicloLavaderoDAO {
             }
             tx.commit();
         } catch (SQLException e) {
+            // La base abortó la transacción porque otra tanda le tenía trabadas las mismas líneas
+            // o el mismo lavarropas (ver ControlConcurrencia.esContencionDeLock: no alcanza con
+            // el tipo de la excepción). Es un choque, no una falla técnica, y sale como tal para
+            // que el operador lea "alguien se te adelantó" y no "error al lanzar los ciclos".
+            //
+            // Va el mensaje GENÉRICO y no CONFLICTO_TANDA, y el tipo base y no SaldoConsumido:
+            // acá no se sabe cuál de los dos recursos se trabó, y las dos cosas que
+            // CONFLICTO_TANDA afirma serían inventadas. Nada quedó escrito, así que el staging
+            // sigue siendo válido: se conserva, la pantalla se recarga y volver a apretar Lanzar
+            // da el choque preciso si todavía hay uno.
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("Tanda de {} ciclo(s) abortada por la base (contención de lock)",
+                    tanda.size(), e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_GENERICO);
+            }
             log.error("Error al lanzar una tanda de {} ciclo(s)", tanda.size(), e);
             throw new DatabaseException("Error al lanzar los ciclos", e);
         }
@@ -342,7 +398,32 @@ public class CicloLavaderoDAO {
                 if (linea.getValue() > saldo) {
                     log.warn("Tanda rechazada: la línea de clasificación {} tiene saldo {} y la "
                         + "tanda pretende consumir {}", linea.getKey(), saldo, linea.getValue());
-                    throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_TANDA);
+                    throw new SaldoConsumidoException(Constantes.Mensajes.CONFLICTO_TANDA);
+                }
+            }
+        }
+    }
+
+    /**
+     * Rechaza la tanda entera si alguno de sus lavarropas ya tiene un ciclo sin finalizar.
+     *
+     * <p>Los números se recorren en orden ascendente por el mismo motivo que las líneas de
+     * clasificación: que dos tandas que comparten lavarropas no se los tomen cruzados. Ver
+     * {@link #SQL_CICLO_ACTIVO_DE_LAVARROPAS} para por qué la lectura va bloqueante.</p>
+     */
+    private void exigirLavarropasLibres(Connection conn, List<LanzamientoCiclo> tanda) throws SQLException {
+        List<Integer> numeros = tanda.stream()
+            .map(LanzamientoCiclo::lavarropasNumero).distinct().sorted().toList();
+        try (PreparedStatement ps = conn.prepareStatement(SQL_CICLO_ACTIVO_DE_LAVARROPAS)) {
+            for (int numero : numeros) {
+                ps.setInt(1, numero);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        log.warn("Tanda rechazada: el lavarropas {} ya tiene el ciclo {} sin "
+                            + "finalizar", numero, rs.getInt("id"));
+                        throw new LavarropasOcupadoException(
+                            Constantes.Mensajes.CONFLICTO_LAVARROPAS_OCUPADO);
+                    }
                 }
             }
         }
@@ -433,11 +514,26 @@ public class CicloLavaderoDAO {
         return movimientos;
     }
 
+    /**
+     * Cierra el ciclo. El {@code AND fecha_fin IS NULL} es la guarda, no un filtro: de esa fecha
+     * cuelgan Salidas ({@code cl.fecha_fin IS NOT NULL} es lo único que dice "esto está lavado") y
+     * toda la trazabilidad del Historial, así que un segundo "Finalizar" sobre el mismo ciclo no
+     * puede pisar la fecha real con la de ahora.
+     *
+     * <p>A diferencia de {@code SalidaLavaderoDAO.SQL_FINALIZAR_INGRESO} —que es la excepción
+     * aceptada porque no escribe ninguna fecha y llegar a FINALIZADO es el resultado buscado—, acá
+     * 0 filas sí es un choque: se lanza y la transacción entera se revierte, incluida la
+     * actualización de estado de los ingresos afectados.</p>
+     */
+    private static final String SQL_MARCAR_FINALIZADO =
+        "UPDATE ciclos_lavadero SET fecha_fin = NOW(), estado = 'FINALIZADO' " +
+        "WHERE id = ? AND fecha_fin IS NULL";
+
     private void marcarFinalizado(Connection conn, int cicloId) throws SQLException {
-        String sql = "UPDATE ciclos_lavadero SET fecha_fin = NOW(), estado = 'FINALIZADO' WHERE id = ?";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_MARCAR_FINALIZADO)) {
             ps.setInt(1, cicloId);
-            ps.executeUpdate();
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(),
+                Constantes.Mensajes.CONFLICTO_CICLO_FINALIZADO);
         }
     }
 

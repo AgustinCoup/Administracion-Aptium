@@ -4,11 +4,46 @@ import com.example.common.exception.BusinessException;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import org.junit.jupiter.api.Test;
 
+import java.sql.SQLException;
+import java.sql.SQLTransactionRollbackException;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class ControlConcurrenciaTest {
 
     private static final String MENSAJE = "Otro usuario tocó esto. Revisá y volvé a confirmar.";
+
+    // ── esContencionDeLock ───────────────────────────────────────────────────
+
+    /**
+     * El caso por el que existe la función: el <i>lock wait timeout</i> de MySQL llega como una
+     * {@code SQLException} pelada con {@code SQLSTATE HY000}, no como
+     * {@code SQLTransactionRollbackException}. Confiar en el tipo —la trampa obvia— deja pasar
+     * justamente el desenlace más probable de una guarda que bloquea y espera.
+     */
+    @Test
+    void lockWaitTimeoutDeMySQL_esContencionAunqueElTipoNoLoDiga() {
+        assertTrue(ControlConcurrencia.esContencionDeLock(
+            new SQLException("Lock wait timeout exceeded", "HY000", 1205)));
+    }
+
+    @Test
+    void deadlock_esContencionPorElTipo() {
+        assertTrue(ControlConcurrencia.esContencionDeLock(
+            new SQLTransactionRollbackException("Deadlock found", "40001", 1213)));
+    }
+
+    @Test
+    void lockTimeoutDeH2_esContencion() {
+        assertTrue(ControlConcurrencia.esContencionDeLock(
+            new SQLException("Timeout trying to lock table", "HYT00", 50200)));
+    }
+
+    @Test
+    void errorTecnicoCualquiera_noEsContencion() {
+        assertFalse(ControlConcurrencia.esContencionDeLock(
+            new SQLException("Unknown column 'foo'", "42S22", 1054)));
+    }
 
     // ── exigirFilaAfectada ───────────────────────────────────────────────────
 

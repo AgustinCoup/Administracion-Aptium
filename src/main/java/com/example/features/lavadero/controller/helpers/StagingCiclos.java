@@ -142,6 +142,21 @@ public class StagingCiclos {
         return fraccionesPorInstancia().getOrDefault(instanciaId, 0);
     }
 
+    /**
+     * <b>Cuáles</b> son esos lavarropas, no cuántos. Lo consume {@code ConstructorVistaCiclos}
+     * para poder nombrarlos en el aviso cuando deshace una subdivisión por su cuenta: ahí no
+     * alcanza con el conteo, porque el operador tiene que saber qué cards se le vaciaron.
+     */
+    public List<Integer> lavarropasConFraccionesDe(Integer instanciaId) {
+        if (instanciaId == null) return List.of();
+        return pendientesPorLavarropas.entrySet().stream()
+            .filter(e -> e.getValue().stream()
+                .anyMatch(p -> esFraccionDeEquipo(p) && instanciaId.equals(p.getInstanciaId())))
+            .map(Map.Entry::getKey)
+            .sorted()
+            .toList();
+    }
+
     private void descartarSiQuedoVacio(int lavarropasNumero) {
         List<ElementoCicloItem> pendientes = pendientesPorLavarropas.get(lavarropasNumero);
         if (pendientes != null && pendientes.isEmpty()) pendientesPorLavarropas.remove(lavarropasNumero);

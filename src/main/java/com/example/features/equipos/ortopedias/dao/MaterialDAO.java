@@ -510,12 +510,20 @@ public class MaterialDAO {
                 for (Integer materialId : idsMateriales) {
                     psMov.setInt(1, materialId);
                     psMov.addBatch();
-
-                    psMat.setInt(1, materialId);
-                    psMat.addBatch();
                 }
                 psMov.executeBatch();
-                for (int filas : psMat.executeBatch()) filasEliminadas += filas;
+
+                // El DELETE de materiales NO va en batch, y los movimientos sí: la diferencia es
+                // que de éste se cuentan las filas. `executeBatch()` puede devolver
+                // SUCCESS_NO_INFO (-2) por sentencia cuando el driver no sabe cuántas tocó —lo que
+                // hace MySQL con rewriteBatchedStatements=true—, así que sumar lo que devuelve da
+                // un total negativo y la guarda de abajo rechaza siempre, con un cartel de
+                // conflicto falso sobre una corrección que en realidad se aplicó bien. Son los
+                // materiales de un código de un equipo: la lista es corta.
+                for (Integer materialId : idsMateriales) {
+                    psMat.setInt(1, materialId);
+                    filasEliminadas += psMat.executeUpdate();
+                }
             }
             ControlConcurrencia.exigirFilasAfectadas(idsMateriales.size(), filasEliminadas,
                 Constantes.Mensajes.CONFLICTO_CORRECCION);

@@ -97,9 +97,9 @@ class DatabaseInitializerTest extends AbstractDAOTest {
     }
 
     @Test
-    @DisplayName("el historial de H2 llega exactamente hasta V21")
+    @DisplayName("el historial de H2 llega exactamente hasta V22")
     void sanityMaximoLocal() {
-        assertEquals(MigrationVersion.fromVersion("21"),
+        assertEquals(MigrationVersion.fromVersion("22"),
             flywayDeTest().info().current().getVersion());
     }
 

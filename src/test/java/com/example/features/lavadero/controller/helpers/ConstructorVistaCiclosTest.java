@@ -121,6 +121,62 @@ class ConstructorVistaCiclosTest {
         assertTrue(card(vista, 3).items().isEmpty());
     }
 
+    /**
+     * Un lavarropas se puede ocupar entre que el operador le arrastró ropa y el refresco
+     * siguiente. La card deja de mostrar ese staging pero el staging seguía vivo, y "Lanzar todos"
+     * lo mandaba igual: un segundo ciclo ACTIVO en el mismo lavarropas, que la pantalla ni
+     * siquiera puede mostrar.
+     */
+    @Test
+    void construir_lavarropasQueSeOcupo_descartaSuStagingYDevuelveLaRopaADisponibles() {
+        staging.agregarRegular(1, regular(7, "Sábana", 10), 4);
+
+        VistaCiclos vista = ConstructorVistaCiclos.construir(
+                datos(Map.of(1, ciclo(88, 1)), List.of(regular(7, "Sábana", 10)),
+                      Map.of(1, List.of())), CARDS, staging);
+
+        assertFalse(vista.hayPendientes(), "el staging del lavarropas ocupado se descartó");
+        assertEquals(1, vista.disponibles().size());
+        assertEquals(0, vista.disponibles().get(0).getCantidadEnCiclo(),
+            "la ropa vuelve a estar entera en disponibles, sin descontar");
+        assertEquals(List.of(1), vista.stagingDescartadoDe(),
+            "el descarte se reporta: el operador no puede enterarse por ausencia");
+    }
+
+    @Test
+    void construir_sinLavarropasOcupadosConStaging_noReportaNingunDescarte() {
+        staging.agregarRegular(2, regular(7, "Sábana", 10), 3);
+
+        VistaCiclos vista = ConstructorVistaCiclos.construir(
+                datos(Map.of(1, ciclo(88, 1)), List.of(regular(7, "Sábana", 10)),
+                      Map.of(1, List.of())), CARDS, staging);
+
+        assertTrue(vista.stagingDescartadoDe().isEmpty(),
+            "el lavarropas 1 se ocupó pero no tenía nada cargado: no hay nada que avisar");
+        assertTrue(vista.hayPendientes());
+    }
+
+    /**
+     * Misma regla que la devolución manual: una fracción no se quita sola. Dejar 2 de 3 cambiaría
+     * en silencio el reparto que el operador armó.
+     */
+    @Test
+    void construir_lavarropasQueSeOcupoConUnaFraccion_deshaceLaSubdivisionEntera() {
+        ElementoCicloItem origen = equipo(9, "Equipo A", 1);
+        staging.agregarFraccionEquipo(1, fraccion(origen, 55));
+        staging.agregarFraccionEquipo(2, fraccion(origen, 55));
+        staging.agregarFraccionEquipo(3, fraccion(origen, 55));
+
+        VistaCiclos vista = ConstructorVistaCiclos.construir(
+                datos(Map.of(1, ciclo(88, 1)), List.of(origen), Map.of(1, List.of())), CARDS, staging);
+
+        assertFalse(vista.hayPendientes(), "las tres fracciones se fueron, no sólo la del ocupado");
+        assertTrue(card(vista, 2).items().isEmpty());
+        assertTrue(card(vista, 3).items().isEmpty());
+        assertEquals(List.of(1, 2, 3), vista.stagingDescartadoDe(),
+            "el aviso nombra también las cards libres que se vaciaron de arrastre");
+    }
+
     // ── Disponibles ──────────────────────────────────────────────────────────
 
     @Test

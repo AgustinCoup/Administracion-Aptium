@@ -2,6 +2,8 @@ package com.example.infrastructure.db;
 
 import com.example.AbstractDAOTest;
 import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.common.exception.LavarropasOcupadoException;
+import com.example.common.exception.SaldoConsumidoException;
 import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.clientes.dao.ClienteDAO;
@@ -234,8 +236,9 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
         cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(
             new LineaLanzamiento(lineaId, 7)))));
 
-        // A armó su tanda cuando había 10 disponibles y pide 6: ya no alcanzan.
-        assertThrows(ConflictoConcurrenciaException.class,
+        // A armó su tanda cuando había 10 disponibles y pide 6: ya no alcanzan. El subtipo importa:
+        // es el único choque del lanzamiento ante el cual el controller descarta el staging.
+        assertThrows(SaldoConsumidoException.class,
             () -> cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(2, config(), List.of(
                 new LineaLanzamiento(lineaId, 6))))));
 
@@ -266,6 +269,56 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
         assertEquals(2, escalar("SELECT COUNT(*) FROM elementos_ciclo_lavadero"));
         assertEquals(1, escalar("SELECT COUNT(*) FROM instancias_equipo_ciclo"),
             "las dos fracciones son una sola instancia y consumen 1 de la línea de 1");
+    }
+
+    /**
+     * Un lavarropas no puede tener dos ciclos sin finalizar: de los dos, la pantalla sólo puede
+     * mostrar uno ({@code obtenerCiclosActivosPorLavarropas} los mete en un mapa por número), así
+     * que el otro quedaría invisible, imposible de finalizar, y la ropa que se llevó no volvería a
+     * aparecer ni en Disponibles ni en Salidas.
+     */
+    @Test
+    @DisplayName("Lanzar tanda: no se lanza un segundo ciclo en un lavarropas ya ocupado")
+    void lanzarTandaSobreLavarropasOcupado() {
+        int ingresoId = ingresoDeLavadero("TestConcOcupado", "CLASIFICADO");
+        int lineaId = insertarClasificacion(ingresoId, catalogoElementoId(1), 10);
+
+        // B ocupa el lavarropas 1 y no lo finaliza.
+        cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(
+            new LineaLanzamiento(lineaId, 3)))));
+
+        // A lo tenía como libre en su último refresco y le manda otra tanda. El subtipo importa:
+        // es lo que le dice al controller que NO descarte el staging de los otros lavarropas.
+        assertThrows(LavarropasOcupadoException.class,
+            () -> cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(
+                new LineaLanzamiento(lineaId, 4))))));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM ciclos_lavadero WHERE lavarropas_numero = 1"));
+        assertEquals(3, escalar("SELECT SUM(cantidad) FROM elementos_ciclo_lavadero"),
+            "la tanda de A no dejó nada: es todo o nada");
+    }
+
+    /**
+     * {@code fecha_fin} es el único dato que dice "esto está lavado" —lo leen Salidas y todo el
+     * Historial—, así que un segundo Finalizar no puede reemplazarla por la de ahora.
+     */
+    @Test
+    @DisplayName("Finalizar ciclo: el segundo Finalizar no pisa la fecha de fin del primero")
+    void finalizarCicloYaFinalizado() {
+        int ingresoId = ingresoDeLavadero("TestConcFin", "CLASIFICADO");
+        int lineaId = insertarClasificacion(ingresoId, catalogoElementoId(1), 5);
+        cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(
+            new LineaLanzamiento(lineaId, 5)))));
+        int cicloId = escalar("SELECT MAX(id) FROM ciclos_lavadero");
+
+        // B lo finaliza; A lo tenía en pantalla como activo y aprieta Finalizar.
+        cicloDAO.finalizarCiclo(cicloId);
+        String fechaDeB = texto("SELECT fecha_fin FROM ciclos_lavadero WHERE id = " + cicloId);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> cicloDAO.finalizarCiclo(cicloId));
+
+        assertEquals(fechaDeB, texto("SELECT fecha_fin FROM ciclos_lavadero WHERE id = " + cicloId),
+            "la fecha de fin del primero queda intacta");
     }
 
     // ── Lavadero: salidas ─────────────────────────────────────────────────────

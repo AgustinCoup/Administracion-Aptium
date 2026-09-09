@@ -78,7 +78,7 @@ argumento que "por qué las tablas de detalle no llevan `version`"). Por eso hay
 | Pantalla | Guarda | Qué pasa con el trabajo en curso |
 |---|---|---|
 | Lotes | sí, sin descarte | Lo arrastrado **se conserva** (`repintar()` descuenta el staging); puede haber dejado de estar disponible en la base |
-| Ciclos | sí, sin descarte | La config tipeada **se conserva** — el botón va a `recargar()`, **no** a `abrirPantalla()`, que la resetea |
+| Ciclos | sí, sin descarte | La config tipeada **se conserva** — el botón va a `recargar()`, **no** a `abrirPantalla()`, que la resetea. *Salvo* lo cargado en un lavarropas que otro operador ocupó mientras tanto: eso se descarta solo, en cualquier relectura, y **se avisa** (ver abajo) |
 | Registrar Estado | sí, **con descarte** | Los movimientos armados **se descartan** (`descartarCambiosPendientes` antes de releer) |
 | Clasificación | sí, **con descarte** | Los elementos del formulario **se descartan**: `PantallaClasificacionLavadero.refrescar()` reconstruye el `PanelElementosClasificacion` entero |
 | Las otras 7 | no | No acumulan estado entre lecturas |
@@ -89,6 +89,14 @@ buscarla, no la lista.* La tentación es escribirla al revés — "sin guard de 
 refresco" — y es **falsa**: Clasificación no tiene guard de Volver y sí destruye el formulario al
 refrescar. Antes de exponer cualquier método de carga como acción del usuario, mirar qué hace su
 `pintar` con el estado en curso.
+
+**El único descarte que la pantalla decide sola** es el de Ciclos: si una relectura trae un
+lavarropas con ciclo activo y el staging todavía tenía ropa cargada ahí, `ConstructorVistaCiclos`
+la descarta —y si era la fracción de un equipo repartido, deshace el reparto entero, incluidas las
+cards que siguen libres. La alternativa es peor: un staging invisible (la card ya muestra el ciclo)
+que "Lanzar todos" manda igual. Como es trabajo del operador que desaparece sin que él haya tocado
+nada, `construir()` devuelve **qué lavarropas** se vaciaron y `CiclosController.avisarStagingDescartado`
+lo dice con `Mensajes.STAGING_DESCARTADO_POR_OCUPACION`. Enterarse por ausencia no cuenta como aviso.
 
 **Dos asimetrías que hay que preservar:**
 - `RegistrarEstadoController.componentShown` **no relee** cuando hay cambios pendientes: descarta el
@@ -272,10 +280,25 @@ ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Mensajes.CONFLICTO_MA
 ```
 
 - **Helper:** `ControlConcurrencia` (`common/dao/`) — `exigirFilaAfectada` / `exigirFilasAfectadas`.
-  Más de una fila no es conflicto pero sí un bug: loguea `warn` y sigue.
+  Más de una fila no es conflicto pero sí un bug: loguea `warn` y sigue. Y
+  `esContencionDeLock(SQLException)`, para las guardas que **bloquean y esperan** (los `FOR UPDATE`
+  de abajo): cuando la base corta la espera, eso es un choque y tiene que salir como
+  `ConflictoConcurrenciaException`, no como error técnico. **No alcanza con
+  `catch (SQLTransactionRollbackException)`** —la trampa obvia—: MySQL mapea a ese tipo sólo los
+  `SQLSTATE 40xxx`, o sea el *deadlock* (1213), mientras que el *lock wait timeout* (1205) viaja
+  con `SQLSTATE HY000` como `SQLException` pelada. Y con guardas que esperan, el timeout es el
+  desenlace **más** probable: para que haya deadlock hace falta un ciclo, para que haya timeout
+  alcanza con que el otro tarde.
 - **Excepción:** `ConflictoConcurrenciaException extends BusinessException` (`common/exception/`).
   Es subclase a propósito: los controllers ya rutean `BusinessException` como aviso al usuario, así
   que el conflicto llega bien sin tocar un `catch`; quien lo quiera distinguir usa `instanceof`.
+  Hay dos subtipos, los dos del lanzamiento de tandas: `SaldoConsumidoException` y
+  `LavarropasOcupadoException`. **La regla que codifican es positiva y hay que dejarla así:**
+  *el staging de la tanda se descarta **sólo** ante `SaldoConsumidoException`*, que es el único
+  choque que invalida el trabajo en curso (parte de esa ropa ya se la llevó otro y el operador no
+  sabe qué parte). Escrita al revés —"descartar salvo ante X"— cualquier choque nuevo del
+  lanzamiento hereda por omisión un descarte que no le corresponde: hoy el lavarropas ocupado y el
+  rollback por deadlock de `lanzarTanda`, donde la ropa sigue disponible y no quedó nada escrito.
 - **Mensajes:** `Constantes.Mensajes.CONFLICTO_*`. Van al operador y dicen **qué cambió y qué
   hacer**, no qué falló.
 - **La relectura que alimenta la guarda va `FOR UPDATE`.** Comparar contra un `SELECT` común no
@@ -330,8 +353,32 @@ Compara **máximos**, no continuidad: una migración atrasada que se aplica desp
 `outOfOrder(true)` que existe porque dos ramas se pisaron los números) no es una base adelantada.
 
 **Dónde hay guarda hoy:** Registrar Estado (ortopedias y otros), Lanzar Lote, Clasificación de
-Lavadero, Lanzar Tanda, Salidas + derivación al CDE, las diez rutas de Correcciones (ortopedias y
-otros), fusionar clientes y eliminar cliente. **Qué quedó afuera:** el resto de los ABM (catálogo,
+Lavadero, Lanzar Tanda (saldo de las líneas **y** lavarropas libre), Finalizar Ciclo, Salidas +
+derivación al CDE, las diez rutas de Correcciones (ortopedias y otros), fusionar clientes y eliminar
+cliente.
+
+**Tres guardas del lavadero que no son CAS sobre una columna, sino `SELECT … FOR UPDATE` previo:**
+`CicloLavaderoDAO.SQL_BLOQUEAR_LINEA` (saldo de la línea de clasificación),
+`SQL_CICLO_ACTIVO_DE_LAVARROPAS` (un lavarropas no puede tener dos ciclos sin finalizar — de los dos
+la pantalla sólo puede mostrar uno, así que el otro queda invisible e imposible de finalizar) y los
+dos de `SalidaLavaderoDAO.bloquearAfectados` (saldo de la tanda y de la instancia antes de marcar
+Listo). Los tres siguen la misma regla y por el mismo motivo: **se toman todos los bloqueos antes de
+la primera lectura no bloqueante**, porque bajo el `REPEATABLE READ` de MySQL la vista de lectura se
+fija ahí y un bloqueo tomado después leería un saldo anterior a sí mismo. H2 no lo delata.
+
+**`ciclos_lavadero.fecha_fin` lleva su propio CAS** (`AND fecha_fin IS NULL` en
+`SQL_MARCAR_FINALIZADO`): es el único dato que dice "esto está lavado" —lo leen Salidas y todo el
+Historial—, así que un segundo Finalizar no puede reemplazarla por la de ahora. No confundirlo con
+`SQL_FINALIZAR_INGRESO`, que sí es idempotente justamente porque no escribe ninguna fecha.
+
+**Un conteo de guarda nunca sale de `executeBatch()`.** Devuelve `SUCCESS_NO_INFO` (`-2`) por
+sentencia cuando el driver no puede informar filas —lo que hace MySQL con
+`rewriteBatchedStatements=true`—, así que sumarlo da un total sin sentido y la guarda rechaza
+operaciones válidas con un cartel de conflicto falso. Lo que se cuenta va con `executeUpdate()` (ver
+`MaterialDAO.eliminarMaterialesPorCodigo`); el batch queda para las escrituras cuyas filas a nadie
+le importan.
+
+**Qué quedó afuera:** el resto de los ABM (catálogo,
 instituciones, profesionales, y el resto de Ajustes) — sin ruta alcanzable desde la UI, no sin
 superficie de escritura; anotado en `plans/hallazgos-arquitectura-pendientes.md`. `obtenerSiguienteSecuencia`
 de `LoteDAO` no es un caso de esta regla: no hay dato leído por el operador que se esté pisando,
@@ -349,7 +396,7 @@ lo es: un test de deadlock pasaría en H2 y mentiría sobre producción.
 
 ## Tests
 
-JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~970 tests en 94 clases de `src/test/java`,
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1130 tests en `src/test/java`,
 reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
 DAO/Service/Controller/helper relevante).
 
