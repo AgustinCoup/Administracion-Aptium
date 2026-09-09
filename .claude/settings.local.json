@@ -52,7 +52,19 @@
       "Bash(mvn -q -Dtest=EquipoCorreccionServiceTest,MaterialDAOTest test)",
       "Bash(echo \"EXIT=$?\")",
       "Bash(mvn -q test -Dtest=GuardaRefrescoTest,PanelHeaderTest)",
-      "Bash(grep -E \"Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$\")"
+      "Bash(grep -E \"Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$\")",
+      "Bash(mvn -q -o test -Dtest=HistorialLavaderoDAOTest)",
+      "Bash(grep -E \"Tests run:.*\\(Failures: [1-9]|Errors: [1-9]\\)|Tests run:.*Failures: 0, Errors: 0, Skipped: [0-9]+$|BUILD|^\\\\[ERROR\\\\]\")",
+      "Bash(mvn -o -q test -Dtest='ConcurrenciaOptimistaTest,CicloLavaderoDAOTest,SalidaLavaderoDAOTest,HistorialLavaderoDAOTest,ConstructorVistaCiclosTest,EquipoSubdivididoIntegracionTest,SalidaLavaderoDerivacionTest,CiclosControllerTest,MaterialDAOTest' -DfailIfNoTests=false)",
+      "Bash(mvn -o test -Dtest='ConcurrenciaOptimistaTest,CicloLavaderoDAOTest,SalidaLavaderoDAOTest,HistorialLavaderoDAOTest,ConstructorVistaCiclosTest,EquipoSubdivididoIntegracionTest,SalidaLavaderoDerivacionTest,CiclosControllerTest,MaterialDAOTest' -DfailIfNoTests=false)",
+      "Bash(mvn -o -q test-compile)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(grep -E \"Tests run:.*\\(Failures: [1-9]|Errors: [1-9]\\)|Tests run: [0-9]+, Failures: 0, Errors: 0, Skipped: [0-9]+$|BUILD|FAIL\")",
+      "Bash(grep -E \"Tests run:.*\\(Failures: [1-9]|Errors: [1-9]\\)|Tests run: [0-9]+, Failures: 0, Errors: 0, Skipped: [0-9]+$|BUILD\")",
+      "Bash(mvn -q -o compile -DskipTests)",
+      "Bash(mvn -o test -Dtest='ConstructorVistaCiclosTest+HistorialLavaderoDAOTest+ConcurrenciaOptimistaTest+DatabaseInitializerTest+CicloLavaderoDAOTest+SalidaLavaderoDAOTest+MaterialDAOTest' -DfailIfNoSpecifiedTests=false)",
+      "Bash(mvn -o test -Dtest='ConstructorVistaCiclosTest,HistorialLavaderoDAOTest,ConcurrenciaOptimistaTest,DatabaseInitializerTest,CicloLavaderoDAOTest,SalidaLavaderoDAOTest,MaterialDAOTest' -Dsurefire.failIfNoSpecifiedTests=false)",
+      "Bash(mvn -o test -Dtest=FusionClientesDAOTest)"
     ]
   }
 }
