@@ -1,6 +1,7 @@
 package com.example.features.ajustes.controller;
 
 import com.example.common.constants.Constantes;
+import com.example.common.exception.BusinessException;
 import com.example.features.actualizaciones.model.ReleaseInfo;
 import com.example.features.actualizaciones.service.ActualizacionService;
 import com.example.features.ajustes.controller.helpers.ThrottleDeProgreso;
@@ -97,8 +98,8 @@ public class AjustesController {
         if (resp != JOptionPane.YES_OPTION) return;
 
         mutar("ajustes-eliminar",
-            () -> clienteService.eliminarCliente(cliente.getId()),
-            "", "No se puede eliminar");
+            () -> clienteService.eliminarCliente(cliente.getId(), cliente.getNombre()),
+            "", "Eliminar cliente");
     }
 
     private void fusionarCliente() {
@@ -139,7 +140,8 @@ public class AjustesController {
         if (resp != JOptionPane.YES_OPTION) return;
 
         mutar("ajustes-fusion",
-            () -> clienteService.fusionarClientes(origen.getId(), destino.getId()),
+            () -> clienteService.fusionarClientes(
+                origen.getId(), origen.getNombre(), destino.getId(), destino.getNombre()),
             "Error al fusionar clientes: ", "Error");
     }
 
@@ -157,7 +159,9 @@ public class AjustesController {
                 cargarDatos();
                 notificarMutacion();
             })
-            .siFalla(e -> mostrarError(prefijoError + e.getMessage(), tituloError))
+            .siFalla(e -> mostrarError(
+                e instanceof BusinessException ? e.getMessage() : prefijoError + e.getMessage(),
+                tituloError))
             .lanzar();
     }
 

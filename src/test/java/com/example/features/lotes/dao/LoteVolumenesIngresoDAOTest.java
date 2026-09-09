@@ -1,5 +1,7 @@
 package com.example.features.lotes.dao;
 
+import com.example.features.equipos.ortopedias.model.EstadoEquipo;
+
 import com.example.AbstractDAOTest;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMovimiento;
@@ -44,8 +46,8 @@ class LoteVolumenesIngresoDAOTest extends AbstractDAOTest {
 
         Lote lote = dao.lanzarLote("E01", 120, 25,
             List.of(
-                new LoteMovimiento(-ingresoA, ingresoA, 20, true),
-                new LoteMovimiento(-ingresoB, ingresoB, 15, true)),
+                new LoteMovimiento(-ingresoA, ingresoA, 20, true, EstadoEquipo.NUEVO),
+                new LoteMovimiento(-ingresoB, ingresoB, 15, true, EstadoEquipo.NUEVO)),
             Map.of(ingresoA, 20, ingresoB, 5));
 
         assertEquals(20, volumenGuardado(lote.getId(), ingresoA));
@@ -60,8 +62,8 @@ class LoteVolumenesIngresoDAOTest extends AbstractDAOTest {
 
         Lote lote = dao.lanzarLote("E01", 120, 20,
             List.of(
-                new LoteMovimiento(-ingresoA, ingresoA, 20, true),
-                new LoteMovimiento(-ingresoB, ingresoB, 15, true)),
+                new LoteMovimiento(-ingresoA, ingresoA, 20, true, EstadoEquipo.NUEVO),
+                new LoteMovimiento(-ingresoB, ingresoB, 15, true, EstadoEquipo.NUEVO)),
             Map.of(ingresoA, 20));
 
         assertEquals(1, contarFilasVolumen(lote.getId()));
@@ -74,8 +76,8 @@ class LoteVolumenesIngresoDAOTest extends AbstractDAOTest {
 
         Lote lote = dao.lanzarLote("E01", 120, 25,
             List.of(
-                new LoteMovimiento(-ingresoA, ingresoA, 20, true),
-                new LoteMovimiento(-ingresoB, ingresoB, 15, true)),
+                new LoteMovimiento(-ingresoA, ingresoA, 20, true, EstadoEquipo.NUEVO),
+                new LoteMovimiento(-ingresoB, ingresoB, 15, true, EstadoEquipo.NUEVO)),
             Map.of(ingresoA, 20, ingresoB, 5));
 
         assertEquals(Map.of(ingresoA, 20, ingresoB, 5),
@@ -92,7 +94,7 @@ class LoteVolumenesIngresoDAOTest extends AbstractDAOTest {
         int ingresoA = insertarEquipoOtrosRemito(20);
 
         Lote lote = dao.lanzarLote("E01", 120, 20,
-            List.of(new LoteMovimiento(-ingresoA, ingresoA, 20, true)),
+            List.of(new LoteMovimiento(-ingresoA, ingresoA, 20, true, EstadoEquipo.NUEVO)),
             Map.of(ingresoA, 20));
         dao.finalizarLote(lote.getId());
 

@@ -2,8 +2,8 @@
 
 Diagnóstico de la revisión profunda del 2026-07-22.
 
-**Estado al 2026-07-23:** #1 a #5 **ejecutados**, suite en verde (509 tests).
-Queda solo **#6**.
+**Estado al 2026-08-27: los 8 hallazgos cerrados**, incluida la checklist manual de la Fase 5 de #6,
+pasada contra la app real ese mismo día. Del plan de sesiones queda **sólo el `/code-review ultra`**.
 
 | # | Estado | Commit |
 |---|---|---|
@@ -11,8 +11,12 @@ Queda solo **#6**.
 | #2 strategies muertas (`IMaterialFilter` + `ICapacidadCalculator`) | hecho | `a370e61` |
 | #5 `common` ↔ Swing | hecho | `fc15bd1` |
 | #4 `Object[]` → records | hecho (2026-07-23) | `57c87d1` |
-| #3 `AppModel` | hecho (2026-07-23) — **disuelto** | sin commitear |
-| #6 concurrencia / EDT | **pendiente** — plan escrito en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md) | — |
+| #3 `AppModel` | hecho (2026-07-23) — **disuelto** | `728c88d` |
+| #6 concurrencia / EDT | **hecho (2026-08-27)** — Fases 1-6, **4b**, el hallazgo derivado de Lavadero y la **checklist manual de la Fase 5 pasada**: 30 WARN de `EdtGuard`, los 30 de los autocompletados documentados, cero fuera de la lista. Detalle en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md#resultado-de-la-fase-5--pasada-2026-08-27) | Fase 4b: `14354a2` · Lavadero: `95c9e33` |
+| #7 subdivisión de `Equipo*` sin persistir (agregado 2026-08-19) | hecho (2026-08-27) | Pasos 1-8 `01d18be`..`ef6b8c2` + cierre `docs: ... (#7)` |
+| #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | hecho (2026-08-27) — `CiclosController` colapsó sus 4 lecturas en un `recargar()` con el record `DatosCiclos` + `ConstructorVistaCiclos`, y sus 3 escrituras van por un helper `ejecutar(...)`; `ClasificacionController` y `LavaderoController.guardar()` al patrón de 4b. 970 tests, smoke pasado | `95c9e33` |
+| #9 huecos que dejó abierto el bloqueo optimista (agregado 2026-09-04) | **hecho (2026-09-04)** — las diez rutas de Correcciones, el reintento de secuencia de lotes, y las dos rutas alcanzables de ABM (eliminar/fusionar clientes). 11 pasos en [`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md) | `e0876db`..`6aaca8f` |
+| #10 código muerto destapado por #9 (agregado 2026-09-04) | **anotado, no tocado** — ver más abajo | — |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -121,10 +125,8 @@ en un `mapearFila(ResultSet)` privado que accede **por nombre de columna**, así
 major 61.
 
 **Pendientes menores que dejó, fuera del alcance de #4:**
-- [`MaterialCorreccionDTO`](../src/main/java/com/example/features/equipos/ortopedias/controller/helpers/MaterialCorreccionDTO.java)
-  es **código muerto** (cero referencias) y tiene exactamente los mismos 6 campos que
-  `FilaMaterial` — es el DTO que alguien creó para esto y nunca cableó. Candidato directo
-  del refactor-clean.
+- ~~`MaterialCorreccionDTO` es código muerto (cero referencias) y tiene los mismos 6 campos que
+  `FilaMaterial`~~ → ✅ **borrado el 2026-08-27** en el refactor-clean.
 - `MaterialDAO.obtenerMaterial` sigue devolviendo `null` cuando no encuentra; con Java 17
   disponible, `Optional` es ahora una opción. No se tocó por estar fuera del hallazgo.
 - Quedan `Object[]` locales en `EquipoMaterialHelper` y `EquipoOtrosMaterialHelper` (se arman
@@ -169,11 +171,10 @@ Actualizados los 4 call-sites (`PantallaIngresoOrtopedia` ×2, `PantallaCorrecci
 Verificación: `grep -E "javax\.swing|java\.awt" src/main/java/com/example/common` → sin
 resultados. El núcleo ya no depende de la UI.
 
-**Pendientes menores que dejó, fuera del alcance de #5:**
-- `Validador.esEmailValido` y `Validador.esNumeroPositivo` **no tienen ningún llamador**
-  → código muerto, candidato para el refactor-clean.
-- No existe `ValidadorTest`. Los 6 métodos puros que quedaron son ahora trivialmente
-  testeables sin Swing.
+**Pendientes menores que dejó — ✅ los dos cerrados el 2026-08-27:**
+- ~~`Validador.esEmailValido` y `esNumeroPositivo` sin llamadores~~ → borrados en el refactor-clean.
+- ~~No existe `ValidadorTest`~~ → creado, 15 tests sobre los 4 métodos que quedan
+  (`noEstaVacio`, `esFormatoNombre`, `soloNumeros`, `detectarDuplicados`) + el constructor privado.
 
 ---
 
@@ -200,6 +201,167 @@ históricos**. Sin cancelación: dos refrescos rápidos pueden aplicar resultado
 del EDT, y agregar cancelación/debounce al refresco global. Es el hallazgo de más trabajo y el
 que conviene planificar con cuidado (toca varios controllers y el flujo de refresco).
 
+**Estado:** se ejecuta en `plans/refactor-concurrencia-edt.md`. Fases 1-6 y 4b cerradas; el
+hallazgo derivado de Lavadero (Ciclos + Clasificación) también, el 2026-08-27.
+
+**Lo que queda del EDT, medido el 2026-08-27:** sólo los **cinco autocompletados por tecla**,
+que son excepción aceptada — `AutocompleteListener` de clientes/profesionales/instituciones, el
+`CatalogoLookup` de `OrthopediaInputController`, el de `catalogo_otros`, y el de clientes de
+`LavaderoController`. Se disparan en cada pulsación y moverlos a fondo pide cancelación y orden
+de resultados, que es un cambio aparte.
+
+En `strict` esos cinco **lanzan**, lo que vuelve inutilizables los campos de cliente de Lavadero
+y del CDE: por eso los smokes de esas pantallas se corren **sin** `strict`, verificando los WARNs
+del log.
+
+`LavaderoController.guardar()` también escribía en el EDT (se le escapó al inventario del
+hallazgo de Lavadero, que sólo miró Ciclos y Clasificación). Arreglado el 2026-08-27 con el
+patrón de la Fase 4b.
+
+---
+
+## #7 — La subdivisión de `Equipo*` no se persiste  ✅ HECHO (2026-08-27)
+
+Blueprint de 9 pasos ([`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md))
+ejecutado entero sobre `ConexionConCDE`, commit por paso. Resultado:
+
+- **`V19`** — tabla `instancias_equipo_ciclo` + columna `instancia_equipo_id` en
+  `elementos_ciclo_lavadero`. **`V20`** — `salidas_lavadero.elemento_ciclo_id` pasa a nullable +
+  columna `instancia_equipo_id`. Ninguna migración existente se tocó.
+- `SQL_DISPONIBLES` y la detección usan la fórmula
+  `SUM(cantidad donde instancia IS NULL) + COUNT(DISTINCT instancia_equipo_id)`: un equipo repartido
+  en N consume 1 unidad, no N.
+- `CicloLavaderoDAO.crearInstanciaEquipo` (+ validación en el service); `CiclosController` crea las
+  instancias antes de lanzar y **exige "Lanzar Todos"** para grupos repartidos (bloquea el lanzamiento
+  individual y valida config completa del grupo).
+- `AgrupadorInstanciasSalida` (clase plana, testeable) agrupa las N fracciones en 1 fila de Salidas,
+  visible sólo cuando las N partes tienen ciclo finalizado. `SalidaLavaderoDAO` opera `marcarListo` /
+  `volverALavado` / `derivar` sobre la instancia entera. Records `ElementoLavadoPendiente` / `SalidaLista`
+  cambiaron `lavarropasNumero: int` → `lavarropas: String`.
+- `CicloLavaderoDAO.detectarLineasSobregiradas()` — detección (sin reparación) de bases de desarrollo
+  con datos previos.
+- Defecto destapado por el test de integración y arreglado en el Paso 8: `SalidaLavaderoService.marcarListo`
+  deduplicaba con `elementoCicloId` (ahora `null` en toda instancia), rompiendo el marcado masivo cuando
+  dos equipos repartidos terminaban juntos — clave de duplicado nueva `claveDeDuplicado`.
+
+**Verificación:** `mvn test` en verde (951+ tests), `mvn clean package` OK. Smoke manual de GUI
+pendiente (fuera del blueprint).
+
+<details>
+<summary>Diagnóstico original (ALTO — agregado 2026-08-19)</summary>
+
+**Qué:** cuando un `Equipo*` se reparte entre varios lavarropas, el `instanciaId` que agrupa sus
+fracciones es un `AtomicInteger` en memoria de `CiclosController` (línea 46) y no viaja a la base:
+`ElementoCicloMovimiento` no lo lleva y `elementos_ciclo_lavadero` no tiene dónde guardarlo.
+
+**Por qué es problema:** un equipo de cantidad 1 repartido en 4 lavarropas escribe 4 filas de
+`cantidad = 1` contra una línea de clasificación de cantidad 1 → `SQL_DISPONIBLES` calcula
+`ya_procesada = 4 > 1`. El `HAVING` esconde el síntoma, así que la inconsistencia es invisible hasta
+que otra feature suma esas filas. La pantalla de Salidas (rama `ConexionConCDE`) es la primera que lo
+hace, y multiplica por 4 lo que manda al CDE.
+
+**Encontrado por:** el smoke manual del Paso 8 de `salidas-lavadero-listo-y-derivacion-cde.md`.
+No es deuda de ese plan: es anterior, del plan de ciclos.
+
+**Diagnóstico completo, decisiones cerradas y blueprint paso a paso:**
+[`fracciones-de-equipo-persistidas.md`](fracciones-de-equipo-persistidas.md).
+
+</details>
+
+---
+
+## #9 — Huecos que dejó abiertos el bloqueo optimista  ✅ HECHO (2026-09-04)
+
+Los tres los había dejado **explícitamente fuera de alcance** el plan
+[`bloqueo-optimista-concurrencia.md`](bloqueo-optimista-concurrencia.md), que cerró los cuatro
+flujos críticos (Registrar Estado × 2, Lanzar Lote, Lanzar Tanda, Salidas + derivación al CDE) más
+Clasificación. Los tres se cerraron con el plan de 11 pasos
+[`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md):
+
+- **(a) `Correcciones` sin guarda** — las diez rutas (ortopedias y "otros") pasan a guardar por
+  `version` del agregado, reemplazando lo que un snapshot del formulario mostraba. Es asimétrico a
+  propósito respecto de Registrar Estado: ahí el mismo falso positivo (dos operadores tocando
+  materiales distintos del mismo equipo) se **rechaza**; en Correcciones se **acepta**, por ser una
+  pantalla de uso esporádico y auditado. Ver `CLAUDE.md` § *Concurrencia — bloqueo optimista*.
+- **(b) `LoteDAO.obtenerSiguienteSecuencia`** — reintento sobre la violación de `UNIQUE`
+  (`id_negocio`), con la clase `23` discriminada **fuera** de la transacción fallida (adentro lee
+  el snapshot viejo bajo `REPEATABLE READ` y el reintento no se dispara nunca en MySQL; H2 no lo
+  delata). No es un lost update, es asignación de identidad: no lleva `ConflictoConcurrenciaException`
+  salvo al agotar los tres reintentos.
+- **(c) Los ABM** — medidos contra el código, sólo dos operaciones eran alcanzables y pisables:
+  `eliminarCliente` (CAS por nombre) y `fusionarClientes` (verificación de los dos nombres +
+  `FOR UPDATE`, y de paso bumpea `equipos`/`equipo_otros` — era el único `UPDATE` de agregado sin
+  bump que quedaba). El resto de lo que nombraba el hallazgo original no tenía ruta de llamada; ver
+  **#10**.
+
+**Verificación:** `mvn test` en verde (suite completa). Nueve casos nuevos en
+`ConcurrenciaOptimistaTest` con la forma *A lee → B modifica y commitea → A escribe → conflicto, y
+el estado final es el de B*. **Sin verificar contra MySQL real** (sólo H2): los dos puntos ciegos
+de la Parte B (bloqueo del índice único en el segundo `INSERT`, y que la discriminación de la
+clase `23` esté afuera de la transacción) no se pueden reproducir en H2 — ver la sección
+"Verificación" del plan.
+
+### (a) `Correcciones` sigue escribiendo a ciegas — y ya tiene la `version` esperándola  (MEDIO)
+
+**Qué pasa.** `MaterialDAO.actualizarCantidad` / `actualizarCodigo` y sus equivalentes de "otros"
+(`EquipoOtrosDAO.actualizarCantidadRemito`, `actualizarCantidadMaterial`, `insertarMaterial`,
+`eliminarMaterialesPorDescripcion`) reemplazan lo que un formulario mostraba, sin ninguna guarda:
+dos operadores corrigiendo el mismo equipo, gana el último en apretar Guardar.
+
+**Por qué es distinto de lo ya cerrado.** Corrección **no consume por cantidad**: reemplaza el valor
+entero desde un snapshot del formulario. Ahí la `version` del agregado es exactamente la guarda
+correcta, y es el motivo por el que la V21 la creó.
+
+**Qué falta para activarla.** La columna ya se mantiene en todas las rutas (la auditoría completa
+está en el javadoc de `EquipoOtrosMaterialHelper.recalcularEstadoEquipo`). Falta: hacer viajar la
+`version` leída con el formulario hasta el DAO, agregar `AND version = ?` a esos `UPDATE`, y
+`ControlConcurrencia.exigirFilaAfectada` sobre el resultado. **No** es un cambio de esquema.
+Antes de hacerlo, verificar que ninguna ruta de escritura quedó sin bumpear: un bump con agujeros da
+**falsos negativos silenciosos**, que son peores que no tener guarda.
+
+### (b) `LoteDAO.obtenerSiguienteSecuencia` es `SELECT MAX(secuencia) + 1`  (MEDIO)
+
+Dos lotes lanzados en el mismo segundo pueden calcular la misma secuencia. Hoy los salva el
+`UNIQUE (id_negocio)` de la V1, que los hace fallar con un error técnico feo en vez de un mensaje
+claro.
+
+**No es un lost update**, es **asignación de identidad**, y por eso no lo resuelve el bloqueo
+optimista: no hay ningún dato leído por el operador que se esté pisando. Se arregla con otra
+técnica — reintento sobre la violación de UNIQUE, o una tabla de secuencias — y merece su propia
+decisión.
+
+### (c) Los ABM quedaron fuera  (BAJO)
+
+Catálogo, clientes, instituciones, profesionales y ajustes escriben sin guarda. Es lo acordado: son
+pantallas de mantenimiento, con un solo operador editándolas en la práctica, y meterles guardas
+tendría más costo de UX (carteles de conflicto en lugares donde nadie choca) que beneficio. Si algún
+día dos personas mantienen catálogos a la vez, el mecanismo ya está armado y es agregar el `WHERE`.
+
+---
+
+## #10 — Código muerto destapado al medir #9 (agregado 2026-09-04)  BAJO, anotado
+
+La medición de qué ABM eran alcanzables (#9c) encontró código sin ningún llamador de producción.
+No se tocó: borrarlo es una decisión del usuario, no de este plan — el mismo criterio que dejó
+viva `PantallaVerCDEv1` en el punto 4 del plan de sesiones de abajo.
+
+- **`SimpleEntityDAO.actualizar`** (renombrar cliente / institución / profesional) — cero
+  llamadores. No existe pantalla de renombrado para ninguna de las tres entidades.
+- **`CatalogoDAO.guardarDescripcion`** — **no es un `INSERT`, es un upsert**
+  (`ON DUPLICATE KEY UPDATE`), así que a diferencia del resto de esta lista sí tiene superficie de
+  lost update. Pero es **inalcanzable, no inofensivo**: sólo lo llama `CatalogoService.guardarDescripcion`,
+  que a su vez no tiene llamador de UI. Si algún día se cablea una pantalla de edición de catálogo,
+  revisar esto primero — es la única entrada de esta lista que necesitaría guarda el día que deje
+  de estar muerta.
+- **`CatalogoDAO.eliminar`, `guardar`, `actualizar`** — cero llamadores; `guardar` y `actualizar`
+  son stubs que devuelven `false`.
+- **`CatalogoOtrosDAO`** — no tiene `update` ni `delete`: sólo lookup + `obtenerOCrear`
+  (`INSERT IGNORE`), sin superficie de escritura que guardar.
+- **`EquipoDAO.actualizar` → `EquipoService.actualizar`** — la cadena entera está muerta (ninguno
+  de los dos tiene llamador, ni en `src/main` ni en `src/test`). No es el mismo caso que los de
+  arriba: `EquipoDAO.actualizar` sí bumpea `version` correctamente (ver su javadoc), así que no es
+  un agujero de bloqueo optimista si algún día se reconecta — es puro código sin ruta de llamada.
+
 ---
 
 ## Lo que está bien (no tocar)
@@ -216,18 +378,61 @@ resumen lossy.
 
 1. ~~**#4** (`Object[]`→records)~~ — ✅ hecho el 2026-07-23.
 2. ~~**#3** (`AppModel`)~~ — ✅ hecho el 2026-07-23, disuelto.
-3. **#6** (concurrencia/EDT) — el más grande y el único que queda. Plan escrito el 2026-07-23
+3. ~~**#6** (concurrencia/EDT)~~ — ✅ cerrado el 2026-08-27, checklist manual incluida.
+   Era el más grande. Plan escrito el 2026-07-23
    en [`refactor-concurrencia-edt.md`](refactor-concurrencia-edt.md): 5 fases, a ejecutar en
    2 chats (fases 1-3 / fases 4-5). Es donde está el riesgo real: los bugs de EDT y de
    refrescos fuera de orden no los agarra la suite de tests.
    Nota: #3 dejó el terreno mejor — `UiCoordinator.crearRefrescador()` sigue igual, pero
    ahora cada controller declara qué services toca, así que es visible cuáles hacen I/O.
-4. **refactor-clean** — barre el código muerto que dejen los anteriores. Ya identificados:
-   `Validador.esEmailValido` / `esNumeroPositivo` (de #5) y `MaterialCorreccionDTO` (de #4).
-   Los 16 métodos muertos de `AppModel` ya se fueron con la clase en #3.
-5. **security review** — superficie real acotada: queries parametrizadas, credenciales
-   en `config.properties` y los defaults hardcodeados, validación de entrada. Es una app
-   Swing de escritorio sin auth ni endpoints: presupuestar un chat corto, no una fase.
+4. ~~**refactor-clean**~~ — ✅ hecho el 2026-08-27. Se borraron `Validador.esEmailValido` /
+   `esNumeroPositivo` (de #5) y `MaterialCorreccionDTO` (de #4), los tres con cero referencias en
+   `src/main` y `src/test`. Los 16 métodos muertos de `AppModel` ya se habían ido con la clase en #3.
+   De paso se escribió el `ValidadorTest` que #5 anotaba como faltante (15 tests sobre los 4 métodos
+   que quedan). Suite: **985 verdes** (eran 970).
+   **Queda una decisión abierta:** `PantallaVerCDEv1` (69 líneas) se instancia y se registra en el
+   `CardLayout` de `PantallaPrincipal:85,108`, pero `Constantes.Pantallas.VER_CDE` no se referencia
+   desde ningún botón — la reemplazó `PantallaVerCDEv2`. Es inalcanzable; borrarla es una decisión
+   del usuario, no del refactor-clean.
+5. ~~**security review**~~ — ✅ hecha el 2026-08-27. **Sin hallazgos CRÍTICOS ni ALTOS.**
+   Resultado en la sección "Revisión de seguridad" al final de este documento.
 6. **code review de la branch** — usar `/code-review ultra`, que corre la revisión
    multi-agente en la nube y **no consume el contexto del chat**. Es user-triggered y
-   facturado aparte.
+   facturado aparte. **Único ítem del plan de sesiones que sigue abierto.**
+
+---
+
+## Revisión de seguridad (2026-08-27)
+
+**Sin hallazgos CRÍTICOS ni ALTOS.** La superficie es chica y bien tratada: app de escritorio,
+sin endpoints, sin sesiones, sin HTML — no aplican XSS, CSRF ni SSRF.
+
+**Lo que está bien:**
+
+- **Inyección SQL: sin superficie.** Todo dato de usuario viaja por `PreparedStatement`. La única
+  concatenación que arma SQL es el nombre de tabla en `SimpleEntityDAO` (`getTableName()`), y
+  viene de un literal por subclase, nunca de entrada del usuario.
+- **Cero secretos commiteados.** `config.properties` está en `.gitignore`; `README-DEPLOY.md` y
+  `docs/conexion-remota-mysql-tailscale.md` usan placeholders (`TuContraseñaFuerte123!`,
+  `192.168.1.100`, `<USUARIO>`); `.vscode/launch.json` no lleva credenciales.
+- **Precedencia de config correcta:** variables de entorno → `config.properties` (fuera del repo,
+  con instrucciones de `icacls`/permisos 600) → defaults, y el arranque **avisa por log** cuando
+  cae a `localhost:root:root`. Falla ruidosamente si falta `db.ip`/`db.user`/`db.name`.
+- **El runbook de Tailscale acota el firewall** a `100.64.0.0/10` (el CGNAT del tailnet) en vez de
+  abrir 3306 al mundo, y ya advierte de no dejar `root@'%'`.
+
+**Recomendaciones (MEDIO, ninguna bloqueante):**
+
+1. **`GRANT ALL PRIVILEGES` para el usuario de la app.** Incluye `DROP`/`ALTER`, y la app además
+   necesita `CREATE DATABASE` (`ConnectionPool.crearBaseDeDatosSiNoExiste`). Least privilege sería
+   partirlo en dos usuarios: uno de migraciones con DDL, y uno de runtime con
+   `SELECT/INSERT/UPDATE/DELETE`. Tiene costo operativo real (Flyway corre al arrancar la app), así
+   que es una decisión, no un defecto.
+2. **`bind-address = 0.0.0.0` protegido sólo por la regla de firewall.** El propio runbook avisa
+   que la regla no persiste entre migraciones de servidor: si se pierde, MySQL queda escuchando en
+   todas las interfaces. Atarlo a la IP de Tailscale es más robusto que depender del firewall.
+3. **Las credenciales viven en cada puesto de trabajo.** Es consecuencia de la arquitectura
+   —escritorio contra MySQL directo, sin capa de servidor—: quien tenga acceso a la PC puede leer
+   `config.properties` o las variables de entorno y conectarse a la base por fuera de la app. La app
+   tampoco tiene autenticación propia. Aceptado por diseño; anotado para que sea una decisión
+   consciente y no una sorpresa.

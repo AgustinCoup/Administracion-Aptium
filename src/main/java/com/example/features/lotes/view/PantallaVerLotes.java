@@ -29,6 +29,7 @@ import java.util.List;
  */
 public class PantallaVerLotes extends JPanel {
 
+    private PanelHeader             header;
     private final DefaultTableModel modeloTabla;
     private final JTable            tablaLotes;
 
@@ -51,7 +52,7 @@ public class PantallaVerLotes extends JPanel {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        PanelHeader header = new PanelHeader(
+        header = new PanelHeader(
             Constantes.Titulos.VER_LOTES,
             navegador,
             contenedor,
@@ -87,6 +88,16 @@ public class PantallaVerLotes extends JPanel {
 
         add(new JScrollPane(tablaLotes), BorderLayout.CENTER);
         add(crearPanelSur(), BorderLayout.SOUTH);
+    }
+
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
     }
 
     private JPanel crearPanelSur() {

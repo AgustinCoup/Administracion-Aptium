@@ -1,5 +1,7 @@
 package com.example.features.equipos.ortopedias.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
 import com.example.common.dao.DAO;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ResourceNotFoundException;
@@ -36,7 +38,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, " +
         "       p.nombre AS profesional_nombre, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
-        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso " +
+        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, e.version " +
         "FROM equipos e " +
         "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
         "LEFT JOIN profesionales p ON e.nro_profesional = p.id " +
@@ -47,7 +49,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, " +
         "       p.nombre AS profesional_nombre, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
-        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, " +
+        "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, e.version, " +
         "       em.id AS mat_id, em.codigo_catalogo, cd.descripcion AS mat_descripcion, " +
         "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, mm.ultimo_movimiento, " +
         "       l.id_negocio AS lote_id_negocio " +
@@ -239,6 +241,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
         eq.setRequiereEmpaque(rs.getBoolean("requiere_empaque"));
         Timestamp fi = rs.getTimestamp("fecha_ingreso");
         eq.setFechaIngreso(fi != null ? fi.toLocalDateTime() : null);
+        eq.setVersion(rs.getInt("version"));
         return eq;
     }
 
@@ -349,10 +352,17 @@ public class EquipoDAO implements DAO<Equipo, String> {
     /**
      * Actualiza el estado de un equipo existente.
      * Implementa el método actualizar de la interfaz DAO.
+     *
+     * <p>Escribe {@code estado} sin derivarlo de los materiales, así que no pasa por
+     * {@link EquipoMaterialHelper#recalcularEstadoEquipo} y tiene que mantener la columna
+     * {@code version} (V21) por su cuenta. Su único llamador es
+     * {@code EquipoService.actualizar}, que a su vez no tiene llamador — ni en
+     * {@code src/main} ni en {@code src/test}: la cadena entera está muerta. El bump va igual
+     * para que quien la reconecte mañana no herede un agujero en el token de bloqueo optimista.
      */
     @Override
     public boolean actualizar(Equipo equipo) {
-        String sql = "UPDATE equipos SET estado = ? WHERE id = ?";
+        String sql = "UPDATE equipos SET estado = ?, version = version + 1 WHERE id = ?";
         
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -384,6 +394,26 @@ public class EquipoDAO implements DAO<Equipo, String> {
             return filasEliminadas > 0;
         } catch (SQLException e) {
             throw new DatabaseException("Error al eliminar equipo con ID: " + id, e);
+        }
+    }
+
+    /**
+     * Borrado guardado para {@code Correcciones}: CAS de una sola sentencia contra la
+     * {@code version} que la pantalla tenía a la vista. No bumpea nada — la fila desaparece, así
+     * que no queda token que invalidar.
+     *
+     * <p>El {@link #eliminar(String)} de la interfaz sigue siendo el borrado ciego. No lo use
+     * ninguna ruta de Correcciones.
+     */
+    public void eliminarConVersion(int equipoId, int versionEsperada) {
+        String sql = "DELETE FROM equipos WHERE id = ? AND version = ?";
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, equipoId);
+            ps.setInt(2, versionEsperada);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CORRECCION);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al eliminar equipo con ID: " + equipoId, e);
         }
     }
 

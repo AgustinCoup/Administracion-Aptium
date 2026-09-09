@@ -1,0 +1,182 @@
+package com.example.features.lavadero.controller;
+
+import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.common.exception.ValidationException;
+import com.example.features.lavadero.model.ElementoCatalogo;
+import com.example.features.lavadero.model.ElementoClasificacion;
+import com.example.features.lavadero.view.PantallaClasificacionLavadero.NuevoElementoCatalogo;
+import com.example.features.lavadero.model.IngresoLavaderoResumen;
+import com.example.features.lavadero.service.ClasificacionLavaderoService;
+import com.example.features.lavadero.service.LavaderoService;
+import com.example.features.lavadero.view.PanelElementosClasificacion.ElementoFila;
+import com.example.features.lavadero.view.PantallaClasificacionLavadero;
+import com.example.ui.common.TareaUI;
+import com.example.ui.events.OnEquipoGuardadoListener;
+
+import javax.swing.*;
+import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Cablea la pantalla de clasificación de un ingreso de lavadero.
+ *
+ * <p><b>Todo acceso a la base va por {@link TareaUI}</b>: la validación del formulario y el
+ * armado de los elementos quedan en el hilo de la interfaz, el guardado va a fondo y el
+ * éxito —mensaje, limpieza, navegación y refresco— se aplica en {@code pintar}.
+ */
+public class ClasificacionController {
+
+    private final PantallaClasificacionLavadero panel;
+    private final LavaderoService               lavaderoService;
+    private final ClasificacionLavaderoService   clasificacionLavaderoService;
+    private final CardLayout                    navegador;
+    private final JPanel                        contenedor;
+    private final OnEquipoGuardadoListener      onGuardado;
+
+    /**
+     * Carga en vuelo, para descartar su resultado si se dispara otra. {@code cargarIngresosSinClasificar()}
+     * no pasa por {@code RefrescadorPantallas} (sin debounce): con F5 mantenido serían N lecturas
+     * concurrentes y ganaría la que termine última, no la última lanzada. Calcado de
+     * {@code CiclosController.cargaEnCurso}.
+     */
+    private TareaUI.Ejecucion cargaEnCurso = null;
+
+    /** El combo de ingresos y el catálogo se pintan juntos: la vista los reemplaza de una. */
+    private record DatosClasificacion(List<IngresoLavaderoResumen> ingresos,
+                                      List<ElementoCatalogo> catalogo) { }
+
+    public ClasificacionController(PantallaClasificacionLavadero panel,
+                                   LavaderoService lavaderoService,
+                                   ClasificacionLavaderoService clasificacionLavaderoService,
+                                   CardLayout navegador,
+                                   JPanel contenedor,
+                                   OnEquipoGuardadoListener onGuardado) {
+        this.panel      = panel;
+        this.lavaderoService = lavaderoService;
+        this.clasificacionLavaderoService = clasificacionLavaderoService;
+        this.navegador  = navegador;
+        this.contenedor = contenedor;
+        this.onGuardado = onGuardado;
+
+        panel.getBtnGuardar().addActionListener(e -> guardar());
+        panel.getBtnCancelar().addActionListener(e -> cancelar());
+        panel.getBtnNuevoCatalogo().addActionListener(e -> agregarElementoCatalogo());
+
+        // Botón "Actualizar" / F5: misma carga que dispara el listener del menú. Con guard,
+        // porque panel.refrescar() reconstruye el PanelElementosClasificacion (C1 del plan):
+        // lo cargado en el formulario se descarta.
+        panel.setGuardRefresco(
+            () -> !panel.getPanelElementos().getFilas().isEmpty(),
+            Constantes.Mensajes.REFRESCO_CLASIFICACION,
+            panel::limpiarFormulario);
+        panel.setAccionRefrescar(this::cargarIngresosSinClasificar);
+    }
+
+    public void cargarIngresosSinClasificar() {
+        if (cargaEnCurso != null) cargaEnCurso.cancelar();
+        cargaEnCurso = TareaUI.<DatosClasificacion>nueva()
+            .nombre("carga-clasificacion-lavadero")
+            .leer(() -> new DatosClasificacion(
+                lavaderoService.obtenerIngresosSinClasificar(),
+                clasificacionLavaderoService.obtenerCatalogo()))
+            .pintar(datos -> {
+                panel.refrescar(datos.ingresos(), datos.catalogo());
+                panel.marcarActualizado();
+            })
+            .siFalla(e -> panel.mostrarError(Constantes.Mensajes.ERROR_CARGAR_DATOS))
+            .lanzar();
+    }
+
+    private void guardar() {
+        IngresoLavaderoResumen ingreso = panel.getSelectedIngreso();
+        if (ingreso == null) {
+            panel.mostrarError("Debe seleccionar un ingreso.");
+            return;
+        }
+
+        List<ElementoFila> filas = panel.getPanelElementos().getFilas();
+        if (filas.isEmpty()) {
+            panel.mostrarError("Debe agregar al menos un elemento.");
+            return;
+        }
+
+        if (panel.getPanelElementos().tieneDuplicados()) {
+            panel.mostrarError("Hay elementos repetidos.\nUnifique las filas marcadas en rojo antes de guardar.");
+            return;
+        }
+
+        List<ElementoClasificacion> elementos = new ArrayList<>();
+        for (ElementoFila fila : filas) {
+            int elementoId = fila.cmbElemento.getItemAt(fila.cmbElemento.getSelectedIndex()).getId();
+            int cantidad   = (Integer) fila.spnCantidad.getValue();
+            elementos.add(new ElementoClasificacion(elementoId, cantidad));
+        }
+
+        // Copia para el hilo de fondo: el formulario se limpia en el EDT ni bien vuelve.
+        int ingresoId = ingreso.getId();
+        List<ElementoClasificacion> aGuardar = List.copyOf(elementos);
+
+        TareaUI.<Void>nueva()
+            .nombre("guardar-clasificacion-lavadero")
+            .antes(() -> panel.getBtnGuardar().setEnabled(false))
+            .despues(() -> panel.getBtnGuardar().setEnabled(true))
+            .leer(() -> { clasificacionLavaderoService.guardar(ingresoId, aGuardar); return null; })
+            .pintar(sinResultado -> finalizarGuardado())
+            .siFalla(this::mostrarFallo)
+            .lanzar();
+    }
+
+    private void finalizarGuardado() {
+        panel.mostrarInfo(Constantes.Mensajes.DATOS_GUARDADOS);
+        panel.limpiarFormulario();
+        cargarIngresosSinClasificar();
+        navegador.show(contenedor, Constantes.Pantallas.LAVADERO);
+        onGuardado.onEquipoGuardado();
+    }
+
+    /**
+     * Un choque no es un error: significa que otro operador ya clasificó ese ingreso mientras
+     * este lo estaba cargando. Se muestra el mensaje del conflicto —que dice qué pasó y qué
+     * hacer— y se relee el combo, del que el ingreso ya clasificado desaparece. El formulario
+     * <b>no</b> se limpia: lo que el operador tipeó es justamente lo que tiene que revisar
+     * contra lo que quedó cargado.
+     */
+    private void mostrarFallo(Throwable causa) {
+        if (causa instanceof ValidationException validacion) {
+            panel.mostrarError(String.join("\n", validacion.getValidationErrors()));
+            return;
+        }
+        if (causa instanceof ConflictoConcurrenciaException) {
+            panel.mostrarError(causa.getMessage());
+            cargarIngresosSinClasificar();
+            return;
+        }
+        panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_DATOS);
+    }
+
+    private void agregarElementoCatalogo() {
+        NuevoElementoCatalogo pedido = panel.pedirNuevoElementoCatalogo();
+        if (pedido == null) return;
+
+        TareaUI.<ElementoCatalogo>nueva()
+            .nombre("agregar-elemento-catalogo-lavadero")
+            .antes(() -> panel.getBtnNuevoCatalogo().setEnabled(false))
+            .despues(() -> panel.getBtnNuevoCatalogo().setEnabled(true))
+            .leer(() -> clasificacionLavaderoService.agregarElementoCatalogo(
+                pedido.nombre(), pedido.categoria()))
+            .pintar(nuevo -> {
+                panel.getPanelElementos().registrarElemento(nuevo);
+                panel.mostrarInfo(String.format(
+                    Constantes.Mensajes.ELEMENTO_CATALOGO_AGREGADO, nuevo.getNombre()));
+            })
+            .siFalla(this::mostrarFallo)
+            .lanzar();
+    }
+
+    private void cancelar() {
+        panel.limpiarFormulario();
+        navegador.show(contenedor, Constantes.Pantallas.LAVADERO);
+    }
+}

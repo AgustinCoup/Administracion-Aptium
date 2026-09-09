@@ -23,9 +23,6 @@ import java.util.List;
  */
 public abstract class SimpleEntityDAO<T extends Autocompletable> implements DAO<T, Integer> {
 
-    /** Clase de SQLState que el estándar SQL reserva para integrity constraint violation. */
-    private static final String SQLSTATE_VIOLACION_INTEGRIDAD = "23";
-
     protected abstract String getTableName();
     protected abstract String getEntityName();
     protected abstract T newInstance();
@@ -129,25 +126,12 @@ public abstract class SimpleEntityDAO<T extends Autocompletable> implements DAO<
             pstmt.setInt(1, id);
             return pstmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            if (esViolacionDeIntegridad(e)) {
+            if (ErroresSql.esViolacionDeIntegridad(e)) {
                 throw new ReferentialIntegrityException(
                     getEntityName() + " con ID " + id + " está referenciado por otras tablas", e);
             }
             throw new DatabaseException("Error al eliminar " + getEntityName() + " con ID: " + id, e);
         }
-    }
-
-    /**
-     * Detecta una violación de restricción de integridad sin depender del motor.
-     *
-     * El estándar SQL reserva la clase {@code 23} de SQLState para integrity
-     * constraint violation, así que esto cubre tanto MySQL ({@code 23000}) como
-     * H2 ({@code 23503}) sin usar códigos de error propietarios.
-     */
-    private boolean esViolacionDeIntegridad(SQLException e) {
-        if (e instanceof SQLIntegrityConstraintViolationException) return true;
-        String sqlState = e.getSQLState();
-        return sqlState != null && sqlState.startsWith(SQLSTATE_VIOLACION_INTEGRIDAD);
     }
 
     @Override

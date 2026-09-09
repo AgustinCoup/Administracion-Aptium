@@ -23,7 +23,7 @@ import java.util.List;
  * el botón "Ver Auditoría". El header estándar incluye el botón Volver que regresa
  * siempre a {@link Constantes.Pantallas#CORRECCIONES}.
  *
- * No habla con la capa de servicios: expone callbacks que CorreccionsController
+ * No habla con la capa de servicios: expone callbacks que CorreccionesController
  * cablea, y este le devuelve los registros ya leídos y filtrados.
  *
  * Filtro de tipos de cambio:

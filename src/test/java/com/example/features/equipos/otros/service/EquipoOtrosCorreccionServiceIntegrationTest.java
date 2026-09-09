@@ -64,7 +64,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
 
     @Test
     void modificarCantidadRemito_valido_actualizaRemitoCantidadYAudita() {
-        assertTrue(service.modificarCantidadRemito(equipoRemito.getId(), 10, "correccion"));
+        assertTrue(service.modificarCantidadRemito(equipoRemito.getId(), 10, 0, "correccion"));
 
         EquipoOtros recargado = equipoOtrosDAO.obtenerPorId(equipoRemito.getId());
         assertEquals(10, recargado.getRemitoCantidad());
@@ -74,10 +74,10 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
 
     @Test
     void modificarCantidadRemito_conFilasMateriales_lanzaValidation() {
-        service.agregarMaterial(equipoRemito.getId(), "Elementos", 2, "setup");
+        service.agregarMaterial(equipoRemito.getId(), "Elementos", 2, 0, "setup");
 
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadRemito(equipoRemito.getId(), 20, "correccion"));
+            () -> service.modificarCantidadRemito(equipoRemito.getId(), 20, 0, "correccion"));
     }
 
     // ── modificarCantidadMaterial ────────────────────────────────────────────
@@ -85,7 +85,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
     @Test
     void modificarCantidadMaterial_valido_actualizaYAudita() {
         assertTrue(service.modificarCantidadMaterial(
-            equipoDetalles.getId(), materialId, 7, "correccion cantidad"));
+            equipoDetalles.getId(), materialId, 7, 0, "correccion cantidad"));
 
         EquipoOtros recargado = equipoOtrosDAO.obtenerPorId(equipoDetalles.getId());
         assertEquals(7, recargado.getMateriales().get(0).getCantidad());
@@ -96,7 +96,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
     @Test
     void modificarCantidadMaterial_materialNoExiste_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.modificarCantidadMaterial(equipoDetalles.getId(), 9999, 5, "motivo"));
+            () -> service.modificarCantidadMaterial(equipoDetalles.getId(), 9999, 5, 0, "motivo"));
     }
 
     // ── agregarMaterial ──────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
     @Test
     void agregarMaterial_valido_insertaMaterialYAudita() {
         assertTrue(service.agregarMaterial(
-            equipoDetalles.getId(), "TestNuevoMat", 2, "reposicion"));
+            equipoDetalles.getId(), "TestNuevoMat", 2, 0, "reposicion"));
 
         EquipoOtros recargado = equipoOtrosDAO.obtenerPorId(equipoDetalles.getId());
         assertEquals(2, recargado.getMateriales().size());
@@ -118,7 +118,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
 
     @Test
     void eliminarMaterial_valido_eliminaYAudita() throws SQLException {
-        assertTrue(service.eliminarMaterial(equipoDetalles.getId(), "TestMat", "motivo baja"));
+        assertTrue(service.eliminarMaterial(equipoDetalles.getId(), "TestMat", 0, "motivo baja"));
 
         EquipoOtros recargado = equipoOtrosDAO.obtenerPorId(equipoDetalles.getId());
         assertTrue(recargado.getMateriales().isEmpty());
@@ -131,7 +131,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
     @Test
     void eliminarMaterial_sinMaterialesConDescripcion_lanzaValidation() {
         assertThrows(ValidationException.class,
-            () -> service.eliminarMaterial(equipoDetalles.getId(), "NoExiste", "motivo"));
+            () -> service.eliminarMaterial(equipoDetalles.getId(), "NoExiste", 0, "motivo"));
     }
 
     // ── eliminarEquipo ───────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
     @Test
     void eliminarEquipo_valido_eliminaEquipoYAudita() throws SQLException {
         int id = equipoDetalles.getId();
-        assertTrue(service.eliminarEquipo(id, "baja por error"));
+        assertTrue(service.eliminarEquipo(id, 0, "baja por error"));
 
         assertNull(equipoOtrosDAO.obtenerPorId(id));
 
@@ -153,7 +153,7 @@ class EquipoOtrosCorreccionServiceIntegrationTest extends AbstractDAOTest {
         int id = equipoDetalles.getId();
         int cantMateriales = equipoDetalles.getMateriales().size();
 
-        service.eliminarEquipo(id, "motivo");
+        service.eliminarEquipo(id, 0, "motivo");
 
         assertEquals(cantMateriales, contarFilas(
             "SELECT COUNT(*) FROM materiales_eliminados WHERE equipo_id_original = " + id));

@@ -1,5 +1,8 @@
 package com.example.features.lotes.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.dao.ErroresSql;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.dao.EquipoMaterialHelper;
 import com.example.features.equipos.otros.dao.EquipoOtrosMaterialHelper;
@@ -22,6 +25,34 @@ import java.util.Map;
 import java.util.Set;
 
 public class LoteDAO {
+
+    /** Cuántas veces se recalcula la secuencia antes de darse por vencido. Ver {@link #lanzarLote}. */
+    private static final int MAX_INTENTOS_SECUENCIA = 3;
+
+    /**
+     * El {@code INSERT INTO lotes} violó una restricción de integridad. Interna al DAO.
+     *
+     * <p>Extiende {@link RuntimeException} y no {@link SQLException} a propósito:
+     * {@link #intentarLanzarLote} tiene un {@code catch (SQLException)} que la traduciría a
+     * {@link DatabaseException} antes de que el bucle de reintentos la viera, y el reintento no se
+     * dispararía nunca.</p>
+     *
+     * <p>Lleva el {@code idNegocio} que se intentó para que el bucle pueda averiguar, ya fuera de la
+     * transacción, si la restricción violada fue el {@code UNIQUE} o la FK a {@code autoclaves}.</p>
+     */
+    private static final class SecuenciaDuplicadaException extends RuntimeException {
+        private final String idNegocio;
+        private final SQLException causaSql;
+
+        SecuenciaDuplicadaException(String idNegocio, SQLException causaSql) {
+            super("Violación de integridad al insertar el lote " + idNegocio, causaSql);
+            this.idNegocio = idNegocio;
+            this.causaSql  = causaSql;
+        }
+
+        String getIdNegocio()    { return idNegocio; }
+        SQLException getCausaSql() { return causaSql; }
+    }
 
     // ── Consultas ────────────────────────────────────────────────────────────
 
@@ -386,6 +417,28 @@ public class LoteDAO {
         }
     }
 
+    /**
+     * Lanza un lote, reintentando si la secuencia que calculó ya se la llevó otro operador.
+     *
+     * <p><b>Por qué hay reintento acá y en ninguna guarda.</b> {@link #obtenerSiguienteSecuencia}
+     * es un {@code MAX(secuencia) + 1}: dos lanzamientos simultáneos calculan el mismo número y el
+     * segundo choca contra el {@code UNIQUE (id_negocio)}. Eso <b>no</b> es un lost update — no hay
+     * ningún dato que el operador haya visto y se esté pisando, sólo una identidad que hay que
+     * asignar. Recalcularla y volver a intentar da exactamente el resultado que el operador pidió,
+     * así que reintentar es correcto. En una guarda no lo sería: ahí el {@code 0 filas} significa
+     * que la realidad cambió, y reintentar pisaría el trabajo del otro.</p>
+     *
+     * <p><b>Qué NO se reintenta.</b> El bucle sólo captura {@link SecuenciaDuplicadaException}.
+     * Un {@link ConflictoConcurrenciaException} de las guardas de materiales propaga en el acto.</p>
+     *
+     * <p><b>Qué cubre en MySQL real, y qué no.</b> Con dos lanzamientos simultáneos el segundo
+     * {@code INSERT} <b>bloquea</b> en el índice único hasta que el primero termina; recién ahí sale
+     * la clase {@code 23} y el reintento hace su trabajo. Ése es el caso común, porque estas
+     * transacciones son cortas. Si el primero tarda más que {@code innodb_lock_wait_timeout}, lo que
+     * sale es un <i>lock wait timeout</i> ({@code 40001}/{@code HY000}), que <b>no</b> se reintenta y
+     * se sigue reportando como {@link DatabaseException}: reintentar una espera de lock agotada es
+     * apilar minutos de espera sobre una base ya trabada.</p>
+     */
     public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
                            List<LoteMovimiento> movimientos,
                            Map<Integer, Integer> volumenesPorIngreso) {
@@ -393,6 +446,51 @@ public class LoteDAO {
             throw new IllegalArgumentException("La lista de movimientos no puede ser nula o vacía");
         }
 
+        for (int intento = 1; intento <= MAX_INTENTOS_SECUENCIA; intento++) {
+            try {
+                return intentarLanzarLote(autoclaveNombre, capacidadTotal, capacidadUsada,
+                                          movimientos, volumenesPorIngreso);
+            } catch (SecuenciaDuplicadaException e) {
+                // ── LA LECTURA VA ACÁ AFUERA A PROPÓSITO. NO LA MUEVA ADENTRO DEL INTENTO. ──
+                // La clase 23 del INSERT INTO lotes no dice QUÉ restricción se violó: puede ser el
+                // UNIQUE (id_negocio) — el choque de secuencia que este bucle resuelve — o la FK a
+                // autoclaves (V1__baseline.sql:61), que un autoclave borrado o renombrado dispara en
+                // la MISMA sentencia. Sin discriminar, un problema de autoclave se llevaría los tres
+                // intentos y terminaría con un cartel de "conflicto de secuencia" que diagnostica
+                // cualquier cosa menos el problema.
+                //
+                // El chequeo tiene que correr sobre una conexión nueva y DESPUÉS de que la
+                // transacción del intento revirtió. Adentro del intento leería el snapshot que esa
+                // transacción fijó en su primera lectura (obtenerSiguienteSecuencia), y bajo el
+                // REPEATABLE READ de MySQL la fila que el otro operador committeó es INVISIBLE: el
+                // chequeo daría vacío, concluiría "no era el duplicado" y el reintento no se
+                // dispararía NUNCA en producción. Que el INSERT sí haya visto la fila no es
+                // contradicción: la verificación de unicidad del índice no pasa por el snapshot.
+                //
+                // Y los tests NO defienden esto: H2 corre en READ COMMITTED, ve la fila ajena esté
+                // el SELECT adentro o afuera, así que la versión rota queda verde. Lo único que
+                // protege esta decisión es este comentario.
+                if (!existeIdNegocio(e.getIdNegocio())) {
+                    throw new DatabaseException(
+                        "Error al lanzar lote para autoclave: " + autoclaveNombre, e.getCausaSql());
+                }
+                // Era el duplicado de secuencia: el próximo intento la recalcula con la fila ajena
+                // ya visible.
+            }
+        }
+        throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_SECUENCIA_LOTE);
+    }
+
+    /**
+     * Un intento de lanzamiento, con su propia transacción.
+     *
+     * <p>El {@code try (TransactionalConnection …)} va acá adentro y no en el bucle: si los intentos
+     * compartieran la transacción, el reintento releería el mismo {@code MAX(secuencia)} — el del
+     * snapshot ya fijado — y chocaría para siempre contra el mismo {@code id_negocio}.</p>
+     */
+    private Lote intentarLanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
+                                    List<LoteMovimiento> movimientos,
+                                    Map<Integer, Integer> volumenesPorIngreso) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
 
@@ -444,7 +542,17 @@ public class LoteDAO {
 
     // ── Helpers privados de LoteDAO ──────────────────────────────────────────
 
-    private int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
+    /**
+     * Próxima secuencia del año, como {@code MAX(secuencia) + 1}.
+     *
+     * <p><b>Es package-private y no {@code private} por una sola razón: el test del reintento.</b>
+     * El bucle de {@link #lanzarLote} sólo avanza si entre dos intentos aparece una fila que otro
+     * operador committeó — y en un test secuencial la base no cambia sola, así que sin un punto
+     * donde simular "A leyó el MAX antes de que B commiteara" el camino feliz del reintento no
+     * tiene test posible (ver {@code LoteDAOTest}). No la use ningún otro colaborador: la secuencia
+     * se calcula acá adentro, dentro de la transacción del intento.</p>
+     */
+    int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
         try (PreparedStatement pstmt = conn.prepareStatement(
                 "SELECT COALESCE(MAX(secuencia), 0) AS max_seq FROM lotes WHERE anio = ?")) {
             pstmt.setInt(1, anio);
@@ -453,6 +561,30 @@ public class LoteDAO {
             }
         }
         return 1;
+    }
+
+    /**
+     * ¿Ya existe un lote con ese {@code id_negocio}?
+     *
+     * <p>Abre su <b>propia</b> conexión del pool a propósito: no recibe la del intento fallido —
+     * que además ya está cerrada — porque el punto de esta lectura es ver el estado committeado por
+     * el otro operador, y bajo {@code REPEATABLE READ} el snapshot de aquella transacción no lo
+     * incluye. Ver el comentario largo en {@link #lanzarLote}.</p>
+     *
+     * <p>Es un {@code SELECT} común, sin {@code FOR UPDATE}: no hay nada que bloquear — la fila es
+     * del lote ajeno y no se va a tocar.</p>
+     */
+    private boolean existeIdNegocio(String idNegocio) {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(
+                 "SELECT 1 FROM lotes WHERE id_negocio = ?")) {
+            pstmt.setString(1, idNegocio);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al verificar el id de negocio del lote: " + idNegocio, e);
+        }
     }
 
     private String construirIdNegocio(int anio, int secuencia) {
@@ -565,10 +697,41 @@ public class LoteDAO {
         }
     }
 
+    /**
+     * Rechaza el movimiento si el estado leído {@code FOR UPDATE} no coincide con el que la
+     * pantalla mostraba, o si el material ya está asignado a un lote todavía abierto. Las dos
+     * condiciones son el mismo <i>lost update</i>: el staging se armó sobre un snapshot que ya no
+     * vale.
+     *
+     * <p>El {@code lote_id} sólo cuenta si apunta a un lote <b>activo</b> ({@code fecha_fin IS
+     * NULL}): {@code marcarLoteFallo} revierte el estado del material pero deja el {@code lote_id}
+     * apuntando al lote fallido, y ese material sí es relanzable.
+     */
+    private void guardarConcurrencia(Connection conn, String estadoActual, Integer loteIdActual,
+                                     LoteMovimiento movimiento) throws SQLException {
+        EstadoEquipo esperado = movimiento.getEstadoOrigenEsperado();
+        boolean estadoCambio = esperado == null
+            || estadoActual == null
+            || !estadoActual.equalsIgnoreCase(esperado.getNombre());
+        if (estadoCambio || (loteIdActual != null && loteSigueActivo(conn, loteIdActual))) {
+            throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_LOTE);
+        }
+    }
+
+    private boolean loteSigueActivo(Connection conn, int loteId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM lotes WHERE id = ? AND fecha_fin IS NULL")) {
+            ps.setInt(1, loteId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
     private void aplicarMovimientoLote(Connection conn, int loteId,
                                        LoteMovimiento movimiento) throws SQLException {
         String sqlSelect =
-            "SELECT codigo_catalogo, cantidad, estado " +
+            "SELECT codigo_catalogo, cantidad, estado, lote_id " +
             "FROM equipo_materiales WHERE id = ? AND equipo_id = ? FOR UPDATE";
         String sqlInsert =
             "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado, lote_id) " +
@@ -581,6 +744,7 @@ public class LoteDAO {
         int codigo;
         int cantidadActual;
         String estadoActual;
+        Integer loteIdActual;
 
         try (PreparedStatement pstmt = conn.prepareStatement(sqlSelect)) {
             pstmt.setInt(1, materialId);
@@ -590,8 +754,15 @@ public class LoteDAO {
                 codigo = rs.getInt("codigo_catalogo");
                 cantidadActual = rs.getInt("cantidad");
                 estadoActual = rs.getString("estado");
+                int l = rs.getInt("lote_id");
+                loteIdActual = rs.wasNull() ? null : l;
             }
         }
+
+        // Guarda de concurrencia, ANTES de validar la cantidad: si el estado cambió o el material
+        // ya está en otro lote abierto, el saldo que vio el operador es de otra realidad y
+        // "cantidad inválida" sería un mensaje engañoso. El throw revierte el lote entero.
+        guardarConcurrencia(conn, estadoActual, loteIdActual, movimiento);
 
         if (cantidadMover <= 0 || cantidadMover > cantidadActual) {
             throw new SQLException("Cantidad inválida para mover en lote: " + materialId);
@@ -624,6 +795,13 @@ public class LoteDAO {
         }
     }
 
+    /**
+     * Inserta la cabecera del lote.
+     *
+     * <p>El {@code catch} está acotado al {@code executeUpdate()} de <b>esta</b> sentencia: una
+     * violación de integridad de otra sentencia de la transacción no tiene nada que ver con la
+     * secuencia y no debe confundirse con ella.</p>
+     */
     private int insertarLote(Connection conn, String idNegocio, int anio, int secuencia,
                              String autoclaveNombre, int capacidadTotal, int capacidadUsada) throws SQLException {
         String sql = "INSERT INTO lotes (id_negocio, anio, secuencia, autoclave_nombre, " +
@@ -636,7 +814,16 @@ public class LoteDAO {
             pstmt.setString(4, autoclaveNombre);
             pstmt.setInt(5, capacidadTotal);
             pstmt.setInt(6, capacidadUsada);
-            pstmt.executeUpdate();
+            try {
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                // Puede ser el UNIQUE (id_negocio) o la FK a autoclaves: quién fue lo decide
+                // lanzarLote, fuera de esta transacción.
+                if (ErroresSql.esViolacionDeIntegridad(e)) {
+                    throw new SecuenciaDuplicadaException(idNegocio, e);
+                }
+                throw e;
+            }
             try (ResultSet rs = pstmt.getGeneratedKeys()) {
                 if (rs.next()) return rs.getInt(1);
             }
@@ -711,8 +898,11 @@ public class LoteDAO {
             // REMITO: leer estado actual y cantidad total original
             String estadoActual;
             int remitoCantidad;
+            // FOR UPDATE por el mismo motivo que en el camino de DETALLES: la guarda de abajo
+            // compara contra este `estado`, y sin el lock dos lotes armados a la vez lo leerían
+            // los dos del mismo snapshot y pasarían los dos.
             try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT estado, remito_cantidad FROM equipo_otros WHERE id = ?")) {
+                    "SELECT estado, remito_cantidad FROM equipo_otros WHERE id = ? FOR UPDATE")) {
                 ps.setInt(1, equipoOtrosId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) throw new SQLException("equipo_otros no encontrado: " + equipoOtrosId);
@@ -720,6 +910,14 @@ public class LoteDAO {
                     remitoCantidad = rs.getInt("remito_cantidad");
                 }
             }
+
+            // Guarda de concurrencia del REMITO: su guarda es el estado del encabezado (no hay
+            // fila de material, y el lote_id vive en las filas materializadas). Dos lotes partiendo
+            // el mismo REMITO en paralelo es un caso legítimo — el equipo sigue en su estado hasta
+            // que se procesan todos los elementos —, así que sólo choca si el encabezado ya avanzó
+            // entero a otro estado.
+            guardarConcurrencia(conn, estadoActual, null, movimiento);
+
             int catalogoId = obtenerOCrearCatalogoOtros(conn, "Elementos");
 
             // Tras el primer split existen filas reales en equipo_otros_materiales.
@@ -762,13 +960,14 @@ public class LoteDAO {
 
         // DETALLES: fila real
         String sqlSelect =
-            "SELECT catalogo_otros_id, descripcion, cantidad, estado " +
+            "SELECT catalogo_otros_id, descripcion, cantidad, estado, lote_id " +
             "FROM equipo_otros_materiales WHERE id = ? AND equipo_otros_id = ? FOR UPDATE";
 
         int    catalogoId;
         String descripcion;
         int    cantidadActual;
         String estadoActual;
+        Integer loteIdActual;
 
         try (PreparedStatement ps = conn.prepareStatement(sqlSelect)) {
             ps.setInt(1, materialId);
@@ -779,8 +978,12 @@ public class LoteDAO {
                 descripcion    = rs.getString("descripcion");
                 cantidadActual = rs.getInt("cantidad");
                 estadoActual   = rs.getString("estado");
+                int l = rs.getInt("lote_id");
+                loteIdActual   = rs.wasNull() ? null : l;
             }
         }
+
+        guardarConcurrencia(conn, estadoActual, loteIdActual, movimiento);
 
         if (cantidadMover <= 0 || cantidadMover > cantidadActual)
             throw new SQLException("Cantidad inválida para mover en lote otros: " + materialId);
@@ -845,37 +1048,13 @@ public class LoteDAO {
         throw new SQLException("No se pudo obtener o crear catalogo_otros: " + descripcion);
     }
 
+    /**
+     * Deriva el estado del equipo "otros" desde sus materiales.
+     * Delega en {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}, igual que
+     * {@link #recalcularEstadoEquipo} delega en el helper de ortopedias.
+     */
     private void recalcularEstadoEquipoOtros(Connection conn, int equipoOtrosId) throws SQLException {
-        String sqlCalc =
-            "SELECT MIN(CASE " +
-            "  WHEN estado='Nuevo'         THEN 1 " +
-            "  WHEN estado='Lavando'       THEN 2 " +
-            "  WHEN estado='Lavado'        THEN 3 " +
-            "  WHEN estado='Empaquetado'   THEN 4 " +
-            "  WHEN estado='Esterilizando' THEN 5 " +
-            "  WHEN estado='Esterilizado'  THEN 6 " +
-            "  WHEN estado='Entregado'     THEN 7 " +
-            "  ELSE 1 END) AS orden_minimo " +
-            "FROM equipo_otros_materiales WHERE equipo_otros_id = ?";
-
-        EstadoEquipo nuevoEstado = EstadoEquipo.NUEVO;
-        try (PreparedStatement ps = conn.prepareStatement(sqlCalc)) {
-            ps.setInt(1, equipoOtrosId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next() && rs.getObject("orden_minimo") != null) {
-                    int orden = rs.getInt("orden_minimo");
-                    for (EstadoEquipo e : EstadoEquipo.values()) {
-                        if (e.getOrden() == orden) { nuevoEstado = e; break; }
-                    }
-                }
-            }
-        }
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE equipo_otros SET estado = ? WHERE id = ?")) {
-            ps.setString(1, nuevoEstado.getNombre());
-            ps.setInt(2, equipoOtrosId);
-            ps.executeUpdate();
-        }
+        EquipoOtrosMaterialHelper.recalcularEstadoEquipo(conn, equipoOtrosId);
     }
 
     private void actualizarEstadoMaterialOtros(Connection conn, int materialId,

@@ -19,6 +19,7 @@ import com.example.ui.common.PanelHeader;
 import com.example.ui.common.TableStyler;
 
 public class PantallaEquiposParaEntregar extends JPanel {
+    private PanelHeader header;
     private InstitucionEntregaTableModel modeloInstituciones;
     private MaterialEntregaTableModel modeloMateriales;
     private JTable tablaInstituciones;
@@ -30,8 +31,8 @@ public class PantallaEquiposParaEntregar extends JPanel {
         setLayout(new BorderLayout());
 
         // Header reutilizable con título y botón de navegación
-        PanelHeader header = new PanelHeader(
-            Constantes.Titulos.EQUIPOS_PARA_ENTREGAR, 
+        header = new PanelHeader(
+            Constantes.Titulos.EQUIPOS_PARA_ENTREGAR,
             navegador, 
             contenedor, 
             Constantes.Pantallas.ESTERILIZACION
@@ -101,6 +102,16 @@ public class PantallaEquiposParaEntregar extends JPanel {
         add(panelBotones, BorderLayout.SOUTH);
     }
 
+    /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
+    public void setAccionRefrescar(Runnable accion) {
+        header.setAccionRefrescar(accion);
+    }
+
+    /** Muestra la hora del último pintado en el header. */
+    public void marcarActualizado() {
+        header.marcarActualizado();
+    }
+
     private ListSelectionListener crearListenerSeleccionInstitucion() {
         return e -> {
             if (e.getValueIsAdjusting()) return;
@@ -133,6 +144,11 @@ public class PantallaEquiposParaEntregar extends JPanel {
 
     public void setOnEntregarInstitucion(ActionListener listener) {
         btnEntregarInstitucion.addActionListener(listener);
+    }
+
+    /** Se deshabilita mientras corre la entrega para evitar el doble envío. */
+    public void setEntregarInstitucionEnabled(boolean habilitado) {
+        btnEntregarInstitucion.setEnabled(habilitado);
     }
 
     public List<InstitucionEntregaItem> getInstitucionesSeleccionadas() {

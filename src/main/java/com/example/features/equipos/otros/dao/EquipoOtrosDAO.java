@@ -1,5 +1,8 @@
 package com.example.features.equipos.otros.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.otros.model.EquipoOtros;
@@ -47,7 +50,7 @@ public class EquipoOtrosDAO {
         "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
         "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
         "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-        "eo.volumen_equipo, eo.fecha_ingreso " +
+        "eo.volumen_equipo, eo.fecha_ingreso, eo.version " +
         "FROM equipo_otros eo " +
         "JOIN clientes c ON eo.nro_cliente = c.id ";
 
@@ -89,120 +92,130 @@ public class EquipoOtrosDAO {
         try {
             conn = ConnectionPool.getConnection();
             conn.setAutoCommit(false);
-
-            // 1. Insertar encabezado
-            String sqlEquipo =
-                "INSERT INTO equipo_otros " +
-                "(nro_cliente, estado, requiere_lavado, requiere_empaque, " +
-                " tipo_ingreso, remito_cantidad, remito_observaciones) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?)";
-
-            int equipoId;
-            try (PreparedStatement ps = conn.prepareStatement(sqlEquipo, Statement.RETURN_GENERATED_KEYS)) {
-                ps.setInt   (1, equipo.getNroCliente());
-                ps.setString(2, equipo.getEstado().getNombre());
-                ps.setBoolean(3, equipo.isRequiereLavado());
-                ps.setBoolean(4, equipo.isRequiereEmpaque());
-                ps.setString(5, equipo.getTipoIngreso().getNombre());
-
-                if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
-                    ps.setInt(6, equipo.getRemitoCantidad());
-                    String obs = equipo.getRemitoObservaciones();
-                    if (obs != null && !obs.isBlank()) ps.setString(7, obs);
-                    else                               ps.setNull(7, Types.VARCHAR);
-                } else {
-                    ps.setNull(6, Types.INTEGER);
-                    ps.setNull(7, Types.VARCHAR);
-                }
-
-                ps.executeUpdate();
-                try (ResultSet rs = ps.getGeneratedKeys()) {
-                    if (rs.next()) {
-                        equipoId = rs.getInt(1);
-                        equipo.setId(equipoId);
-                    } else {
-                        throw new SQLException("No se generó ID para equipo_otros");
-                    }
-                }
-            }
-
-            // 2a. Modo REMITO: generar y persistir remito_id
-            if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
-                String fechaHoy = LocalDate.now().format(FMT_REMITO);
-                int secuencial;
-                try (PreparedStatement psCount = conn.prepareStatement(
-                        "SELECT COUNT(*) FROM equipo_otros WHERE remito_id LIKE ?")) {
-                    psCount.setString(1, fechaHoy + "-%");
-                    try (ResultSet rsCount = psCount.executeQuery()) {
-                        secuencial = rsCount.next() ? rsCount.getInt(1) + 1 : 1;
-                    }
-                }
-                String remitoId = fechaHoy + "-" + secuencial;
-                equipo.setRemitoId(remitoId);
-
-                String sqlRem = "UPDATE equipo_otros SET remito_id = ? WHERE id = ?";
-                try (PreparedStatement ps = conn.prepareStatement(sqlRem)) {
-                    ps.setString(1, remitoId);
-                    ps.setInt   (2, equipoId);
-                    ps.executeUpdate();
-                }
-                log.info("Remito generado: {}", remitoId);
-
-            // 2b. Modo DETALLES: insertar materiales con sus movimientos
-            } else {
-                String sqlMat =
-                    "INSERT INTO equipo_otros_materiales " +
-                    "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
-                    "VALUES (?, ?, ?, ?, ?)";
-                String sqlMov =
-                    "INSERT INTO otros_material_movimientos " +
-                    "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
-                    "VALUES (?, ?, ?, ?, ?)";
-
-                try (PreparedStatement psMat = conn.prepareStatement(sqlMat, Statement.RETURN_GENERATED_KEYS);
-                     PreparedStatement psMov = conn.prepareStatement(sqlMov)) {
-
-                    for (MaterialOtros mat : equipo.getMateriales()) {
-                        int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, mat.getDescripcion());
-                        mat.setCatalogoOtrosId(catalogoId);
-
-                        psMat.setInt   (1, equipoId);
-                        psMat.setInt   (2, catalogoId);
-                        psMat.setString(3, mat.getDescripcion());
-                        psMat.setInt   (4, mat.getCantidad());
-                        psMat.setString(5, mat.getEstado().getNombre());
-                        psMat.executeUpdate();
-
-                        int materialId;
-                        try (ResultSet rsMat = psMat.getGeneratedKeys()) {
-                            if (rsMat.next()) {
-                                materialId = rsMat.getInt(1);
-                                mat.setId(materialId);
-                            } else {
-                                throw new SQLException("No se generó ID para equipo_otros_materiales");
-                            }
-                        }
-
-                        psMov.setInt   (1, materialId);
-                        psMov.setInt   (2, equipoId);
-                        psMov.setInt   (3, mat.getCantidad());
-                        psMov.setNull  (4, Types.VARCHAR);
-                        psMov.setString(5, mat.getEstado().getNombre());
-                        psMov.executeUpdate();
-                    }
-                }
-            }
-
+            int equipoId = guardar(conn, equipo);
             conn.commit();
             log.info("EquipoOtros guardado: ID={}, tipo={}", equipoId, equipo.getTipoIngreso());
             return true;
-
         } catch (SQLException e) {
             rollback(conn, e);
             return false;
         } finally {
             close(conn);
         }
+    }
+
+    /**
+     * Persiste un equipo "otros" dentro de una transacción ya abierta por el llamador.
+     * No commitea ni cierra: eso es responsabilidad de quien abrió la conexión.
+     * Propaga SQLException para que el llamador pueda abortar toda la transacción.
+     *
+     * @return id generado de equipo_otros (también seteado en el modelo)
+     */
+    public int guardar(Connection conn, EquipoOtros equipo) throws SQLException {
+        // 1. Insertar encabezado
+        String sqlEquipo =
+            "INSERT INTO equipo_otros " +
+            "(nro_cliente, estado, requiere_lavado, requiere_empaque, " +
+            " tipo_ingreso, remito_cantidad, remito_observaciones) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+        int equipoId;
+        try (PreparedStatement ps = conn.prepareStatement(sqlEquipo, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt   (1, equipo.getNroCliente());
+            ps.setString(2, equipo.getEstado().getNombre());
+            ps.setBoolean(3, equipo.isRequiereLavado());
+            ps.setBoolean(4, equipo.isRequiereEmpaque());
+            ps.setString(5, equipo.getTipoIngreso().getNombre());
+
+            if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
+                ps.setInt(6, equipo.getRemitoCantidad());
+                String obs = equipo.getRemitoObservaciones();
+                if (obs != null && !obs.isBlank()) ps.setString(7, obs);
+                else                               ps.setNull(7, Types.VARCHAR);
+            } else {
+                ps.setNull(6, Types.INTEGER);
+                ps.setNull(7, Types.VARCHAR);
+            }
+
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) {
+                    equipoId = rs.getInt(1);
+                    equipo.setId(equipoId);
+                } else {
+                    throw new SQLException("No se generó ID para equipo_otros");
+                }
+            }
+        }
+
+        // 2a. Modo REMITO: generar y persistir remito_id
+        if (equipo.getTipoIngreso() == TipoIngresoOtros.REMITO) {
+            String fechaHoy = LocalDate.now().format(FMT_REMITO);
+            int secuencial;
+            try (PreparedStatement psCount = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM equipo_otros WHERE remito_id LIKE ?")) {
+                psCount.setString(1, fechaHoy + "-%");
+                try (ResultSet rsCount = psCount.executeQuery()) {
+                    secuencial = rsCount.next() ? rsCount.getInt(1) + 1 : 1;
+                }
+            }
+            String remitoId = fechaHoy + "-" + secuencial;
+            equipo.setRemitoId(remitoId);
+
+            String sqlRem = "UPDATE equipo_otros SET remito_id = ? WHERE id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(sqlRem)) {
+                ps.setString(1, remitoId);
+                ps.setInt   (2, equipoId);
+                ps.executeUpdate();
+            }
+            log.info("Remito generado: {}", remitoId);
+
+        // 2b. Modo DETALLES: insertar materiales con sus movimientos
+        } else {
+            String sqlMat =
+                "INSERT INTO equipo_otros_materiales " +
+                "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
+                "VALUES (?, ?, ?, ?, ?)";
+            String sqlMov =
+                "INSERT INTO otros_material_movimientos " +
+                "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
+                "VALUES (?, ?, ?, ?, ?)";
+
+            try (PreparedStatement psMat = conn.prepareStatement(sqlMat, Statement.RETURN_GENERATED_KEYS);
+                 PreparedStatement psMov = conn.prepareStatement(sqlMov)) {
+
+                for (MaterialOtros mat : equipo.getMateriales()) {
+                    int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, mat.getDescripcion());
+                    mat.setCatalogoOtrosId(catalogoId);
+
+                    psMat.setInt   (1, equipoId);
+                    psMat.setInt   (2, catalogoId);
+                    psMat.setString(3, mat.getDescripcion());
+                    psMat.setInt   (4, mat.getCantidad());
+                    psMat.setString(5, mat.getEstado().getNombre());
+                    psMat.executeUpdate();
+
+                    int materialId;
+                    try (ResultSet rsMat = psMat.getGeneratedKeys()) {
+                        if (rsMat.next()) {
+                            materialId = rsMat.getInt(1);
+                            mat.setId(materialId);
+                        } else {
+                            throw new SQLException("No se generó ID para equipo_otros_materiales");
+                        }
+                    }
+
+                    psMov.setInt   (1, materialId);
+                    psMov.setInt   (2, equipoId);
+                    psMov.setInt   (3, mat.getCantidad());
+                    psMov.setNull  (4, Types.VARCHAR);
+                    psMov.setString(5, mat.getEstado().getNombre());
+                    psMov.executeUpdate();
+                }
+            }
+        }
+
+        return equipoId;
     }
 
     // ── Lectura ───────────────────────────────────────────────────────────────
@@ -322,10 +335,15 @@ public class EquipoOtrosDAO {
                         EstadoEquipo.ESTERILIZADO.getNombre(), EstadoEquipo.ENTREGADO);
                 }
 
-                // REMITO sin filas reales: actualizar estado del equipo si está esterilizado
+                // REMITO sin filas reales: actualizar estado del equipo si está esterilizado.
+                // Este camino escribe equipo_otros.estado SIN pasar por recalcularEstadoEquipo (no
+                // hay materiales que recalcular), así que el bump de version va acá a mano — si no,
+                // un equipo entregado por esta vía quedaría con una version que miente.
+                // 0 filas afectadas = el equipo no estaba esterilizado: es un skip legítimo dentro
+                // de una entrega masiva por cliente, no un conflicto.
                 if (mats.isEmpty()) {
                     try (PreparedStatement ps = conn.prepareStatement(
-                            "UPDATE equipo_otros SET estado = ? " +
+                            "UPDATE equipo_otros SET estado = ?, version = version + 1 " +
                             "WHERE id = ? AND estado = ?")) {
                         ps.setString(1, EstadoEquipo.ENTREGADO.getNombre());
                         ps.setInt(2, equipoId);
@@ -352,8 +370,17 @@ public class EquipoOtrosDAO {
     /**
      * Persiste una lista de movimientos sobre materiales de un equipo "otros".
      * Replica la lógica de
-     * {@link com.example.features.equipos.ortopedias.dao.MaterialDAO#aplicarMovimientos}
-     * pero sobre las tablas de "otros".
+     * {@link com.example.features.equipos.ortopedias.dao.MaterialDAO#aplicarMovimientos},
+     * incluida su <b>guarda de concurrencia</b>: cada {@link MovimientoMaterial} trae el
+     * {@code estadoOrigenEsperado} que la pantalla mostraba al tildarlo y se compara contra la
+     * relectura {@code FOR UPDATE} antes de escribir. Si cambió, otro operador se adelantó y se
+     * lanza {@link ConflictoConcurrenciaException}, que revierte la transacción entera de este
+     * equipo. Vale para las dos ramas: el material real y el REMITO sin filas (donde el estado
+     * esperado es el del encabezado).
+     *
+     * <p>La {@code version} del agregado <b>no</b> se usa como guarda acá, igual que en el camino
+     * de ortopedias y por el mismo motivo (ver el javadoc de {@code MaterialDAO.aplicarMovimientos}):
+     * haría chocar a dos operadores avanzando materiales distintos del mismo equipo.
      */
     public boolean aplicarMovimientos(int equipoId,
                                       List<MovimientoMaterial> movimientos) {
@@ -402,9 +429,14 @@ public class EquipoOtrosDAO {
                 if (matId == 0) {
                     String estadoActual;
                     int remitoCant;
+                    // FOR UPDATE, igual que la relectura del material en el camino de DETALLES y
+                    // en ortopedias: sin el lock, dos operadores abren su transacción a la vez,
+                    // leen los dos el mismo `estado` del snapshot y la guarda de abajo los deja
+                    // pasar a los dos. El lock los serializa y el segundo lee el estado que el
+                    // primero ya commiteó.
                     try (PreparedStatement ps = conn.prepareStatement(
                             "SELECT estado, remito_cantidad, requiere_lavado, requiere_empaque " +
-                            "FROM equipo_otros WHERE id = ?")) {
+                            "FROM equipo_otros WHERE id = ? FOR UPDATE")) {
                         ps.setInt(1, equipoId);
                         try (ResultSet rs = ps.executeQuery()) {
                             if (!rs.next()) throw new SQLException("equipo_otros no encontrado: " + equipoId);
@@ -418,6 +450,14 @@ public class EquipoOtrosDAO {
                             }
                         }
                     }
+
+                    // Guarda de concurrencia (REMITO): el estado esperado es el del encabezado.
+                    EstadoEquipo estadoEsperadoRemito = mov.getEstadoOrigenEsperado();
+                    if (estadoEsperadoRemito == null
+                            || !estadoActual.equalsIgnoreCase(estadoEsperadoRemito.getNombre())) {
+                        throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+                    }
+
                     if (dest == null) throw new SQLException("Estado final para REMITO: " + equipoId);
 
                     int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, "Elementos");
@@ -473,6 +513,12 @@ public class EquipoOtrosDAO {
 
                 anyDetalles = true;
 
+                // Guarda de concurrencia: va ANTES de validar la cantidad, igual que en ortopedias.
+                EstadoEquipo estadoEsperado = mov.getEstadoOrigenEsperado();
+                if (estadoEsperado == null || !estadoActual.equalsIgnoreCase(estadoEsperado.getNombre())) {
+                    throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+                }
+
                 if (cantidadMover <= 0 || cantidadMover > cantidadActual)
                     throw new SQLException("Cantidad inválida para mover: " + matId);
 
@@ -521,6 +567,11 @@ public class EquipoOtrosDAO {
             conn.commit();
             return true;
 
+        } catch (ConflictoConcurrenciaException e) {
+            // Choque de concurrencia: rollback y propagación. El controller lo distingue de un
+            // fallo técnico (que baja como return false).
+            rollback(conn, e);
+            throw e;
         } catch (SQLException e) {
             rollback(conn, e);
             return false;
@@ -610,15 +661,23 @@ public class EquipoOtrosDAO {
     /**
      * Actualiza {@code remito_cantidad} del encabezado.
      *
+     * <p>Ruta de {@code Correcciones}: CAS de una sola sentencia contra la {@code version} que el
+     * operador tenía a la vista. Bumpea a mano en la misma sentencia porque el recálculo del
+     * helper no aplica: deriva {@code estado} desde los materiales, y sobre un REMITO sin
+     * materiales reales pisaría la cabecera con {@code NUEVO}. Ver la auditoría en
+     * {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}.
+     *
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la fila ya no tiene esa version
      * @throws DatabaseException si falla el UPDATE
      */
-    public void actualizarCantidadRemito(int equipoId, int cantidadNueva) {
+    public void actualizarCantidadRemito(int equipoId, int cantidadNueva, int versionEsperada) {
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "UPDATE equipo_otros SET remito_cantidad = ? WHERE id = ?")) {
+                 "UPDATE equipo_otros SET remito_cantidad = ?, version = version + 1 WHERE id = ? AND version = ?")) {
             ps.setInt(1, cantidadNueva);
             ps.setInt(2, equipoId);
-            ps.executeUpdate();
+            ps.setInt(3, versionEsperada);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CORRECCION);
         } catch (SQLException e) {
             log.error("Error al modificar remito_cantidad equipo={}", equipoId, e);
             throw new DatabaseException("Error al modificar la cantidad del remito", e);
@@ -628,17 +687,30 @@ public class EquipoOtrosDAO {
     /**
      * Actualiza la cantidad de un material del equipo.
      *
+     * <p>Ruta de {@code Correcciones}: guarda por {@code version} del agregado, primero, antes de
+     * tocar el detalle. Con {@code 0} filas no se commitea — el rollback del try-with-resources
+     * revierte el bump.
+     *
      * @return filas afectadas — 0 si el material no pertenece al equipo
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la version no matchea
      * @throws DatabaseException si falla el UPDATE
      */
-    public int actualizarCantidadMaterial(int equipoId, int materialId, int cantidadNueva) {
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "UPDATE equipo_otros_materiales SET cantidad = ? WHERE id = ? AND equipo_otros_id = ?")) {
-            ps.setInt(1, cantidadNueva);
-            ps.setInt(2, materialId);
-            ps.setInt(3, equipoId);
-            return ps.executeUpdate();
+    public int actualizarCantidadMaterial(int equipoId, int materialId, int cantidadNueva, int versionEsperada) {
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            EquipoOtrosMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
+
+            int filas;
+            try (PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE equipo_otros_materiales SET cantidad = ? WHERE id = ? AND equipo_otros_id = ?")) {
+                ps.setInt(1, cantidadNueva);
+                ps.setInt(2, materialId);
+                ps.setInt(3, equipoId);
+                filas = ps.executeUpdate();
+            }
+            if (filas == 0) return 0;   // sin commit: el bump guardado se revierte con la transacción
+            tx.commit();
+            return filas;
         } catch (SQLException e) {
             log.error("Error al modificar cantidad material={}", materialId, e);
             throw new DatabaseException("Error al modificar la cantidad del material", e);
@@ -649,10 +721,13 @@ public class EquipoOtrosDAO {
      * Inserta un material en estado NUEVO junto con su movimiento inicial,
      * en una única transacción. Crea la entrada de catálogo si no existe.
      *
+     * <p>Ruta de {@code Correcciones}: bump guardado como primera sentencia.
+     *
      * @return id del material insertado
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la version no matchea
      * @throws DatabaseException si falla la transacción
      */
-    public int insertarMaterial(int equipoId, String descripcion, int cantidad) {
+    public int insertarMaterial(int equipoId, String descripcion, int cantidad, int versionEsperada) {
         String sqlMat =
             "INSERT INTO equipo_otros_materiales " +
             "(equipo_otros_id, catalogo_otros_id, descripcion, cantidad, estado) " +
@@ -664,6 +739,7 @@ public class EquipoOtrosDAO {
 
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            EquipoOtrosMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
 
             int catalogoId = catalogoOtrosDAO.obtenerOCrear(conn, descripcion);
 
@@ -701,16 +777,31 @@ public class EquipoOtrosDAO {
     /**
      * Elimina todas las filas del equipo con la descripción indicada.
      *
+     * <p>Ruta de {@code Correcciones}: bump guardado primero. Un {@code DELETE} de 0 filas después
+     * de un bump que sí matcheó es contradictorio — la version dice que nadie tocó el equipo, pero
+     * las filas que la pantalla mostraba no están — así que lleva su propio
+     * {@link ControlConcurrencia#exigirFilaAfectada}: no commitea el bump y nada aguas abajo se
+     * ejecuta.
+     *
      * @return filas eliminadas
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la version no matchea o el DELETE no encuentra fila
      * @throws DatabaseException si falla el DELETE
      */
-    public int eliminarMaterialesPorDescripcion(int equipoId, String descripcion) {
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "DELETE FROM equipo_otros_materiales WHERE equipo_otros_id = ? AND descripcion = ?")) {
-            ps.setInt   (1, equipoId);
-            ps.setString(2, descripcion);
-            return ps.executeUpdate();
+    public int eliminarMaterialesPorDescripcion(int equipoId, String descripcion, int versionEsperada) {
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            EquipoOtrosMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
+
+            int filas;
+            try (PreparedStatement ps = conn.prepareStatement(
+                     "DELETE FROM equipo_otros_materiales WHERE equipo_otros_id = ? AND descripcion = ?")) {
+                ps.setInt   (1, equipoId);
+                ps.setString(2, descripcion);
+                filas = ps.executeUpdate();
+            }
+            ControlConcurrencia.exigirFilaAfectada(filas, Constantes.Mensajes.CONFLICTO_CORRECCION);
+            tx.commit();
+            return filas;
         } catch (SQLException e) {
             log.error("Error al eliminar material descripcion='{}' equipo={}", descripcion, equipoId, e);
             throw new DatabaseException("Error al eliminar el material", e);
@@ -720,14 +811,19 @@ public class EquipoOtrosDAO {
     /**
      * Elimina el encabezado del equipo.
      *
+     * <p>Ruta de {@code Correcciones}: CAS de una sola sentencia. No bumpea nada — la fila
+     * desaparece, así que no queda token que invalidar.
+     *
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la version no matchea
      * @throws DatabaseException si falla el DELETE
      */
-    public void eliminarEquipo(int equipoId) {
+    public void eliminarEquipo(int equipoId, int versionEsperada) {
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "DELETE FROM equipo_otros WHERE id = ?")) {
+                 "DELETE FROM equipo_otros WHERE id = ? AND version = ?")) {
             ps.setInt(1, equipoId);
-            ps.executeUpdate();
+            ps.setInt(2, versionEsperada);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CORRECCION);
         } catch (SQLException e) {
             log.error("Error al eliminar equipo_otros id={}", equipoId, e);
             throw new DatabaseException("Error al eliminar el equipo", e);
@@ -751,6 +847,7 @@ public class EquipoOtrosDAO {
         eq.setVolumenEquipo(rs.getInt("volumen_equipo"));
         Timestamp fi = rs.getTimestamp("fecha_ingreso");
         eq.setFechaIngreso(fi != null ? fi.toLocalDateTime() : null);
+        eq.setVersion(rs.getInt("version"));
         return eq;
     }
 
@@ -787,38 +884,13 @@ public class EquipoOtrosDAO {
         }
     }
 
+    /**
+     * Deriva el estado del equipo desde sus materiales.
+     * Delega en {@link EquipoOtrosMaterialHelper#recalcularEstadoEquipo}, que es la fuente
+     * única del cálculo — {@code LoteDAO} llega al mismo lugar por el otro camino.
+     */
     private void recalcularEstadoEquipo(Connection conn, int equipoId) throws SQLException {
-        String sqlCalc =
-            "SELECT MIN(CASE " +
-            "  WHEN estado='Nuevo'         THEN 1 " +
-            "  WHEN estado='Lavando'       THEN 2 " +
-            "  WHEN estado='Lavado'        THEN 3 " +
-            "  WHEN estado='Empaquetado'   THEN 4 " +
-            "  WHEN estado='Esterilizando' THEN 5 " +
-            "  WHEN estado='Esterilizado'  THEN 6 " +
-            "  WHEN estado='Entregado'     THEN 7 " +
-            "  ELSE 1 END) AS orden_minimo " +
-            "FROM equipo_otros_materiales WHERE equipo_otros_id = ?";
-
-        EstadoEquipo nuevoEstado = EstadoEquipo.NUEVO;
-        try (PreparedStatement ps = conn.prepareStatement(sqlCalc)) {
-            ps.setInt(1, equipoId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    int orden = rs.getInt("orden_minimo");
-                    for (EstadoEquipo e : EstadoEquipo.values()) {
-                        if (e.getOrden() == orden) { nuevoEstado = e; break; }
-                    }
-                }
-            }
-        }
-
-        String sqlUpd = "UPDATE equipo_otros SET estado = ? WHERE id = ?";
-        try (PreparedStatement ps = conn.prepareStatement(sqlUpd)) {
-            ps.setString(1, nuevoEstado.getNombre());
-            ps.setInt   (2, equipoId);
-            ps.executeUpdate();
-        }
+        EquipoOtrosMaterialHelper.recalcularEstadoEquipo(conn, equipoId);
     }
 
     /**

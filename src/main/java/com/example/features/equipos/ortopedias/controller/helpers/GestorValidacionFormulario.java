@@ -12,7 +12,7 @@ import javax.swing.JOptionPane;
  * Responsabilidad: Validar que todos los campos requeridos estén correctamente completados.
  * 
  * Separación de responsabilidades: 
- * - OrthopediaInputController solo coordina, no valida
+ * - IngresoOrtopediaController solo coordina, no valida
  * - Esta clase contiene toda la lógica de validación
  */
 public class GestorValidacionFormulario {

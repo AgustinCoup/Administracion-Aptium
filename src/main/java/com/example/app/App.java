@@ -1,6 +1,8 @@
 package com.example.app;
 
 import com.example.app.ui.AppController;
+import com.example.common.constants.Constantes;
+import com.example.common.exception.EsquemaDesactualizadoException;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.infrastructure.db.EdtGuard;
 import java.awt.EventQueue;
@@ -81,6 +83,10 @@ public class App {
             try {
                 ConnectionPool.inicializarEsquema();
                 log.info("✓ Esquema BD verificado/creado");
+            } catch (EsquemaDesactualizadoException e) {
+                log.error("✗ Base más nueva que este build", e);
+                mostrarErrorYSalir(Constantes.Mensajes.TITULO_ESQUEMA_DESACTUALIZADO, e.getMessage());
+                return;
             } catch (Exception e) {
                 log.error("✗ Error inicializando esquema BD", e);
                 mostrarErrorYSalir("Error en Base de Datos",

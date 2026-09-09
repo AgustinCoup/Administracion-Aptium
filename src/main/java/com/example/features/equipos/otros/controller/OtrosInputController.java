@@ -11,6 +11,7 @@ import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.equipos.otros.view.PantallaIngresoOtros;
 import com.example.features.equipos.otros.view.helpers.PanelMaterialesOtros;
+import com.example.ui.common.TareaUI;
 import com.example.ui.events.OnEquipoGuardadoListener;
 
 import java.awt.CardLayout;
@@ -104,22 +105,31 @@ public class OtrosInputController extends EquipoInputControllerBase<PantallaIngr
     }
 
     private void persistir(EquipoOtros equipo) {
-        boolean exito;
-        try {
-            exito = equipoOtrosService.guardarEquipo(equipo);
-        } catch (ValidationException ex) {
-            String msg = ex.getValidationErrors().isEmpty()
+        TareaUI.<Boolean>nueva()
+            .nombre("guardar-ingreso-otros")
+            .leer(() -> equipoOtrosService.guardarEquipo(equipo))
+            .pintar(exito -> {
+                String mensajeExito = equipo.getTipoIngreso() == TipoIngresoOtros.REMITO
+                    ? String.format(Constantes.Mensajes.REMITO_GUARDADO_OK, equipo.getRemitoId())
+                    : Constantes.Mensajes.DATOS_GUARDADOS;
+                manejarResultadoGuardado(exito, mensajeExito,
+                    Constantes.Pantallas.INGRESO_OTROS, equipo.getTipoIngreso());
+            })
+            .siFalla(this::mostrarErrorPersistencia)
+            .antes(()  -> panel.getBtnGuardar().setEnabled(false))
+            .despues(() -> panel.getBtnGuardar().setEnabled(true))
+            .lanzar();
+    }
+
+    /** {@link ValidationException} de negocio → aviso con el detalle; cualquier otra → error genérico. */
+    private void mostrarErrorPersistencia(Throwable e) {
+        if (e instanceof ValidationException ve) {
+            String msg = ve.getValidationErrors().isEmpty()
                 ? "Error de validación."
-                : String.join("\n", ex.getValidationErrors());
+                : String.join("\n", ve.getValidationErrors());
             panel.mostrarAdvertencia(msg);
             return;
         }
-
-        String mensajeExito = equipo.getTipoIngreso() == TipoIngresoOtros.REMITO
-            ? String.format(Constantes.Mensajes.REMITO_GUARDADO_OK, equipo.getRemitoId())
-            : Constantes.Mensajes.DATOS_GUARDADOS;
-
-        manejarResultadoGuardado(exito, mensajeExito,
-            Constantes.Pantallas.INGRESO_OTROS, equipo.getTipoIngreso());
+        panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_EQUIPO);
     }
 }

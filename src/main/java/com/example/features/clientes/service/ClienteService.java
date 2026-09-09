@@ -92,12 +92,12 @@ public class ClienteService {
         return clienteDAO.guardar(cliente);
     }
 
-    public void eliminarCliente(int id) {
+    public void eliminarCliente(int id, String nombre) {
         if (!clienteDAO.existe(id)) {
             throw new ResourceNotFoundException("Cliente", id);
         }
         try {
-            clienteDAO.eliminar(id);
+            clienteDAO.eliminarConNombre(id, nombre);
         } catch (ReferentialIntegrityException e) {
             throw new ApplicationException(
                 "El cliente tiene equipos o ingresos registrados y no puede eliminarse.", e);
@@ -106,7 +106,7 @@ public class ClienteService {
         }
     }
 
-    public void fusionarClientes(int idOrigen, int idDestino) {
+    public void fusionarClientes(int idOrigen, String nombreOrigen, int idDestino, String nombreDestino) {
         if (idOrigen == idDestino) {
             throw new ValidationException("No se puede fusionar un cliente consigo mismo");
         }
@@ -116,7 +116,7 @@ public class ClienteService {
         if (!clienteDAO.existe(idDestino)) {
             throw new ResourceNotFoundException("Cliente destino", idDestino);
         }
-        fusionClientesDAO.fusionar(idOrigen, idDestino);
+        fusionClientesDAO.fusionar(idOrigen, nombreOrigen, idDestino, nombreDestino);
     }
 }
 

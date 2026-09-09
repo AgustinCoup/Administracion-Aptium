@@ -55,39 +55,6 @@ public final class Validador {
     }
     
     /**
-     * Valida que un campo de correo electrónico sea válido.
-     * Validación básica que verifica formato estándar.
-     * 
-     * @param email Correo a validar
-     * @return true si tiene formato válido de email
-     */
-    public static boolean esEmailValido(String email) {
-        if (!noEstaVacio(email)) {
-            return false;
-        }
-        String patronEmail = "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$";
-        return email.matches(patronEmail);
-    }
-    
-    /**
-     * Valida que un valor sea un número entero positivo.
-     * 
-     * @param valor Valor a validar
-     * @return true si es un número entero positivo
-     */
-    public static boolean esNumeroPositivo(String valor) {
-        if (!noEstaVacio(valor)) {
-            return false;
-        }
-        try {
-            int num = Integer.parseInt(valor.trim());
-            return num > 0;
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-    
-    /**
      * Valida que un texto contenga solo números.
      * 
      * @param texto Texto a validar

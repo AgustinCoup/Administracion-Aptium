@@ -33,6 +33,19 @@ public class Equipo implements EquipoRegistrableInterface {
     private boolean requiereLavado;
     private boolean requiereEmpaque;
 
+    /**
+     * Token de bloqueo optimista del agregado (columna {@code version}, V21). Lo incrementa
+     * {@code EquipoMaterialHelper.recalcularEstadoEquipo} en cada escritura sobre el equipo.
+     *
+     * <p>Se mantiene pero <b>no se usa como guarda en ningún {@code WHERE}</b>; su consumidor
+     * previsto es {@code Correcciones}. Ver el javadoc del helper.
+     *
+     * <p>No es {@code final} porque esta clase es un bean mutable que el mapeo del DAO llena
+     * campo por campo desde el constructor sin argumentos, igual que {@code estado} o
+     * {@code fechaIngreso}. El setter existe para ese mapeo.
+     */
+    private int version;
+
     // Constructor
     public Equipo() {
         this.materiales = new ArrayList<>();
@@ -216,4 +229,8 @@ public class Equipo implements EquipoRegistrableInterface {
 
     public LocalDateTime getFechaIngreso()               { return fechaIngreso; }
     public void    setFechaIngreso(LocalDateTime v)      { this.fechaIngreso = v; }
+
+    /** Token de bloqueo optimista del agregado; ver el campo {@link #version}. */
+    public int     getVersion()                          { return version; }
+    public void    setVersion(int version)               { this.version = version; }
 }

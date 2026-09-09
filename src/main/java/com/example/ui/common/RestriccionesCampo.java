@@ -53,4 +53,30 @@ public final class RestriccionesCampo {
             }
         });
     }
+
+    /**
+     * Restringe el campo a dígitos con hasta un separador decimal (coma o punto),
+     * igual al formato que aceptan los parsers de litros de Lavadero (reemplazan
+     * "," por "." antes de BigDecimal).
+     *
+     * @param campo JTextField al que se le aplicará la restricción
+     */
+    public static void soloNumerosDecimales(JTextField campo) {
+        campo.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyTyped(KeyEvent e) {
+                char c = e.getKeyChar();
+                boolean esSeparador = c == ',' || c == '.';
+                boolean yaTieneSeparador = campo.getText().indexOf(',') >= 0
+                    || campo.getText().indexOf('.') >= 0;
+                if (esSeparador && yaTieneSeparador) {
+                    e.consume();
+                    return;
+                }
+                if (!Character.isDigit(c) && !esSeparador && c != KeyEvent.VK_BACK_SPACE) {
+                    e.consume();
+                }
+            }
+        });
+    }
 }

@@ -1,5 +1,7 @@
 package com.example.features.equipos.ortopedias.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +33,23 @@ public final class EquipoMaterialHelper {
      * persiste el resultado en la tabla {@code equipos}.
      *
      * <p>Debe llamarse dentro de una transacción activa.
+     *
+     * <p><b>Acá se mantiene la columna {@code version}</b> (V21), el token de bloqueo optimista
+     * del agregado. Va en este único lugar y no en cada {@code UPDATE} desperdigado porque toda
+     * ruta que muta materiales de un equipo termina llamando a este recálculo: la cobertura sale
+     * de una línea en vez de veinte que alguien va a olvidar de tocar el día que agregue una ruta
+     * nueva. Las excepciones auditadas están listadas abajo.
+     *
+     * <p><b>La {@code version} se mantiene pero NO se usa como guarda en ningún {@code WHERE} de
+     * este helper ni de Registrar Estado.</b> Es deliberado: guardar con la version del agregado
+     * haría chocar a dos operadores que avanzan materiales <em>distintos</em> del mismo equipo, un
+     * falso positivo que enseña al operador a ignorar el cartel. La protección real de esos flujos
+     * es la guarda sobre el {@code estado} de cada material, que es precisa. El consumidor
+     * previsto de la columna es {@code Correcciones}, que reemplaza la fila entera desde un
+     * snapshot — <b>y ahí sí es guarda</b>: el falso positivo que acá se descarta se acepta a
+     * propósito en Correcciones, por ser una pantalla de uso esporádico y auditado (ver el javadoc
+     * de {@link com.example.features.equipos.otros.dao.EquipoOtrosMaterialHelper#recalcularEstadoEquipo},
+     * que lleva la auditoría completa de rutas).
      *
      * @param conn      conexión activa con {@code autoCommit=false}
      * @param equipoId  ID del equipo a recalcular
@@ -65,10 +84,63 @@ public final class EquipoMaterialHelper {
         }
 
         try (PreparedStatement pstmt = conn.prepareStatement(
-                "UPDATE equipos SET estado = ? WHERE id = ?")) {
+                "UPDATE equipos SET estado = ?, version = version + 1 WHERE id = ?")) {
             pstmt.setString(1, estadoEquipo.getNombre());
             pstmt.setInt(2, equipoId);
             pstmt.executeUpdate();
+        }
+    }
+
+    // ── bumpVersion ───────────────────────────────────────────────────────────
+
+    /**
+     * Incrementa la {@code version} del agregado sin tocar ninguna otra columna, sin comparar
+     * contra un valor esperado.
+     *
+     * <p>Las rutas de {@code Correcciones}, que mutan {@code equipo_materiales} sin pasar por
+     * {@link #recalcularEstadoEquipo}, usan en cambio {@link #bumpVersionConGuarda}: además de
+     * mantener el token, lo usan como guarda de bloqueo optimista contra la {@code version} que
+     * el operador tenía a la vista.
+     *
+     * <p>Llamar dentro de la misma transacción que la escritura que lo motiva.
+     *
+     * @param conn     conexión activa con {@code autoCommit=false}
+     * @param equipoId ID del equipo cuyo token se invalida
+     */
+    public static void bumpVersion(Connection conn, int equipoId) throws SQLException {
+        try (PreparedStatement pstmt = conn.prepareStatement(
+                "UPDATE equipos SET version = version + 1 WHERE id = ?")) {
+            pstmt.setInt(1, equipoId);
+            pstmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Incrementa la {@code version} del agregado, guardada: sólo si sigue valiendo lo que el
+     * operador tenía a la vista.
+     *
+     * <p>CAS de una sola sentencia. {@code 0} filas afectadas significa que otro operador tocó
+     * el equipo desde que la pantalla lo leyó — {@link ControlConcurrencia#exigirFilaAfectada}
+     * revierte la transacción entera con {@link com.example.common.exception.ConflictoConcurrenciaException}.
+     *
+     * <p>Va <b>primero</b>, antes de tocar el detalle: toma el lock de la fila de {@code equipos}
+     * al principio, así que un segundo operador se bloquea ahí y no hace trabajo que va a
+     * descartar.
+     *
+     * <p>Llamar dentro de la misma transacción que la escritura que lo motiva.
+     *
+     * @param conn            conexión activa con {@code autoCommit=false}
+     * @param equipoId        ID del equipo cuyo token se invalida
+     * @param versionEsperada la {@code version} que el operador tenía a la vista
+     * @throws com.example.common.exception.ConflictoConcurrenciaException si la fila ya no tiene esa version
+     */
+    public static void bumpVersionConGuarda(Connection conn, int equipoId, int versionEsperada)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE equipos SET version = version + 1 WHERE id = ? AND version = ?")) {
+            ps.setInt(1, equipoId);
+            ps.setInt(2, versionEsperada);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CORRECCION);
         }
     }
 

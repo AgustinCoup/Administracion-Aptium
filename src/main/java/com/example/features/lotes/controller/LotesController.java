@@ -2,10 +2,12 @@ package com.example.features.lotes.controller;
 
 import com.example.app.ui.DatosOperativos;
 import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.features.lotes.controller.helpers.AgrupadorIngresosLote;
 import com.example.features.lotes.controller.helpers.ConstructorMaterialesDisponibles;
 import com.example.features.lotes.controller.helpers.EstadoStaging;
 import com.example.features.lotes.controller.helpers.ReconciliadorPendientes;
+import com.example.ui.common.dnd.LocalObjectFlavors;
 import com.example.ui.common.dnd.MultiRowTableTransferHandler;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.features.autoclaves.model.Autoclave;
@@ -18,6 +20,7 @@ import com.example.features.lotes.model.LoteMovimiento;
 import com.example.features.lotes.model.OcupacionAutoclave;
 import com.example.features.lotes.service.LoteService;
 import com.example.features.lotes.view.PantallaLotes;
+import com.example.ui.common.TareaUI;
 import com.example.ui.dialogs.CantidadDialogHelper;
 import com.example.features.lotes.view.helpers.AutoclaveItem;
 import com.example.features.lotes.view.helpers.DialogoVolumenesIngreso;
@@ -36,11 +39,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 
 public class LotesController {
 
     private static final Logger log = LoggerFactory.getLogger(LotesController.class);
 
+    private final PantallaLotes       pantallaLotes;
     private final PanelLotesContenido panel;
     private final LoteService         loteService;
     private final Runnable            solicitarRefresco;
@@ -83,18 +88,7 @@ public class LotesController {
     private boolean arrastrandoDesdeAutoclave = false;
 
     // DataFlavor que transporta la List<MaterialLoteItem> arrastrada en la misma JVM
-    public static final DataFlavor MATERIAL_LOTE_FLAVOR;
-
-    static {
-        DataFlavor flavor = null;
-        try {
-            flavor = new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType +
-                    ";class=\"" + java.util.List.class.getName() + "\"");
-        } catch (ClassNotFoundException e) {
-            log.error("No se pudo registrar el DataFlavor para drag-and-drop", e);
-        }
-        MATERIAL_LOTE_FLAVOR = flavor;
-    }
+    public static final DataFlavor MATERIAL_LOTE_FLAVOR = LocalObjectFlavors.forList();
 
     /**
      * Alcance: ciclo de vida del lote (lanzar, finalizar, marcar fallo). Los
@@ -105,6 +99,7 @@ public class LotesController {
                            LoteService loteService,
                            OnEstadosActualizadosListener listener,
                            Runnable solicitarRefresco) {
+        this.pantallaLotes     = pantallaLotes;
         this.panel             = pantallaLotes.getPanelContenido();
         this.loteService       = loteService;
         this.solicitarRefresco = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
@@ -118,6 +113,13 @@ public class LotesController {
             Constantes.Mensajes.GUARD_LOTES_CAMBIOS,
             this::descartarCambiosPendientes
         );
+
+        // Botón "Actualizar": reusa el mismo disparador del componentShown. El staging
+        // sobrevive al repintado (repintar() lo descuenta del snapshot), así que el guard
+        // avisa sin descartar nada — REFRESCO_LOTES lo dice, no GUARD_LOTES_CAMBIOS.
+        pantallaLotes.setGuardRefresco(this::tieneCambiosPendientes,
+                Constantes.Mensajes.REFRESCO_LOTES, null);
+        pantallaLotes.setAccionRefrescar(solicitarRefresco);
     }
 
     public void setOnEstadosActualizados(OnEstadosActualizadosListener listener) {
@@ -156,6 +158,13 @@ public class LotesController {
                 if (!dndConfigurado) {
                     SwingUtilities.invokeLater(() -> { configurarDnD(); dndConfigurado = true; });
                 }
+                // Releer al entrar, igual que las otras dos pantallas del grupo `operativo`
+                // (RegistrarEstado, EquiposParaEntregar). La única ruta de entrada es el botón
+                // "Gestionar Lotes" de Registrar Estado, y entre ese click y este show puede
+                // haber pasado el tiempo de permanencia del operador en la pantalla anterior:
+                // sin esto, el staging se arma sobre disponibles viejos. `repintar()` descuenta
+                // el staging del snapshot, así que un refresco con ítems ya arrastrados es seguro.
+                solicitarRefresco.run();
             }
         });
     }
@@ -164,6 +173,7 @@ public class LotesController {
     public void pintar(DatosOperativos datos) {
         this.ultimoSnapshot = datos;
         repintar();
+        pantallaLotes.marcarActualizado();
     }
 
     /**
@@ -474,21 +484,22 @@ public class LotesController {
         List<LoteMovimiento> movimientos = new ArrayList<>();
         for (MaterialLoteItem item : pendientes) {
             movimientos.add(new LoteMovimiento(
-                    item.getMaterialId(), item.getEquipoId(), item.getCantidad(), item.isEsOtros()));
+                    item.getMaterialId(), item.getEquipoId(), item.getCantidad(),
+                    item.isEsOtros(), item.getEstadoOrigen()));
         }
 
-        Lote lote = loteService.lanzarLote(autoclaveSeleccionado.getNombre(),
-                capacidadTotal, volumenFinal, movimientos, volumenesPorIngreso);
+        String nombreAutoclave     = autoclaveSeleccionado.getNombre();
+        Map<Integer, Integer> vols = volumenesPorIngreso;
+        int volFinal               = volumenFinal;
 
-        if (lote == null) {
-            panel.mostrarError("Error al lanzar el lote.");
-            return;
-        }
-
-        pendientesPorAutoclave.remove(autoclaveSeleccionado.getNombre());
-        solicitarRefresco.run();
-
-        if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
+        ejecutarAccionDeLote("lanzar-lote",
+            () -> loteService.lanzarLote(nombreAutoclave, capacidadTotal, volFinal, movimientos, vols) != null,
+            "Error al lanzar el lote.",
+            () -> pendientesPorAutoclave.remove(nombreAutoclave),
+            // Choque: el snapshot con el que se armó el staging ya no vale. Descartarlo entero
+            // (medio staging puede haber cambiado y el operador no sabe qué mitad) y recargar
+            // disponibles de la base — lo hace solo el refresco global.
+            pendientesPorAutoclave::clear);
     }
 
     /** Confirmación previa al refactor, vigente para lotes sin materiales "otros". */
@@ -580,14 +591,12 @@ public class LotesController {
         if (!panel.confirmar(Constantes.Mensajes.CONFIRMAR_FINALIZAR_LOTE,
                 Constantes.Mensajes.TITULO_CONFIRMAR_CAMBIOS)) return;
 
-        boolean exitoso = loteService.finalizarLote(autoclaveSeleccionado.getLoteId());
-        if (!exitoso) {
-            panel.mostrarError(Constantes.Mensajes.ERROR_FINALIZAR_LOTE);
-            return;
-        }
-
-        solicitarRefresco.run();
-        if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
+        Integer loteId = autoclaveSeleccionado.getLoteId();
+        ejecutarAccionDeLote("finalizar-lote",
+            () -> loteService.finalizarLote(loteId),
+            Constantes.Mensajes.ERROR_FINALIZAR_LOTE,
+            () -> { },
+            () -> { });
     }
 
     private void marcarLoteFallo() {
@@ -596,15 +605,65 @@ public class LotesController {
         if (!panel.confirmar(Constantes.Mensajes.CONFIRMAR_MARCAR_LOTE_FALLO,
                 Constantes.Mensajes.TITULO_CONFIRMAR_CAMBIOS)) return;
 
-        boolean exitoso = loteService.marcarLoteFallo(autoclaveSeleccionado.getLoteId());
-        if (!exitoso) {
-            panel.mostrarError(Constantes.Mensajes.ERROR_MARCAR_LOTE_FALLO);
-            return;
-        }
+        Integer loteId = autoclaveSeleccionado.getLoteId();
+        ejecutarAccionDeLote("marcar-lote-fallo",
+            () -> loteService.marcarLoteFallo(loteId),
+            Constantes.Mensajes.ERROR_MARCAR_LOTE_FALLO,
+            () -> panel.mostrarInfo(Constantes.Mensajes.LOTE_FALLO_OK),
+            () -> { });
+    }
 
-        panel.mostrarInfo(Constantes.Mensajes.LOTE_FALLO_OK);
-        solicitarRefresco.run();
+    /**
+     * Forma común de lanzar / finalizar / marcar-fallo. Los diálogos y la lectura
+     * del estado mutable ({@code autoclaveSeleccionado}, {@code pendientesPorAutoclave})
+     * ya ocurrieron en el hilo de UI; acá solo va la llamada al service. El éxito, el
+     * refresco global y la notificación se pintan de vuelta en el hilo de UI.
+     *
+     * @param accion       llamada al service; {@code false} = no se aplicó el cambio
+     * @param mensajeError qué mostrar si el service devuelve que no se aplicó o si falla
+     * @param alExito      efectos en el hilo de UI tras un service OK (además del refresco)
+     * @param alConflicto  efectos en el hilo de UI si el service lanza
+     *                     {@link ConflictoConcurrenciaException} (típicamente descartar el staging);
+     *                     además siempre se muestra el mensaje del conflicto y se dispara el refresco
+     */
+    private void ejecutarAccionDeLote(String nombreTarea, Callable<Boolean> accion,
+                                      String mensajeError, Runnable alExito, Runnable alConflicto) {
+        TareaUI.<Boolean>nueva()
+            .nombre(nombreTarea)
+            .leer(accion)
+            .pintar(aplicado -> {
+                if (Boolean.TRUE.equals(aplicado)) {
+                    alExito.run();
+                    solicitarRefresco.run();
+                    notificarEstadosActualizados();
+                } else {
+                    panel.mostrarError(mensajeError);
+                }
+            })
+            .siFalla(e -> {
+                if (e instanceof ConflictoConcurrenciaException) {
+                    alConflicto.run();
+                    panel.mostrarError(e.getMessage());
+                    solicitarRefresco.run();
+                } else {
+                    panel.mostrarError(mensajeError);
+                }
+            })
+            .antes(()  -> setBotonesAccionLoteEnabled(false))
+            // Recalcula los botones desde el estado actual (el refresco global,
+            // asíncrono, terminará de repintar cuando llegue su snapshot).
+            .despues(() -> onAutoclaveSeleccionado(autoclaveSeleccionado))
+            .lanzar();
+    }
+
+    private void notificarEstadosActualizados() {
         if (onEstadosActualizadosListener != null) onEstadosActualizadosListener.onEstadosActualizados();
+    }
+
+    private void setBotonesAccionLoteEnabled(boolean habilitado) {
+        panel.setLanzarEnabled(habilitado);
+        panel.setFinalizarEnabled(habilitado);
+        panel.setMarcarFalloEnabled(habilitado);
     }
 
     private int calcularCapacidadPendiente(String autoclaveNombre) {

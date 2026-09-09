@@ -8,7 +8,7 @@ import com.example.features.equipos.ortopedias.model.EstadoEquipo;
  * Interfaz común para todos los materiales que participan en el flujo
  * de estados (ortopedia y otros).
  *
- * Permite que {@link com.example.features.equipos.ortopedias.controller.RegistrarEstadoController}
+ * Permite que {@link com.example.features.equipos.common.controller.RegistrarEstadoController}
  * y los componentes de vista operen de forma uniforme sobre ambos tipos
  * sin conocer la implementación concreta.
  *

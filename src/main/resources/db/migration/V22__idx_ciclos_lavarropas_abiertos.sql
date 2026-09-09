@@ -1,0 +1,15 @@
+-- Índice compuesto para la guarda "este lavarropas no tiene ningún ciclo sin finalizar"
+-- (CicloLavaderoDAO.SQL_CICLO_ACTIVO_DE_LAVARROPAS), que es un SELECT ... FOR UPDATE.
+--
+-- idx_ciclos_lavarropas (V10) sólo cubre lavarropas_numero, así que el FOR UPDATE tomaba un
+-- bloqueo exclusivo sobre TODAS las filas históricas de ese lavarropas para encontrar la única
+-- que puede estar abierta. Con fecha_fin adentro del índice, el bloqueo cae sobre la fila abierta
+-- (o sobre su hueco, cuando no hay ninguna) y no sobre la historia entera.
+--
+-- El índice de V10 queda: es el prefijo izquierdo de éste y por lo tanto redundante, pero
+-- borrarlo no se puede escribir igual en MySQL 8 y en H2 2.2 (`DROP INDEX x ON t` vs
+-- `DROP INDEX x`), y la regla del repo es que todo el SQL corra idéntico en los dos. El costo de
+-- dejarlo es escritura en una tabla que crece una fila por ciclo lavado; el de romper el arranque
+-- de los tests, todo. Si algún día hace falta sacarlo, va en una migración propia con el dialecto
+-- resuelto.
+CREATE INDEX idx_ciclos_lavarropas_fin ON ciclos_lavadero (lavarropas_numero, fecha_fin);

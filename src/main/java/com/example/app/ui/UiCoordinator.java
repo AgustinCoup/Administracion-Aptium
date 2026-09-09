@@ -2,19 +2,28 @@ package com.example.app.ui;
 
 import com.example.app.AppContext;
 import com.example.common.constants.Constantes;
-import com.example.features.equipos.ortopedias.controller.CDEViewController;
-import com.example.features.equipos.ortopedias.controller.CorreccionsController;
-import com.example.features.equipos.ortopedias.controller.EquiposParaEntregarController;
-import com.example.features.equipos.ortopedias.controller.OrthopediaInputController;
-import com.example.features.equipos.ortopedias.controller.RegistrarEstadoController;
+import com.example.features.equipos.ortopedias.controller.EstadoProcesosController;
+import com.example.features.equipos.ortopedias.controller.CorreccionesController;
+import com.example.features.equipos.common.controller.EquiposParaEntregarController;
+import com.example.features.equipos.ortopedias.controller.IngresoOrtopediaController;
+import com.example.features.equipos.common.controller.RegistrarEstadoController;
 import com.example.features.equipos.controller.VerEquiposController;
 import com.example.features.equipos.otros.controller.OtrosInputController;
+import com.example.features.lavadero.controller.CiclosController;
+import com.example.features.lavadero.controller.ClasificacionController;
+import com.example.features.lavadero.controller.HistorialLavaderoController;
+import com.example.features.lavadero.controller.LavaderoController;
+import com.example.features.lavadero.controller.SalidasLavaderoController;
+import com.example.features.lavadero.controller.VerCiclosController;
+import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.model.IngresoHistorial;
 import com.example.features.ajustes.controller.AjustesController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
 import com.example.ui.events.OnEquipoGuardadoListener;
 import com.example.ui.events.OnEstadosActualizadosListener;
 import com.example.ui.shell.PantallaPrincipal;
+import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.JOptionPane;
 
@@ -24,7 +33,7 @@ import javax.swing.JOptionPane;
  * Responsabilidades:
  * - Instanciar cada controller con su vista y los servicios que necesita.
  * - Delegar inyecciones que un controller no puede hacerse a sí mismo
- *   (p. ej. inicializar PantallaAuditoria desde CorreccionsController).
+ *   (p. ej. inicializar PantallaAuditoria desde CorreccionesController).
  * - Cablear los listeners de navegación entre pantallas.
  * - Construir el Runnable de refresco global que cada controller dispara al modificar datos.
  *
@@ -51,22 +60,26 @@ public class UiCoordinator {
         //    y ellos necesitan poder pedirle una lectura. Se cablean después de crear
         //    ambos; hasta entonces solicitar() es un no-op.
         //
-        //    Son tres grupos con disparadores distintos, no un refresco global:
-        //      · operativo         → cada guardado; la cola activa, sin histórico.
-        //      · historial equipos → al abrir "Ver Equipos" o "Estado de procesos".
-        //      · historial lotes   → al abrir "Ver Lotes".
+        //    Son cinco grupos con disparadores distintos, no un refresco global:
+        //      · operativo          → cada guardado; la cola activa, sin histórico.
+        //      · historial equipos  → al abrir "Ver Equipos" o "Estado de procesos".
+        //      · historial lotes    → al abrir "Ver Lotes".
+        //      · historial ciclos   → al abrir "Ver Ciclos".
+        //      · historial lavadero → al abrir "Historial".
         //    Las pantallas de consulta se releen cuando el usuario las mira; antes
         //    se releían en cada guardado incluso estando ocultas.
         Disparador operativo         = new Disparador();
         Disparador historialEquipos  = new Disparador();
         Disparador historialLotes    = new Disparador();
+        Disparador historialCiclos   = new Disparador();
+        Disparador historialLavadero = new Disparador();
 
         OnEstadosActualizadosListener refrescarEstados = operativo::solicitar;
         OnEquipoGuardadoListener      refrescarEquipos = operativo::solicitar;
 
         // ── Controllers ──────────────────────────────────────────────────────
 
-        CDEViewController cdeViewController = new CDEViewController(
+        EstadoProcesosController cdeViewController = new EstadoProcesosController(
             vista.getPantallaVerCDEv2(), historialEquipos);
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
@@ -86,7 +99,7 @@ public class UiCoordinator {
                 refrescarEstados,
                 operativo);
 
-        CorreccionsController correccionesController = new CorreccionsController(
+        CorreccionesController correccionesController = new CorreccionesController(
             vista.getPantallaCorrecciones(),
             context.getEquipoCorreccionService(),
             context.getEquipoOtrosCorreccionService(),
@@ -102,6 +115,14 @@ public class UiCoordinator {
             vista.getPantallaVerLotes(),
             context.getLoteReporteService(),
             historialLotes);
+
+        VerCiclosController verCiclosController = new VerCiclosController(
+            vista.getPantallaVerCiclos(), historialCiclos);
+
+        HistorialLavaderoController historialLavaderoController = new HistorialLavaderoController(
+            vista.getPantallaHistorialLavadero(),
+            context.getHistorialLavaderoService(),
+            historialLavadero);
 
         VerEquiposController verEquiposController = new VerEquiposController(
             vista.getPantallaVerEquipos(),
@@ -128,9 +149,13 @@ public class UiCoordinator {
 
         historialLotes.cablear(crearRefrescadorHistorialLotes(verLotesController));
 
+        historialCiclos.cablear(crearRefrescadorHistorialCiclos(verCiclosController));
+
+        historialLavadero.cablear(crearRefrescadorHistorialLavadero(historialLavaderoController));
+
         correccionesController.setOnCambiosAplicados(operativo);
 
-        new OrthopediaInputController(
+        new IngresoOrtopediaController(
             vista.getPanelIngresoOrtopedia(),
             context.getClienteService(),
             context.getCatalogoService(),
@@ -151,6 +176,58 @@ public class UiCoordinator {
             vista.getContenedor(),
             refrescarEquipos
         );
+
+        new LavaderoController(
+            vista.getPantallaIngresoLavadero(),
+            context.getClienteService(),
+            context.getLavaderoService(),
+            vista.getNavegador(),
+            vista.getContenedor(),
+            refrescarEquipos
+        );
+
+        ClasificacionController clasificacionController = new ClasificacionController(
+            vista.getPantallaClasificacionLavadero(),
+            context.getLavaderoService(),
+            context.getClasificacionLavaderoService(),
+            vista.getNavegador(),
+            vista.getContenedor(),
+            refrescarEquipos
+        );
+
+        vista.getPantallaLavadero().getBtnClasificar().addActionListener(e -> {
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.CLASIFICACION_LAVADERO);
+            clasificacionController.cargarIngresosSinClasificar();
+        });
+
+        CiclosController ciclosController = new CiclosController(
+            vista.getPantallaCiclos(),
+            context.getCicloLavaderoService(),
+            context.getLavarropasService(),
+            context.getCatalogoJabonesService());
+
+        vista.getPantallaLavadero().getBtnCiclos().addActionListener(e -> {
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.CICLOS_LAVADERO);
+            ciclosController.abrirPantalla();
+        });
+
+        vista.getPantallaLavadero().getBtnVerCiclos().addActionListener(e ->
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.VER_CICLOS_LAVADERO));
+
+        // Sin llamada de carga extra: el componentShown del controller restablece los filtros
+        // y pide el refresco, igual que "Ver Ciclos".
+        vista.getPantallaLavadero().getBtnHistorial().addActionListener(e ->
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.HISTORIAL_LAVADERO));
+
+        // Derivar al CDE crea ingresos en la cola operativa: por eso este controller recibe
+        // el disparador `operativo` y no `refrescarEquipos`.
+        SalidasLavaderoController salidasController = new SalidasLavaderoController(
+            vista.getPantallaSalidasLavadero(), context.getSalidaLavaderoService(), operativo);
+
+        vista.getPantallaLavadero().getBtnSalidas().addActionListener(e -> {
+            vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.SALIDAS_LAVADERO);
+            salidasController.cargarDatos();
+        });
 
         AjustesController ajustesController = new AjustesController(
             vista.getPantallaAjustes(), context.getClienteService(), context.getActualizacionService());
@@ -189,7 +266,7 @@ public class UiCoordinator {
 
     /** Las dos pantallas que consultan el histórico de equipos. */
     private RefrescadorPantallas<HistorialEquipos> crearRefrescadorHistorialEquipos(
-        CDEViewController cde,
+        EstadoProcesosController cde,
         VerEquiposController verEquipos
     ) {
         LectorHistorialEquipos lector = new LectorHistorialEquipos(
@@ -215,6 +292,28 @@ public class UiCoordinator {
 
         return new RefrescadorPantallas<>(
             "refresco-historial-lotes", lector, verLotes::pintar, this::mostrarErrorDeRefresco);
+    }
+
+    /** La pantalla que consulta el histórico de ciclos de lavado. */
+    private RefrescadorPantallas<List<CicloLavadero>> crearRefrescadorHistorialCiclos(
+        VerCiclosController verCiclos
+    ) {
+        return new RefrescadorPantallas<>(
+            "refresco-historial-ciclos",
+            context.getCicloLavaderoService()::obtenerTodosLosCiclos,
+            verCiclos::pintar,
+            this::mostrarErrorDeRefresco);
+    }
+
+    /** La pantalla que consulta el historial completo del lavadero. */
+    private RefrescadorPantallas<List<IngresoHistorial>> crearRefrescadorHistorialLavadero(
+        HistorialLavaderoController historial
+    ) {
+        return new RefrescadorPantallas<>(
+            "refresco-historial-lavadero",
+            context.getHistorialLavaderoService()::obtenerHistorial,
+            historial::pintar,
+            this::mostrarErrorDeRefresco);
     }
 
     /**

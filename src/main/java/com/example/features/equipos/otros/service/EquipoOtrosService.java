@@ -90,7 +90,7 @@ public class EquipoOtrosService {
 
     /**
      * Aplica movimientos de subcantidades sobre los materiales de un equipo.
-     * Llamado por {@link com.example.features.equipos.ortopedias.controller.RegistrarEstadoController}
+     * Llamado por {@link com.example.features.equipos.common.controller.RegistrarEstadoController}
      * al confirmar cambios pendientes de tipo OTROS.
      */
     public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {

@@ -68,6 +68,9 @@ public class VerEquiposController {
         panel.setOnImprimirOtros(this::abrirDialogoOtros);
         panel.configurarFiltros(this::aplicarFiltros);
 
+        // El botón "Actualizar" reusa el mismo disparador del componentShown.
+        panel.setAccionRefrescar(solicitarRefresco);
+
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
                 // Sin notificar: pintar() es el único que filtra y repinta,
@@ -101,6 +104,7 @@ public class VerEquiposController {
         todosOtros     = datos.equiposOtros();
         cargado        = true;
         aplicarFiltros();
+        panel.marcarActualizado();
         log.info("Ver equipos: {} ortopedia, {} otros", todosOrtopedia.size(), todosOtros.size());
     }
 

@@ -30,6 +30,13 @@ public final class Constantes {
         public static final String AUDITORIA             = "AUDITORIA";
         public static final String INGRESO_OTROS         = "INGRESO_OTROS";
         public static final String VER_EQUIPOS           = "VER_EQUIPOS";
+        public static final String LAVADERO               = "LAVADERO";
+        public static final String INGRESO_LAVADERO       = "INGRESO_LAVADERO";
+        public static final String CLASIFICACION_LAVADERO = "CLASIFICACION_LAVADERO";
+        public static final String CICLOS_LAVADERO       = "CICLOS_LAVADERO";
+        public static final String VER_CICLOS_LAVADERO  = "VER_CICLOS_LAVADERO";
+        public static final String SALIDAS_LAVADERO     = "SALIDAS_LAVADERO";
+        public static final String HISTORIAL_LAVADERO   = "HISTORIAL_LAVADERO";
         public static final String AJUSTES              = "AJUSTES";
 
         private Pantallas() {}
@@ -46,6 +53,7 @@ public final class Constantes {
         public static final String FORMATO_PROFESIONAL_INVALIDO = "El Profesional debe seguir el formato: Apellido Nombre";
         public static final String FORMATO_PACIENTE_INVALIDO    = "El Paciente debe seguir el formato: Apellido Nombre";
         public static final String DEBE_AGREGAR_MATERIAL        = "Debe agregar al menos un material al equipo.";
+        public static final String DEBE_AGREGAR_BOLSA           = "Debe agregar al menos una bolsa.";
         public static final String CODIGO_MATERIAL_DESCONOCIDO  = "Los siguientes códigos de material no existen en el catálogo: %s";
 
         public static final String ERROR_CONEXION_BD   = "No se pudo conectar con el servidor de base de datos.\n" +
@@ -84,8 +92,52 @@ public final class Constantes {
         public static final String CAMBIOS_GUARDADOS_OK         = "Todos los cambios se guardaron correctamente.";
         public static final String CAMBIOS_GUARDADOS_ERROR      = "Algunos cambios no se pudieron guardar:\n%s";
         public static final String ERROR_ACTUALIZAR_EQUIPO_ID   = "- Error al actualizar equipo ID: %d\n";
+        public static final String CONFLICTO_ACTUALIZAR_EQUIPO_ID =
+            "- Equipo ID %d: otro usuario lo modificó mientras trabajabas; rehacé el cambio con los datos recargados\n";
         public static final String GUARD_REGISTRAR_ESTADO_CAMBIOS = "Tenés cambios sin confirmar. Si volvés ahora, se perderán.\n¿Querés salir de todas formas?";
         public static final String GUARD_LOTES_CAMBIOS          = "Tenés materiales cargados en un equipo de esterilización sin lanzar.\nSi volvés ahora, esos cambios se perderán.\n¿Querés salir de todas formas?";
+
+        /** Prefijo del cartelito de última actualización que muestra {@code PanelHeader}. */
+        public static final String REFRESCO_TIMESTAMP_PREFIJO   = "Actualizado ";
+
+        /**
+         * Confirmación del botón "Actualizar" en Lotes. A diferencia de
+         * {@link #GUARD_LOTES_CAMBIOS}, acá lo arrastrado NO se pierde: el staging
+         * sobrevive al repintado. Lo que puede cambiar es la disponibilidad en la base.
+         */
+        public static final String REFRESCO_LOTES =
+            "Vas a releer los equipos disponibles desde la base.\n"
+            + "Lo que ya arrastraste a un autoclave se mantiene, pero algún material\n"
+            + "podría haber dejado de estar disponible si otro puesto lo movió.\n"
+            + "¿Actualizar igual?";
+
+        /**
+         * Confirmación del botón "Actualizar" en Clasificación de Lavadero.
+         * {@code refrescar} reconstruye el panel de elementos: lo cargado se pierde.
+         */
+        public static final String REFRESCO_CLASIFICACION =
+            "Tenés elementos cargados en el formulario.\n"
+            + "Si actualizás, se descartan y se relee la lista de ingresos desde la base.\n"
+            + "¿Actualizar igual?";
+
+        /**
+         * Confirmación del botón "Actualizar" en Ciclos de Lavadero. La config tipeada
+         * en cada card se conserva; sólo se rehacen disponibles y lavarropas ocupados.
+         */
+        public static final String REFRESCO_CICLOS =
+            "Vas a releer disponibles y lavarropas ocupados desde la base.\n"
+            + "La configuración que tipeaste en cada lavarropas se mantiene.\n"
+            + "¿Actualizar igual?";
+
+        /**
+         * Confirmación del botón "Actualizar" en Registrar Estado. Los movimientos
+         * armados sin confirmar se descartan — lo mismo que ya pasa al reentrar a la
+         * pantalla (ver "buffer zombi" en el plan).
+         */
+        public static final String REFRESCO_REGISTRAR_ESTADO =
+            "Tenés movimientos armados sin confirmar.\n"
+            + "Si actualizás, se descartan y la tabla se repuebla desde la base.\n"
+            + "¿Actualizar igual?";
 
         public static final String CANTIDAD_AVANZAR_PROMPT = "Cantidad a avanzar para: %s (disponible: %d)";
         public static final String CANTIDAD_AVANZAR_VACIA  = "Ingrese una cantidad válida.";
@@ -136,6 +188,51 @@ public final class Constantes {
         /** Mensaje de éxito al guardar un remito; incluye el ID generado. */
         public static final String REMITO_GUARDADO_OK = "Remito guardado correctamente.\nIdentificador: %s";
 
+        public static final String GUARD_CICLOS_CAMBIOS      = "Tenés elementos cargados en un lavarropas sin lanzar.\nSi volvés ahora, esos cambios se perderán.\n¿Querés salir de todas formas?";
+        public static final String CONFIRMAR_LANZAR_CICLO    = "¿Lanzar el ciclo de lavado?";
+        public static final String CONFIRMAR_FINALIZAR_CICLO = "¿Marcar este ciclo como finalizado?";
+        public static final String ERROR_FINALIZAR_CICLO     = "Error al finalizar el ciclo. Intente nuevamente.";
+
+        /** Bloqueo de "Lanzar" individual: la fracción de este lavarropas es de un equipo repartido en más de uno. */
+        public static final String BLOQUEO_LANZAR_INSTANCIA_REPARTIDA =
+            "Lavarropas #%d tiene una fracción de %s repartida en otros lavarropas. Usá \"Lanzar Todos\".";
+        /** "Lanzar Todos" no lanza nada de un grupo repartido si falta config en alguna de sus cards. */
+        public static final String FALTA_CONFIG_GRUPO_REPARTIDO =
+            "Lavarropas #%d: falta configurar %s (jabón y tipo de lavado) antes de lanzar el grupo repartido.";
+
+        // ── Salidas de Lavadero ───────────────────────────────────────────────
+        public static final String CONFIRMAR_SALE_DEL_FLUJO =
+            "¿Confirmar que esta ropa sale del flujo y se devuelve al cliente? Esta acción es irreversible.";
+        /**
+         * Pregunta y confirma en un solo paso: las opciones del diálogo salen de
+         * {@code AccionSalida.CDE_CLIENTE.getNombre()} y {@code AccionSalida.CDE_APTIUM.getNombre()},
+         * así que el texto de los botones no se duplica acá.
+         */
+        public static final String ELEGIR_CLIENTE_CDE =
+            "Se van a derivar %d elemento(s) al CDE. ¿A nombre de quién ingresan?";
+
+        public static final String SIN_SELECCION_LAVADOS =
+            "Seleccioná al menos una tanda lavada.";
+        public static final String SIN_SELECCION_LISTOS =
+            "Seleccioná al menos una salida lista.";
+
+        /**
+         * Resumen de la derivación. Dice a nombre de quién entraron: es lo único que
+         * distingue las dos acciones de CDE una vez hecha, porque el destino persistido
+         * es el mismo para las dos.
+         */
+        public static final String RESUMEN_CDE_UN_INGRESO =
+            "Se creó 1 ingreso en el CDE a nombre de %s.";
+        public static final String RESUMEN_CDE_VARIOS_INGRESOS =
+            "Se crearon %d ingresos en el CDE, uno por cliente.";
+
+        /** Devolver una fracción deshace la subdivisión entera: hay que avisar el alcance. */
+        public static final String TITULO_DESHACER_SUBDIVISION = "Deshacer subdivisión";
+        public static final String CONFIRMAR_DESHACER_SUBDIVISION =
+            "Este equipo está repartido en %d lavarropas. Se quitará de todos.\n¿Continuar?";
+        public static final String CONFIRMAR_DESHACER_SUBDIVISIONES =
+            "%d equipos están repartidos en varios lavarropas. Se quitarán de todos.\n¿Continuar?";
+
         // ── Actualizaciones ──────────────────────────────────────────────────
         public static final String NO_HAY_ACTUALIZACIONES        = "Ya tenés la última versión instalada.";
         public static final String TITULO_ACTUALIZACION_DISPONIBLE = "Actualización disponible";
@@ -150,6 +247,65 @@ public final class Constantes {
                 + "Es posible que Windows pida permiso de administrador.\n\n¿Continuar?";
         public static final String TITULO_ERROR_ACTUALIZACION     = "Error al actualizar";
         public static final String ERROR_ACTUALIZACION            = "No se pudo completar la actualización: %s";
+
+        // ── Clasificación de Lavadero ────────────────────────────────────────
+        public static final String ELEMENTO_CATALOGO_AGREGADO = "Elemento \"%s\" agregado al catálogo.";
+
+        // ── Conflictos de concurrencia ───────────────────────────────────────
+        // Van dirigidos al operador y tienen que decir QUÉ CAMBIÓ y QUÉ HACER: un conflicto no
+        // es un error suyo ni de la app, es que otra persona se le adelantó.
+        public static final String CONFLICTO_GENERICO =
+            "Otro usuario modificó estos datos mientras trabajabas.\n"
+                + "La pantalla se actualizó: revisá y volvé a confirmar.";
+        public static final String CONFLICTO_MATERIAL =
+            "Otro usuario ya cambió el estado de este material mientras trabajabas.\n"
+                + "La pantalla se actualizó: revisá qué falta y volvé a registrarlo.";
+        public static final String CONFLICTO_LOTE =
+            "Otro usuario movió alguno de estos materiales mientras armabas el lote.\n"
+                + "El lote no se lanzó. La pantalla se actualizó: rearmalo con los materiales disponibles.";
+        public static final String CONFLICTO_TANDA =
+            "Otro usuario ya usó parte de esta ropa mientras armabas la tanda.\n"
+                + "La tanda no se lanzó. La pantalla se actualizó: rearmala con lo que quedó disponible.";
+        /**
+         * No es un choque contra una escritura: el operador no apretó nada. Es trabajo suyo que
+         * la pantalla tuvo que descartar sola porque el lavarropas dejó de estar libre, y el
+         * aviso existe para que no lo descubra por ausencia. Nombra los lavarropas porque un
+         * equipo repartido se lleva puestas también las cards que seguían libres.
+         */
+        public static final String STAGING_DESCARTADO_POR_OCUPACION =
+            "Otro usuario lanzó un ciclo en un lavarropas que tenías cargado, así que se vació lo "
+                + "que habías puesto en: %s.\n"
+                + "Esa ropa volvió a la lista de disponibles. Si era un equipo repartido entre "
+                + "varios lavarropas, se deshizo el reparto entero.";
+        public static final String CONFLICTO_LAVARROPAS_OCUPADO =
+            "Otro usuario ya lanzó un ciclo en alguno de esos lavarropas mientras armabas la tanda.\n"
+                + "La tanda no se lanzó. La pantalla se actualizó: repartí la ropa en los que quedaron libres.";
+        public static final String CONFLICTO_CICLO_FINALIZADO =
+            "Otro usuario ya finalizó este ciclo mientras trabajabas.\n"
+                + "La pantalla se actualizó: la ropa que lavó ya está disponible en Salidas.";
+        public static final String CONFLICTO_SALIDA =
+            "Otro usuario ya procesó esta salida mientras trabajabas.\n"
+                + "La pantalla se actualizó: revisá el estado antes de volver a intentarlo.";
+        public static final String CONFLICTO_CLASIFICACION =
+            "Otro usuario ya clasificó este ingreso mientras trabajabas.\n"
+                + "La clasificación no se guardó. La pantalla se actualizó: revisá lo que quedó cargado.";
+        public static final String CONFLICTO_CORRECCION =
+            "Otro usuario modificó este equipo mientras preparabas la corrección.\n"
+                + "La corrección no se aplicó. La pantalla se actualizó: revisá el equipo y volvé a corregirlo.";
+        public static final String CONFLICTO_SECUENCIA_LOTE =
+            "Se lanzaron varios lotes al mismo tiempo y no se pudo asignar un número de lote libre.\n"
+                + "El lote no se lanzó. Esperá unos segundos y volvé a lanzarlo.";
+        public static final String CONFLICTO_CLIENTE =
+            "Otro usuario modificó este cliente mientras trabajabas.\n"
+                + "La operación no se aplicó. La pantalla se actualizó: revisá los datos y volvé a intentarlo.";
+
+        // ── Arranque: build más viejo que la base ────────────────────────────
+        // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y
+        // dice QUÉ HACER, no qué falló: su build quedó atrás de la base compartida.
+        public static final String TITULO_ESQUEMA_DESACTUALIZADO = "Actualización requerida";
+        public static final String ESQUEMA_DESACTUALIZADO =
+            "Esta versión de la aplicación es más vieja que la base de datos.\n"
+                + "Actualizá desde Ajustes → Buscar actualizaciones antes de seguir trabajando.";
 
         private Mensajes() {}
     }
@@ -169,7 +325,17 @@ public final class Constantes {
         public static final String LOTES                 = "LOTES DE ESTERILIZACIÓN";
         public static final String VER_LOTES             = "LOTES FINALIZADOS";
         public static final String INGRESO_OTROS         = "INGRESO OTROS";
+        public static final String LAVADERO               = "LAVADERO";
+        public static final String INGRESO_LAVADERO       = "INGRESO LAVADERO";
+        public static final String CLASIFICACION_LAVADERO = "CLASIFICACIÓN LAVADERO";
+        public static final String CICLOS_LAVADERO       = "CICLOS DE LAVADO";
+        public static final String VER_CICLOS_LAVADERO  = "CICLOS FINALIZADOS";
+        public static final String SALIDAS_LAVADERO     = "SALIDAS DE LAVADERO";
+        public static final String HISTORIAL_LAVADERO   = "HISTORIAL DE LAVADERO";
         public static final String AJUSTES              = "Ajustes";
+        public static final String DISTRIBUCION_UNIDADES = "¿Cuántas unidades distribuís ahora?";
+        public static final String CANTIDAD_A_MARCAR_LISTO = "¿Cuántas marcás Listo?";
+        public static final String NUEVO_ELEMENTO_CATALOGO = "Nuevo elemento de catálogo";
 
         private Titulos() {}
     }
@@ -184,9 +350,11 @@ public final class Constantes {
         public static final String SI                     = "Sí";
         public static final String NO                     = "No";
         public static final String CANCELAR               = "Cancelar";
+        public static final String CONFIRMAR              = "Confirmar";
         public static final String VER                    = "Ver";
         public static final String REGISTRAR              = "Registrar";
         public static final String INGRESAR               = "Ingresar";
+        public static final String CLASIFICAR             = "Clasificar";
         public static final String PARA_ENTREGAR          = "Para entregar";
         public static final String LOTES                  = "Lotes";
         public static final String AGREGAR                = "+";
@@ -212,8 +380,23 @@ public final class Constantes {
         public static final String IMPRIMIR               = "Imprimir";
         public static final String VER_EQUIPOS            = "Ver equipos";
         public static final String CERRAR                 = "Cerrar";
+        public static final String CICLOS          = "Ciclos";
+        public static final String VER_CICLOS      = "Ver Ciclos";
+        public static final String HISTORIAL       = "Historial";
+        public static final String LANZAR_CICLO    = "Lanzar Ciclo";
+        public static final String FINALIZAR_CICLO = "Finalizar Ciclo";
+        public static final String LANZAR_TODOS     = "Lanzar Todo";
+        public static final String FINALIZAR_TODOS  = "Finalizar Todo";
+        public static final String DESCARTAR_TODOS  = "Descartar";
         public static final String AJUSTES               = "Ajustes";
         public static final String BUSCAR_ACTUALIZACIONES = "Buscar actualizaciones";
+        public static final String SALIDAS          = "Salidas";
+        public static final String MARCAR_LISTO     = "Marcar Listo";
+        public static final String VOLVER_A_LAVADO  = "Volver a Lavado";
+        public static final String SALE_DEL_FLUJO   = "Sale del flujo";
+        public static final String INGRESAR_A_CDE   = "Ingresar al CDE";
+        public static final String ANADIR_ELEMENTO_CATALOGO = "Añadir elemento al catálogo";
+        public static final String ACTUALIZAR               = "Actualizar";
 
         private Botones() {}
     }
@@ -261,6 +444,24 @@ public final class Constantes {
         public static final int    FUENTE_TAMANO_INPUT  = 18;
 
         private Defaults() {}
+    }
+
+    /**
+     * Constantes del lavadero (cantidad de lavarropas y su disposición en pantalla).
+     */
+    public static final class Lavadero {
+        /** Cantidad de lavarropas del lavadero. Constante de negocio: valida el número de ciclo. */
+        public static final int CANTIDAD_LAVARROPAS = 13;
+        /** Cards de lavarropas por fila en la grilla de la pantalla Ciclos. */
+        public static final int LAVARROPAS_POR_FILA = 3;
+        /**
+         * Nombre del cliente bajo el que se ingresan al CDE las salidas que no conservan su
+         * cliente original. Se resuelve por nombre contra la tabla {@code clientes}: el id
+         * depende del {@code AUTO_INCREMENT} y no se puede hardcodear.
+         */
+        public static final String CLIENTE_APTIUM = "APTIUM";
+
+        private Lavadero() {}
     }
 
     /**
@@ -344,6 +545,42 @@ public final class Constantes {
         public static final String LABEL_OBSERVACIONES = "Observaciones:";
         /** Tooltip del campo readonly de remito. */
         public static final String TOOLTIP_REMITO_ID   = "Generado automáticamente al guardar: fecha-id";
+
+        // ── Salidas de Lavadero ───────────────────────────────────────────────
+        public static final String TABLA_LAVADOS_TITULO = "Lavados — pendientes de secado y doblado";
+        public static final String TABLA_LISTOS_TITULO  = "Listos — pendientes de destino";
+        public static final String COLUMNA_ELEMENTO      = "Elemento";
+        public static final String COLUMNA_PENDIENTE     = "Pendiente";
+        public static final String COLUMNA_LAVARROPAS    = "Lavarropas";
+        public static final String COLUMNA_LAVADO_EL     = "Lavado el";
+        public static final String COLUMNA_LISTO_EL      = "Listo el";
+        /** Consecuencia operativa de que una salida se derive entera: hay que escribirla en la pantalla. */
+        public static final String AYUDA_SALIDA_ENTERA =
+            "Lo que se marca Listo de una misma tanda se acumula en una sola salida, "
+            + "y esa salida se deriva entera a un único destino.";
+        /** El arrastre es el camino principal, pero no se ve: hay que nombrarlo. */
+        public static final String AYUDA_ARRASTRE_SALIDAS =
+            "Arrastrá filas de una tabla a la otra, o usá los botones.";
+
+        // ── Diálogo de distribución de unidades (Ciclos y Salidas) ─────────────
+        public static final String LABEL_UNIDADES         = "Unidades:";
+        public static final String CHECK_TODAS_N           = "Todas (%d)";
+        public static final String FORMATO_ITEM_DISPONIBLE = "<html><b>%s</b> — %s (disponibles: %d)</html>";
+        public static final String FORMATO_ITEM_LAVADO     =
+            "<html><b>%s</b> — %s<br>lavarropas %s · disponibles: %d</html>";
+
+        // ── EquipoSubdivisionDialog ──────────────────────────────────────────────
+        public static final String FORMATO_TITULO_SUBDIVIDIR = "Subdividir: %s";
+        public static final String FORMATO_TITULO_UNIDAD_DE  = "Unidad %d de %d — %s";
+        public static final String FORMATO_LABEL_SUBDIVIDIR  = "<html><b>Subdividir:</b> %s — %s</html>";
+        public static final String FORMATO_LAVARROPAS_NUM    = "Lavarropas #%d";
+        public static final String FORMATO_FRACCION          = "Fracción: %s";
+
+        // ── Clasificación de Lavadero ─────────────────────────────────────────
+        public static final String LABEL_INGRESO         = "Ingreso:";
+        public static final String LABEL_ELEMENTOS       = "Elementos:";
+        public static final String LABEL_NOMBRE_ELEMENTO = "Nombre del elemento:";
+        public static final String LABEL_CATEGORIA       = "Categoría:";
 
         private Textos() {}
     }

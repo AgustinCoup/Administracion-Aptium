@@ -158,29 +158,28 @@ class ClienteServiceTest {
     @Test
     void eliminarCliente_existente_delegaADAO() {
         when(clienteDAO.existe(7)).thenReturn(true);
-        when(clienteDAO.eliminar(7)).thenReturn(true);
 
-        service.eliminarCliente(7);
+        service.eliminarCliente(7, "Carlos");
 
-        verify(clienteDAO).eliminar(7);
+        verify(clienteDAO).eliminarConNombre(7, "Carlos");
     }
 
     @Test
     void eliminarCliente_noExiste_lanzaResourceNotFoundException() {
         when(clienteDAO.existe(99)).thenReturn(false);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.eliminarCliente(99));
-        verify(clienteDAO, never()).eliminar(anyInt());
+        assertThrows(ResourceNotFoundException.class, () -> service.eliminarCliente(99, "Carlos"));
+        verify(clienteDAO, never()).eliminarConNombre(anyInt(), anyString());
     }
 
     @Test
     void eliminarCliente_conReferencias_mensajeEspecificoDeNegocio() {
         when(clienteDAO.existe(3)).thenReturn(true);
-        when(clienteDAO.eliminar(3)).thenThrow(
-            new ReferentialIntegrityException("Cliente con ID 3 está referenciado", null));
+        doThrow(new ReferentialIntegrityException("Cliente con ID 3 está referenciado", null))
+            .when(clienteDAO).eliminarConNombre(3, "Carlos");
 
         ApplicationException e = assertThrows(ApplicationException.class,
-            () -> service.eliminarCliente(3));
+            () -> service.eliminarCliente(3, "Carlos"));
 
         assertTrue(e.getMessage().contains("no puede eliminarse"));
     }
@@ -188,10 +187,11 @@ class ClienteServiceTest {
     @Test
     void eliminarCliente_errorDeBDGenerico_mensajeGenerico() {
         when(clienteDAO.existe(3)).thenReturn(true);
-        when(clienteDAO.eliminar(3)).thenThrow(new DatabaseException("conexión perdida"));
+        doThrow(new DatabaseException("conexión perdida"))
+            .when(clienteDAO).eliminarConNombre(3, "Carlos");
 
         ApplicationException e = assertThrows(ApplicationException.class,
-            () -> service.eliminarCliente(3));
+            () -> service.eliminarCliente(3, "Carlos"));
 
         assertTrue(e.getMessage().contains("Error de base de datos"));
     }
@@ -203,14 +203,14 @@ class ClienteServiceTest {
         when(clienteDAO.existe(1)).thenReturn(true);
         when(clienteDAO.existe(2)).thenReturn(true);
 
-        service.fusionarClientes(1, 2);
+        service.fusionarClientes(1, "Origen", 2, "Destino");
 
-        verify(fusionClientesDAO).fusionar(1, 2);
+        verify(fusionClientesDAO).fusionar(1, "Origen", 2, "Destino");
     }
 
     @Test
     void fusionarClientes_mismoId_lanzaValidationException() {
-        assertThrows(ValidationException.class, () -> service.fusionarClientes(5, 5));
+        assertThrows(ValidationException.class, () -> service.fusionarClientes(5, "A", 5, "A"));
         verifyNoInteractions(fusionClientesDAO);
     }
 
@@ -218,7 +218,8 @@ class ClienteServiceTest {
     void fusionarClientes_origenNoExiste_lanzaResourceNotFoundException() {
         when(clienteDAO.existe(99)).thenReturn(false);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.fusionarClientes(99, 2));
+        assertThrows(ResourceNotFoundException.class,
+            () -> service.fusionarClientes(99, "Origen", 2, "Destino"));
         verifyNoInteractions(fusionClientesDAO);
     }
 
@@ -227,7 +228,8 @@ class ClienteServiceTest {
         when(clienteDAO.existe(1)).thenReturn(true);
         when(clienteDAO.existe(99)).thenReturn(false);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.fusionarClientes(1, 99));
+        assertThrows(ResourceNotFoundException.class,
+            () -> service.fusionarClientes(1, "Origen", 99, "Destino"));
         verifyNoInteractions(fusionClientesDAO);
     }
 }

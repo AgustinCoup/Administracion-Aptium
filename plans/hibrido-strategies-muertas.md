@@ -1,6 +1,7 @@
 # Plan: híbrido para las dos strategies muertas (IMaterialFilter + ICapacidadCalculator)
 
-**Estado:** aprobado, sin ejecutar.
+**Estado:** ✅ **EJECUTADO** — commit `a370e61`. Verificado el 2026-08-27:
+`grep -rn "IMaterialFilter\|ICapacidadCalculator" src/` no devuelve nada.
 **Origen:** revisión de arquitectura del 2026-07-22. Es el hallazgo #2 del diagnóstico.
 El hallazgo #1 (fallos silenciosos en ortopedias) YA se ejecutó y quedó en verde
 (533 tests) — ver más abajo. Este plan cubre el #2 en **dos pasos separados y
@@ -131,4 +132,4 @@ Se convirtieron 7 `catch (SQLException)` que tragaban el error (2 en `EquipoDAO`
 `registrarMaterialEliminado`, `obtenerPorEquipo`, `obtenerTodos`) a `throw DatabaseException`,
 y `EquipoCorreccionService.eliminarEquipo` ahora verifica el boolean de `equipoDAO.eliminar`.
 Test nuevo: `eliminarEquipo_borradoNoAfectaFilas_lanzaDatabaseException`. Suite: 533 verdes.
-Sin commitear (había trabajo previo del plan "otros" en el working tree).
+Commiteado en `de1af06`, junto con el resto del refactor de arquitectura de ese día.

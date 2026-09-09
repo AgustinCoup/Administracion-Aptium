@@ -1,0 +1,687 @@
+package com.example.features.lavadero.dao;
+
+import com.example.AbstractDAOTest;
+import com.example.common.exception.BusinessException;
+import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.features.lavadero.dao.derivadores.DerivadorFueraDeFlujo;
+import com.example.features.lavadero.model.ConfiguracionCiclo;
+import com.example.features.lavadero.model.ElementoLavadoPendiente;
+import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.LineaLanzamiento;
+import com.example.features.lavadero.model.MarcaListo;
+import com.example.features.lavadero.model.SalidaLista;
+import com.example.features.lavadero.model.TipoLavado;
+import com.example.infrastructure.db.ConnectionPool;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class SalidaLavaderoDAOTest extends AbstractDAOTest {
+
+    private SalidaLavaderoDAO dao;
+    private CicloLavaderoDAO  ciclosDao;
+
+    private int clienteId;
+    private int ingresoId;
+    private JabonCatalogo jabon;
+
+    /** Tres líneas de clasificación distintas, para probar el marcado de varias filas a la vez. */
+    private int clasifA;   // 10 unidades
+    private int clasifB;   //  6 unidades
+    private int clasifC;   //  4 unidades
+    private String nombreA;
+    private String nombreB;
+    private String nombreC;
+
+    /** Un Equipo* de cantidad 1, para las fracciones repartidas entre lavarropas. */
+    private int clasifEquipo;
+    private String nombreEquipo;
+
+    @BeforeEach
+    void setUp() throws SQLException {
+        dao       = new SalidaLavaderoDAO();
+        ciclosDao = new CicloLavaderoDAO();
+
+        jabon = primerJabon();
+
+        ejecutarSQL("INSERT INTO clientes (nombre) VALUES ('TestSalidaCliente')");
+        clienteId = lastInsertId();
+
+        ejecutarSQL("INSERT INTO ingresos_lavadero (cliente_id, fecha_ingreso, estado) VALUES ("
+                + clienteId + ", NOW(), 'CLASIFICADO')");
+        ingresoId = lastInsertId();
+
+        ejecutarSQL("INSERT INTO bolsas_lavadero (ingreso_id, peso_kg) VALUES (" + ingresoId + ", 5.00)");
+
+        int catalogoA = catalogoElementoId(1);
+        int catalogoB = catalogoElementoId(2);
+        int catalogoC = catalogoElementoId(3);
+        int catalogoEquipo = catalogoElementoId(4);
+        nombreA = catalogoElementoNombre(catalogoA);
+        nombreB = catalogoElementoNombre(catalogoB);
+        nombreC = catalogoElementoNombre(catalogoC);
+        nombreEquipo = catalogoElementoNombre(catalogoEquipo);
+
+        clasifA = insertarClasificacion(catalogoA, 10);
+        clasifB = insertarClasificacion(catalogoB, 6);
+        clasifC = insertarClasificacion(catalogoC, 4);
+        clasifEquipo = insertarClasificacion(catalogoEquipo, 1);
+    }
+
+    @Override
+    protected void limpiarTablas() throws SQLException {
+        ejecutarSQL("DELETE FROM salidas_lavadero");
+        ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
+        ejecutarSQL("DELETE FROM instancias_equipo_ciclo");
+        ejecutarSQL("DELETE FROM ciclos_lavadero");
+        ejecutarSQL("DELETE FROM elementos_clasificacion_lavadero");
+        ejecutarSQL("DELETE FROM bolsas_lavadero");
+        ejecutarSQL("DELETE FROM ingresos_lavadero");
+        ejecutarSQL("DELETE FROM clientes WHERE nombre LIKE 'TestSalida%'");
+    }
+
+    // ── obtenerLavadosPendientesDeListo ──────────────────────────────────────
+
+    @Test
+    void elementoDeCicloActivo_noApareceComoPendienteDeListo() {
+        lanzarCiclo(1, movimiento(clasifA, 5));
+
+        assertTrue(dao.obtenerLavadosPendientesDeListo().isEmpty());
+    }
+
+    @Test
+    void alFinalizarElCiclo_apareceConPendienteIgualALaCantidadDelCiclo() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 5));
+
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+
+        assertEquals(1, pendientes.size());
+        ElementoLavadoPendiente item = pendientes.get(0);
+        assertEquals(nombreA, item.elementoNombre());
+        assertEquals("TestSalidaCliente", item.clienteNombre());
+        assertEquals(clienteId, item.clienteId());
+        assertEquals(ingresoId, item.ingresoId());
+        assertEquals(5, item.cantidadLavada());
+        assertEquals(0, item.cantidadYaLista());
+        assertEquals(5, item.cantidadPendiente());
+        assertFalse(item.esInstanciaDeEquipo());
+    }
+
+    @Test
+    void unElementoRepartidoEnDosCiclos_apareceComoDosFilasConSaldosIndependientes() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 4));
+        lanzarYFinalizar(2, movimiento(clasifA, 6));
+
+        ElementoLavadoPendiente enLavarropas1 = pendientePorLavarropas(1);
+        ElementoLavadoPendiente enLavarropas2 = pendientePorLavarropas(2);
+
+        assertEquals(2, dao.obtenerLavadosPendientesDeListo().size());
+        assertEquals(4, enLavarropas1.cantidadPendiente());
+        assertEquals(6, enLavarropas2.cantidadPendiente());
+        assertNotEquals(enLavarropas1.elementoCicloId(), enLavarropas2.elementoCicloId());
+
+        dao.marcarListo(List.of(new MarcaListo(enLavarropas1, 4)));
+
+        assertEquals(1, dao.obtenerLavadosPendientesDeListo().size());
+        assertEquals(6, pendientePorLavarropas(2).cantidadPendiente());
+    }
+
+    @Test
+    void pendientes_traenLavarropasYFechaFinParaDistinguirDosTandasDelMismoElemento() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 4));
+        lanzarYFinalizar(3, movimiento(clasifA, 6));
+
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+
+        assertEquals(2, pendientes.size());
+        assertTrue(pendientes.stream().allMatch(p -> nombreA.equals(p.elementoNombre())));
+        assertEquals(List.of(1, 3),
+            pendientes.stream().map(p -> Integer.parseInt(p.lavarropas())).sorted().toList());
+        assertTrue(pendientes.stream().allMatch(p -> p.fechaFinCiclo() != null));
+        assertNotEquals(pendientes.get(0).elementoCicloId(), pendientes.get(1).elementoCicloId());
+    }
+
+    // ── marcarListo ──────────────────────────────────────────────────────────
+
+    @Test
+    void marcarListoParcial_bajaElPendienteYLaSalidaApareceEnListasSinDestino() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente item = unicoPendiente();
+
+        dao.marcarListo(List.of(new MarcaListo(item, 4)));
+
+        ElementoLavadoPendiente restante = unicoPendiente();
+        assertEquals(4, restante.cantidadYaLista());
+        assertEquals(6, restante.cantidadPendiente());
+
+        List<SalidaLista> listas = dao.obtenerListasSinDestino();
+        assertEquals(1, listas.size());
+        assertEquals(4, listas.get(0).cantidad());
+        assertEquals(nombreA, listas.get(0).elementoNombre());
+    }
+
+    @Test
+    void marcarListoDelTotal_elementoDesapareceDePendientes() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 10)));
+
+        assertTrue(dao.obtenerLavadosPendientesDeListo().isEmpty());
+        assertEquals(1, dao.obtenerListasSinDestino().size());
+    }
+
+    @Test
+    void marcarListo_porEncimaDelSaldo_lanzaYNoInsertaNada() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente item = unicoPendiente();
+
+        ConflictoConcurrenciaException ex = assertThrows(ConflictoConcurrenciaException.class,
+                () -> dao.marcarListo(List.of(new MarcaListo(item, 11))));
+
+        assertTrue(ex.getMessage().contains(nombreA), ex.getMessage());
+        assertTrue(ex.getMessage().contains("lavarropas 1"), ex.getMessage());
+        assertEquals(0, contarFilas("salidas_lavadero"));
+    }
+
+    @Test
+    void marcarListo_conCantidadCero_lanzaYNoInsertaNada() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente item = unicoPendiente();
+
+        assertThrows(BusinessException.class, () -> dao.marcarListo(List.of(new MarcaListo(item, 0))));
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+    }
+
+    @Test
+    void marcarListo_conCantidadNegativa_lanzaYNoInsertaNada() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente item = unicoPendiente();
+
+        assertThrows(BusinessException.class, () -> dao.marcarListo(List.of(new MarcaListo(item, -3))));
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+    }
+
+    @Test
+    void marcarListo_conTresMarcasValidas_entranLasTres() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10), movimiento(clasifB, 6), movimiento(clasifC, 4));
+
+        dao.marcarListo(List.of(
+            new MarcaListo(pendientePorElemento(nombreA), 10),
+            new MarcaListo(pendientePorElemento(nombreB), 6),
+            new MarcaListo(pendientePorElemento(nombreC), 4)));
+
+        assertEquals(3, contarFilas("salidas_lavadero"));
+        assertEquals(3, dao.obtenerListasSinDestino().size());
+        assertTrue(dao.obtenerLavadosPendientesDeListo().isEmpty());
+    }
+
+    /** El test del todo-o-nada: la primera marca era válida y tampoco tiene que quedar. */
+    @Test
+    void marcarListo_siLaDelMedioSobregira_noSeInsertaNingunaFila() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10), movimiento(clasifB, 6), movimiento(clasifC, 4));
+
+        List<MarcaListo> marcas = List.of(
+            new MarcaListo(pendientePorElemento(nombreA), 10),   // válida
+            new MarcaListo(pendientePorElemento(nombreB), 7),    // sobregira: sólo hay 6
+            new MarcaListo(pendientePorElemento(nombreC), 4));   // válida
+
+        ConflictoConcurrenciaException ex =
+            assertThrows(ConflictoConcurrenciaException.class, () -> dao.marcarListo(marcas));
+
+        assertTrue(ex.getMessage().contains(nombreB), ex.getMessage());
+        assertEquals(0, contarFilas("salidas_lavadero"));
+        assertEquals(3, dao.obtenerLavadosPendientesDeListo().size());
+    }
+
+    @Test
+    void marcarListo_dosVecesConElMismoSnapshot_noPermiteSobregirar() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente snapshot = unicoPendiente();
+
+        dao.marcarListo(List.of(new MarcaListo(snapshot, 6)));
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.marcarListo(List.of(new MarcaListo(snapshot, 6))));
+        assertEquals(6, sumaDeSalidas());
+    }
+
+    /** Dos marcas de la misma tanda en la misma llamada se ven entre sí dentro de la transacción. */
+    @Test
+    void marcarListo_dosMarcasDeLaMismaTandaQueJuntasSobregiran_noInsertaNinguna() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente item = unicoPendiente();
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.marcarListo(List.of(
+            new MarcaListo(item, 6),
+            new MarcaListo(item, 6))));
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+    }
+
+    @Test
+    void marcarListo_sobreUnCicloTodaviaActivo_lanzaYNoInsertaNada() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente item = unicoPendiente();
+        reabrirCiclo(cicloIdDeElementoCiclo(item.elementoCicloId()));
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.marcarListo(List.of(new MarcaListo(item, 1))));
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+    }
+
+    /** Doblar la misma tanda en dos ratos es la misma ropa: una sola salida, no dos filas. */
+    @Test
+    void marcarListo_dosVecesSobreLaMismaTanda_acumulaEnUnaSolaSalida() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 3)));
+
+        assertEquals(1, contarFilas("salidas_lavadero"));
+        List<SalidaLista> listas = dao.obtenerListasSinDestino();
+        assertEquals(1, listas.size());
+        assertEquals(7, listas.get(0).cantidad());
+        assertEquals(3, unicoPendiente().cantidadPendiente());
+    }
+
+    /** Una salida ya derivada es definitiva: lo que se marque después arranca una nueva. */
+    @Test
+    void marcarListo_sobreUnaTandaYaDerivada_creaUnaSalidaNueva() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+        asignarDestino(dao.obtenerListasSinDestino().get(0).salidaId());
+
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 3)));
+
+        assertEquals(2, contarFilas("salidas_lavadero"));
+        List<SalidaLista> sinDestino = dao.obtenerListasSinDestino();
+        assertEquals(1, sinDestino.size());
+        assertEquals(3, sinDestino.get(0).cantidad());
+    }
+
+    @Test
+    void marcarListo_conSeleccionVacia_lanza() {
+        assertThrows(BusinessException.class, () -> dao.marcarListo(List.of()));
+    }
+
+    /**
+     * La otra mitad de la regla: una validación de la selección <b>no</b> es un choque. Si
+     * salieran las dos como {@code ConflictoConcurrenciaException}, el operador leería "otro
+     * usuario se te adelantó" cuando lo único que pasó es que puso una cantidad en cero, y el
+     * controller dispararía refrescos que no hacen falta.
+     */
+    @Test
+    void lasValidacionesDeLaSeleccion_noSonConflictosDeConcurrencia() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        ElementoLavadoPendiente item = unicoPendiente();
+
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.marcarListo(List.of())) instanceof ConflictoConcurrenciaException);
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.marcarListo(List.of(new MarcaListo(item, 0)))) instanceof ConflictoConcurrenciaException);
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.volverALavado(List.of())) instanceof ConflictoConcurrenciaException);
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.volverALavado(List.of(0))) instanceof ConflictoConcurrenciaException);
+        assertFalse(assertThrows(BusinessException.class,
+            () -> dao.derivar(new DerivadorFueraDeFlujo(), List.of())) instanceof ConflictoConcurrenciaException);
+    }
+
+    // ── obtenerListasSinDestino ──────────────────────────────────────────────
+
+    @Test
+    void listas_conservanCicloLavarropasYFechaFinDeCadaTanda() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 4));
+        lanzarYFinalizar(3, movimiento(clasifA, 6));
+        dao.marcarListo(List.of(
+            new MarcaListo(pendientePorLavarropas(1), 4),
+            new MarcaListo(pendientePorLavarropas(3), 6)));
+
+        List<SalidaLista> listas = dao.obtenerListasSinDestino();
+
+        assertEquals(2, listas.size());
+        assertEquals(List.of(1, 3), listas.stream().map(s -> Integer.parseInt(s.lavarropas())).sorted().toList());
+        assertTrue(listas.stream().allMatch(s -> s.fechaFinCiclo() != null));
+        assertTrue(listas.stream().allMatch(s -> s.fechaListo() != null));
+        assertTrue(listas.stream().allMatch(s -> nombreA.equals(s.elementoNombre())));
+        assertTrue(listas.stream().allMatch(s -> s.ingresoId() == ingresoId));
+        assertTrue(listas.stream().allMatch(s -> s.clienteId() == clienteId));
+    }
+
+    @Test
+    void listas_excluyenLasSalidasQueYaTienenDestino() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+        asignarDestino(dao.obtenerListasSinDestino().get(0).salidaId());
+
+        assertTrue(dao.obtenerListasSinDestino().isEmpty());
+        assertEquals(1, contarFilas("salidas_lavadero"));
+    }
+
+    // ── volverALavado ────────────────────────────────────────────────────────
+
+    @Test
+    void volverALavado_deUnaSalidaSinDestino_devuelveLaCantidadAlPendiente() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+        int salidaId = dao.obtenerListasSinDestino().get(0).salidaId();
+
+        dao.volverALavado(salidaId);
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+        assertTrue(dao.obtenerListasSinDestino().isEmpty());
+        assertEquals(10, unicoPendiente().cantidadPendiente());
+    }
+
+    @Test
+    void volverALavado_deUnaSalidaConDestino_lanzaYLaFilaSigueAhi() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+        int salidaId = dao.obtenerListasSinDestino().get(0).salidaId();
+        asignarDestino(salidaId);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.volverALavado(salidaId));
+
+        assertEquals(1, contarFilas("salidas_lavadero WHERE id = " + salidaId));
+        assertEquals(6, unicoPendiente().cantidadPendiente());
+    }
+
+    @Test
+    void volverALavado_deUnaSalidaInexistente_lanza() {
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.volverALavado(999_999));
+    }
+
+    // ── volverALavado en lote ────────────────────────────────────────────────
+
+    @Test
+    void volverALavado_deTresSalidasSinDestino_lasRevierteTodas() throws SQLException {
+        List<Integer> ids = tresSalidasListas();
+
+        dao.volverALavado(ids);
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+        assertTrue(dao.obtenerListasSinDestino().isEmpty());
+        assertEquals(3, dao.obtenerLavadosPendientesDeListo().size());
+    }
+
+    /** El todo-o-nada de la dirección inversa: la primera era reversible y tampoco se borra. */
+    @Test
+    void volverALavado_siLaDelMedioYaTieneDestino_lanzaYLasTresSiguenExistiendo() throws SQLException {
+        List<Integer> ids = tresSalidasListas();
+        asignarDestino(ids.get(1));
+
+        ConflictoConcurrenciaException ex =
+            assertThrows(ConflictoConcurrenciaException.class, () -> dao.volverALavado(ids));
+
+        assertTrue(ex.getMessage().contains(String.valueOf(ids.get(1))), ex.getMessage());
+        assertEquals(3, contarFilas("salidas_lavadero"));
+    }
+
+    @Test
+    void volverALavado_conSeleccionVacia_lanza() {
+        assertThrows(BusinessException.class, () -> dao.volverALavado(List.of()));
+    }
+
+    // ── instancias de equipo (fracciones repartidas entre lavarropas) ─────────
+
+    @Test
+    void instanciaConSusPartesTodasLavadas_apareceUnaVezConTodosLosLavarropas() throws SQLException {
+        int instanciaId = repartirEquipo(1, 2, 3, 4);
+        finalizarCiclosDe(1, 2, 3, 4);
+
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+
+        assertEquals(1, pendientes.size());
+        ElementoLavadoPendiente item = pendientes.get(0);
+        assertTrue(item.esInstanciaDeEquipo());
+        assertEquals(instanciaId, item.instanciaEquipoId());
+        assertNull(item.elementoCicloId());
+        assertEquals("1, 2, 3, 4", item.lavarropas());
+        assertEquals(1, item.cantidadPendiente());
+    }
+
+    @Test
+    void instanciaConUnaFraccionEnCicloTodaviaActivo_noApareceEnAbsoluto() throws SQLException {
+        repartirEquipo(1, 2, 3, 4);
+        finalizarCiclosDe(1, 2, 3);   // la fracción del 4 sigue adentro del lavarropas
+
+        assertTrue(dao.obtenerLavadosPendientesDeListo().isEmpty());
+    }
+
+    @Test
+    void marcarListoDeInstanciaCompleta_pasaAListasSinDestinoYDesaparecePendientes() throws SQLException {
+        int instanciaId = repartirEquipo(1, 2);
+        finalizarCiclosDe(1, 2);
+
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
+
+        assertTrue(dao.obtenerLavadosPendientesDeListo().isEmpty());
+        List<SalidaLista> listas = dao.obtenerListasSinDestino();
+        assertEquals(1, listas.size());
+        SalidaLista salida = listas.get(0);
+        assertTrue(salida.esInstanciaDeEquipo());
+        assertEquals(instanciaId, salida.instanciaEquipoId());
+        assertNull(salida.elementoCicloId());
+        assertEquals(1, salida.cantidad());
+        assertEquals("1, 2", salida.lavarropas());
+    }
+
+    @Test
+    void marcarListoDeInstanciaIncompleta_lanzaYNoInsertaNada() throws SQLException {
+        int instanciaId = repartirEquipo(1, 2, 3);
+        finalizarCiclosDe(1, 2);   // la fracción del 3 sigue adentro del lavarropas
+        ElementoLavadoPendiente itemDeSnapshotViejo = new ElementoLavadoPendiente(
+            null, instanciaId, "1, 2, 3", ingresoId, clienteId, "TestSalidaCliente", nombreEquipo, 1, 0, null);
+
+        ConflictoConcurrenciaException ex = assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.marcarListo(List.of(new MarcaListo(itemDeSnapshotViejo, 1))));
+
+        assertTrue(ex.getMessage().contains(nombreEquipo), ex.getMessage());
+        assertEquals(0, contarFilas("salidas_lavadero"));
+    }
+
+    @Test
+    void volverALavadoDeSalidaDeInstancia_devuelveLaInstanciaAPendientes() throws SQLException {
+        repartirEquipo(1, 2);
+        finalizarCiclosDe(1, 2);
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
+        int salidaId = dao.obtenerListasSinDestino().get(0).salidaId();
+
+        dao.volverALavado(salidaId);
+
+        assertEquals(0, contarFilas("salidas_lavadero"));
+        assertTrue(dao.obtenerListasSinDestino().isEmpty());
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+        assertEquals(1, pendientes.size());
+        assertTrue(pendientes.get(0).esInstanciaDeEquipo());
+    }
+
+    @Test
+    void derivarSalidaDeInstancia_funcionaIgualQueUnaRegular() throws SQLException {
+        repartirEquipo(1, 2);
+        finalizarCiclosDe(1, 2);
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 1)));
+        SalidaLista salida = dao.obtenerListasSinDestino().get(0);
+
+        dao.derivar(new DerivadorFueraDeFlujo(), List.of(salida));
+
+        assertTrue(dao.obtenerListasSinDestino().isEmpty());
+        assertEquals("FUERA_DE_FLUJO",
+            escalarString("SELECT destino FROM salidas_lavadero WHERE id = " + salida.salidaId()));
+    }
+
+    @Test
+    void unaFilaRegularYUnaDeInstanciaDelMismoCliente_seLeenAmbasSinInterferir() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 5));
+        repartirEquipo(2, 3);
+        finalizarCiclosDe(2, 3);
+
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+
+        assertEquals(2, pendientes.size());
+        assertTrue(pendientes.stream().anyMatch(p -> !p.esInstanciaDeEquipo() && nombreA.equals(p.elementoNombre())));
+        assertTrue(pendientes.stream().anyMatch(p -> p.esInstanciaDeEquipo() && nombreEquipo.equals(p.elementoNombre())));
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    private LineaLanzamiento movimiento(int clasificacionId, int cantidad) {
+        return new LineaLanzamiento(clasificacionId, cantidad);
+    }
+
+    private ConfiguracionCiclo configuracion() {
+        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), false, false, null);
+    }
+
+    private void lanzarCiclo(int lavarropas, LineaLanzamiento... lineas) {
+        ciclosDao.lanzarTanda(List.of(new LanzamientoCiclo(lavarropas, configuracion(), List.of(lineas))));
+    }
+
+    private void lanzarYFinalizar(int lavarropas, LineaLanzamiento... lineas) throws SQLException {
+        lanzarCiclo(lavarropas, lineas);
+        ciclosDao.finalizarCiclo(ultimoCicloId());
+    }
+
+    /**
+     * Reparte el equipo entre los lavarropas dados —una fracción de cantidad 1 en cada uno—
+     * en la única tanda que las puede crear juntas. Quedan lanzadas, no lavadas: finalizarlas
+     * es de {@link #finalizarCiclosDe(int...)}, para poder dejar alguna a medio camino.
+     *
+     * @return el id que la instancia recibió en la base
+     */
+    private int repartirEquipo(int... lavarropas) throws SQLException {
+        final int stagingId = 1;   // local a la tanda: cualquiera sirve
+        List<LanzamientoCiclo> tanda = new ArrayList<>();
+        for (int lav : lavarropas) {
+            tanda.add(new LanzamientoCiclo(lav, configuracion(),
+                List.of(new LineaLanzamiento(clasifEquipo, 1, stagingId, lavarropas.length))));
+        }
+        ciclosDao.lanzarTanda(tanda);
+        return escalar("SELECT MAX(id) FROM instancias_equipo_ciclo");
+    }
+
+    private void finalizarCiclosDe(int... lavarropas) throws SQLException {
+        for (int lav : lavarropas) {
+            ciclosDao.finalizarCiclo(escalar(
+                "SELECT MAX(id) FROM ciclos_lavadero WHERE lavarropas_numero = " + lav));
+        }
+    }
+
+    /** Tres elementos distintos lavados en el mismo ciclo y marcados Listo enteros. */
+    private List<Integer> tresSalidasListas() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10), movimiento(clasifB, 6), movimiento(clasifC, 4));
+        dao.marcarListo(List.of(
+            new MarcaListo(pendientePorElemento(nombreA), 10),
+            new MarcaListo(pendientePorElemento(nombreB), 6),
+            new MarcaListo(pendientePorElemento(nombreC), 4)));
+        return dao.obtenerListasSinDestino().stream().map(SalidaLista::salidaId).toList();
+    }
+
+    private ElementoLavadoPendiente unicoPendiente() {
+        List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+        assertEquals(1, pendientes.size(), "se esperaba un único pendiente");
+        return pendientes.get(0);
+    }
+
+    private ElementoLavadoPendiente pendientePorElemento(String nombre) {
+        return dao.obtenerLavadosPendientesDeListo().stream()
+                .filter(p -> nombre.equals(p.elementoNombre()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no hay pendiente para " + nombre));
+    }
+
+    private ElementoLavadoPendiente pendientePorLavarropas(int lavarropas) {
+        return dao.obtenerLavadosPendientesDeListo().stream()
+                .filter(p -> String.valueOf(lavarropas).equals(p.lavarropas()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no hay pendiente en el lavarropas " + lavarropas));
+    }
+
+    private void asignarDestino(int salidaId) throws SQLException {
+        ejecutarSQL("UPDATE salidas_lavadero SET destino = 'FUERA_DE_FLUJO', fecha_salida = NOW() "
+                + "WHERE id = " + salidaId);
+    }
+
+    private void reabrirCiclo(int cicloId) throws SQLException {
+        ejecutarSQL("UPDATE ciclos_lavadero SET fecha_fin = NULL, estado = 'ACTIVO' WHERE id = " + cicloId);
+    }
+
+    private int cicloIdDeElementoCiclo(int elementoCicloId) throws SQLException {
+        return escalar("SELECT ciclo_id FROM elementos_ciclo_lavadero WHERE id = " + elementoCicloId);
+    }
+
+    private int insertarClasificacion(int catalogoId, int cantidad) throws SQLException {
+        ejecutarSQL("INSERT INTO elementos_clasificacion_lavadero (ingreso_id, elemento_id, cantidad) VALUES ("
+                + ingresoId + ", " + catalogoId + ", " + cantidad + ")");
+        return lastInsertId();
+    }
+
+    private int sumaDeSalidas() throws SQLException {
+        return escalar("SELECT COALESCE(SUM(cantidad), 0) FROM salidas_lavadero");
+    }
+
+    private int contarFilas(String tablaYCondicion) throws SQLException {
+        return escalar("SELECT COUNT(*) FROM " + tablaYCondicion);
+    }
+
+    private int ultimoCicloId() throws SQLException {
+        return escalar("SELECT MAX(id) FROM ciclos_lavadero");
+    }
+
+    private int lastInsertId() throws SQLException {
+        return escalar("SELECT LAST_INSERT_ID()");
+    }
+
+    private int catalogoElementoId(int offset) throws SQLException {
+        return escalar("SELECT id FROM catalogo_elementos_lavadero ORDER BY id LIMIT 1 OFFSET " + (offset - 1));
+    }
+
+    private String catalogoElementoNombre(int id) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT nombre FROM catalogo_elementos_lavadero WHERE id = " + id)) {
+            rs.next();
+            return rs.getString(1);
+        }
+    }
+
+    private JabonCatalogo primerJabon() throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT id, nombre FROM catalogo_jabones ORDER BY id LIMIT 1")) {
+            rs.next();
+            return new JabonCatalogo(rs.getInt("id"), rs.getString("nombre"));
+        }
+    }
+
+    private int escalar(String sql) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    private String escalarString(String sql) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            rs.next();
+            return rs.getString(1);
+        }
+    }
+}

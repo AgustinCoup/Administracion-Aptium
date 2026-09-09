@@ -1,5 +1,8 @@
 package com.example.features.equipos.ortopedias.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
@@ -74,6 +77,25 @@ public class MaterialDAO {
         }
     }
 
+    /**
+     * Aplica en una transacción los movimientos de estado de los materiales de un equipo.
+     *
+     * <p><b>Guarda de concurrencia:</b> cada {@link MovimientoMaterial} trae el
+     * {@code estadoOrigenEsperado} que la pantalla mostraba al tildarlo. Antes de escribir se
+     * relee la fila {@code FOR UPDATE} y se compara: si el estado cambió, otro operador avanzó
+     * ese material mientras este pensaba y se lanza {@link ConflictoConcurrenciaException}, que
+     * revierte la transacción de este equipo entera.
+     *
+     * <p><b>Por qué la guarda es el {@code estado} del material y no la {@code version} del
+     * equipo:</b> la columna {@code version} de {@code equipos} existe y se mantiene (V21), pero
+     * <b>no viaja acá</b> — ni en {@link com.example.common.model.EquipoKey} ni como parámetro de
+     * este método. Guardar con la {@code version} del agregado haría chocar a dos operadores que
+     * avanzan materiales <em>distintos</em> del mismo equipo (los dos incrementan la misma
+     * {@code version}), un falso positivo que enseña al operador a ignorar el aviso. La guarda por
+     * material es precisa: sólo choca cuando el choque es real. Un parámetro {@code version} sin
+     * consumidor sería además código muerto. Su consumidor previsto es {@code Correcciones}
+     * (reemplazo de la fila entera desde un snapshot), fuera del alcance de este cambio.
+     */
     public boolean aplicarMovimientos(int equipoId, List<MovimientoMaterial> movimientos) {
         if (movimientos == null || movimientos.isEmpty()) return true;
 
@@ -113,6 +135,14 @@ public class MaterialDAO {
                         cantidadActual = rs.getInt("cantidad");
                         estadoActual  = rs.getString("estado");
                     }
+                }
+
+                // Guarda de concurrencia: va ANTES de validar la cantidad. Si el estado cambió,
+                // el saldo que vio el operador es de otra fila conceptual y "cantidad inválida"
+                // sería un mensaje engañoso.
+                EstadoEquipo estadoEsperado = movimiento.getEstadoOrigenEsperado();
+                if (estadoEsperado == null || !estadoActual.equalsIgnoreCase(estadoEsperado.getNombre())) {
+                    throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
                 }
 
                 if (cantidadMover <= 0 || cantidadMover > cantidadActual) {
@@ -254,18 +284,31 @@ public class MaterialDAO {
 
     // ── Métodos simples (sin transacción propia) ─────────────────────────────
 
-    public boolean actualizarCantidad(Integer materialId, Integer cantidadNueva) {
-        String sql = "UPDATE equipo_materiales SET cantidad = ? WHERE id = ?";
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, cantidadNueva);
-            ps.setInt(2, materialId);
-            int filasActualizadas = ps.executeUpdate();
-            if (filasActualizadas > 0) {
-                log.debug("Cantidad del material {} actualizada a {}", materialId, cantidadNueva);
-                return true;
+    /**
+     * Ruta de {@code Correcciones}: guarda por {@code version} del agregado, además del scope por
+     * {@code equipo_id} para que un {@code materialId} de otro equipo no pueda bumpear ni escribir
+     * acá. El bump guardado va primero: toma el lock de la fila de {@code equipos} antes de tocar
+     * el detalle. Con {@code 0} filas no se commitea — el rollback del try-with-resources revierte
+     * el bump.
+     */
+    public boolean actualizarCantidad(Integer equipoId, Integer materialId, Integer cantidadNueva,
+                                      int versionEsperada) {
+        String sql = "UPDATE equipo_materiales SET cantidad = ? WHERE id = ? AND equipo_id = ?";
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            EquipoMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
+
+            int filasActualizadas;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setInt(1, cantidadNueva);
+                ps.setInt(2, materialId);
+                ps.setInt(3, equipoId);
+                filasActualizadas = ps.executeUpdate();
             }
-            return false;
+            if (filasActualizadas == 0) return false;
+            tx.commit();
+            log.debug("Cantidad del material {} actualizada a {}", materialId, cantidadNueva);
+            return true;
         } catch (SQLException e) {
             throw new DatabaseException("Error al actualizar cantidad del material " + materialId, e);
         }
@@ -285,18 +328,25 @@ public class MaterialDAO {
         return null; // no encontrado
     }
 
-    public boolean actualizarCodigo(Integer materialId, Integer codigoNuevo) {
-        String sql = "UPDATE equipo_materiales SET codigo_catalogo = ? WHERE id = ?";
-        try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, codigoNuevo);
-            ps.setInt(2, materialId);
-            int filasActualizadas = ps.executeUpdate();
-            if (filasActualizadas > 0) {
-                log.debug("Código del material {} actualizado a {}", materialId, codigoNuevo);
-                return true;
+    /** Ruta de {@code Correcciones}; mismo criterio de guarda y scope que {@link #actualizarCantidad}. */
+    public boolean actualizarCodigo(Integer equipoId, Integer materialId, Integer codigoNuevo,
+                                    int versionEsperada) {
+        String sql = "UPDATE equipo_materiales SET codigo_catalogo = ? WHERE id = ? AND equipo_id = ?";
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            EquipoMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
+
+            int filasActualizadas;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setInt(1, codigoNuevo);
+                ps.setInt(2, materialId);
+                ps.setInt(3, equipoId);
+                filasActualizadas = ps.executeUpdate();
             }
-            return false;
+            if (filasActualizadas == 0) return false;
+            tx.commit();
+            log.debug("Código del material {} actualizado a {}", materialId, codigoNuevo);
+            return true;
         } catch (SQLException e) {
             throw new DatabaseException("Error al actualizar código del material " + materialId, e);
         }
@@ -336,7 +386,13 @@ public class MaterialDAO {
         );
     }
 
-    public Integer agregarMaterial(Integer equipoId, Integer codigoCatalogo, Integer cantidad) {
+    /**
+     * Ruta de {@code Correcciones}; bump guardado como primera sentencia. Ya llama a
+     * {@link EquipoMaterialHelper#recalcularEstadoEquipo}, que bumpea por su cuenta: la
+     * {@code version} sube 2 en esta ruta, inocuo porque el token es un CAS, no un contador.
+     */
+    public Integer agregarMaterial(Integer equipoId, Integer codigoCatalogo, Integer cantidad,
+                                   int versionEsperada) {
         String sqlInsertMaterial =
             "INSERT INTO equipo_materiales (equipo_id, codigo_catalogo, cantidad, estado) " +
             "VALUES (?, ?, ?, ?)";
@@ -347,6 +403,7 @@ public class MaterialDAO {
 
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            EquipoMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
 
             int nuevoMaterialId;
             try (PreparedStatement ps = conn.prepareStatement(sqlInsertMaterial, Statement.RETURN_GENERATED_KEYS)) {
@@ -412,7 +469,14 @@ public class MaterialDAO {
         return materiales;
     }
 
-    public boolean eliminarMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo) {
+    /**
+     * Ruta de {@code Correcciones}; bump guardado primero. Un {@code DELETE} de 0 filas después de
+     * un bump que sí matcheó es contradictorio (la version dice que nadie tocó el equipo, pero las
+     * filas que la pantalla mostraba no están): lleva su propio {@link ControlConcurrencia}, no
+     * commitea el bump y nada aguas abajo se ejecuta.
+     */
+    public boolean eliminarMaterialesPorCodigo(Integer equipoId, Integer codigoCatalogo,
+                                               int versionEsperada) {
         String sqlSelectIds =
             "SELECT id FROM equipo_materiales WHERE equipo_id = ? AND codigo_catalogo = ?";
         String sqlDeleteMovimientos =
@@ -422,6 +486,7 @@ public class MaterialDAO {
 
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            EquipoMaterialHelper.bumpVersionConGuarda(conn, equipoId, versionEsperada);
 
             List<Integer> idsMateriales = new ArrayList<>();
             try (PreparedStatement ps = conn.prepareStatement(sqlSelectIds)) {
@@ -436,22 +501,32 @@ public class MaterialDAO {
             }
 
             if (idsMateriales.isEmpty()) {
-                tx.commit();
-                return false;
+                ControlConcurrencia.exigirFilaAfectada(0, Constantes.Mensajes.CONFLICTO_CORRECCION);
             }
 
+            int filasEliminadas = 0;
             try (PreparedStatement psMov = conn.prepareStatement(sqlDeleteMovimientos);
                  PreparedStatement psMat = conn.prepareStatement(sqlDeleteMateriales)) {
                 for (Integer materialId : idsMateriales) {
                     psMov.setInt(1, materialId);
                     psMov.addBatch();
-
-                    psMat.setInt(1, materialId);
-                    psMat.addBatch();
                 }
                 psMov.executeBatch();
-                psMat.executeBatch();
+
+                // El DELETE de materiales NO va en batch, y los movimientos sí: la diferencia es
+                // que de éste se cuentan las filas. `executeBatch()` puede devolver
+                // SUCCESS_NO_INFO (-2) por sentencia cuando el driver no sabe cuántas tocó —lo que
+                // hace MySQL con rewriteBatchedStatements=true—, así que sumar lo que devuelve da
+                // un total negativo y la guarda de abajo rechaza siempre, con un cartel de
+                // conflicto falso sobre una corrección que en realidad se aplicó bien. Son los
+                // materiales de un código de un equipo: la lista es corta.
+                for (Integer materialId : idsMateriales) {
+                    psMat.setInt(1, materialId);
+                    filasEliminadas += psMat.executeUpdate();
+                }
             }
+            ControlConcurrencia.exigirFilasAfectadas(idsMateriales.size(), filasEliminadas,
+                Constantes.Mensajes.CONFLICTO_CORRECCION);
 
             EquipoMaterialHelper.recalcularEstadoEquipo(conn, equipoId);
             tx.commit();

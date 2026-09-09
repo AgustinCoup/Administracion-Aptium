@@ -111,6 +111,7 @@ public class ReconciliadorPendientes {
     private static MaterialLoteItem conCantidad(MaterialLoteItem item, int cantidad) {
         return new MaterialLoteItem(
                 item.getMaterialId(), item.getEquipoId(), item.getDescripcion(),
-                cantidad, item.getVolumen(), item.getClienteNombre(), item.isEsOtros());
+                cantidad, item.getVolumen(), item.getClienteNombre(), item.isEsOtros(),
+                item.getEstadoOrigen());
     }
 }

@@ -1,5 +1,9 @@
 # Blueprint — Multi-selección en el drag-and-drop de materiales (Gestionar Lotes)
 
+**Estado:** ✅ **EJECUTADO** — commit `a225932`. Verificado el 2026-08-27:
+`ui/common/dnd/MultiRowTableTransferHandler` existe y lo usan `LotesController`,
+`CiclosController` y `SalidasLavaderoController`.
+
 > Plan de construcción autocontenido. Cada paso incluye su propio *context brief*
 > para que un agente pueda ejecutarlo en frío, sin haber leído los pasos previos.
 

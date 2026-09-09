@@ -31,9 +31,34 @@ import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.catalogo.service.CatalogoOtrosService;
 import com.example.features.equipos.otros.service.EquipoOtrosCorreccionService;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
+import com.example.features.lavadero.dao.BolsaLavaderoDAO;
+import com.example.features.lavadero.dao.CatalogoElementosLavaderoDAO;
+import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
+import com.example.features.lavadero.dao.HistorialLavaderoDAO;
+import com.example.features.lavadero.dao.IngresoLavaderoDAO;
+import com.example.features.lavadero.dao.CicloLavaderoDAO;
+import com.example.features.lavadero.dao.LavarropasDAO;
+import com.example.features.lavadero.dao.CatalogoJabonesDAO;
+import com.example.features.lavadero.dao.SalidaLavaderoDAO;
+import com.example.features.lavadero.dao.derivadores.AsignadorClienteAptium;
+import com.example.features.lavadero.dao.derivadores.AsignadorClienteCDE;
+import com.example.features.lavadero.dao.derivadores.ConstructorIngresoCDE;
+import com.example.features.lavadero.dao.derivadores.DerivadorFueraDeFlujo;
+import com.example.features.lavadero.dao.derivadores.DerivadorIngresoCDE;
+import com.example.features.lavadero.dao.derivadores.DerivadorSalidas;
+import com.example.features.lavadero.model.AccionSalida;
+import com.example.features.lavadero.service.CatalogoJabonesService;
+import com.example.features.lavadero.service.CicloLavaderoService;
+import com.example.features.lavadero.service.ClasificacionLavaderoService;
+import com.example.features.lavadero.service.HistorialLavaderoService;
+import com.example.features.lavadero.service.LavarropasService;
+import com.example.features.lavadero.service.LavaderoService;
+import com.example.features.lavadero.service.SalidaLavaderoService;
 import com.example.features.equipos.ortopedias.service.EquipoReporteService;
 import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
 import com.example.features.lotes.service.LoteReporteService;
+
+import java.util.List;
 
 public class AppContext {
 
@@ -50,6 +75,13 @@ public class AppContext {
     private final EquipoOtrosService equipoOtrosService;
     private final EquipoCorreccionService equipoCorreccionService;
     private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
+    private final LavaderoService lavaderoService;
+    private final ClasificacionLavaderoService clasificacionLavaderoService;
+    private final LavarropasService lavarropasService;
+    private final CicloLavaderoService   cicloLavaderoService;
+    private final CatalogoJabonesService catalogoJabonesService;
+    private final SalidaLavaderoService  salidaLavaderoService;
+    private final HistorialLavaderoService historialLavaderoService;
     private final LoteReporteService loteReporteService;
     private final EquipoReporteService equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
@@ -70,6 +102,13 @@ public class AppContext {
         EquipoOtrosService equipoOtrosService,
         EquipoCorreccionService equipoCorreccionService,
         EquipoOtrosCorreccionService equipoOtrosCorreccionService,
+        LavaderoService lavaderoService,
+        ClasificacionLavaderoService clasificacionLavaderoService,
+        LavarropasService lavarropasService,
+        CicloLavaderoService cicloLavaderoService,
+        CatalogoJabonesService catalogoJabonesService,
+        SalidaLavaderoService salidaLavaderoService,
+        HistorialLavaderoService historialLavaderoService,
         LoteReporteService loteReporteService,
         EquipoReporteService equipoReporteService,
         EquipoOtrosReporteService equipoOtrosReporteService,
@@ -81,7 +120,12 @@ public class AppContext {
             || autoclaveService == null || loteService == null || estadoValidator == null
             || catalogoOtrosService == null
             || equipoOtrosService == null || equipoCorreccionService == null
-            || equipoOtrosCorreccionService == null || loteReporteService == null
+            || equipoOtrosCorreccionService == null || lavaderoService == null
+            || clasificacionLavaderoService == null
+            || lavarropasService == null || cicloLavaderoService == null
+            || catalogoJabonesService == null || salidaLavaderoService == null
+            || historialLavaderoService == null
+            || loteReporteService == null
             || equipoReporteService == null || equipoOtrosReporteService == null
             || actualizacionService == null || versionInfo == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
@@ -100,6 +144,13 @@ public class AppContext {
         this.equipoOtrosService = equipoOtrosService;
         this.equipoCorreccionService = equipoCorreccionService;
         this.equipoOtrosCorreccionService = equipoOtrosCorreccionService;
+        this.lavaderoService = lavaderoService;
+        this.clasificacionLavaderoService = clasificacionLavaderoService;
+        this.lavarropasService       = lavarropasService;
+        this.cicloLavaderoService    = cicloLavaderoService;
+        this.catalogoJabonesService  = catalogoJabonesService;
+        this.salidaLavaderoService   = salidaLavaderoService;
+        this.historialLavaderoService = historialLavaderoService;
         this.loteReporteService = loteReporteService;
         this.equipoReporteService = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
@@ -148,6 +199,39 @@ public class AppContext {
         ActualizacionService actualizacionService = new ActualizacionService(
             new GithubReleaseClient(), versionInfo, new DescargaService(), new ActualizacionInstaller());
 
+        BolsaLavaderoDAO bolsaLavaderoDAO = new BolsaLavaderoDAO();
+        IngresoLavaderoDAO ingresoLavaderoDAO = new IngresoLavaderoDAO(bolsaLavaderoDAO);
+        LavaderoService lavaderoService = new LavaderoService(ingresoLavaderoDAO);
+
+        CatalogoElementosLavaderoDAO catalogoElementosLavaderoDAO = new CatalogoElementosLavaderoDAO();
+        ClasificacionLavaderoDAO clasificacionLavaderoDAO = new ClasificacionLavaderoDAO();
+        ClasificacionLavaderoService clasificacionLavaderoService = new ClasificacionLavaderoService(
+            clasificacionLavaderoDAO, catalogoElementosLavaderoDAO);
+
+        LavarropasDAO lavarropasDAO = new LavarropasDAO();
+        LavarropasService lavarropasService = new LavarropasService(lavarropasDAO);
+        CicloLavaderoDAO cicloLavaderoDAO = new CicloLavaderoDAO();
+        CicloLavaderoService cicloLavaderoService = new CicloLavaderoService(cicloLavaderoDAO);
+        CatalogoJabonesDAO catalogoJabonesDAO = new CatalogoJabonesDAO();
+        CatalogoJabonesService catalogoJabonesService = new CatalogoJabonesService(catalogoJabonesDAO);
+
+        // Las tres acciones de salida del lavadero. Esta lista es el unico lugar donde se
+        // decide que acciones existen: agregar un destino nuevo es una entrada mas aca.
+        SalidaLavaderoDAO salidaLavaderoDAO = new SalidaLavaderoDAO();
+        ConstructorIngresoCDE constructorIngresoCDE = new ConstructorIngresoCDE();
+        List<DerivadorSalidas> derivadores = List.of(
+            new DerivadorFueraDeFlujo(),
+            new DerivadorIngresoCDE(AccionSalida.CDE_CLIENTE, constructorIngresoCDE,
+                                    AsignadorClienteCDE.CLIENTE_ORIGINAL, equipoOtrosDAO),
+            new DerivadorIngresoCDE(AccionSalida.CDE_APTIUM, constructorIngresoCDE,
+                                    new AsignadorClienteAptium(clienteDAO), equipoOtrosDAO));
+        SalidaLavaderoService salidaLavaderoService =
+            new SalidaLavaderoService(salidaLavaderoDAO, derivadores);
+
+        HistorialLavaderoDAO historialLavaderoDAO = new HistorialLavaderoDAO();
+        HistorialLavaderoService historialLavaderoService =
+            new HistorialLavaderoService(historialLavaderoDAO);
+
         return new AppContext(
             equipoService,
             catalogoService,
@@ -162,6 +246,13 @@ public class AppContext {
             equipoOtrosService,
             equipoCorreccionService,
             equipoOtrosCorreccionService,
+            lavaderoService,
+            clasificacionLavaderoService,
+            lavarropasService,
+            cicloLavaderoService,
+            catalogoJabonesService,
+            salidaLavaderoService,
+            historialLavaderoService,
             loteReporteService,
             equipoReporteService,
             equipoOtrosReporteService,
@@ -220,6 +311,34 @@ public class AppContext {
 
     public EquipoOtrosCorreccionService getEquipoOtrosCorreccionService() {
         return equipoOtrosCorreccionService;
+    }
+
+    public LavaderoService getLavaderoService() {
+        return lavaderoService;
+    }
+
+    public ClasificacionLavaderoService getClasificacionLavaderoService() {
+        return clasificacionLavaderoService;
+    }
+
+    public LavarropasService getLavarropasService() {
+        return lavarropasService;
+    }
+
+    public CicloLavaderoService getCicloLavaderoService() {
+        return cicloLavaderoService;
+    }
+
+    public CatalogoJabonesService getCatalogoJabonesService() {
+        return catalogoJabonesService;
+    }
+
+    public SalidaLavaderoService getSalidaLavaderoService() {
+        return salidaLavaderoService;
+    }
+
+    public HistorialLavaderoService getHistorialLavaderoService() {
+        return historialLavaderoService;
     }
 
     public LoteReporteService getLoteReporteService() {

@@ -1,6 +1,7 @@
 package com.example.features.clientes.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ResourceNotFoundException;
 import com.example.features.clientes.model.Cliente;
@@ -132,5 +133,38 @@ class ClienteDAOTest extends AbstractDAOTest {
         ejecutarSQL("INSERT INTO equipos (nro_cliente, nro_institucion, estado, requiere_lavado, requiere_empaque) VALUES (" + c.getId() + ", 1, 'Nuevo', 1, 1)");
 
         assertThrows(DatabaseException.class, () -> dao.eliminar(c.getId()));
+    }
+
+    // ── eliminarConNombre (CAS) ──────────────────────────────────────────────
+
+    @Test
+    void eliminarConNombre_nombreVigente_eliminaCliente() {
+        Cliente c = new Cliente(0, "TestCliente EliminarCAS");
+        dao.guardar(c);
+
+        dao.eliminarConNombre(c.getId(), "TestCliente EliminarCAS");
+
+        assertFalse(dao.existe(c.getId()));
+    }
+
+    @Test
+    void eliminarConNombre_nombreDesactualizado_lanzaConflictoYNoBorra() {
+        Cliente c = new Cliente(0, "TestCliente NombreViejo");
+        dao.guardar(c);
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.eliminarConNombre(c.getId(), "TestCliente NombreQueYaNoEs"));
+        assertTrue(dao.existe(c.getId()), "El cliente no debe borrarse si el nombre no coincide");
+    }
+
+    @Test
+    void eliminarConNombre_conReferencias_lanzaReferentialIntegrityException() throws SQLException {
+        Cliente c = new Cliente(0, "TestCliente ConFKCAS");
+        dao.guardar(c);
+        ejecutarSQL("INSERT INTO equipos (nro_cliente, nro_institucion, estado, requiere_lavado, requiere_empaque) VALUES (" + c.getId() + ", 1, 'Nuevo', 1, 1)");
+
+        assertThrows(DatabaseException.class,
+            () -> dao.eliminarConNombre(c.getId(), "TestCliente ConFKCAS"));
+        assertTrue(dao.existe(c.getId()));
     }
 }

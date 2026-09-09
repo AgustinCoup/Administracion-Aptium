@@ -1,6 +1,9 @@
 package com.example.features.lotes.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.constants.Constantes;
+import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.common.exception.DatabaseException;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
@@ -76,7 +79,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void lanzarLote_ortopediaCantidadTotal_retornaLoteConDatos() {
         List<LoteMovimiento> movs = List.of(
-            new LoteMovimiento(materialId, equipo.getId(), 3)
+            new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)
         );
         Lote lote = dao.lanzarLote("E01", 120, 45, movs, Map.of());
 
@@ -90,7 +93,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void lanzarLote_ortopediaCantidadTotal_materialCambiaAEsterilizando() {
         List<LoteMovimiento> movs = List.of(
-            new LoteMovimiento(materialId, equipo.getId(), 3)
+            new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)
         );
         dao.lanzarLote("E01", 120, 45, movs, Map.of());
 
@@ -101,7 +104,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void lanzarLote_idNegocioIncrementaPorAnio() {
         List<LoteMovimiento> movs = List.of(
-            new LoteMovimiento(materialId, equipo.getId(), 3)
+            new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)
         );
         Lote lote = dao.lanzarLote("E01", 120, 45, movs, Map.of());
         String idNegocio = lote.getIdNegocio();
@@ -114,7 +117,7 @@ class LoteDAOTest extends AbstractDAOTest {
     void lanzarLote_ortopediaCantidadParcial_splitaMaterial() {
         // Mueve 1 de 3 → original queda en 2, nuevo material en ESTERILIZANDO con cantidad 1
         List<LoteMovimiento> movs = List.of(
-            new LoteMovimiento(materialId, equipo.getId(), 1)
+            new LoteMovimiento(materialId, equipo.getId(), 1, EstadoEquipo.NUEVO)
         );
         Lote lote = dao.lanzarLote("E01", 120, 10, movs, Map.of());
 
@@ -135,7 +138,7 @@ class LoteDAOTest extends AbstractDAOTest {
     void lanzarLote_otrosRemitoTotal_unaFilaEnLoteConCantidadCompleta() throws SQLException {
         int equipoOtrosId = insertarEquipoOtros(5);
         Lote lote = dao.lanzarLote("E01", 120, 60,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 5, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 5, true, EstadoEquipo.NUEVO)), Map.of());
 
         List<LoteMaterialInfo> mats = dao.obtenerMaterialesPorLote(lote.getId());
         assertEquals(1, mats.size());
@@ -146,7 +149,7 @@ class LoteDAOTest extends AbstractDAOTest {
     void lanzarLote_otrosRemitoTotal_unaFilaEnEquipoOtrosMateriales() throws SQLException {
         int equipoOtrosId = insertarEquipoOtros(5);
         dao.lanzarLote("E01", 120, 60,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 5, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 5, true, EstadoEquipo.NUEVO)), Map.of());
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -165,7 +168,7 @@ class LoteDAOTest extends AbstractDAOTest {
     void lanzarLote_otrosRemitoParcial_creaDosFilas() throws SQLException {
         int equipoOtrosId = insertarEquipoOtros(50);
         dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, EstadoEquipo.NUEVO)), Map.of());
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -182,7 +185,7 @@ class LoteDAOTest extends AbstractDAOTest {
     void lanzarLote_otrosRemitoParcial_sumaCantidadesConservaTotalOriginal() throws SQLException {
         int equipoOtrosId = insertarEquipoOtros(50);
         dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, EstadoEquipo.NUEVO)), Map.of());
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -199,7 +202,7 @@ class LoteDAOTest extends AbstractDAOTest {
     void lanzarLote_otrosRemitoParcial_elementosRestantesNoEsterilizando() throws SQLException {
         int equipoOtrosId = insertarEquipoOtros(50);
         dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, EstadoEquipo.NUEVO)), Map.of());
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -217,7 +220,7 @@ class LoteDAOTest extends AbstractDAOTest {
     void lanzarLote_otrosRemitoParcial_equipoNoAvanzaAEsterilizando() throws SQLException {
         int equipoOtrosId = insertarEquipoOtros(50);
         dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, EstadoEquipo.NUEVO)), Map.of());
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -231,6 +234,106 @@ class LoteDAOTest extends AbstractDAOTest {
         }
     }
 
+    // ── Bloqueo optimista al lanzar (Paso 5 del plan de concurrencia) ──────────
+    // El staging de LotesController se arma sobre un snapshot en memoria; entre que se lee y el
+    // operador aprieta "Lanzar", otro cliente puede haber avanzado el material o lanzarlo en otro
+    // lote. La guarda en aplicarMovimientoLote / aplicarMovimientoLoteOtros lo detecta y aborta el
+    // lote entero — sin dejar la fila de `lotes` recién insertada huérfana.
+
+    private int contarLotes() throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM lotes")) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    @Test
+    void lanzarLote_ortopediaEstadoCambiadoPorOtraConexion_conflictoYSinLoteHuerfano() throws SQLException {
+        // B avanza el material y commitea mientras A tenía el staging armado con el estado NUEVO.
+        try (Connection otra = ConnectionPool.getConnection()) {
+            otra.setAutoCommit(false);
+            try (PreparedStatement ps = otra.prepareStatement(
+                    "UPDATE equipo_materiales SET estado = 'Lavando' WHERE id = ?")) {
+                ps.setInt(1, materialId);
+                ps.executeUpdate();
+            }
+            otra.commit();
+        }
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of()));
+
+        assertEquals(0, contarLotes(), "el lote se revirtió entero: no quedó fila huérfana en lotes");
+        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
+        assertEquals(EstadoEquipo.LAVANDO, cargado.getMateriales().get(0).getEstado(),
+            "el cambio de B quedó intacto");
+    }
+
+    @Test
+    void lanzarLote_ortopediaMaterialYaEnLoteActivo_conflictoYNoCreaSegundoLote() throws SQLException {
+        dao.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
+        assertEquals(1, contarLotes());
+
+        // A tenía el material en el staging (estado NUEVO) y no se enteró de que ya fue lanzado.
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.lanzarLote("E02", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of()));
+
+        assertEquals(1, contarLotes(), "el segundo lote no se creó");
+    }
+
+    @Test
+    void lanzarLote_ortopediaMaterialDeLoteFallido_seRelanzaSinConflicto() throws SQLException {
+        Lote fallido = dao.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
+        dao.marcarLoteFallo(fallido.getId());
+        // marcarLoteFallo revierte el estado pero deja el lote_id apuntando al lote fallido:
+        // ese material SÍ es relanzable, la guarda no debe darlo por "ya en otro lote".
+
+        Lote nuevo = dao.lanzarLote("E02", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
+
+        assertNotNull(nuevo);
+        assertEquals(2, contarLotes());
+    }
+
+    @Test
+    void lanzarLote_dosLanzamientosParcialesDelMismoMaterial_ambosOkSinConflicto() throws SQLException {
+        // El material queda en NUEVO con lote_id NULL tras cada split parcial: dos operadores
+        // moviendo subcantidades distintas del mismo material son compatibles, no un choque.
+        dao.lanzarLote("E01", 120, 10,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 1, EstadoEquipo.NUEVO)), Map.of());
+        Lote segundo = dao.lanzarLote("E02", 120, 10,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 1, EstadoEquipo.NUEVO)), Map.of());
+
+        assertNotNull(segundo);
+        assertEquals(2, contarLotes());
+    }
+
+    @Test
+    void lanzarLote_otrosDetallesEstadoCambiadoPorOtraConexion_conflictoYSinLoteHuerfano() throws SQLException {
+        int[] fixture = insertarEquipoOtrosDetalles();
+        int equipoOtrosId  = fixture[0];
+        int otrosMaterialId = fixture[1];
+
+        try (Connection otra = ConnectionPool.getConnection()) {
+            otra.setAutoCommit(false);
+            try (PreparedStatement ps = otra.prepareStatement(
+                    "UPDATE equipo_otros_materiales SET estado = 'Lavando' WHERE id = ?")) {
+                ps.setInt(1, otrosMaterialId);
+                ps.executeUpdate();
+            }
+            otra.commit();
+        }
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true, EstadoEquipo.NUEVO)), Map.of()));
+
+        assertEquals(0, contarLotes(), "no quedó fila huérfana en lotes");
+    }
+
     // ── Escenario del bug: dos lotes simultáneos sobre el mismo REMITO ──────────
     // La UI siempre envía materialId < 0 para REMITO, incluso en splits posteriores.
 
@@ -240,11 +343,11 @@ class LoteDAOTest extends AbstractDAOTest {
 
         // Lote1: 10 de 50, sin finalizar
         Lote lote1 = dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)), Map.of());
 
         // Lote2: 10 de los 40 restantes, lote1 todavía activo
         Lote lote2 = dao.lanzarLote("E02", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)), Map.of());
 
         List<LoteMaterialInfo> mats1 = dao.obtenerMaterialesPorLote(lote1.getId());
         assertEquals(1, mats1.size(), "Lote1 debe tener exactamente una fila");
@@ -272,9 +375,9 @@ class LoteDAOTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtros(50);
 
         dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 15, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 15, true, EstadoEquipo.NUEVO)), Map.of());
         dao.lanzarLote("E02", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 15, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 15, true, EstadoEquipo.NUEVO)), Map.of());
 
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -292,9 +395,9 @@ class LoteDAOTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtros(50);
 
         Lote lote1 = dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, EstadoEquipo.NUEVO)), Map.of());
         Lote lote2 = dao.lanzarLote("E02", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 30, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 30, true, EstadoEquipo.NUEVO)), Map.of());
 
         dao.finalizarLote(lote1.getId());
         dao.finalizarLote(lote2.getId());
@@ -317,11 +420,11 @@ class LoteDAOTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtros(30);
 
         Lote lote1 = dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)), Map.of());
         Lote lote2 = dao.lanzarLote("E02", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)), Map.of());
         Lote lote3 = dao.lanzarLote("E03", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)), Map.of());
 
         assertEquals(10, dao.obtenerMaterialesPorLote(lote1.getId()).stream()
             .mapToInt(LoteMaterialInfo::getCantidad).sum(), "Lote1 debe tener 10");
@@ -348,8 +451,8 @@ class LoteDAOTest extends AbstractDAOTest {
         int equipoOtrosId = insertarEquipoOtros(10);
 
         Lote lote = dao.lanzarLote("E01", 120, 45, List.of(
-            new LoteMovimiento(materialId, equipo.getId(), 3),
-            new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true)
+            new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO),
+            new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 10, true, EstadoEquipo.NUEVO)
         ), Map.of());
 
         List<LoteMaterialInfo> mats = dao.obtenerMaterialesPorLote(lote.getId());
@@ -364,8 +467,8 @@ class LoteDAOTest extends AbstractDAOTest {
         int equipoB = insertarEquipoOtros(15);
 
         Lote lote = dao.lanzarLote("E01", 120, 50, List.of(
-            new LoteMovimiento(-equipoA, equipoA, 10, true),
-            new LoteMovimiento(-equipoB, equipoB, 15, true)
+            new LoteMovimiento(-equipoA, equipoA, 10, true, EstadoEquipo.NUEVO),
+            new LoteMovimiento(-equipoB, equipoB, 15, true, EstadoEquipo.NUEVO)
         ), Map.of());
 
         try (Connection conn = ConnectionPool.getConnection()) {
@@ -394,7 +497,7 @@ class LoteDAOTest extends AbstractDAOTest {
 
         // Primer lote: 20 de 50
         Lote lote1 = dao.lanzarLote("E01", 120, 10,
-            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true)), Map.of());
+            List.of(new LoteMovimiento(-equipoOtrosId, equipoOtrosId, 20, true, EstadoEquipo.NUEVO)), Map.of());
         dao.finalizarLote(lote1.getId());
 
         // Los 30 restantes deben ser una fila real en estado anterior al lote
@@ -412,7 +515,7 @@ class LoteDAOTest extends AbstractDAOTest {
 
         // Segundo lote: los 30 restantes (ya son fila real, usa path DETALLES)
         Lote lote2 = dao.lanzarLote("E01", 120, 15,
-            List.of(new LoteMovimiento(materialIdRestante, equipoOtrosId, 30, true)), Map.of());
+            List.of(new LoteMovimiento(materialIdRestante, equipoOtrosId, 30, true, EstadoEquipo.NUEVO)), Map.of());
         dao.finalizarLote(lote2.getId());
 
         // Invariante final: todos los 50 deben estar en Esterilizado
@@ -468,7 +571,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void obtenerLotesActivosPorAutoclave_conLoteActivo_retornaLote() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
 
         Map<String, Lote> activos = dao.obtenerLotesActivosPorAutoclave();
         assertTrue(activos.containsKey("E01"));
@@ -478,14 +581,14 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void obtenerTodosLosLotes_conLote_retornaListaConUnElemento() {
         dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         assertEquals(1, dao.obtenerTodosLosLotes().size());
     }
 
     @Test
     void obtenerClientesPorLote_conMaterial_retornaCliente() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         List<String> clientes = dao.obtenerClientesPorLote(lote.getId());
         assertEquals(1, clientes.size());
     }
@@ -493,7 +596,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void obtenerMaterialesPorLote_conMaterial_retornaMaterialInfo() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         List<LoteMaterialInfo> mats = dao.obtenerMaterialesPorLote(lote.getId());
         assertEquals(1, mats.size());
         assertEquals(400, mats.get(0).getCodigoCatalogo());
@@ -510,14 +613,14 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void finalizarLote_loteActivo_retornaTrue() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         assertTrue(dao.finalizarLote(lote.getId()));
     }
 
     @Test
     void finalizarLote_mueveMaterilaAEsterilizado() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         dao.finalizarLote(lote.getId());
 
         Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
@@ -527,7 +630,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void finalizarLote_aparecEnLotesFinalizados() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         dao.finalizarLote(lote.getId());
 
         List<Lote> finalizados = dao.obtenerLotesFinalizados();
@@ -538,7 +641,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void finalizarLote_yaFinalizado_retornaFalse() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         dao.finalizarLote(lote.getId());
         // Segundo intento: ya tiene fecha_fin → actualizarEstadoLoteAbierto devuelve 0 filas
         assertFalse(dao.finalizarLote(lote.getId()));
@@ -547,7 +650,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void finalizarLote_aparecEnRango() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         dao.finalizarLote(lote.getId());
 
         List<Lote> lotes = dao.obtenerLotesEnRango(
@@ -566,14 +669,14 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void marcarLoteFallo_loteActivo_retornaTrue() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         assertTrue(dao.marcarLoteFallo(lote.getId()));
     }
 
     @Test
     void marcarLoteFallo_revierteEstadoMaterial() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         dao.marcarLoteFallo(lote.getId());
 
         Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
@@ -584,7 +687,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void marcarLoteFallo_yaFinalizado_retornaFalse() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
         dao.marcarLoteFallo(lote.getId());
         assertFalse(dao.marcarLoteFallo(lote.getId()));
     }
@@ -617,7 +720,7 @@ class LoteDAOTest extends AbstractDAOTest {
     @Test
     void obtenerMaterialesPorClientePorLote_conMaterial_retornaMapa() {
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(materialId, equipo.getId(), 3)), Map.of());
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
 
         Map<String, List<String>> resultado = dao.obtenerMaterialesPorClientePorLote(lote.getId());
         assertFalse(resultado.isEmpty());
@@ -636,7 +739,7 @@ class LoteDAOTest extends AbstractDAOTest {
         int otrosMaterialId = fixture[1];
 
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true)), Map.of());
+            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true, EstadoEquipo.NUEVO)), Map.of());
 
         List<LoteMaterialInfo> mats = dao.obtenerMaterialesPorLote(lote.getId());
         assertFalse(mats.isEmpty());
@@ -652,7 +755,7 @@ class LoteDAOTest extends AbstractDAOTest {
         int otrosMaterialId = fixture[1];
 
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true)), Map.of());
+            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true, EstadoEquipo.NUEVO)), Map.of());
         dao.finalizarLote(lote.getId());
 
         EquipoOtros cargado = equipoOtrosDAO.obtenerTodos().stream()
@@ -669,12 +772,127 @@ class LoteDAOTest extends AbstractDAOTest {
         int otrosMaterialId = fixture[1];
 
         Lote lote = dao.lanzarLote("E01", 120, 45,
-            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true)), Map.of());
+            List.of(new LoteMovimiento(otrosMaterialId, equipoOtrosId, 5, true, EstadoEquipo.NUEVO)), Map.of());
         dao.marcarLoteFallo(lote.getId());
 
         EquipoOtros cargado = equipoOtrosDAO.obtenerTodos().stream()
             .filter(e -> e.getId() == equipoOtrosId).findFirst().orElseThrow();
         assertNotEquals(EstadoEquipo.ESTERILIZANDO, cargado.getMateriales().get(0).getEstado());
+    }
+
+    // ── Paso 7: secuencia de lotes bajo concurrencia ──────────────────────────
+    //
+    // LO QUE ESTOS DOS TESTS **NO** PUEDEN PROBAR, Y NO HAY QUE LEERLOS COMO SI LO PROBARAN:
+    //
+    // 1. Que la discriminación de la clase 23 esté FUERA de la transacción del intento fallido.
+    //    H2 corre en READ COMMITTED, así que el SELECT de existeIdNegocio ve la fila ajena esté
+    //    adentro del try o afuera: los dos tests quedan verdes también con el SELECT movido
+    //    adentro, que es la versión que en MySQL (REPEATABLE READ) leería el snapshot fijado por
+    //    obtenerSiguienteSecuencia, no vería la fila del otro operador, y no reintentaría NUNCA.
+    //    Lo único que protege esa decisión es el comentario de LoteDAO.lanzarLote. Correr estos
+    //    dos casos una vez contra un MySQL de desarrollo es la única verificación real.
+    //
+    // 2. El bloqueo del índice único del segundo INSERT: MySQL hace esperar al segundo operador
+    //    hasta que el primero termina; H2 no reproduce eso.
+    //
+    // El caso del camino feliz (reintento que resuelve) necesita un seam, y por eso
+    // LoteDAO.obtenerSiguienteSecuencia es package-private: la secuencia es MAX(secuencia) + 1, así
+    // que el reintento sólo avanza si entre los dos intentos aparece una fila committeada por otro.
+    // En un test secuencial la base no cambia sola, y un test con dos hilos dependería del timeout
+    // de lock de H2. Simular la lectura obsoleta de A es determinista y no miente sobre nada.
+
+    @Test
+    void lanzarLote_secuenciaObsoleta_reintentaConLaSiguienteYLanza() throws SQLException {
+        // B ya committeó su lote del año en curso; A había leído MAX(secuencia) = 0 antes de eso.
+        int anio = LocalDate.now().getYear();
+        insertarLoteCrudo(anio + "1", anio, 1);
+        LoteDAOPrimeraSecuenciaObsoleta daoConLecturaObsoleta = new LoteDAOPrimeraSecuenciaObsoleta(1);
+
+        Lote lote = daoConLecturaObsoleta.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
+
+        // Sin este conteo el test no discrimina: un lote con secuencia 2 es también lo que sale si
+        // el primer intento nunca chocó. Dos resoluciones = hubo colisión y hubo reintento.
+        assertEquals(2, daoConLecturaObsoleta.resoluciones(), "el lanzamiento necesitó dos intentos");
+        assertEquals(2, lote.getSecuencia(), "el reintento recalculó la secuencia con la fila de B visible");
+        assertEquals(anio + "2", lote.getIdNegocio());
+        assertEquals(2, contarLotes(), "el intento fallido no dejó fila propia");
+        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
+        assertEquals(EstadoEquipo.ESTERILIZANDO, cargado.getMateriales().get(0).getEstado(),
+            "el segundo intento aplicó el lanzamiento entero, no sólo la cabecera");
+    }
+
+    /**
+     * A leyó {@code MAX(secuencia)} antes de que B commiteara: el primer intento calcula la
+     * secuencia que B ya se llevó, y del segundo en adelante la resolución es la real.
+     */
+    private static final class LoteDAOPrimeraSecuenciaObsoleta extends LoteDAO {
+        private final int secuenciaObsoleta;
+        private int resoluciones = 0;
+
+        LoteDAOPrimeraSecuenciaObsoleta(int secuenciaObsoleta) {
+            this.secuenciaObsoleta = secuenciaObsoleta;
+        }
+
+        /** Cuántos intentos resolvieron una secuencia: es el contador de intentos del bucle. */
+        int resoluciones() {
+            return resoluciones;
+        }
+
+        @Override
+        int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
+            if (resoluciones++ == 0) return secuenciaObsoleta;
+            return super.obtenerSiguienteSecuencia(conn, anio);
+        }
+    }
+
+    @Test
+    void lanzarLote_idNegocioDuplicado_reintentaYTerminaEnConflictoDeSecuencia() throws SQLException {
+        // Una fila de otro año ocupando el id_negocio que le toca al próximo lote de este año:
+        // es la única forma secuencial de forzar el choque, porque una fila coherente del año en
+        // curso movería el MAX(secuencia) y no habría colisión. Los tres intentos recalculan lo
+        // mismo, así que el bucle se agota — que es justo lo que este test mira.
+        int anio = LocalDate.now().getYear();
+        insertarLoteCrudo(anio + "1", anio - 1, 1);
+
+        ConflictoConcurrenciaException e = assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.lanzarLote("E01", 120, 45,
+                List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of()));
+
+        assertEquals(Constantes.Mensajes.CONFLICTO_SECUENCIA_LOTE, e.getMessage(),
+            "agotar los reintentos llega al operador como conflicto de secuencia, no como error técnico");
+        assertEquals(1, contarLotes(), "ningún intento dejó un lote a medio hacer");
+        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
+        assertEquals(EstadoEquipo.NUEVO, cargado.getMateriales().get(0).getEstado(),
+            "cada intento revirtió su transacción entera");
+    }
+
+    @Test
+    void lanzarLote_autoclaveInexistente_fallaEnElActoSinCartelDeSecuencia() throws SQLException {
+        // La FK a autoclaves da clase 23 en la MISMA sentencia que el UNIQUE (id_negocio). Sin
+        // discriminar, esto se llevaría los tres intentos y saldría como conflicto de secuencia.
+        // Que salga DatabaseException prueba que la discriminación cortó en el primer fallo:
+        // ConflictoConcurrenciaException no hereda de DatabaseException.
+        DatabaseException e = assertThrows(DatabaseException.class,
+            () -> dao.lanzarLote("NO_EXISTE", 120, 45,
+                List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of()));
+
+        assertTrue(e.getMessage().contains("NO_EXISTE"), "el mensaje señala el autoclave, no la secuencia");
+        assertInstanceOf(SQLException.class, e.getCause(), "la SQLException original viaja como causa");
+        assertEquals(0, contarLotes());
+    }
+
+    /** Inserta una fila de lotes a mano, sin pasar por lanzarLote. */
+    private void insertarLoteCrudo(String idNegocio, int anio, int secuencia) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "INSERT INTO lotes (id_negocio, anio, secuencia, autoclave_nombre, " +
+                 "capacidad_total, capacidad_usada) VALUES (?, ?, ?, 'E01', 120, 45)")) {
+            ps.setString(1, idNegocio);
+            ps.setInt(2, anio);
+            ps.setInt(3, secuencia);
+            ps.executeUpdate();
+        }
     }
 
     /** Inserta un equipo_otros DETALLES con 1 material (cantidad=5). Devuelve [equipoOtrosId, materialId]. */

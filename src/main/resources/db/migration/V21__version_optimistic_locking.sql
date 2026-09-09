@@ -1,0 +1,32 @@
+-- Token de bloqueo optimista para los dos agregados de equipo
+-- (ver plans/bloqueo-optimista-concurrencia.md, Paso 2).
+--
+-- equipos y equipo_otros son agregados cabecera + detalle cuyo `estado` es DERIVADO: se
+-- recalcula desde el estado de sus materiales. Por eso el estado de la cabecera no sirve como
+-- guarda de concurrencia — puede quedar idéntico aunque los materiales de abajo hayan cambiado
+-- enteros. La columna `version` es el token que sí detecta ese caso: cualquier escritura sobre
+-- el agregado la incrementa, mire el campo que mire quien la lea.
+--
+-- POR QUÉ SÓLO ESTAS DOS TABLAS. Las tablas de detalle (equipo_materiales,
+-- equipo_otros_materiales, elementos_clasificacion_lavadero, salidas_lavadero) NO llevan
+-- version a propósito: sus filas se consumen POR CANTIDAD, así que dos operadores sacando 3 y 4
+-- unidades de una fila de 10 son dos operaciones válidas y compatibles. Una version de fila las
+-- haría chocar a las dos por falso positivo, y el operador aprendería a ignorar el cartel. Ahí
+-- la guarda va sobre el campo que se consume (estado, destino, saldo), que detecta el choque
+-- real. Tampoco la llevan `lotes` ni `ingresos_lavadero`, que ya tienen una guarda natural más
+-- informativa que un número: lotes.fecha_fin IS NULL y la máquina de estados persistida.
+--
+-- LA COLUMNA SE CREA Y SE MANTIENE, PERO NO SE USA COMO GUARDA. Ningún WHERE de este plan la
+-- lleva: guardar con la version del agregado reintroduce el mismo falso positivo un nivel más
+-- arriba (dos operadores avanzando materiales DISTINTOS del mismo equipo chocarían sin pisarse
+-- en nada), y dentro de los flujos en alcance no agrega detección real. Su consumidor previsto
+-- es Correcciones, que reemplaza la fila entera desde un snapshot y hoy escribe a ciegas.
+--
+-- Las filas existentes arrancan en 0, que es correcto: nadie tiene un snapshot viejo tomado por
+-- una app que todavía no leía la columna.
+--
+-- Sin AFTER (MySQL-only; precedente V20, que hace ADD COLUMN pelado a propósito) y sin CHECK
+-- (no hay uno solo en las 20 migraciones anteriores; el patrón del repo es validar en código),
+-- para que H2 en modo MySQL aplique la misma migración en los tests.
+ALTER TABLE equipos ADD COLUMN version INT NOT NULL DEFAULT 0;
+ALTER TABLE equipo_otros ADD COLUMN version INT NOT NULL DEFAULT 0;

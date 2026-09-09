@@ -35,6 +35,7 @@ public class PantallaMenu extends JPanel {
         btnDistribuidora.setFont(Estilos.Fuentes.BOTON);
 
         btnEsterilizacion.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION));
+        btnLavadero.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.LAVADERO));
 
         panelBotones.add(btnEsterilizacion);
         panelBotones.add(btnLavadero);
