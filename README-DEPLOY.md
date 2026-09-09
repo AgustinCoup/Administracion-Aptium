@@ -983,21 +983,27 @@ C:\Aptium
 
 ### 9.4 MySQL Remota con Certificados SSL/TLS
 
-Si MySQL está en servidor remoto (recomendado en producción):
+**Ya está hecho en el código, no hay nada que configurar por puesto.** `ConnectionPool`
+arma las dos URLs JDBC con `sslMode=REQUIRED` (constante `PARAMS_JDBC`), así que la app
+**no conecta** si el servidor no ofrece TLS, en vez de caer a texto plano en silencio como
+hace el default `PREFERRED` de Connector/J 8.x.
 
-```batch
-REM 1. Generaractificados (en servidor MySQL):
-REM ... Usar herramientas de MySQL para generar certs
+Requisito del lado del servidor: MySQL 8 genera certificados autofirmados y habilita TLS
+solo al inicializar el datadir, así que normalmente ya funciona. Verificarlo con:
 
-REM 2. Configurar en config.properties o env vars:
-REM useSSL=true
-REM serverSslMode=REQUIRED
-REM (InnoDBCluster o MySQL Enterprise Edition soporte SSL nativo)
-
-REM 3. En ConnectionPool.java, agregar:
-REM datasource.setUseSSL(true);
-REM datasource.setServerSslMode("REQUIRED");
+```sql
+SHOW GLOBAL VARIABLES LIKE 'have_ssl';   -- debe decir YES
+-- Y sobre una sesión ya conectada desde el puesto:
+STATUS;                                   -- la línea SSL debe mostrar el cifrado en uso
 ```
+
+Si `have_ssl` da `DISABLED`, la app va a fallar al arrancar con un error de conexión: hay
+que habilitar TLS en el servidor (`ssl_cert` / `ssl_key` en `my.ini`), no bajar el modo en
+el cliente.
+
+**Pendiente (decisión, no defecto):** `REQUIRED` cifra pero **no valida** el certificado del
+servidor, así que no protege por sí solo contra un MITM activo — hoy eso lo cubre el túnel
+de Tailscale. Subir a `VERIFY_CA` exige distribuir un truststore a cada puesto.
 
 **QUÉ NO HACER:**
 ```sql

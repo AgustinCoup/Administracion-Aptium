@@ -34,6 +34,27 @@ public class ConnectionPool {
     private static HikariDataSource dataSource;
     private static final Properties PROPS = new Properties();
 
+    /**
+     * Parámetros comunes de la URL JDBC, en una sola constante para que las dos URLs que
+     * arma esta clase (la de {@code crearBaseDeDatosSiNoExiste}, sin base, y la del pool)
+     * no puedan divergir: agregar un parámetro de seguridad a una sola de las dos deja la
+     * otra conexión —que también lleva las credenciales— sin la garantía.
+     *
+     * <p>{@code sslMode=REQUIRED} obliga a que la conexión viaje cifrada. El default de
+     * Connector/J 8.x es {@code PREFERRED}, que cifra si el servidor ofrece TLS pero cae a
+     * texto plano <em>sin avisar</em> si no: las credenciales y todos los datos cruzarían la
+     * red en claro y nada en la app lo delataría. Hoy el túnel de Tailscale ya cifra, pero
+     * eso es otra capa, y el propio runbook de conexión remota admite que la regla de
+     * firewall no persiste entre migraciones de servidor — esta garantía no depende de que
+     * aquélla siga en pie.
+     *
+     * <p>No es {@code VERIFY_CA} porque no hay CA propia: {@code REQUIRED} cifra pero no
+     * valida el certificado del servidor. Subirlo a {@code VERIFY_CA} exige distribuir un
+     * truststore a cada puesto, y es la decisión siguiente, no ésta.
+     */
+    private static final String PARAMS_JDBC =
+        "serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=REQUIRED";
+
     /** Solo para tests — null en producción. Establecer con {@link #setDataSourceForTesting}. */
     private static volatile javax.sql.DataSource testDataSource = null;
 
@@ -222,7 +243,7 @@ public class ConnectionPool {
         }
 
         // Conectar a MySQL SIN especificar base de datos
-        String urlSinBD = "jdbc:mysql://" + dbIp + ":" + dbPort + "/?serverTimezone=UTC&connectionTimeZone=LOCAL";
+        String urlSinBD = "jdbc:mysql://" + dbIp + ":" + dbPort + "/?" + PARAMS_JDBC;
 
         try (Connection conn = java.sql.DriverManager.getConnection(urlSinBD, dbUser, dbPass);
              java.sql.Statement stmt = conn.createStatement()) {
@@ -260,7 +281,7 @@ public class ConnectionPool {
             String dbIp = PROPS.getProperty("db.ip", "localhost");
             String dbPort = PROPS.getProperty("db.port", "3306");
             String dbName = PROPS.getProperty("db.name", "sistema_empresa");
-            config.setJdbcUrl("jdbc:mysql://" + dbIp + ":" + dbPort + "/" + dbName + "?serverTimezone=UTC&connectionTimeZone=LOCAL");
+            config.setJdbcUrl("jdbc:mysql://" + dbIp + ":" + dbPort + "/" + dbName + "?" + PARAMS_JDBC);
             
             // Credenciales
             config.setUsername(PROPS.getProperty("db.user", "root"));
