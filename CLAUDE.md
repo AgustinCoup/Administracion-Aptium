@@ -340,6 +340,16 @@ Correcciones (bump + CAS en una sentencia) y el `UPDATE ... version = version + 
 `FusionClientesDAO`. Detalle completo, incluida la auditoría de qué ruta bumpea y cuál no, en el
 javadoc de `EquipoOtrosMaterialHelper.recalcularEstadoEquipo`.
 
+**La fusión de clientes tiene que mover TODAS las tablas con FK a `clientes`, y hoy son tres**
+(`equipos`, `equipo_otros`, `ingresos_lavadero`). No es una preferencia: las tres FK son
+`ON DELETE RESTRICT`, así que la tabla que falte no deja filas huérfanas — hace **fallar la fusión
+entera** con un `DatabaseException` que el operador no puede accionar. Es un error por **omisión**,
+del tipo que ningún test de caso detecta: la FK de `ingresos_lavadero` llegó con la rama de Lavadero
+y `FusionClientesDAO` no se enteró. Por eso la lista vive en `FusionClientesDAO.REFERENCIAS` como
+**dato** y no como sentencias sueltas, y `FusionClientesDAOTest.todaTablaConFkAClientes_estaContempladaEnLaFusion`
+la compara contra el `INFORMATION_SCHEMA` que Flyway acaba de construir. Al agregar una tabla con FK
+a `clientes`, sumarla ahí — el test avisa con el nombre si no.
+
 `lotes` e `ingresos_lavadero` tampoco llevan `version`: ya tienen una guarda natural más informativa
 que un número (`lotes.fecha_fin IS NULL`, y la máquina de estados persistida del ingreso).
 
