@@ -4,9 +4,8 @@ import javax.swing.*;
 import javax.swing.border.Border;
 
 import java.awt.*;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+
+import com.example.common.constants.Constantes;
 
 /**
  * Clase centralizada de estilos visuales para toda la aplicación.
@@ -26,16 +25,10 @@ public final class Estilos {
      * FUENTES - Predefinidas para mantener consistencia visual
      */
     public static final class Fuentes {
-        private static final String FUENTE_PRINCIPAL = resolverFuente();
-
-        private static String resolverFuente() {
-            Set<String> disponibles = new HashSet<>(Arrays.asList(
-                GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames()
-            ));
-            if (disponibles.contains("Helvetica Neue")) return "Helvetica Neue";
-            if (disponibles.contains("Helvetica"))      return "Helvetica";
-            return "Arial";
-        }
+        // Fija a propósito: no se elige según lo instalado en la PC. Windows no trae Helvetica,
+        // y donde algún software la instala puede resolver PLAIN a una variante Outline
+        // (texto hueco en los botones). Arial está en todo Windows.
+        private static final String FUENTE_PRINCIPAL = Constantes.Defaults.FUENTE_PRINCIPAL;
 
         // Títulos de pantallas (grande y bold)
         public static final Font TITULO = new Font(FUENTE_PRINCIPAL, Font.BOLD, 26);
