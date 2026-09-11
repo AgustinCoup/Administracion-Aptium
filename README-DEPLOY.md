@@ -523,16 +523,27 @@ if not exist "aptium.jar" (
     pause
     exit /b 1
 )
-java -jar "aptium.jar"
+where javaw >nul 2>&1
 if errorlevel 1 (
-    echo.
-    echo Error al ejecutar. Revise C:\Sistema\app\logs\error.log
+    echo Error: no se encuentra javaw.exe en el PATH. Instalar Java 17 o superior.
     pause
+    exit /b 1
 )
+start "" javaw -jar "aptium.jar"
 "@ | Set-Content C:\Sistema\app\ejecutar.bat -Encoding OEM
 ```
 
 Crear un acceso directo a `ejecutar.bat` en el escritorio del usuario.
+
+> **Por qué `javaw` y no `java`.** `java.exe` es una app de consola: `cmd` deja la ventana
+> negra abierta todo el tiempo que corre la app, y ahí el `ThresholdFilter` de `logback.xml`
+> vuelca los WARN — entre ellos el `outOfOrder mode is active` de Flyway, que sale en cada
+> arranque de cada puesto y **no indica ningún problema** (§2.1). `javaw` no abre consola;
+> los logs siguen yendo a `logs\app.log` igual, que es donde se leen. Es además lo que la
+> app ya hace sola: el script de auto-update se relanza con `javaw`.
+>
+> Se pierde el `if errorlevel 1 ... pause`, y no importa: un fallo de arranque lo avisa la
+> propia app con un diálogo de error antes de salir con código 1.
 
 ### 4.8 Primer arranque de cada puesto nuevo
 

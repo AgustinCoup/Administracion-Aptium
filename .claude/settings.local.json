@@ -64,7 +64,9 @@
       "Bash(mvn -q -o compile -DskipTests)",
       "Bash(mvn -o test -Dtest='ConstructorVistaCiclosTest+HistorialLavaderoDAOTest+ConcurrenciaOptimistaTest+DatabaseInitializerTest+CicloLavaderoDAOTest+SalidaLavaderoDAOTest+MaterialDAOTest' -DfailIfNoSpecifiedTests=false)",
       "Bash(mvn -o test -Dtest='ConstructorVistaCiclosTest,HistorialLavaderoDAOTest,ConcurrenciaOptimistaTest,DatabaseInitializerTest,CicloLavaderoDAOTest,SalidaLavaderoDAOTest,MaterialDAOTest' -Dsurefire.failIfNoSpecifiedTests=false)",
-      "Bash(mvn -o test -Dtest=FusionClientesDAOTest)"
+      "Bash(mvn -o test -Dtest=FusionClientesDAOTest)",
+      "PowerShell(mvn -q test \"-Dtest=EquipoSubdivididoIntegracionTest+AgrupadorInstanciasSalidaTest+AgrupadorLineasHistorialTest+StagingCiclosTest+ConstructorVistaCiclosTest+CicloLavaderoDAOTest+SalidaLavaderoDAOTest+HistorialLavaderoDAOTest\" -DfailIfNoTests=false)",
+      "PowerShell(mvn -q test \"-Dtest=EquipoSubdivididoIntegracionTest,AgrupadorInstanciasSalidaTest,AgrupadorLineasHistorialTest,StagingCiclosTest,ConstructorVistaCiclosTest,CicloLavaderoDAOTest,SalidaLavaderoDAOTest,HistorialLavaderoDAOTest\" \"-Dsurefire.failIfNoSpecifiedTests=false\")"
     ]
   }
 }

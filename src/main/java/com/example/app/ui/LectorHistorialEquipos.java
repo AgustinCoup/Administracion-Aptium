@@ -11,7 +11,8 @@ import java.util.function.Supplier;
  * <p>Clase plana, sin Swing: corre en un hilo de fondo y devuelve un
  * {@link HistorialEquipos}. Son las dos queries más caras de la aplicación, y por
  * eso solo se disparan al abrir {@code Ver Equipos} o {@code Estado de procesos},
- * no en cada guardado.
+ * no en cada guardado. Son dos sentencias en total, sea cual sea el volumen: una
+ * sentencia por equipo acá tardaba minutos en producción ({@code CostoDelRefrescoTest}).
  */
 public class LectorHistorialEquipos implements Supplier<HistorialEquipos> {
 

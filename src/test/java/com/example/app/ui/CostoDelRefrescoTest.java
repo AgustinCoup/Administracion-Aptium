@@ -105,8 +105,8 @@ class CostoDelRefrescoTest extends AbstractDAOTest {
     }
 
     @Test
-    @DisplayName("el histórico sigue costando lo que cuesta, pero solo al abrir su pantalla")
-    void historial_pagaPorTodoElVolumen() {
+    @DisplayName("el histórico trae más filas con el volumen, pero no más sentencias")
+    void historial_cantidadDeSentenciasIndependienteDelVolumen() {
         sembrarActivos(3);
         int sinHistorico = contarSentencias(
             new LectorHistorialEquipos(equipoService, equipoOtrosService)::get);
@@ -115,11 +115,12 @@ class CostoDelRefrescoTest extends AbstractDAOTest {
         int conHistorico = contarSentencias(
             new LectorHistorialEquipos(equipoService, equipoOtrosService)::get);
 
-        // No es un defecto: es la contraparte del reparto. Alguien tiene que leer
-        // el histórico para que las pantallas de consulta lo muestren; lo que cambió
-        // es que ese costo se paga al abrirlas y no en cada guardado.
-        assertTrue(conHistorico > sinHistorico,
-            "el histórico se lee entero: " + sinHistorico + " → " + conHistorico);
+        // Antes este test exigía lo contrario (una sentencia por equipo "otros") y lo
+        // llamaba "la contraparte del reparto". En producción era el defecto: cada una
+        // de esas sentencias agregaba toda la tabla de movimientos y "Ver Equipos"
+        // tardaba minutos. Leer el histórico cuesta filas, no idas y vueltas.
+        assertEquals(sinHistorico, conHistorico,
+            "el histórico no debe hacer una sentencia por equipo: " + sinHistorico + " → " + conHistorico);
     }
 
     // ── Lo que leía el snapshot único, para tener con qué comparar ────────────

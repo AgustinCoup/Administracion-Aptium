@@ -21,6 +21,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -45,14 +46,31 @@ public class EquipoOtrosDAO {
     /** Formato del identificador de remito: día-mes-año. */
     private static final DateTimeFormatter FMT_REMITO = DateTimeFormatter.ofPattern("ddMMyyyy");
 
-    /** Cabecera común a todos los listados; el WHERE y el ORDER BY los pone cada método. */
+    /**
+     * Cabecera común a todos los listados: equipo + materiales en una sola query, una fila por
+     * material (o una sola con {@code mat_id} nulo si no tiene). El WHERE y el ORDER BY los pone
+     * cada método.
+     *
+     * <p>Una sola query y no una por equipo: la tabla derivada {@code mv} se materializa entera en
+     * cada ejecución, así que cargarla por equipo costaba O(equipos × movimientos), más un viaje
+     * de red por equipo. Con el histórico de producción, "Ver Equipos" tardaba minutos.
+     */
     private static final String SQL_CABECERA =
         "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
         "eo.estado, eo.requiere_lavado, eo.requiere_empaque, " +
         "eo.tipo_ingreso, eo.remito_id, eo.remito_cantidad, eo.remito_observaciones, " +
-        "eo.volumen_equipo, eo.fecha_ingreso, eo.version " +
+        "eo.volumen_equipo, eo.fecha_ingreso, eo.version, " +
+        "m.id AS mat_id, m.catalogo_otros_id, m.descripcion AS mat_descripcion, " +
+        "m.cantidad AS mat_cantidad, m.estado AS mat_estado, " +
+        "mv.fecha AS ultimo_movimiento, l.id_negocio AS lote_id_negocio " +
         "FROM equipo_otros eo " +
-        "JOIN clientes c ON eo.nro_cliente = c.id ";
+        "JOIN clientes c ON eo.nro_cliente = c.id " +
+        "LEFT JOIN equipo_otros_materiales m ON m.equipo_otros_id = eo.id " +
+        "LEFT JOIN ( " +
+        "    SELECT material_id, MAX(fecha) AS fecha " +
+        "    FROM otros_material_movimientos GROUP BY material_id " +
+        ") mv ON mv.material_id = m.id " +
+        "LEFT JOIN lotes l ON m.lote_id = l.id ";
 
     /**
      * "No entregado" en SQL. Refleja las dos ramas de
@@ -221,39 +239,47 @@ public class EquipoOtrosDAO {
     // ── Lectura ───────────────────────────────────────────────────────────────
 
     /**
-     * Ejecuta un listado sobre {@link #SQL_CABECERA} y carga los materiales de cada fila.
+     * Ejecuta un listado sobre {@link #SQL_CABECERA} y agrupa las filas de material por equipo.
      *
      * <p>Un fallo de SQL se loguea y devuelve lo leído hasta ahí, que es el
      * comportamiento histórico de estos listados.
      *
-     * @param filtro     WHERE + ORDER BY, ya armados
+     * @param where       WHERE ya armado (sobre columnas de {@code eo}), o vacío
+     * @param orden       ORDER BY de los equipos, sin la palabra clave; los materiales
+     *                    de cada equipo salen después por {@code m.id}
      * @param descripcion qué se estaba listando, para el log de error
      */
-    private List<EquipoOtros> listar(String filtro, String descripcion, Object... params) {
-        List<EquipoOtros> lista = new ArrayList<>();
+    private List<EquipoOtros> listar(String where, String orden, String descripcion, Object... params) {
+        String sql = SQL_CABECERA + where + " ORDER BY " + orden + ", m.id";
+        LinkedHashMap<Integer, EquipoOtros> porId = new LinkedHashMap<>();
 
         try (Connection conn = ConnectionPool.getConnection();
-             PreparedStatement ps = conn.prepareStatement(SQL_CABECERA + filtro)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             for (int i = 0; i < params.length; i++) {
                 ps.setObject(i + 1, params[i]);
             }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    EquipoOtros eq = mapearEquipo(rs);
-                    cargarMateriales(conn, eq);
-                    lista.add(eq);
+                    EquipoOtros eq = porId.get(rs.getInt("id"));
+                    if (eq == null) {
+                        eq = mapearEquipo(rs);
+                        porId.put(eq.getId(), eq);
+                    }
+                    if (rs.getObject("mat_id") != null) {
+                        eq.agregarMaterial(mapearMaterial(rs));
+                    }
                 }
             }
         } catch (SQLException e) {
             log.error("Error al obtener {}", descripcion, e);
         }
-        return lista;
+        return new ArrayList<>(porId.values());
     }
 
     /** Retorna todos los equipos "otros", de cualquier estado, con sus materiales. */
     public List<EquipoOtros> obtenerTodos() {
-        return listar("ORDER BY eo.fecha_ingreso DESC, eo.id DESC", "todos los EquipoOtros");
+        return listar("", "eo.fecha_ingreso DESC, eo.id DESC", "todos los EquipoOtros");
     }
 
     /**
@@ -264,7 +290,7 @@ public class EquipoOtrosDAO {
      */
     public List<EquipoOtros> obtenerActivos() {
         return listar(
-            SQL_WHERE_ACTIVOS + "ORDER BY eo.fecha_ingreso DESC, eo.id DESC",
+            SQL_WHERE_ACTIVOS, "eo.fecha_ingreso DESC, eo.id DESC",
             "EquipoOtros activos",
             EstadoEquipo.ENTREGADO.getNombre(),
             EstadoEquipo.ENTREGADO.getNombre());
@@ -272,13 +298,13 @@ public class EquipoOtrosDAO {
 
     /** Retorna los equipos "otros" en estado "Nuevo" (editables para correcciones). */
     public List<EquipoOtros> obtenerEquiposNuevos() {
-        return listar("WHERE eo.estado = ? ORDER BY eo.id DESC", "EquipoOtros nuevos",
+        return listar("WHERE eo.estado = ?", "eo.id DESC", "EquipoOtros nuevos",
             EstadoEquipo.NUEVO.getNombre());
     }
 
     /** Retorna un equipo_otros por id, con sus materiales cargados, o null si no existe. */
     public EquipoOtros obtenerPorId(int id) {
-        List<EquipoOtros> encontrados = listar("WHERE eo.id = ?", "EquipoOtros id=" + id, id);
+        List<EquipoOtros> encontrados = listar("WHERE eo.id = ?", "eo.id", "EquipoOtros id=" + id, id);
         return encontrados.isEmpty() ? null : encontrados.get(0);
     }
 
@@ -851,37 +877,18 @@ public class EquipoOtrosDAO {
         return eq;
     }
 
-    private void cargarMateriales(Connection conn, EquipoOtros equipo) throws SQLException {
-        String sql =
-            "SELECT m.id, m.catalogo_otros_id, m.descripcion, m.cantidad, m.estado, " +
-            "       mv.fecha AS ultimo_movimiento, l.id_negocio AS lote_id_negocio " +
-            "FROM equipo_otros_materiales m " +
-            "LEFT JOIN ( " +
-            "    SELECT material_id, MAX(fecha) AS fecha " +
-            "    FROM otros_material_movimientos GROUP BY material_id " +
-            ") mv ON mv.material_id = m.id " +
-            "LEFT JOIN lotes l ON m.lote_id = l.id " +
-            "WHERE m.equipo_otros_id = ? " +
-            "ORDER BY m.id";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, equipo.getId());
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Timestamp ts = rs.getTimestamp("ultimo_movimiento");
-                    MaterialOtros mat = new MaterialOtros(
-                        rs.getInt("id"),
-                        rs.getObject("catalogo_otros_id") != null ? rs.getInt("catalogo_otros_id") : null,
-                        rs.getString("descripcion"),
-                        rs.getInt("cantidad"),
-                        EstadoEquipo.desdeBD(rs.getString("estado")),
-                        ts != null ? ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime() : null
-                    );
-                    mat.setLoteIdNegocio(rs.getString("lote_id_negocio"));
-                    equipo.agregarMaterial(mat);
-                }
-            }
-        }
+    private MaterialOtros mapearMaterial(ResultSet rs) throws SQLException {
+        Timestamp ts = rs.getTimestamp("ultimo_movimiento");
+        MaterialOtros mat = new MaterialOtros(
+            rs.getInt("mat_id"),
+            rs.getObject("catalogo_otros_id") != null ? rs.getInt("catalogo_otros_id") : null,
+            rs.getString("mat_descripcion"),
+            rs.getInt("mat_cantidad"),
+            EstadoEquipo.desdeBD(rs.getString("mat_estado")),
+            ts != null ? ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime() : null
+        );
+        mat.setLoteIdNegocio(rs.getString("lote_id_negocio"));
+        return mat;
     }
 
     /**
@@ -935,7 +942,7 @@ public class EquipoOtrosDAO {
             where += " AND eo.nro_cliente = ?";
             params.add(clienteId);
         }
-        return listar(where + " ORDER BY eo.fecha_ingreso, eo.id",
+        return listar(where, "eo.fecha_ingreso, eo.id",
             "EquipoOtros entre fechas", params.toArray());
     }
 
