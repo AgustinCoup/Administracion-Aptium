@@ -477,7 +477,7 @@ y `PARAMS_JDBC` (55-56) es `serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=
    >
    > | Dato | Valor |
    > |---|---|
-   > | N puestos | _pendiente_ |
+   > | N puestos | **3** (2026-09-15) → hasta 3 × 8 = **24** conexiones de la app |
    > | `max_connections` | _pendiente_ |
    > | `Threads_connected` | _pendiente_ |
    > | `Max_used_connections` | _pendiente_ |
