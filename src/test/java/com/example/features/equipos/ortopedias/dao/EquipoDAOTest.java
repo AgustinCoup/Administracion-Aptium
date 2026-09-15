@@ -79,6 +79,53 @@ class EquipoDAOTest extends AbstractDAOTest {
             () -> dao.obtenerPorId("no-es-un-numero"));
     }
 
+    /**
+     * {@code ultimo_movimiento} pasó de un {@code LEFT JOIN} contra una tabla derivada a una
+     * subconsulta correlacionada (Paso 6): tiene que seguir dando exactamente el máximo de
+     * {@code material_movimientos.fecha} para el material, sin importar cuántas filas tenga.
+     */
+    @Test
+    void obtenerPorId_ultimoMovimientoEsElMaximoDeFecha() throws SQLException {
+        Equipo e = equipoBase();
+        e.agregarMaterial(new Material(400, "Tornillera", 2));
+        dao.guardarEquipo(e);
+        int materialId = dao.obtenerPorId(String.valueOf(e.getId())).getMateriales().get(0).getId();
+
+        ejecutarSQL("INSERT INTO material_movimientos " +
+            "(material_id, equipo_id, cantidad, estado_destino, fecha) VALUES (" +
+            materialId + ", " + e.getId() + ", 1, 'Lavando', '2020-01-01 00:00:00')");
+        ejecutarSQL("INSERT INTO material_movimientos " +
+            "(material_id, equipo_id, cantidad, estado_destino, fecha) VALUES (" +
+            materialId + ", " + e.getId() + ", 1, 'Lavado', '2030-06-15 12:00:00')");
+        ejecutarSQL("INSERT INTO material_movimientos " +
+            "(material_id, equipo_id, cantidad, estado_destino, fecha) VALUES (" +
+            materialId + ", " + e.getId() + ", 1, 'Empaquetado', '2025-03-03 00:00:00')");
+
+        Equipo obtenido = dao.obtenerPorId(String.valueOf(e.getId()));
+        assertEquals(java.time.LocalDateTime.of(2030, 6, 15, 12, 0, 0),
+            obtenido.getMateriales().get(0).getUltimoMovimiento());
+    }
+
+    /**
+     * El {@code ORDER BY} de {@link EquipoDAO#obtenerEquiposConJoin} ya no lleva la clave de
+     * material (Paso 6, para no forzar un filesort del join entero): el orden ascendente por id
+     * lo da el ordenamiento en memoria, no el SQL.
+     */
+    @Test
+    void obtenerTodos_materialesOrdenadosPorId_sinClaveDeMaterialEnOrderBy() {
+        Equipo e = equipoBase();
+        e.agregarMaterial(new Material(400, "Tornillera", 1));
+        e.agregarMaterial(new Material(401, "Placa", 1));
+        e.agregarMaterial(new Material(402, "Tornillo", 1));
+        dao.guardarEquipo(e);
+
+        List<Material> materiales = dao.obtenerTodos().get(0).getMateriales();
+        List<Integer> ids = materiales.stream().map(Material::getId).toList();
+        List<Integer> idsOrdenados = new java.util.ArrayList<>(ids);
+        idsOrdenados.sort(Integer::compareTo);
+        assertEquals(idsOrdenados, ids);
+    }
+
     // ── obtenerTodos ──────────────────────────────────────────────────────────
 
     @Test

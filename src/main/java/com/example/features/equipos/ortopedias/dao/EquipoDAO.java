@@ -44,14 +44,25 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "LEFT JOIN profesionales p ON e.nro_profesional = p.id " +
         "LEFT JOIN instituciones i ON e.nro_institucion = i.id ";
 
-    // Query con materiales incluidos — resuelve el N+1 para listados masivos
+    /**
+     * Query con materiales incluidos — resuelve el N+1 para listados masivos.
+     *
+     * <p>{@code ultimo_movimiento} es una subconsulta correlacionada, no un {@code LEFT JOIN}
+     * contra una tabla derivada que agrupa {@code material_movimientos} entera: esa tabla recibe
+     * una fila por cada cambio de estado y nunca se poda, así que la derivada se materializaba
+     * completa en cada listado sin importar cuántos equipos devolviera. Con
+     * {@code idx_mov_material (material_id)} (V1), la subconsulta es un index range scan de una
+     * entrada por material.
+     */
     private static final String SQL_EQUIPOS_CON_MATERIALES =
         "SELECT e.id, e.nro_cliente, c.nombre AS cliente_nombre, e.nro_profesional, " +
         "       p.nombre AS profesional_nombre, e.paciente, " +
         "       e.nro_institucion, i.nombre AS institucion_nombre, e.estado, " +
         "       e.requiere_lavado, e.requiere_empaque, e.fecha_ingreso, e.version, " +
         "       em.id AS mat_id, em.codigo_catalogo, cd.descripcion AS mat_descripcion, " +
-        "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, mm.ultimo_movimiento, " +
+        "       em.cantidad AS mat_cantidad, em.estado AS mat_estado, " +
+        "       (SELECT MAX(mm.fecha) FROM material_movimientos mm WHERE mm.material_id = em.id) " +
+        "           AS ultimo_movimiento, " +
         "       l.id_negocio AS lote_id_negocio " +
         "FROM equipos e " +
         "LEFT JOIN clientes c ON e.nro_cliente = c.id " +
@@ -59,10 +70,6 @@ public class EquipoDAO implements DAO<Equipo, String> {
         "LEFT JOIN instituciones i ON e.nro_institucion = i.id " +
         "LEFT JOIN equipo_materiales em ON em.equipo_id = e.id " +
         "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
-        "LEFT JOIN (" +
-        "  SELECT material_id, MAX(fecha) AS ultimo_movimiento " +
-        "  FROM material_movimientos GROUP BY material_id" +
-        ") mm ON em.id = mm.material_id " +
         "LEFT JOIN lotes l ON em.lote_id = l.id ";
 
     /**
@@ -259,6 +266,12 @@ public class EquipoDAO implements DAO<Equipo, String> {
         return mat;
     }
 
+    /**
+     * El {@code ORDER BY} de {@code extraWhere} ya no incluye la clave de material (ver el
+     * javadoc de {@link #SQL_EQUIPOS_CON_MATERIALES}), así que los materiales de cada equipo se
+     * ordenan acá, en memoria: son listas de 3-10 elementos, y el plegado por
+     * {@code LinkedHashMap} no depende de que las filas de un equipo lleguen contiguas.
+     */
     private List<Equipo> obtenerEquiposConJoin(String extraWhere, Object... params) {
         String sql = SQL_EQUIPOS_CON_MATERIALES + extraWhere;
         LinkedHashMap<Integer, Equipo> mapa = new LinkedHashMap<>();
@@ -282,6 +295,9 @@ public class EquipoDAO implements DAO<Equipo, String> {
             log.error("Error al obtener equipos", e);
             throw new DatabaseException("Error al obtener equipos", e);
         }
+        for (Equipo eq : mapa.values()) {
+            eq.getMateriales().sort(java.util.Comparator.comparingInt(Material::getId));
+        }
         return new ArrayList<>(mapa.values());
     }
 
@@ -290,13 +306,11 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * Incluye el estado de cada material.
      */
     private void cargarMateriales(Connection conn, Equipo equipo) throws SQLException {
-        String sql = "SELECT em.id, em.codigo_catalogo, cd.descripcion, em.cantidad, em.estado, mm.ultimo_movimiento " +
+        String sql = "SELECT em.id, em.codigo_catalogo, cd.descripcion, em.cantidad, em.estado, " +
+                 "       (SELECT MAX(mm.fecha) FROM material_movimientos mm WHERE mm.material_id = em.id) " +
+                 "           AS ultimo_movimiento " +
                  "FROM equipo_materiales em " +
              "LEFT JOIN catalogo_descripciones cd ON em.codigo_catalogo = cd.codigo " +
-                 "LEFT JOIN (" +
-                 "  SELECT material_id, MAX(fecha) AS ultimo_movimiento " +
-                 "  FROM material_movimientos GROUP BY material_id" +
-                 ") mm ON em.id = mm.material_id " +
                  "WHERE em.equipo_id = ? ORDER BY em.id";
         
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -332,7 +346,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      * Método público para compatibilidad con código existente.
      */
     public List<Equipo> obtenerTodosLosEquipos() {
-        return obtenerEquiposConJoin("ORDER BY e.fecha_ingreso DESC, e.id DESC, em.id");
+        return obtenerEquiposConJoin("ORDER BY e.fecha_ingreso DESC, e.id DESC");
     }
 
     /**
@@ -344,7 +358,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     public List<Equipo> obtenerActivos() {
         return obtenerEquiposConJoin(
-            SQL_WHERE_ACTIVOS + "ORDER BY e.fecha_ingreso DESC, e.id DESC, em.id",
+            SQL_WHERE_ACTIVOS + "ORDER BY e.fecha_ingreso DESC, e.id DESC",
             EstadoEquipo.ENTREGADO.getNombre()
         );
     }
@@ -457,7 +471,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
      */
     public List<Equipo> obtenerEquiposNuevos() {
         return obtenerEquiposConJoin(
-            "WHERE e.estado = ? ORDER BY e.fecha_ingreso DESC, em.id",
+            "WHERE e.estado = ? ORDER BY e.fecha_ingreso DESC, e.id DESC",
             EstadoEquipo.NUEVO.getNombre()
         );
     }
@@ -476,7 +490,7 @@ public class EquipoDAO implements DAO<Equipo, String> {
             where += " AND e.nro_institucion = ?";
             params.add(institucionId);
         }
-        return obtenerEquiposConJoin(where + " ORDER BY e.fecha_ingreso, em.id", params.toArray());
+        return obtenerEquiposConJoin(where + " ORDER BY e.fecha_ingreso, e.id", params.toArray());
     }
 
 

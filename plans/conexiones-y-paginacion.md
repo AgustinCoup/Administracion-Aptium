@@ -1172,12 +1172,35 @@ con la base caída, muestra un **error visible**, no una traza en consola.
 
 ### Criterio de salida
 
-- [ ] No queda ningún `GROUP BY material_id` sin `WHERE` en los DAO de equipos
-- [ ] Los cuatro `ORDER BY` de listado de `EquipoDAO` y el de `EquipoOtrosDAO.listar()` quedaron sin
+- [x] No queda ningún `GROUP BY material_id` sin `WHERE` en los DAO de equipos
+- [x] Los cuatro `ORDER BY` de listado de `EquipoDAO` y el de `EquipoOtrosDAO.listar()` quedaron sin
       la clave de material; la carga de materiales de un equipo quedó intacta
-- [ ] `listar()` propaga el error; no hay lista parcial
-- [ ] `abrirDetalleOtros` corre por `TareaUI` y muestra un error visible si la lectura falla
+- [x] `listar()` propaga el error; no hay lista parcial
+- [x] `abrirDetalleOtros` corre por `TareaUI` y muestra un error visible si la lectura falla
 - [ ] Commit: `perf: el último movimiento sale por índice y los listados propagan sus errores`
+
+> **Decisión del usuario (2026-09-15) sobre la tarea 4.** `listar()` propaga en **todos** los
+> casos, incluido `obtenerPorId()`. Consecuencia informada y aceptada: las diez rutas de
+> Correcciones que pasan por `cargarYValidarNuevo` (`EquipoOtrosCorreccionService`) dejan de
+> convertir un fallo técnico de lectura en `ValidationException("El equipo no existe")` y lo
+> muestran como `DatabaseException`. `EquipoOtrosCorreccionServiceIntegrationTest` sigue en verde
+> sin cambios: ningún test ejercitaba ese camino de fallo.
+>
+> **Hallazgo durante la verificación, para el Paso 10.** El `EXPLAIN` del `listar()` completo
+> (con los `LEFT JOIN` a materiales y lotes) sobre MySQL local sigue mostrando `Using filesort`
+> en `eo`, a pesar de `idx_otros_fecha_ingreso` — a diferencia del `EXPLAIN` aislado del Paso 5.
+> Con sólo 4 filas en `equipo_otros`, el optimizador de MySQL descarta el índice y prefiere un
+> scan completo (el costo estimado de usar el índice es más alto a este volumen): es un
+> comportamiento esperado a escala trivial, no un defecto del índice — pero significa que el
+> Paso 10, que sí necesita el índice para paginar sin filesort, tiene que volver a correr
+> `EXPLAIN` con volumen real (o el sembrador del Paso 3) antes de declarar la victoria, en vez de
+> asumir que este `EXPLAIN` la garantiza. Anotado en vez de declarado (anti-patrón A6).
+>
+> **Smoke manual (doble clic en "Ver Equipos" sobre un equipo "otros") no se hizo interactivo**:
+> este entorno no tiene una sesión gráfica para manejar el mouse. Cubierto en su lugar por
+> `EquipoOtrosDAOTest` (34 tests, incluidos los nuevos de `ultimo_movimiento` y orden de
+> materiales) y por la compilación + `mvn clean package` exitosos; falta la verificación visual
+> del diálogo, que el usuario puede hacer en su máquina.
 
 ---
 

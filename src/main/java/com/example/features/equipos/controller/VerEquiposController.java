@@ -180,16 +180,36 @@ public class VerEquiposController {
         new DetalleOrtopediaDialog(ventana, equipo).setVisible(true);
     }
 
+    /**
+     * Doble clic → detalle con materiales. La lectura va en fondo: {@code obtenerPorId} hace
+     * JDBC y, desde el Paso 6, propaga {@link com.example.common.exception.DatabaseException} en
+     * vez de devolver {@code null} ante un fallo — llamarlo directo desde el EDT dejaría ese
+     * error sin capturar.
+     */
     private void abrirDetalleOtros() {
         int viewRow = panel.getTablaOtros().getSelectedRow();
         if (viewRow < 0) return;
         int modelRow = panel.getTablaOtros().convertRowIndexToModel(viewRow);
         EquipoOtros equipo = panel.getEquipoOtrosAt(modelRow);
         if (equipo == null) return;
-        EquipoOtros equipoConMateriales = equipoOtrosService.obtenerPorId(equipo.getId());
-        if (equipoConMateriales == null) return;
-        Window ventana = SwingUtilities.getWindowAncestor(panel);
-        new DetalleOtrosDialog(ventana, equipoConMateriales).setVisible(true);
+
+        TareaUI.<EquipoOtros>nueva()
+            .nombre("detalle-equipo-otros")
+            .leer(() -> equipoOtrosService.obtenerPorId(equipo.getId()))
+            .pintar(equipoConMateriales -> {
+                if (equipoConMateriales == null) return;   // borrado entre el doble clic y la lectura
+                new DetalleOtrosDialog(
+                    SwingUtilities.getWindowAncestor(panel), equipoConMateriales).setVisible(true);
+            })
+            .siFalla(this::mostrarErrorDetalle)
+            .lanzar();
+    }
+
+    /** Un detalle que no se pudo leer se avisa; abrir un diálogo vacío mentiría. */
+    private void mostrarErrorDetalle(Throwable causa) {
+        JOptionPane.showMessageDialog(panel,
+            "No se pudo leer el detalle del equipo.\n\n" + causa.getMessage(),
+            "Error al leer el equipo", JOptionPane.ERROR_MESSAGE);
     }
 
     // ── Impresión ─────────────────────────────────────────────────────────────

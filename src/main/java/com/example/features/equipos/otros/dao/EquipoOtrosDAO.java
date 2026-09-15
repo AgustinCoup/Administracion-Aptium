@@ -51,9 +51,15 @@ public class EquipoOtrosDAO {
      * material (o una sola con {@code mat_id} nulo si no tiene). El WHERE y el ORDER BY los pone
      * cada método.
      *
-     * <p>Una sola query y no una por equipo: la tabla derivada {@code mv} se materializa entera en
-     * cada ejecución, así que cargarla por equipo costaba O(equipos × movimientos), más un viaje
-     * de red por equipo. Con el histórico de producción, "Ver Equipos" tardaba minutos.
+     * <p>Una sola query y no una por equipo: cargarla por equipo costaba un viaje de red por
+     * equipo. Con el histórico de producción, "Ver Equipos" tardaba minutos.
+     *
+     * <p>{@code ultimo_movimiento} es una subconsulta correlacionada, no un {@code LEFT JOIN}
+     * contra una tabla derivada que agrupa {@code otros_material_movimientos} entera: esa tabla
+     * recibe una fila por cada cambio de estado y nunca se poda, así que la derivada se
+     * materializaba completa en cada listado sin importar cuántos equipos devolviera. Con
+     * {@code idx_otros_mov_material (material_id)} (V2), la subconsulta es un index range scan de
+     * una entrada por material.
      */
     private static final String SQL_CABECERA =
         "SELECT eo.id, eo.nro_cliente, c.nombre AS cliente_nombre, " +
@@ -62,14 +68,11 @@ public class EquipoOtrosDAO {
         "eo.volumen_equipo, eo.fecha_ingreso, eo.version, " +
         "m.id AS mat_id, m.catalogo_otros_id, m.descripcion AS mat_descripcion, " +
         "m.cantidad AS mat_cantidad, m.estado AS mat_estado, " +
-        "mv.fecha AS ultimo_movimiento, l.id_negocio AS lote_id_negocio " +
+        "(SELECT MAX(mm.fecha) FROM otros_material_movimientos mm WHERE mm.material_id = m.id) " +
+        "    AS ultimo_movimiento, l.id_negocio AS lote_id_negocio " +
         "FROM equipo_otros eo " +
         "JOIN clientes c ON eo.nro_cliente = c.id " +
         "LEFT JOIN equipo_otros_materiales m ON m.equipo_otros_id = eo.id " +
-        "LEFT JOIN ( " +
-        "    SELECT material_id, MAX(fecha) AS fecha " +
-        "    FROM otros_material_movimientos GROUP BY material_id " +
-        ") mv ON mv.material_id = m.id " +
         "LEFT JOIN lotes l ON m.lote_id = l.id ";
 
     /**
@@ -241,16 +244,22 @@ public class EquipoOtrosDAO {
     /**
      * Ejecuta un listado sobre {@link #SQL_CABECERA} y agrupa las filas de material por equipo.
      *
-     * <p>Un fallo de SQL se loguea y devuelve lo leído hasta ahí, que es el
-     * comportamiento histórico de estos listados.
+     * <p>Un fallo de SQL propaga {@link DatabaseException}: una lista a medias mostrada como
+     * completa es peor que un error visible (regla dura del repo).
+     *
+     * <p>Los materiales de cada equipo salen sin clave de material en el {@code ORDER BY}: un
+     * {@code ORDER BY} multi-tabla (equipo + material) no lo cubre ningún índice de una sola
+     * tabla, así que forzaba un filesort del join entero en cada listado y anulaba el índice de
+     * fecha/estado (V23). El orden de los materiales dentro de cada equipo no importa para estos
+     * listados (la UI los agrupa por equipo, no los muestra en una grilla plana ordenada).
      *
      * @param where       WHERE ya armado (sobre columnas de {@code eo}), o vacío
-     * @param orden       ORDER BY de los equipos, sin la palabra clave; los materiales
-     *                    de cada equipo salen después por {@code m.id}
-     * @param descripcion qué se estaba listando, para el log de error
+     * @param orden       ORDER BY de los equipos, sin la palabra clave
+     * @param descripcion qué se estaba listando, para el mensaje de error
+     * @throws DatabaseException si falla la consulta
      */
     private List<EquipoOtros> listar(String where, String orden, String descripcion, Object... params) {
-        String sql = SQL_CABECERA + where + " ORDER BY " + orden + ", m.id";
+        String sql = SQL_CABECERA + where + " ORDER BY " + orden;
         LinkedHashMap<Integer, EquipoOtros> porId = new LinkedHashMap<>();
 
         try (Connection conn = ConnectionPool.getConnection();
@@ -273,6 +282,7 @@ public class EquipoOtrosDAO {
             }
         } catch (SQLException e) {
             log.error("Error al obtener {}", descripcion, e);
+            throw new DatabaseException("Error al obtener " + descripcion, e);
         }
         return new ArrayList<>(porId.values());
     }

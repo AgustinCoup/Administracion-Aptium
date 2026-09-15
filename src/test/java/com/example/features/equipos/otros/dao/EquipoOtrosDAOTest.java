@@ -332,6 +332,69 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
         assertEquals("TestDescMat Principal", encontrado.getMateriales().get(0).getDescripcion());
     }
 
+    /**
+     * {@code ultimo_movimiento} pasó de un {@code LEFT JOIN} contra una tabla derivada a una
+     * subconsulta correlacionada (Paso 6): tiene que seguir dando exactamente el máximo de
+     * {@code otros_material_movimientos.fecha} para el material, sin importar cuántas filas
+     * tenga ni en qué orden se insertaron.
+     */
+    @Test
+    void obtenerPorId_ultimoMovimientoEsElMaximoDeFecha() throws SQLException {
+        ejecutarSQL("INSERT INTO otros_material_movimientos " +
+            "(material_id, equipo_otros_id, cantidad, estado_destino, fecha) VALUES (" +
+            materialId + ", " + equipoDetalles.getId() + ", 1, 'Lavando', '2020-01-01 00:00:00')");
+        ejecutarSQL("INSERT INTO otros_material_movimientos " +
+            "(material_id, equipo_otros_id, cantidad, estado_destino, fecha) VALUES (" +
+            materialId + ", " + equipoDetalles.getId() + ", 1, 'Lavado', '2030-06-15 12:00:00')");
+        ejecutarSQL("INSERT INTO otros_material_movimientos " +
+            "(material_id, equipo_otros_id, cantidad, estado_destino, fecha) VALUES (" +
+            materialId + ", " + equipoDetalles.getId() + ", 1, 'Empaquetado', '2025-03-03 00:00:00')");
+
+        EquipoOtros encontrado = dao.obtenerPorId(equipoDetalles.getId());
+        assertEquals(java.time.LocalDateTime.of(2030, 6, 15, 12, 0, 0),
+            encontrado.getMateriales().get(0).getUltimoMovimiento());
+    }
+
+    /**
+     * El {@code ORDER BY} de {@link EquipoOtrosDAO#listar} ya no lleva la clave de material
+     * (Paso 6, para no forzar un filesort del join entero): el orden ascendente por id lo da el
+     * ordenamiento en memoria, no el SQL. Con dos materiales, el segundo insertado (id mayor)
+     * tiene que seguir saliendo después del primero.
+     */
+    @Test
+    void obtenerPorId_materialesOrdenadosPorId_sinClaveDeMaterialEnOrderBy() {
+        int segundoId = dao.insertarMaterial(equipoDetalles.getId(), "TestDesc Segundo", 1, 0);
+
+        EquipoOtros encontrado = dao.obtenerPorId(equipoDetalles.getId());
+        List<Integer> idsMateriales = encontrado.getMateriales().stream()
+            .map(MaterialOtros::getId).toList();
+        assertEquals(List.of(materialId, segundoId), idsMateriales);
+    }
+
+    /** Un fallo de SQL propaga, no devuelve una lista a medias (regla dura del repo). */
+    @Test
+    void obtenerTodos_fallaDeConexion_propagaDatabaseException() {
+        javax.sql.DataSource real = ConnectionPool.getDataSource();
+        ConnectionPool.setDataSourceForTesting(dataSourceQueFalla());
+        try {
+            assertThrows(com.example.common.exception.DatabaseException.class, dao::obtenerTodos);
+        } finally {
+            ConnectionPool.setDataSourceForTesting(real);
+        }
+    }
+
+    private static javax.sql.DataSource dataSourceQueFalla() {
+        return (javax.sql.DataSource) java.lang.reflect.Proxy.newProxyInstance(
+            javax.sql.DataSource.class.getClassLoader(),
+            new Class<?>[]{javax.sql.DataSource.class},
+            (proxy, metodo, args) -> {
+                if ("getConnection".equals(metodo.getName())) {
+                    throw new SQLException("Conexión caída (simulada por el test)");
+                }
+                return null;
+            });
+    }
+
     // ── obtenerActivos ────────────────────────────────────────────────────────
     //
     // Cada caso se compara contra la implementación que obtenerActivos() reemplaza
