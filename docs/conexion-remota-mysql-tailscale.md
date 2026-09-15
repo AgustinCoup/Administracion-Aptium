@@ -201,9 +201,14 @@ Medición del servidor de producción (`SHOW VARIABLES LIKE 'max_connections'`,
 
 | Variable | Valor | Fecha |
 |---|---|---|
-| `max_connections` | _pendiente_ | |
-| `Threads_connected` | _pendiente_ | |
-| `Max_used_connections` | _pendiente_ | |
+| `max_connections` | 151 | 2026-09-15 |
+| `Threads_connected` | 7 (con Workbench abierto) | 2026-09-15 |
+| `Max_used_connections` | 7 | 2026-09-15 |
+| `wait_timeout` | 28800 s — tiene que seguir siendo mayor que el `maxLifetime` de 30 min | 2026-09-15 |
+
+Con 3 puestos: 3 × 8 = 24 conexiones como máximo, muy lejos de 151. Si alguna vez se
+baja `wait_timeout` en el servidor por debajo de 30 min, MySQL va a cortar conexiones que
+el pool todavía cree sanas.
 
 ## Notas para el día del deploy
 

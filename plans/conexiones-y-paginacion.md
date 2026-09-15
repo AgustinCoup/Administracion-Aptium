@@ -464,10 +464,9 @@ y `PARAMS_JDBC` (55-56) es `serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=
      UNION ALL SELECT 'ciclos_lavadero',            COUNT(*) FROM ciclos_lavadero;
      ```
 
-   > **Resultados (pendiente — 2026-09-15).** La sesión 1 corrió en una PC de desarrollo fuera
-   > del tailnet: sin acceso al MySQL de producción. Los números se piden al usuario y se anotan
-   > acá (y los tres de conexiones también en `docs/conexion-remota-mysql-tailscale.md` §4.1).
-   > **El Paso 5 no arranca sin ellos.**
+   > **Resultados — relevados por el usuario en la PC servidor, 2026-09-15 12:17** (MySQL Workbench).
+   > También anotados en `docs/conexion-remota-mysql-tailscale.md` §4.1. Se sumaron en el mismo
+   > viaje cuatro datos que otros pasos daban por supuestos.
    >
    > **Smokes del Paso 2: hechos (2026-09-15, MySQL local).** Base alcanzable: pool 8/2, línea
    > `Timeouts: connect=5000 ms, socket=60000 ms, connection=10000 ms, keepalive=120000 ms`, cero
@@ -478,14 +477,26 @@ y `PARAMS_JDBC` (55-56) es `serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=
    > | Dato | Valor |
    > |---|---|
    > | N puestos | **3** (2026-09-15) → hasta 3 × 8 = **24** conexiones de la app |
-   > | `max_connections` | _pendiente_ |
-   > | `Threads_connected` | _pendiente_ |
-   > | `Max_used_connections` | _pendiente_ |
-   > | `N × 8 + margen < max_connections` | _pendiente_ |
-   > | `equipos` / `equipo_otros` | _pendiente_ |
-   > | `material_movimientos` / `otros_material_movimientos` | _pendiente_ |
-   > | `ingresos_lavadero` / `elementos_ciclo_lavadero` | _pendiente_ |
-   > | `lotes` / `ciclos_lavadero` | _pendiente_ |
+   > | `VERSION()` | 8.0.45 |
+   > | `max_connections` | 151 (default) |
+   > | `Threads_connected` | 7 (incluye la sesión de Workbench) |
+   > | `Max_used_connections` | 7 |
+   > | `N × 8 + margen < max_connections` | **Sí, con holgura:** 24 ≪ 151 |
+   > | `wait_timeout` | 28800 s (8 h) > `maxLifetime` 30 min ✔ |
+   > | `innodb_lock_wait_timeout` | 50 s — el supuesto del hallazgo #15 y del Paso 4 se confirma |
+   > | `transaction_isolation` | REPEATABLE-READ — el supuesto de las guardas `FOR UPDATE` se confirma |
+   > | `equipos` / `equipo_otros` | 482 / 946 |
+   > | `material_movimientos` / `otros_material_movimientos` | 4 852 / 9 505 |
+   > | `ingresos_lavadero` / `elementos_ciclo_lavadero` | 0 / 0 |
+   > | `lotes` / `ciclos_lavadero` | 917 / 0 |
+   > | Tabla más grande | `otros_material_movimientos`: 0,3 MB datos + 0,3 MB índices; el resto ≤ 0,1 MB |
+   >
+   > **Consecuencias:** (1) el riesgo de la tarea 2 del Paso 5 (`CREATE INDEX` > 60 s envenenando
+   > Flyway) **no existe** con este volumen: son milisegundos. (2) Con ≤ 10 k filas y < 1 MB, el
+   > costo de las consultas **no** explica el agotamiento del pool: la causa es la de la Fase A
+   > (red sin timeouts, cancelación que no cancela). (3) El lavadero **no tiene datos** en
+   > producción todavía. (2) y (3) ponen en duda la urgencia de las Fases B y C — **se le planteó
+   > al usuario, sin cambiar ninguna decisión.**
 
 4. **Arranque diagnosticable (hallazgo #4).** ⚠️ **Leer el hallazgo #4 corregido antes de escribir:
    el diagnóstico obvio es el equivocado.** `ExceptionInInitializerError` **sí lleva la causa**; el
