@@ -469,6 +469,12 @@ y `PARAMS_JDBC` (55-56) es `serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=
    > acá (y los tres de conexiones también en `docs/conexion-remota-mysql-tailscale.md` §4.1).
    > **El Paso 5 no arranca sin ellos.**
    >
+   > **Smokes del Paso 2: hechos (2026-09-15, MySQL local).** Base alcanzable: pool 8/2, línea
+   > `Timeouts: connect=5000 ms, socket=60000 ms, connection=10000 ms, keepalive=120000 ms`, cero
+   > WARN de Hikari, arranque completo. Base inalcanzable: MySQL detenido → diálogo
+   > *"ConnectException: Connection refused"*; host no ruteable (`DB_HOST=10.255.255.1`, equivale a
+   > Tailscale apagado) → *"SocketTimeoutException: Connect timed out"* a los ~5 s. Ninguna NPE.
+   >
    > | Dato | Valor |
    > |---|---|
    > | N puestos | _pendiente_ |
