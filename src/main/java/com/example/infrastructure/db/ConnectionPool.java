@@ -471,24 +471,64 @@ public class ConnectionPool {
     }
     
     /**
+     * Conexiones activas a partir de las cuales se considera que el pool está bajo presión,
+     * usado por {@link #hayPresion()}. Dos por debajo del máximo (8): avisa antes de que un
+     * checkout más se quede esperando {@link #CONNECTION_TIMEOUT_MS}.
+     */
+    private static final int UMBRAL_ACTIVAS_PRESION = 6;
+
+    /**
+     * El {@code HikariPoolMXBean}, o {@code null} si el pool no está en condiciones de informar
+     * estadísticas: no inicializado, o ya cerrado por {@link #shutdown()}.
+     *
+     * <p>⚠️ El chequeo es {@code dataSource.isClosed()}, <b>no</b> {@code getHikariPoolMXBean() ==
+     * null}: verificado contra la fuente de HikariCP 5.0.1, {@code HikariDataSource.close()} nunca
+     * pone su campo {@code pool} en null (sólo llama {@code pool.shutdown()}), y como
+     * {@link #inicializarPool()} siempre usa el constructor con {@code HikariConfig}, el pool queda
+     * asignado desde la construcción — {@code getHikariPoolMXBean()} no es null ni antes ni después
+     * de cerrar. Confirmado con un {@code HikariDataSource} cerrado de verdad en
+     * {@code ConnectionPoolTest}: sin este chequeo, un pool cerrado devolvía estadísticas en cero
+     * en vez de decir que está cerrado.
+     */
+    private static com.zaxxer.hikari.HikariPoolMXBean obtenerMXBean() {
+        return (dataSource == null || dataSource.isClosed()) ? null : dataSource.getHikariPoolMXBean();
+    }
+
+    /**
      * Obtiene estadísticas del pool (útil para monitoreo).
-     * 
+     *
      * @return String con estadísticas actuales del pool
      * @throws IllegalStateException con la causa original si el pool no pudo inicializarse
      */
     public static String getStats() {
         exigirArranqueSinFalla();
-        if (dataSource == null) {
-            return "Pool no inicializado";
+        com.zaxxer.hikari.HikariPoolMXBean mxBean = obtenerMXBean();
+        if (mxBean == null) {
+            return dataSource == null ? "Pool no inicializado" : "Pool cerrado";
         }
-        
+
         return String.format(
             "Pool Stats: Total=%d, Activas=%d, Idle=%d, Esperando=%d",
-            dataSource.getHikariPoolMXBean().getTotalConnections(),
-            dataSource.getHikariPoolMXBean().getActiveConnections(),
-            dataSource.getHikariPoolMXBean().getIdleConnections(),
-            dataSource.getHikariPoolMXBean().getThreadsAwaitingConnection()
+            mxBean.getTotalConnections(),
+            mxBean.getActiveConnections(),
+            mxBean.getIdleConnections(),
+            mxBean.getThreadsAwaitingConnection()
         );
+    }
+
+    /**
+     * Si el pool está bajo presión: hay checkouts esperando, o las conexiones activas llegaron
+     * al {@link #UMBRAL_ACTIVAS_PRESION}. Usado por {@code TareaUI} para avisar en el log sólo
+     * cuando vale la pena, en vez de en cada lectura. {@code false} si el pool no está
+     * inicializado o ya se cerró — nunca lanza.
+     */
+    public static boolean hayPresion() {
+        com.zaxxer.hikari.HikariPoolMXBean mxBean = obtenerMXBean();
+        if (mxBean == null) {
+            return false;
+        }
+        return mxBean.getThreadsAwaitingConnection() > 0
+            || mxBean.getActiveConnections() >= UMBRAL_ACTIVAS_PRESION;
     }
     
     /**

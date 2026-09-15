@@ -607,10 +607,19 @@ el pool se llena.
    ```
    - Es la única forma de ver *desde producción* si el pool se está llenando, que es el problema que
      el usuario reportó y que hoy es invisible en el log.
-   - ⚠️ **La ventana real de NPE no es la obvia.** Con `testDataSource`, `dataSource` es `null` (el
-     bloque estático se saltea con `aptium.testing`) y `getStats()` ya retorna temprano con
-     `"Pool no inicializado"`. El caso que **sí** explota es el pool **cerrado** por `shutdown()`:
-     ahí `dataSource != null` pero `getHikariPoolMXBean()` es `null`. Blindar **ése**.
+   - ⚠️ **La ventana real de NPE no es la obvia. Y esta versión del plan también se equivocó, en la
+     dirección contraria.** Con `testDataSource`, `dataSource` es `null` (el bloque estático se
+     saltea con `aptium.testing`) y `getStats()` ya retorna temprano con `"Pool no inicializado"` —
+     hasta acá el plan tenía razón. Pero el diagnóstico de "pool cerrado ⇒ `getHikariPoolMXBean()` es
+     `null`" **se verificó contra la fuente de HikariCP 5.0.1 y es falso**: `HikariDataSource.close()`
+     nunca pone su campo `pool` en `null` (sólo llama `pool.shutdown()`), y como `inicializarPool()`
+     siempre usa el constructor con `HikariConfig`, el pool queda asignado desde la construcción —
+     `getHikariPoolMXBean()` no es `null` ni antes ni después de cerrar. Confirmado con un
+     `HikariDataSource` real, cerrado de verdad, en `ConnectionPoolTest`: sin blindaje, un pool
+     cerrado no explota, pero **miente**: devuelve `"Pool Stats: Total=0, Activas=0, Idle=0,
+     Esperando=0"` en vez de decir que está cerrado, que es indistinguible en el log de un pool sano
+     sin carga. El blindaje real es `dataSource.isClosed()`, no un chequeo de `null` que nunca se
+     cumple. Implementado en `ConnectionPool.obtenerMXBean()`, con el detalle en su javadoc.
 
 4. **(Opcional, si el usuario quiere medir con volumen) Sembrador sintético** — absorbido tal cual del
    Paso 1.5 de `rendimiento-historiales.md`, incluidas sus **tres guardas de seguridad**
@@ -623,26 +632,52 @@ el pool se llena.
    - ⚠️ **Anti-patrón A7: tres corridas por pantalla, se anota la mediana, se descarta la primera
      apertura de la app.**
 
-   | Tarea | leer (mediana de 3) | pintar | filas | post Fase C |
+   > **Resultados — MySQL local, 2026-09-15 13:08-13:10.** Primera apertura de la app (13:08:34,
+   > JIT/arranque del pool) descartada. Medianas sobre las **últimas 3** lecturas de cada tarea en la
+   > segunda apertura; varias pantallas quedaron con más de 3 muestras porque F5 se probó de más — se
+   > usaron las 3 últimas, no las 3 primeras, para no mezclar el primer pintado (que además carga
+   > fuentes/layout de Swing por primera vez) con los siguientes.
+
+   | Tarea | leer (mediana de 3) | pintar (mediana de 3) | filas (local) | post Fase C |
    |---|---|---|---|---|
-   | `refresco-operativo` | _(llenar)_ | | | — |
-   | `refresco-historial-equipos` | _(llenar)_ | | | |
-   | `refresco-historial-lotes` | _(llenar)_ | | | |
-   | `refresco-historial-ciclos` | _(llenar)_ | | | |
-   | `refresco-historial-lavadero` | _(llenar)_ | | | |
-   | `detalle-historial-lavadero` | _(llenar)_ | | | — |
+   | `refresco-operativo` | 7 ms | 0 ms | ~10 (5 ortopedia + 5 otros) | — |
+   | `refresco-historial-equipos` | 3 ms | 0 ms | 10 (5 ortopedia + 5 otros, log `VerEquiposController`) | |
+   | `refresco-historial-lotes` | 1 ms | 0 ms | *(no releído del log; volumen local bajo)* | |
+   | `refresco-historial-ciclos` | 3 ms | 0 ms | *(no releído del log; volumen local bajo)* | |
+   | `refresco-historial-lavadero` | 3 ms | 0 ms | 0 en producción (ver tarea 6); local, bajo | |
+   | `detalle-historial-lavadero` | 4 ms | **844 ms** | 1 ingreso | — |
 
-6. **Traer acá los `COUNT(*)` que tomó el Paso 2** (tarea 3) — son los que hacen interpretables los
-   ms. No volver a correrlos: si el Paso 2 no los anotó, ése es el bug.
+6. **`COUNT(*)` traídos del Paso 2** (no se volvieron a correr): `equipos` 482, `equipo_otros` 946
+   (⇒ universo del CDE ≈ 1428), `material_movimientos` 4 852, `otros_material_movimientos` 9 505,
+   **`ingresos_lavadero` 0**, `elementos_ciclo_lavadero` 0, `lotes` 917, `ciclos_lavadero` 0. Son de
+   producción con **un solo puesto** en uso diario (contexto del Paso 2); el baseline de arriba es
+   sobre MySQL local, con datos de prueba muy por debajo de esos volúmenes en todas las pantallas.
 
-7. **⚠️ Compuerta explícita, y hay que decírsela al usuario:**
-   - **Si `pintar` supera el 30 % del total en alguna pantalla**, esa pantalla gana más con
-     paginación (que corta el pintado a 50 filas) que con SQL. Es un argumento **a favor** de la
-     Fase C, no en contra — anotarlo.
-   - **Si alguna de las dos pantallas elegidas para paginación SQL resulta tener menos de ~500 filas**,
-     decirlo: el costo de mover sus filtros a SQL (Pasos 8 y 10) no se justifica por rendimiento, y
-     conviene preguntarle al usuario si igual la quiere por UX. **No esconderlo detrás de un número
-     lindo.**
+7. **⚠️ Compuerta explícita — evaluada, con lo que hay que decirle al usuario:**
+
+   - **`pintar` supera el 30 % del total en `detalle-historial-lavadero`: lo supera por completo**
+     (844 ms de pintado contra 4 ms de lectura, ≈99.5 %). Pero esa pantalla **no** es una de las que
+     la Fase C toca (Pasos 8-11 paginan el *listado* de Historial, no el diálogo de detalle; su
+     columna "post Fase C" ya decía "—"). Es un hallazgo real y separado, no ruido: 700-845 ms para
+     armar un diálogo con la traza de **un** ingreso es desproporcionado y sugiere costo de
+     construcción del diálogo/tabla de Swing, no de la lectura — pero cae fuera del alcance de este
+     plan (que es de listados paginables), así que lo dejo anotado acá y no lo toco.
+   - **En los cinco listados, `pintar` midió 0 ms — pero el baseline no puede confirmar ni descartar
+     la hipótesis de la Fase C con esto.** El volumen local de prueba (≈10-20 filas por pantalla) es
+     demasiado chico para que `setRowCount(0)` + `addRow` por fila pese: es la misma razón por la que
+     el Paso 2 ya había anotado que con ≤10 k filas el costo de las consultas tampoco explica el
+     agotamiento del pool. **Sin el sembrador sintético de la tarea 4 (opcional) corriendo con miles
+     de filas, la hipótesis del pintado sigue abierta**, no confirmada ni refutada — no la doy por
+     descartada.
+   - **Historial de Lavadero tiene 0 filas en producción hoy** (`ingresos_lavadero` = 0, tarea 6):
+     muy por debajo de las ~500 que justificarían por rendimiento mover sus filtros a SQL (Paso 8).
+     **No lo escondo:** hoy el costo del Paso 8 no se paga solo. Pero esto ya estaba anotado como
+     consecuencia del Paso 2 — el lavadero recién se empieza a usar cuando entren los otros dos
+     puestos, y este plan decide construir la paginación **antes** de que la pantalla esté en uso
+     pesado, que es más barato que rehacerla después con la pantalla ya lenta. El CDE (Paso 10), en
+     cambio, sí tiene volumen hoy: `equipos` + `equipo_otros` ≈ 1428 filas, por encima del umbral.
+     **Sigo la decisión ya tomada con el usuario en el Paso 2 y no la reabro acá**, pero la dejo
+     explícita para que quede a la vista antes de invertir en el Paso 8.
 
 8. **Tests** (`TareaUITest`): la instrumentación no altera el valor devuelto ni el ruteo del error.
    Verificar el texto del log es frágil y no aporta.
@@ -657,10 +692,15 @@ mvn clean package && java -jar target/aptium.jar   # y leer el log
 
 ### Criterio de salida
 
-- [ ] El log muestra tiempo de `leer` **y** de `pintar` por cada tarea, con su nombre
-- [ ] El log avisa cuando el pool está bajo presión, y **no** explota en los tests (`getStats` blindado)
-- [ ] La tabla de baseline está llena con medianas de 3, y los `COUNT(*)` anotados
-- [ ] La compuerta de la tarea 7 está evaluada y, si aplica, comunicada al usuario
+- [x] El log muestra tiempo de `leer` **y** de `pintar` por cada tarea, con su nombre
+- [x] El log avisa cuando el pool está bajo presión, y **no** explota en los tests (`getStats` blindado
+      con `dataSource.isClosed()`, no con el chequeo de `null` que el plan proponía y que se verificó
+      falso contra la fuente de HikariCP 5.0.1)
+- [x] La tabla de baseline está llena con medianas de 3, y los `COUNT(*)` anotados
+- [x] La compuerta de la tarea 7 está evaluada y comunicada al usuario: pintado domina en
+      `detalle-historial-lavadero` (fuera de alcance de la Fase C), la hipótesis del pintado en los
+      listados sigue abierta por falta de volumen local, e Historial de Lavadero tiene 0 filas en
+      producción hoy (decisión de construir antes del uso ya tomada en el Paso 2, no reabierta)
 - [ ] Commit: `feat: TareaUI mide lectura y pintado, y avisa cuando el pool está bajo presión`
 
 ---

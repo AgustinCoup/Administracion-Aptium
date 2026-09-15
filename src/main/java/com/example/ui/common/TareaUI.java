@@ -1,6 +1,7 @@
 package com.example.ui.common;
 
 import com.example.common.exception.ValidationException;
+import com.example.infrastructure.db.ConnectionPool;
 
 import java.awt.EventQueue;
 import java.util.Objects;
@@ -137,9 +138,14 @@ public final class TareaUI<T> {
                 Thread hilo = Thread.currentThread();
                 String nombreOriginal = hilo.getName();
                 hilo.setName(nombre);
+                long inicio = System.nanoTime();
                 try {
                     return leer.call();
                 } finally {
+                    log.info("Tarea '{}' leyó en {} ms", nombre, milisegundosDesde(inicio));
+                    if (ConnectionPool.hayPresion()) {
+                        log.warn("Pool bajo presión tras la tarea '{}': {}", nombre, ConnectionPool.getStats());
+                    }
                     hilo.setName(nombreOriginal);
                 }
             }
@@ -150,7 +156,10 @@ public final class TareaUI<T> {
                     return;
                 }
                 try {
-                    pintar.accept(get());
+                    T resultado = get();
+                    long inicio = System.nanoTime();
+                    pintar.accept(resultado);
+                    log.info("Tarea '{}' pintó en {} ms", nombre, milisegundosDesde(inicio));
                 } catch (CancellationException e) {
                     return;
                 } catch (InterruptedException e) {
@@ -191,6 +200,10 @@ public final class TareaUI<T> {
             return;
         }
         log.error("Fallo en la tarea de fondo '{}'", nombre, causa);
+    }
+
+    private static long milisegundosDesde(long inicioNanos) {
+        return (System.nanoTime() - inicioNanos) / 1_000_000;
     }
 
     private static void enHiloUi(Runnable accion) {

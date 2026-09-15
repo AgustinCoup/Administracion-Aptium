@@ -2,11 +2,14 @@ package com.example.infrastructure.db;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import java.lang.reflect.Field;
 import java.sql.SQLException;
 import javax.sql.DataSource;
@@ -94,6 +97,37 @@ class ConnectionPoolTest {
     @Test
     void sinFallaDeArranque_verificarArranqueNoLanza() {
         assertDoesNotThrow(ConnectionPool::verificarArranque);
+    }
+
+    @Test
+    void poolNoInicializado_hayPresionEsFalso() {
+        // Bajo aptium.testing el campo dataSource real queda en null: es el caso de todos
+        // los demás tests de la suite, no sólo de éste.
+        assertFalse(ConnectionPool.hayPresion());
+    }
+
+    @Test
+    void poolCerrado_getStatsYHayPresionNoExplotanYLoDicen() throws Exception {
+        // La ventana real de NPE (hallazgo del Paso 3): dataSource != null pero
+        // getHikariPoolMXBean() sí es null. Con testDataSource no se llega a esta rama porque
+        // getStats()/hayPresion() miran el campo dataSource, no el override de test.
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl("jdbc:h2:mem:connectionpooltest;DB_CLOSE_DELAY=-1");
+        config.setUsername("sa");
+        config.setPassword("");
+        HikariDataSource poolCerrado = new HikariDataSource(config);
+        poolCerrado.close();
+
+        Field dataSourceField = campo("dataSource");
+        Object original = dataSourceField.get(null);
+        try {
+            dataSourceField.set(null, poolCerrado);
+
+            assertFalse(ConnectionPool.hayPresion());
+            assertEquals("Pool cerrado", ConnectionPool.getStats());
+        } finally {
+            dataSourceField.set(null, original);
+        }
     }
 
     private static RuntimeException simularFallaDeArranque() throws Exception {
