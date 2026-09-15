@@ -491,12 +491,22 @@ y `PARAMS_JDBC` (55-56) es `serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=
    > | `lotes` / `ciclos_lavadero` | 917 / 0 |
    > | Tabla más grande | `otros_material_movimientos`: 0,3 MB datos + 0,3 MB índices; el resto ≤ 0,1 MB |
    >
-   > **Consecuencias:** (1) el riesgo de la tarea 2 del Paso 5 (`CREATE INDEX` > 60 s envenenando
-   > Flyway) **no existe** con este volumen: son milisegundos. (2) Con ≤ 10 k filas y < 1 MB, el
-   > costo de las consultas **no** explica el agotamiento del pool: la causa es la de la Fase A
-   > (red sin timeouts, cancelación que no cancela). (3) El lavadero **no tiene datos** en
-   > producción todavía. (2) y (3) ponen en duda la urgencia de las Fases B y C — **se le planteó
-   > al usuario, sin cambiar ninguna decisión.**
+   > **Contexto que dio el usuario (2026-09-15): la foto es de UN solo puesto en uso diario.** Los
+   > otros dos todavía no se usan a diario, pero van a usarse, y **el Historial de Lavadero se
+   > empieza a llenar recién cuando entren esos dos.** `Max_used_connections = 7` cuadra con eso:
+   > un puesto con el pool viejo (`minimumIdle = 5`) + las 2 de Workbench.
+   >
+   > **Consecuencias:**
+   > 1. El riesgo de la tarea 2 del Paso 5 (`CREATE INDEX` > 60 s envenenando Flyway) **no existe**
+   >    con este volumen: son milisegundos.
+   > 2. Con ≤ 10 k filas y < 1 MB, el costo de las consultas **no** explica el agotamiento del pool
+   >    que se ve hoy: la causa es la de la Fase A (red sin timeouts, cancelación que no cancela).
+   > 3. **Las Fases B y C se mantienen tal cual.** No arreglan un volumen actual sino el que llega
+   >    con los otros dos puestos, sobre todo en el lavadero; hacerlas antes de que haya datos es
+   >    más barato que hacerlas con la pantalla ya lenta en uso. Ninguna decisión cambió.
+   > 4. **Estos números no validan la carga de 3 puestos.** Con la configuración nueva el piso es
+   >    3 × 2 = 6 ociosas y el techo 3 × 8 = 24, ambos lejos de 151, pero el pico real hay que
+   >    medirlo con los tres en uso diario → tarea 2 del Paso 13.
 
 4. **Arranque diagnosticable (hallazgo #4).** ⚠️ **Leer el hallazgo #4 corregido antes de escribir:
    el diagnóstico obvio es el equivocado.** `ExceptionInInitializerError` **sí lleva la causa**; el
@@ -1653,6 +1663,10 @@ mvn clean package && java -jar target/aptium.jar
    - abrir las cinco pantallas de consulta en ráfaga ⇒ el log **no** muestra "Pool bajo presión";
    - cortar Tailscale a mitad de una lectura ⇒ la app muestra un error **en ≤ 60 s** y sigue usable,
      no se cuelga. **Éste es el test que valida el Paso 2 y es el que no se puede automatizar.**
+   - **con los 3 puestos ya en uso diario**, repetir en el servidor el relevamiento del Paso 2
+     (`Max_used_connections`, `Threads_connected` y los `COUNT(*)`, incluidas las tablas del
+     lavadero) y compararlo con la foto de un solo puesto del 2026-09-15. Si todavía no están los
+     tres en uso, dejarlo escrito como pendiente, no darlo por hecho.
 
 3. **`/code-review high`** sobre el diff completo de la rama contra `8b662b8`. Aplicar CRITICAL y
    HIGH; anotar los MEDIUM que se decida no tocar.
