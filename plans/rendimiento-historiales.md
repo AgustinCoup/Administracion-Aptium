@@ -1,3 +1,11 @@
+> **⚠️ SUPERSEDED (2026-09-15) por `plans/conexiones-y-paginacion.md`.**
+> Los Pasos 2 y 5 ya están aplicados en `main`. Los Pasos 1, 1.5, 3, 4, 6 y 10 migraron al plan
+> nuevo (ver su sección "Qué se absorbe"). Los Pasos 7, 8 y 9 —la carga en dos fases— quedaron
+> **descartados**: escondían el costo de leer el histórico completo, y la paginación en SQL lo
+> borra. Si el Paso 13 del plan nuevo mide que Ver Lotes o Ver Ciclos siguen molestando, este
+> plan es la respuesta y se reabre.
+> **Su numeración de migraciones quedó obsoleta: decía V21, y la próxima libre es V23.**
+
 # Plan — Rendimiento de las pantallas de consulta
 
 **Objetivo:** que abrir cualquier pantalla de consulta deje de hacer esperar. Dos fases:
