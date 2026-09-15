@@ -51,9 +51,65 @@ public class ConnectionPool {
      * <p>No es {@code VERIFY_CA} porque no hay CA propia: {@code REQUIRED} cifra pero no
      * valida el certificado del servidor. Subirlo a {@code VERIFY_CA} exige distribuir un
      * truststore a cada puesto, y es la decisión siguiente, no ésta.
+     *
+     * <p>{@code connectTimeout} y {@code socketTimeout} importan especialmente porque la base es
+     * remota sobre Tailscale. El default de Connector/J para los dos es {@code 0} = infinito: si
+     * el túnel se corta a mitad de una lectura, el driver queda bloqueado en {@code read()} para
+     * siempre y esa conexión <em>nunca vuelve al pool</em>. Con unas pocas así el pool se agota y
+     * la app queda muerta hasta reiniciar, sin que haya ninguna consulta pesada de por medio.
      */
-    private static final String PARAMS_JDBC =
-        "serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=REQUIRED";
+    static final String PARAMS_JDBC =
+        "serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=REQUIRED"
+        + "&connectTimeout=" + ConnectionPool.CONNECT_TIMEOUT_MS
+        + "&socketTimeout="  + ConnectionPool.SOCKET_TIMEOUT_MS;
+
+    /**
+     * 5 s para establecer el socket (incluye el handshake TLS de {@code sslMode=REQUIRED}).
+     * <b>Estrictamente menor que {@link #CONNECTION_TIMEOUT_MS}, con margen:</b> con
+     * {@code minimumIdle} bajo muchos checkouts crean una conexión física nueva, y si los dos
+     * números fueran iguales un handshake lento saldría como "Connection is not available,
+     * request timed out" con el pool vacío en vez de como el error de red que es.
+     * Atado por {@code ConnectionPoolTest}.
+     */
+    static final int CONNECT_TIMEOUT_MS = 5_000;
+
+    /**
+     * 60 s sin recibir un byte del servidor ⇒ el cliente abandona la conexión. Es el
+     * <b>respaldo de red</b>, NO el techo de la consulta: sólo libera el lado del cliente, la
+     * consulta sigue corriendo en MySQL. Tiene que ser <b>mayor</b> que
+     * {@link #TIMEOUT_CONSULTA_S}; al revés mataría consultas legítimas antes de que el
+     * mecanismo que sabe cancelarlas del lado del servidor llegue a actuar.
+     * Atado por {@code ConnectionPoolTest}.
+     */
+    static final int SOCKET_TIMEOUT_MS = 60_000;
+
+    /**
+     * Techo de consulta ({@code Statement.setQueryTimeout}), menor que {@link #SOCKET_TIMEOUT_MS}.
+     * Todavía no lo aplica nadie: lo usa el Paso 4 de {@code plans/conexiones-y-paginacion.md}.
+     * Vive acá desde ahora para que la relación con {@code socketTimeout} quede atada por test
+     * desde el primer despliegue.
+     */
+    static final int TIMEOUT_CONSULTA_S = 30;
+
+    /**
+     * Cuánto espera quien pide una conexión con el pool lleno. Bajó de 30 s a 10 s porque los
+     * autocompletados sincrónicos piden conexión <em>desde el EDT</em>: ese tiempo es app congelada.
+     */
+    static final int CONNECTION_TIMEOUT_MS = 10_000;
+
+    /**
+     * Falla del bloque {@code static}, guardada en vez de propagada. Propagada llegaba como
+     * {@code ExceptionInInitializerError}: lleva la causa, pero es un {@code Error} y el
+     * {@code catch (Exception)} de {@code App} no la agarra, y además el primer toque de la
+     * clase era {@code getStats()}, que con el pool en null dejaba seguir hasta una NPE de
+     * Flyway. {@link #verificarArranque()} la relanza con la causa original.
+     *
+     * <p>Deuda anotada: lo limpio sería inicializar desde un método explícito llamado por
+     * {@code App.main}, pero eso cambia el orden de arranque de la app y de los tests
+     * ({@code aptium.testing}, {@link #setDataSourceForTesting}); este cambio quiere ser
+     * desplegable solo.
+     */
+    private static volatile Throwable fallaDeArranque = null;
 
     /** Solo para tests — null en producción. Establecer con {@link #setDataSourceForTesting}. */
     private static volatile javax.sql.DataSource testDataSource = null;
@@ -67,19 +123,52 @@ public class ConnectionPool {
         testDataSource = ds;
     }
 
-    /** Retorna el DataSource activo (test o producción). Usado por Flyway. */
+    /**
+     * Retorna el DataSource activo (test o producción). Usado por Flyway.
+     *
+     * @throws IllegalStateException con la causa original si el pool no pudo inicializarse
+     */
     public static javax.sql.DataSource getDataSource() {
         javax.sql.DataSource override = testDataSource;
-        return override != null ? override : dataSource;
+        if (override != null) {
+            return override;
+        }
+        exigirArranqueSinFalla();
+        return dataSource;
     }
 
     // Bloque estático: Se ejecuta UNA SOLA VEZ al cargar la clase.
     // Skipeado cuando la propiedad aptium.testing=true está activa (tests).
+    // Throwable y no Exception: también un Error (driver ausente) tiene que llegar al diálogo.
     static {
         if (System.getProperty("aptium.testing") == null) {
-            cargarConfiguracion();
-            crearBaseDeDatosSiNoExiste(); // PRIMERO: Asegurar que la BD existe
-            inicializarPool();            // SEGUNDO: Conectar al pool con la BD específica
+            try {
+                cargarConfiguracion();
+                crearBaseDeDatosSiNoExiste(); // PRIMERO: Asegurar que la BD existe
+                inicializarPool();            // SEGUNDO: Conectar al pool con la BD específica
+            } catch (Throwable t) {
+                fallaDeArranque = t;
+            }
+        }
+    }
+
+    /**
+     * Relanza, con la causa original, la falla del bloque {@code static}. Tiene que ser la
+     * <b>primera</b> sentencia del PASO 1/4 de {@code App.main}: es lo que carga la clase y lo
+     * que impide que el arranque siga con el pool en null.
+     *
+     * @throws SQLException si el pool no pudo inicializarse; {@code getCause()} es la falla real
+     */
+    public static void verificarArranque() throws SQLException {
+        if (fallaDeArranque != null) {
+            throw new SQLException("El pool de conexiones no pudo inicializarse", fallaDeArranque);
+        }
+    }
+
+    /** Versión sin checked de {@link #verificarArranque()}, para los métodos que no declaran SQLException. */
+    private static void exigirArranqueSinFalla() {
+        if (fallaDeArranque != null) {
+            throw new IllegalStateException("El pool de conexiones no pudo inicializarse", fallaDeArranque);
         }
     }
     
@@ -266,12 +355,8 @@ public class ConnectionPool {
      * IMPORTANTE: Este método se ejecuta DESPUÉS de crearBaseDeDatosSiNoExiste(),
      * garantizando que la base de datos existe antes de conectar el pool.
      * 
-     * PARÁMETROS CRÍTICOS:
-     * - maximumPoolSize: Máximo de conexiones concurrentes (10 es seguro para MySQL)
-     * - minimumIdle: Conexiones siempre activas (5 reduce latencia inicial)
-     * - connectionTimeout: Tiempo de espera para obtener conexión (30s)
-     * - idleTimeout: Tiempo antes de cerrar conexión inactiva (10min)
-     * - maxLifetime: Vida máxima de una conexión (30min, evita problemas con MySQL)
+     * Dimensionado para varios puestos remotos sobre Tailscale, cada uno con su propio pool:
+     * el servidor ve N × maximumPoolSize. Cada valor lleva su porqué al lado.
      */
     private static void inicializarPool() {
         try {
@@ -288,15 +373,22 @@ public class ConnectionPool {
             config.setPassword(PROPS.getProperty("db.pass", "root"));
             
             // Configuración del pool
-            config.setMaximumPoolSize(10);        // Máximo 10 conexiones concurrentes
-            config.setMinimumIdle(5);             // Mínimo 5 conexiones siempre listas
-            config.setConnectionTimeout(30000);   // 30 segundos timeout
-            config.setIdleTimeout(600000);        // 10 minutos idle
+            // maximumPoolSize SÓLO BAJA, nunca sube: con N puestos son N×8 contra max_connections
+            // del servidor, y ahí el agotamiento tumba a todos los puestos a la vez. El techo de
+            // lecturas concurrentes del Paso 4 se dimensiona a partir de este número: si cambia
+            // uno, mirar el otro.
+            config.setMaximumPoolSize(8);
+            config.setMinimumIdle(2);             // baja de 5: menos ociosas que el túnel pueda matar en silencio
+            config.setConnectionTimeout(CONNECTION_TIMEOUT_MS);
+            config.setKeepaliveTime(120000);      // pinga las ociosas cada 2 min para que el NAT de Tailscale no las corte (< maxLifetime, >= 30 s)
+            config.setIdleTimeout(300000);        // baja de 10 a 5 min
             config.setMaxLifetime(1800000);       // 30 minutos vida máxima
-            
-            // Validación de conexiones
-            config.setConnectionTestQuery("SELECT 1");
-            
+
+            // Sin setConnectionTestQuery: fijarlo obliga a Hikari al camino legacy en vez del
+            // isValid() de JDBC4, que Connector/J 8.3 soporta. NO ahorra un round-trip (isValid()
+            // también manda un COM_PING, y Hikari saltea la validación entera dentro de su
+            // aliveBypassWindow de 500 ms): ahorra el parseo de una query y habilita validationTimeout.
+
             // Nombre del pool para logs
             config.setPoolName("AptiumPool");
             
@@ -310,6 +402,8 @@ public class ConnectionPool {
             log.info("Base de datos: {}:{}/{}", dbIp, dbPort, dbName);
             log.info("Max conexiones: {}", config.getMaximumPoolSize());
             log.info("Min idle: {}", config.getMinimumIdle());
+            log.info("Timeouts: connect={} ms, socket={} ms, connection={} ms, keepalive={} ms",
+                CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS, config.getConnectionTimeout(), config.getKeepaliveTime());
             
         } catch (Exception e) {
             log.error("No se pudo inicializar el Connection Pool", e);
@@ -339,6 +433,7 @@ public class ConnectionPool {
         if (override != null) {
             return override.getConnection();
         }
+        verificarArranque();
         if (dataSource == null) {
             throw new SQLException("Connection Pool no inicializado");
         }
@@ -379,8 +474,10 @@ public class ConnectionPool {
      * Obtiene estadísticas del pool (útil para monitoreo).
      * 
      * @return String con estadísticas actuales del pool
+     * @throws IllegalStateException con la causa original si el pool no pudo inicializarse
      */
     public static String getStats() {
+        exigirArranqueSinFalla();
         if (dataSource == null) {
             return "Pool no inicializado";
         }

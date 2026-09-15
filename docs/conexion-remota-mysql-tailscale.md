@@ -180,6 +180,31 @@ Mirar la consola al arrancar la app: debe loguear
 `"DB_HOST cargado desde variable de entorno"`. Si no aparece ninguna de las
 dos líneas, está usando los defaults hardcodeados.
 
+### 4.1 Timeouts de la app y qué síntoma da cada uno
+
+Desde la rama `ConexionesYPaginacion` (Paso 2 de `plans/conexiones-y-paginacion.md`) la
+app ya no puede quedarse esperando a la red para siempre. Valores en `ConnectionPool`:
+
+| Timeout | Valor | Qué corta | Síntoma para el operador / en el log |
+|---|---|---|---|
+| `connectTimeout` (URL JDBC) | 5 s | Abrir el socket + handshake TLS | Al arrancar con Tailscale apagado o el servidor caído: diálogo *"No se pudo conectar a la base de datos: SocketTimeoutException: Connect timed out"*. Si el servidor responde pero MySQL está detenido: *"ConnectException: Connection refused"*. |
+| `socketTimeout` (URL JDBC) | 60 s | 60 s sin recibir un byte del servidor | El túnel se cortó a mitad de una lectura: la pantalla muestra el error de lectura en vez de quedar colgada, y la conexión vuelve al pool. Es el **respaldo de red**: la consulta puede seguir corriendo en MySQL. |
+| `connectionTimeout` (Hikari) | 10 s | Esperar una conexión libre con el pool lleno | `Connection is not available, request timed out after 10000ms`. Si aparece seguido, el pool se está agotando (ver el Paso 4 del plan). |
+| `keepaliveTime` (Hikari) | 2 min | — | Pinga las conexiones ociosas para que el NAT del túnel no las corte en silencio. Sin síntoma visible. |
+| `queryTimeout` | 30 s (reservado) | Techo de consulta | **Todavía no aplicado**: llega con el Paso 4. Tiene que quedar menor que `socketTimeout`. |
+
+Pool por puesto: `maximumPoolSize = 8`, `minimumIdle = 2`. Con N puestos, el servidor ve
+hasta **N × 8** conexiones: ese número tiene que entrar con margen en `max_connections`.
+
+Medición del servidor de producción (`SHOW VARIABLES LIKE 'max_connections'`,
+`SHOW STATUS LIKE 'Threads_connected'`, `SHOW STATUS LIKE 'Max_used_connections'`):
+
+| Variable | Valor | Fecha |
+|---|---|---|
+| `max_connections` | _pendiente_ | |
+| `Threads_connected` | _pendiente_ | |
+| `Max_used_connections` | _pendiente_ | |
+
 ## Notas para el día del deploy
 
 > El procedimiento completo (release, migraciones, orden de actualización de los

@@ -11,6 +11,7 @@ import com.example.features.actualizaciones.service.GithubReleaseClient;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.infrastructure.db.EdtGuard;
 import java.awt.EventQueue;
+import java.sql.SQLException;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import org.slf4j.Logger;
@@ -78,8 +79,19 @@ public class App {
             
             // ==================== PASO 2: INICIALIZACIÓN DE BASE DE DATOS ====================
             log.info("PASO 1/4: Conectando a base de datos...");
-            // ConnectionPool se inicializa automáticamente al cargar la clase
-            // Valida configuración y abre el pool
+            // PRIMERO, antes de cualquier otro toque de ConnectionPool: carga la clase (su bloque
+            // static abre el pool) y relanza la falla con la causa real. Sin esto getStats() deja
+            // seguir con el pool en null y el usuario termina viendo una NPE de Flyway.
+            try {
+                ConnectionPool.verificarArranque();
+            } catch (SQLException e) {
+                log.error("✗ Error inicializando el Connection Pool", e);
+                mostrarErrorYSalir("Error de Conexión",
+                    "No se pudo conectar a la base de datos:\n" +
+                    mensajeDeCausaRaiz(e) +
+                    "\n\nVerificá que Tailscale esté conectado y que MySQL esté accesible.");
+                return;
+            }
             log.info("✓ Connection Pool inicializado");
             log.info(ConnectionPool.getStats());
             
@@ -169,6 +181,19 @@ public class App {
         ActualizacionService actualizacionService = new ActualizacionService(
             new GithubReleaseClient(), new VersionInfo(), new DescargaService(), new ActualizacionInstaller());
         new OfertaActualizacionAlArrancar(actualizacionService, fallback).intentar();
+    }
+
+    /**
+     * El mensaje de la causa más profunda: las de arriba son envoltorios ("no se pudo
+     * inicializar…", "Communications link failure") y la que distingue el caso es la de abajo
+     * ("Connect timed out" = red/Tailscale; "Connection refused" = MySQL detenido).
+     */
+    private static String mensajeDeCausaRaiz(Throwable t) {
+        Throwable raiz = t;
+        while (raiz.getCause() != null && raiz.getCause() != raiz) {
+            raiz = raiz.getCause();
+        }
+        return raiz.getClass().getSimpleName() + ": " + raiz.getMessage();
     }
 
     /**

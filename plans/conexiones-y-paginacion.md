@@ -464,6 +464,23 @@ y `PARAMS_JDBC` (55-56) es `serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=
      UNION ALL SELECT 'ciclos_lavadero',            COUNT(*) FROM ciclos_lavadero;
      ```
 
+   > **Resultados (pendiente — 2026-09-15).** La sesión 1 corrió en una PC de desarrollo fuera
+   > del tailnet: sin acceso al MySQL de producción. Los números se piden al usuario y se anotan
+   > acá (y los tres de conexiones también en `docs/conexion-remota-mysql-tailscale.md` §4.1).
+   > **El Paso 5 no arranca sin ellos.**
+   >
+   > | Dato | Valor |
+   > |---|---|
+   > | N puestos | _pendiente_ |
+   > | `max_connections` | _pendiente_ |
+   > | `Threads_connected` | _pendiente_ |
+   > | `Max_used_connections` | _pendiente_ |
+   > | `N × 8 + margen < max_connections` | _pendiente_ |
+   > | `equipos` / `equipo_otros` | _pendiente_ |
+   > | `material_movimientos` / `otros_material_movimientos` | _pendiente_ |
+   > | `ingresos_lavadero` / `elementos_ciclo_lavadero` | _pendiente_ |
+   > | `lotes` / `ciclos_lavadero` | _pendiente_ |
+
 4. **Arranque diagnosticable (hallazgo #4).** ⚠️ **Leer el hallazgo #4 corregido antes de escribir:
    el diagnóstico obvio es el equivocado.** `ExceptionInInitializerError` **sí lleva la causa**; el
    problema es que es un `Error` y el `catch (Exception e)` de `App` no lo agarra, y que el primer
