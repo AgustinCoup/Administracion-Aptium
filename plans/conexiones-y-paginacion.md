@@ -679,6 +679,50 @@ el pool se llena.
      **Sigo la decisión ya tomada con el usuario en el Paso 2 y no la reabro acá**, pero la dejo
      explícita para que quede a la vista antes de invertir en el Paso 8.
 
+7.1. **Sembrador sintético corrido (tarea 4, ya no opcional) — el verdadero delay del pintado.**
+   Implementado en `src/test/java/com/example/perf/SembradorRendimiento.java` con las tres guardas
+   de seguridad intactas (nombre de base `_perf`, host local, tablas vacías o marcadas). Corrido con
+   `FACTOR=1` contra `aptium_perf` en el **mismo MySQL local** (no hizo falta Docker: alcanza con
+   una base distinta en `localhost:3306`, que ya cumple las dos guardas), sembrando 3 000 equipos de
+   ortopedia + 3 000 "otros" (4 materiales c/u), 2 000 lotes, 2 000 ciclos y 3 000 ingresos de
+   lavadero. App apuntada a esa base con `DB_NAME=aptium_perf`, mismas 3 corridas por pantalla.
+
+   | Tarea | filas | leer (mediana de 3) | pintar (mediana de 3) | pintar % del total |
+   |---|---|---|---|---|
+   | `refresco-historial-equipos` (CDE) | 6 000 (3 000+3 000) | **187 ms** | 7 ms | ≈4 % |
+   | `refresco-historial-lotes` | 2 000 | 8 ms | 3 ms | ≈27 % |
+   | `refresco-historial-ciclos` | 2 000 | 11 ms | 3 ms | ≈21 % |
+   | `refresco-historial-lavadero` | 3 000 | 11 ms | 4 ms | ≈27 % |
+   | `detalle-historial-lavadero` | 1 ingreso | 2 ms | **1 134-2 443 ms** | >99 % |
+
+   **La hipótesis del pintado queda refutada para la pantalla que importa.** En `Ver Equipos`
+   (CDE), que es la más pesada y la que el Paso 10/11 va a paginar por SQL, `pintar` es sólo el
+   ≈4 % del total a 6 000 filas: `setRowCount(0)` + `addRow` por fila **no** es el cuello de botella
+   que el hallazgo original sospechaba. El que domina es `leer` (187 ms), y eso apunta derecho a
+   los hallazgos #11 (sin índices en `fecha_ingreso`/`estado`) y #16 (orden sobre el valor
+   derivado) que los Pasos 5 y 10 ya iban a atacar — **la razón de paginar el CDE en SQL sigue
+   siendo válida, pero por el lado de la consulta, no del pintado.**
+   - En `Ver Lotes`, `Ver Ciclos` e Historial de Lavadero el pintado ronda 21-27 % del total, pero
+     los totales son de un solo dígito a bajos dos dígitos de milisegundos incluso a 2 000-3 000
+     filas — un porcentaje alto de un número irrelevante no es un problema real. Esto **confirma**
+     la decisión ya tomada de pasarlas por paginación en memoria (Paso 12, barata) y no por SQL: acá
+     sí el pintado sería la única palanca si algún día molestara, y hoy ni eso hace falta.
+   - **`detalle-historial-lavadero` empeora con volumen**, no mejora: 1,1-2,4 s de pintado (contra
+     2-5 ms de lectura) para el diálogo de traza de **un solo ingreso**, sin relación con cuántas
+     filas tiene el listado. Sigue fuera del alcance de este plan (Pasos 8-11 no la tocan), pero con
+     este dato deja de ser una curiosidad menor: 2,4 s percibidos al abrir el detalle de un ingreso
+     es un problema de UX real. Queda anotado para una futura sesión, no para este plan.
+   - **Compuerta de "menos de ~500 filas" no aplica más a Historial de Lavadero de la misma forma:**
+     el sembrador demuestra que a 3 000 filas la pantalla sigue respondiendo en ~15 ms totales, así
+     que el volumen en sí no es un problema — el problema sigue siendo que **hoy, en producción, esa
+     tabla tiene 0 filas** (dato real del Paso 2, no sintético). La decisión de construir la
+     paginación del Paso 8 antes de que se use pesado sigue siendo la misma, ahora con más base: el
+     costo de la paginación en SQL no es alto (la consulta ya es liviana a 3 000 filas locales), así
+     que no hay urgencia de rendimiento pero tampoco hay motivo para posponerlo por costo.
+   - Base de rendimiento (`aptium_perf`, `localhost:3306`) **no se borra**: queda disponible para
+     repetir esta medición después de cada paso de la Fase C (Pasos 9/11/13) y ver el "antes/después"
+     real, y para correr `-Daptium.perf.factor=5` si hiciera falta ver la tendencia a más volumen.
+
 8. **Tests** (`TareaUITest`): la instrumentación no altera el valor devuelto ni el ruteo del error.
    Verificar el texto del log es frágil y no aporta.
 
@@ -698,10 +742,15 @@ mvn clean package && java -jar target/aptium.jar   # y leer el log
       falso contra la fuente de HikariCP 5.0.1)
 - [x] La tabla de baseline está llena con medianas de 3, y los `COUNT(*)` anotados
 - [x] La compuerta de la tarea 7 está evaluada y comunicada al usuario: pintado domina en
-      `detalle-historial-lavadero` (fuera de alcance de la Fase C), la hipótesis del pintado en los
-      listados sigue abierta por falta de volumen local, e Historial de Lavadero tiene 0 filas en
-      producción hoy (decisión de construir antes del uso ya tomada en el Paso 2, no reabierta)
+      `detalle-historial-lavadero` (fuera de alcance de la Fase C, y empeora con volumen: hasta
+      2,4 s), y en el CDE a 6 000 filas el pintado es sólo ≈4 % del total — la hipótesis del
+      pintado queda **refutada** ahí, el cuello de botella es `leer` (índices/orden, hallazgos
+      #11/#16, ya cubiertos por los Pasos 5/10)
+- [x] Sembrador sintético (tarea 4) implementado con sus tres guardas, corrido con `FACTOR=1`
+      contra `aptium_perf` (mismo MySQL local, sin necesitar Docker), y su resultado analizado en
+      la tarea 7.1
 - [ ] Commit: `feat: TareaUI mide lectura y pintado, y avisa cuando el pool está bajo presión`
+- [ ] Commit: `test: sembrador sintético para medir el pintado con volumen sobre MySQL local`
 
 ---
 
