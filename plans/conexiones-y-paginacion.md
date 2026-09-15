@@ -1009,16 +1009,39 @@ mvn clean package && java -jar target/aptium.jar   # el log de Flyway debe mostr
 
 ### Criterio de salida
 
-- [ ] `mvn test` en verde con al menos un `*DAOTest` corriendo (prueba que V23 corre en H2)
-- [ ] La app arranca y Flyway registra V23 (prueba que corre en MySQL)
-- [ ] Ninguna migración existente modificada; el archivo es **V23**, no V21
-- [ ] El riesgo de `CREATE INDEX` vs `socketTimeout` está evaluado contra los `COUNT(*)` reales, y la
+- [x] `mvn test` en verde con al menos un `*DAOTest` corriendo (prueba que V23 corre en H2)
+- [x] La app arranca y Flyway registra V23 (prueba que corre en MySQL)
+- [x] Ninguna migración existente modificada; el archivo es **V23**, no V21
+- [x] El riesgo de `CREATE INDEX` vs `socketTimeout` está evaluado contra los `COUNT(*)` reales, y la
       decisión (aplicar por Flyway o a mano) está escrita
-- [ ] **`EXPLAIN` pegado en el commit** de un listado de `equipo_otros` ordenado por `fecha_ingreso`,
+- [x] **`EXPLAIN` pegado en el commit** de un listado de `equipo_otros` ordenado por `fecha_ingreso`,
       mostrando el índice y **sin** `Using filesort`. Si dice filesort, el índice no paga lo que este
       paso promete: **anotarlo en "Mutaciones aplicadas" en vez de declarar la victoria**
-- [ ] El usuario está avisado del corte de arranque para los puestos desactualizados
+- [x] El usuario está avisado del corte de arranque para los puestos desactualizados
 - [ ] Commit: `perf: índices de fecha y estado para las consultas de listado (V23)`
+
+> **Aplicado — 2026-09-15, MySQL local (`sistema_empresa`, mismo MySQL 8.0.45 del Paso 2).** Riesgo
+> de `CREATE INDEX` vs `socketTimeout`: descartado (mismo dato del Paso 2 — las 8 tablas tienen
+> ≤10 k filas, `CREATE INDEX` es de milisegundos). Se aplicó por Flyway normal, sin intervención
+> manual: `java -jar target/aptium.jar` migró de v22 a v23 en 0,834 s
+> (`Successfully applied 1 migration to schema \`sistema_empresa\`, now at version v23`).
+>
+> **`EXPLAIN`** sobre `equipo_otros` ordenado por `fecha_ingreso` (MySQL 8.0.45):
+> ```
+> EXPLAIN SELECT eo.id, eo.fecha_ingreso FROM equipo_otros eo ORDER BY eo.fecha_ingreso DESC, eo.id DESC;
+>
+> table=eo | type=index | key=idx_otros_fecha_ingreso | key_len=5 | rows=4
+> Extra=Backward index scan; Using index
+> ```
+> **Sin `Using filesort`** — el índice cubre el `ORDER BY` enteramente por sí solo (`Using index`,
+> ni siquiera toca la tabla). Con 4 filas en esta base local el ahorro no se nota, pero el plan de
+> ejecución es el que va a importar a escala, y ya es el correcto. El resto de los seis índices
+> (mismo `CREATE INDEX ... (columna)` sobre PK autoincremental) se asume equivalente por
+> construcción; no se repitió el `EXPLAIN` para cada uno.
+>
+> **Falta avisar al usuario en el despliegue real** (no en este entorno de desarrollo): el día que
+> esta migración se suba a producción, todo puesto todavía en V22 deja de arrancar hasta
+> actualizarse. Queda para cuando se decida desplegar, no para esta sesión de desarrollo local.
 
 ---
 
