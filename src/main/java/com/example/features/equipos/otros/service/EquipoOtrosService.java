@@ -1,6 +1,9 @@
 package com.example.features.equipos.otros.service;
 
 import com.example.common.exception.ValidationException;
+import com.example.common.paginacion.CriteriosPagina;
+import com.example.common.paginacion.Pagina;
+import com.example.features.equipos.model.FiltroEquipos;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.equipos.otros.model.EquipoOtros;
@@ -8,6 +11,7 @@ import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Servicio de negocio para equipos "otros".
@@ -74,6 +78,41 @@ public class EquipoOtrosService {
      */
     public List<EquipoOtros> obtenerActivos() {
         return dao.obtenerActivos();
+    }
+
+    /**
+     * Una página de equipos "otros" con sus materiales, con los filtros y el orden resueltos en
+     * SQL. La consume la grilla de "otros" de Ver Equipos.
+     *
+     * <p>Valida y delega: cero JDBC acá (regla del repo). Ver
+     * {@link EquipoOtrosDAO#obtenerPagina(FiltroEquipos, CriteriosPagina)} para por qué son dos
+     * viajes, y {@link FiltroEquipos} para qué campos del filtro <b>no</b> aplican acá y por qué no
+     * se "arregla".
+     */
+    public Pagina<EquipoOtros> obtenerPagina(FiltroEquipos filtro, CriteriosPagina criterios) {
+        exigirCriterios(filtro, criterios);
+        return dao.obtenerPagina(filtro, criterios);
+    }
+
+    /**
+     * La misma página con el total ya sabido, para cuando sólo cambió el número de página y no los
+     * filtros: así no se repite el {@code COUNT(*)}.
+     */
+    public Pagina<EquipoOtros> obtenerPagina(FiltroEquipos filtro, CriteriosPagina criterios,
+                                             long totalConocido) {
+        exigirCriterios(filtro, criterios);
+        return dao.obtenerPagina(filtro, criterios, totalConocido);
+    }
+
+    /** Cuántos equipos "otros" matchean el filtro. Se pide sólo cuando cambian los filtros. */
+    public long contar(FiltroEquipos filtro) {
+        Objects.requireNonNull(filtro, "filtro");
+        return dao.contar(filtro);
+    }
+
+    private static void exigirCriterios(FiltroEquipos filtro, CriteriosPagina criterios) {
+        Objects.requireNonNull(filtro, "filtro");
+        Objects.requireNonNull(criterios, "criterios");
     }
 
     public EquipoOtros obtenerPorId(int id) {

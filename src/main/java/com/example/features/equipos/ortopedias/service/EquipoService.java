@@ -1,6 +1,9 @@
 package com.example.features.equipos.ortopedias.service;
 
 import com.example.common.exception.ValidationException;
+import com.example.common.paginacion.CriteriosPagina;
+import com.example.common.paginacion.Pagina;
+import com.example.features.equipos.model.FiltroEquipos;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
 
@@ -8,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Servicio de negocio para operaciones con Equipos.
@@ -100,8 +104,41 @@ public class EquipoService {
     }
 
     /**
+     * Una página de equipos de ortopedia con sus materiales, con los filtros y el orden resueltos
+     * en SQL. La consume la grilla de ortopedias de Ver Equipos.
+     *
+     * <p>Valida y delega: cero JDBC acá (regla del repo). Ver
+     * {@link EquipoDAO#obtenerPagina(FiltroEquipos, CriteriosPagina)} para por qué son dos viajes.
+     */
+    public Pagina<Equipo> obtenerPagina(FiltroEquipos filtro, CriteriosPagina criterios) {
+        exigirCriterios(filtro, criterios);
+        return equipoDAO.obtenerPagina(filtro, criterios);
+    }
+
+    /**
+     * La misma página con el total ya sabido, para cuando sólo cambió el número de página y no los
+     * filtros: así no se repite el {@code COUNT(*)}.
+     */
+    public Pagina<Equipo> obtenerPagina(FiltroEquipos filtro, CriteriosPagina criterios,
+                                        long totalConocido) {
+        exigirCriterios(filtro, criterios);
+        return equipoDAO.obtenerPagina(filtro, criterios, totalConocido);
+    }
+
+    /** Cuántos equipos matchean el filtro. Se pide sólo cuando cambian los filtros. */
+    public long contar(FiltroEquipos filtro) {
+        Objects.requireNonNull(filtro, "filtro");
+        return equipoDAO.contar(filtro);
+    }
+
+    private static void exigirCriterios(FiltroEquipos filtro, CriteriosPagina criterios) {
+        Objects.requireNonNull(filtro, "filtro");
+        Objects.requireNonNull(criterios, "criterios");
+    }
+
+    /**
      * Obtiene un equipo específico por su ID.
-     * 
+     *
      * @param id ID único del equipo
      * @return El equipo si existe, null si no
      */

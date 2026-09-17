@@ -5,6 +5,10 @@ import com.example.common.dao.ControlConcurrencia;
 import com.example.common.dao.DAO;
 import com.example.common.exception.DatabaseException;
 import com.example.common.exception.ResourceNotFoundException;
+import com.example.common.paginacion.CriteriosPagina;
+import com.example.common.paginacion.Pagina;
+import com.example.features.equipos.dao.FiltroEquiposSql;
+import com.example.features.equipos.model.FiltroEquipos;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.Material;
@@ -474,6 +478,178 @@ public class EquipoDAO implements DAO<Equipo, String> {
             "WHERE e.estado = ? ORDER BY e.fecha_ingreso DESC, e.id DESC",
             EstadoEquipo.NUEVO.getNombre()
         );
+    }
+
+    // ============================================================
+    // LISTADO PAGINADO (Ver Equipos — grilla de ortopedias)
+    // ============================================================
+
+    /**
+     * Sólo los ids de la página, ordenados y paginados. Es el <b>primer viaje</b> de
+     * {@link #obtenerPagina}; ver ahí por qué son dos.
+     *
+     * <p>Los {@code JOIN} contra {@code clientes}, {@code profesionales} e {@code instituciones}
+     * <b>no</b> están acá: los pone {@link FiltroEquiposSql.Condicion#joins()}, y sólo cuando el
+     * filtro de texto que los necesita tiene algo escrito. Esta consulta proyecta únicamente
+     * {@code e.id}, así que un {@code JOIN} sin predicado que lo use no aporta nada — y cuesta el
+     * índice del {@code ORDER BY}. Está medido; ver el javadoc de {@code Condicion}.
+     *
+     * <p>Cuando están, son a la PK de cada tabla, así que no pueden multiplicar filas: el
+     * {@code LIMIT} cuenta equipos y el {@code COUNT(*)} de {@link #SQL_CONTAR} cuenta lo mismo.
+     */
+    private static final String SQL_IDS_PAGINA = "SELECT e.id FROM equipos e ";
+
+    /** Mismo {@code FROM} que {@link #SQL_IDS_PAGINA}, para que el mismo filtro sirva a los dos. */
+    private static final String SQL_CONTAR = "SELECT COUNT(*) FROM equipos e ";
+
+    /**
+     * El orden de la grilla de ortopedias de Ver Equipos, que es el mismo que traía
+     * {@link #obtenerTodosLosEquipos()}. Cubierto entero por {@code idx_equipos_fecha_ingreso}
+     * (V23): en InnoDB todo índice secundario incluye la PK.
+     *
+     * <p>{@code e.id DESC} no es decorativo: sin un desempate total, dos equipos con la misma
+     * {@code fecha_ingreso} pueden alternar de orden entre una página y la siguiente, y entonces
+     * uno aparece dos veces y el otro ninguna. {@code fecha_ingreso} tiene resolución de segundo y
+     * una carga por lote crea varios equipos dentro del mismo, así que el empate no es teórico.
+     */
+    private static final String SQL_ORDEN_PAGINA = " ORDER BY e.fecha_ingreso DESC, e.id DESC";
+
+    /**
+     * Una página de equipos de ortopedia <b>con sus materiales</b>, con los filtros y el orden
+     * resueltos en SQL, y el total de equipos que matchean.
+     *
+     * <h2>⚠️ Por qué son DOS viajes y no una consulta sola</h2>
+     * {@link #SQL_EQUIPOS_CON_MATERIALES} devuelve <b>una fila por (equipo × material)</b>. Pegarle
+     * un {@code LIMIT 50} corta <b>materiales</b>, no equipos: la página 1 traería los materiales
+     * de los primeros ~12 equipos y el equipo del borde llegaría partido, con parte de sus
+     * materiales en la página siguiente. Por eso el primer viaje elige los 50 <b>ids</b> con el
+     * orden y el {@code LIMIT}, y el segundo trae el detalle completo de esos 50 con
+     * {@code IN (…)}.
+     *
+     * <h2>⚠️ La alternativa "elegante" NO existe en MySQL</h2>
+     * Lo primero que alguien va a querer hacer es plegar los dos viajes en uno:
+     * <pre>{@code WHERE e.id IN (SELECT id FROM equipos … ORDER BY … LIMIT ? OFFSET ?)}</pre>
+     * <b>Eso falla</b>, y no en tiempo de test sino en producción:
+     * {@code ERROR 1235 (42000): This version of MySQL doesn't yet support
+     * 'LIMIT & IN/ALL/ANY/SOME subquery'}. <b>H2 no lo delata</b>: lo acepta sin chistar, así que
+     * la suite quedaría verde y la app rota en el puesto. El único rodeo que MySQL acepta es
+     * envolverla en una tabla derivada ({@code IN (SELECT * FROM (SELECT … LIMIT ?) t)}), que
+     * materializa la derivada, no es más rápido y es más frágil. Dos viajes explícitos.
+     *
+     * <h2>El orden lo fija el primer viaje</h2>
+     * El segundo trae los mismos 50 equipos pero el servidor no está obligado a devolverlos en
+     * ningún orden particular, así que se reordenan en memoria contra la lista de ids del primero.
+     * Son 50 elementos.
+     *
+     * <p>Pedir una página más allá del total devuelve una página vacía con el total correcto y
+     * <b>no</b> lanza: el operador puede tener abierta la página 7 cuando el filtro pasó a tener
+     * dos.
+     *
+     * @throws DatabaseException si falla cualquiera de las consultas — nunca una lista a medias
+     */
+    public Pagina<Equipo> obtenerPagina(FiltroEquipos filtro, CriteriosPagina criterios) {
+        return armarPagina(filtro, criterios, contar(filtro));
+    }
+
+    /**
+     * La misma página, pero con el total ya sabido: <b>no vuelve a contar</b>.
+     *
+     * <p>El total sólo cambia cuando cambian los <em>filtros</em>. Ir de la página 3 a la 4 con el
+     * mismo filtro no necesita un {@code COUNT(*)} nuevo, y hacerlo igual duplica las consultas que
+     * esta paginación vino a ahorrar. El llamador es responsable de pasar el total que leyó con
+     * <b>este mismo filtro</b>.
+     */
+    public Pagina<Equipo> obtenerPagina(FiltroEquipos filtro, CriteriosPagina criterios,
+                                        long totalConocido) {
+        if (totalConocido < 0) {
+            throw new IllegalArgumentException("totalConocido no puede ser negativo: " + totalConocido);
+        }
+        return armarPagina(filtro, criterios, totalConocido);
+    }
+
+    private Pagina<Equipo> armarPagina(FiltroEquipos filtro, CriteriosPagina criterios, long total) {
+        List<Integer> ids = idsDePagina(filtro, criterios);
+        if (ids.isEmpty()) {
+            return new Pagina<>(List.of(), criterios.numeroPagina(), criterios.tamanioPagina(), total);
+        }
+        return new Pagina<>(ordenarComo(ids, obtenerPorIds(ids)),
+            criterios.numeroPagina(), criterios.tamanioPagina(), total);
+    }
+
+    /**
+     * El detalle completo —con materiales— de un conjunto de ids. Segundo viaje de
+     * {@link #obtenerPagina}, y también lo que usa
+     * {@link com.example.features.equipos.dao.CdeConsultaDAO} para la mitad de ortopedias de su
+     * unión: los dos necesitan exactamente lo mismo, y tener dos copias del mapeo sería la
+     * divergencia esperando a pasar.
+     *
+     * <p>El orden que devuelve es el de {@link #SQL_ORDEN_PAGINA}, no el de {@code ids}: quien
+     * necesite el orden de una unión lo reordena por su cuenta.
+     *
+     * @param ids no vacío; con la lista vacía el {@code IN ()} no es SQL válido
+     */
+    public List<Equipo> obtenerPorIds(List<Integer> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return obtenerEquiposConJoin(
+            "WHERE e.id IN (" + FiltroEquiposSql.marcadores(ids.size()) + ")"
+                + SQL_ORDEN_PAGINA, ids.toArray());
+    }
+
+    private List<Integer> idsDePagina(FiltroEquipos filtro, CriteriosPagina criterios) {
+        FiltroEquiposSql.Condicion condicion = FiltroEquiposSql.paraOrtopedias(filtro);
+        String sql = SQL_IDS_PAGINA + condicion.joins() + condicion.sql()
+            + SQL_ORDEN_PAGINA + " LIMIT ? OFFSET ?";
+
+        List<Integer> ids = new ArrayList<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            int siguiente = FiltroEquiposSql.aplicar(ps, condicion.parametros());
+            ps.setInt(siguiente, criterios.tamanioPagina());
+            ps.setLong(siguiente + 1, criterios.offset());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    ids.add(rs.getInt(1));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Error al obtener la página de equipos", e);
+            throw new DatabaseException("Error al obtener la página de equipos", e);
+        }
+        return ids;
+    }
+
+    /** Cuántos equipos matchean el filtro, con el <b>mismo</b> {@code WHERE} que la página. */
+    public long contar(FiltroEquipos filtro) {
+        FiltroEquiposSql.Condicion condicion = FiltroEquiposSql.paraOrtopedias(filtro);
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 SQL_CONTAR + condicion.joins() + condicion.sql())) {
+            FiltroEquiposSql.aplicar(ps, condicion.parametros());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            }
+        } catch (SQLException e) {
+            log.error("Error al contar equipos con filtro", e);
+            throw new DatabaseException("Error al contar los equipos", e);
+        }
+    }
+
+    /** Devuelve {@code detalle} en el orden de {@code ids}. Son 50 elementos: el costo no importa. */
+    private static List<Equipo> ordenarComo(List<Integer> ids, List<Equipo> detalle) {
+        java.util.Map<Integer, Equipo> porId = new java.util.HashMap<>();
+        for (Equipo equipo : detalle) {
+            porId.put(equipo.getId(), equipo);
+        }
+        List<Equipo> ordenados = new ArrayList<>(ids.size());
+        for (Integer id : ids) {
+            Equipo equipo = porId.get(id);
+            if (equipo != null) {
+                ordenados.add(equipo);
+            }
+        }
+        return ordenados;
     }
 
     public List<Equipo> obtenerEntreFechas(LocalDate desde, LocalDate hasta, Integer clienteId, Integer institucionId) {
