@@ -405,6 +405,8 @@ public final class Constantes {
         public static final String INGRESAR_A_CDE   = "Ingresar al CDE";
         public static final String ANADIR_ELEMENTO_CATALOGO = "Añadir elemento al catálogo";
         public static final String ACTUALIZAR               = "Actualizar";
+        public static final String PAGINA_ANTERIOR          = "«";
+        public static final String PAGINA_SIGUIENTE         = "»";
 
         private Botones() {}
     }
@@ -455,6 +457,22 @@ public final class Constantes {
     }
 
     /**
+     * Paginación de las pantallas de consulta.
+     */
+    public static final class Paginacion {
+        /**
+         * Filas por página en las pantallas de consulta.
+         *
+         * <p>El número lo pidió el usuario ("pestañas de 50 elementos"). Vive acá y no como
+         * parámetro configurable a propósito: no hay un segundo caso a la vista, y si algún día
+         * lo hay, cambia un solo lugar.
+         */
+        public static final int TAMANIO_PAGINA = 50;
+
+        private Paginacion() {}
+    }
+
+    /**
      * Constantes del lavadero (cantidad de lavarropas y su disposición en pantalla).
      */
     public static final class Lavadero {
@@ -477,6 +495,9 @@ public final class Constantes {
      */
     public static final class Textos {
         public static final String CAMBIOS_PENDIENTES                    = "Cambios pendientes: %d";
+        /** Rango visible de la paginación: primera fila, última fila, total. */
+        public static final String PAGINACION_RANGO                      = "Mostrando %d-%d de %d";
+        public static final String PAGINACION_ELIPSIS                    = "…";
         public static final String TABLA_EQUIPOS_TITULO                  = "Equipos / Clientes";
         public static final String TABLA_MATERIALES_TITULO               = "Materiales del Equipo (Seleccione para avanzar)";
         public static final String TABLA_MATERIALES_SELECCIONADO_TITULO  = "Materiales del Equipo Seleccionado";
