@@ -27,9 +27,15 @@ import javax.swing.Timer;
  * en el hilo de UI, así que no agrega un modelo de concurrencia más.
  *
  * <p><b>Resultados fuera de orden.</b> Antes de lanzar una lectura se cancela la
- * anterior. La cancelación de {@link TareaUI} es de aplicación: la query vieja
- * termina igual, pero su resultado se descarta en vez de pisar al nuevo. Es el
- * token de generación — sin él, dos refrescos rápidos pueden pintar al revés.
+ * anterior: su resultado se descarta en vez de pisar al nuevo. Es el token de
+ * generación — sin él, dos refrescos rápidos pueden pintar al revés.
+ *
+ * <p>La cancelación de {@link TareaUI} <b>también cancela la consulta en el servidor</b>. Importa
+ * acá más que en ningún otro lado, porque este método cancela {@code enVuelo} de forma
+ * incondicional, aunque esa tarea ya haya terminado: el campo nunca se pone en {@code null}. Eso es
+ * seguro porque el registro de sentencias de {@code ConexionesSupervisadas} va por token de tarea y
+ * no por hilo — con un registro por hilo, cancelar acá una tarea muerta mataría la consulta viva de
+ * otra pantalla que heredó ese hilo del pool de {@code SwingWorker}.
  *
  * @param <T> tipo del snapshot que este grupo de pantallas consume
  */
