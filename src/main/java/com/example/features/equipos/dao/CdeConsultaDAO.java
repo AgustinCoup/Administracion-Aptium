@@ -145,29 +145,64 @@ public class CdeConsultaDAO {
      * dos), {@code fecha_ingreso} tiene resolución de segundo, y {@code orden_estado} toma sólo
      * siete valores distintos. {@code tipo} + {@code id} cierran el orden.
      *
-     * <h2>⚠️ Este ORDER BY no usa ningún índice, y no puede</h2>
+     * <h2>⚠️ Este ORDER BY no usa ningún índice, y no puede — pero es lento, nunca desordenado</h2>
      * Medido con {@code EXPLAIN} sobre 3 000 + 3 000 equipos (MySQL 8.0.43, con la V23 aplicada):
      * las dos ramas salen {@code type: ALL} y el derivado sale
      * {@code ALL … rows: 1800 … Using filesort}. <b>No es un defecto de esta consulta: es inherente
      * a pedir un orden global sobre una unión con {@code LIMIT}.</b> La clave de orden cruza las dos
-     * tablas, así que ningún índice de una sola puede darlo ya ordenado; el servidor tiene que
+     * tablas, así que ningún índice de una sola puede darla ya ordenada; el servidor tiene que
      * materializar la unión, ordenarla y recién ahí cortar. Compárese con
      * {@link EquipoDAO#obtenerPagina} y {@link EquipoOtrosDAO#obtenerPagina}, que sí salen por
      * {@code Backward index scan} porque ordenan sobre una sola tabla.
      *
-     * <p><b>Por qué se acepta hoy:</b> producción tiene ~1 400 equipos entre las dos tablas
-     * (482 + 946, medidos en el Paso 2 del plan). Materializar y ordenar eso es del orden de los
-     * milisegundos, y a cambio se deja de traer y de repintar el histórico completo, que es lo que
+     * <p><b>{@code Using filesort} no quiere decir que el orden salga mal.</b> Quiere decir que el
+     * servidor ordena las filas él mismo en vez de leerlas ya ordenadas de un índice: el resultado
+     * es idéntico, sólo que cuesta más. Lo que sí desordenaría son otras dos cosas, y las dos están
+     * atendidas: un {@code ORDER BY} que no fuera total (ver la sección de arriba, con su test de
+     * empates en las dos tablas) y un {@code TableModel} que reordene dentro de la página (lo saca
+     * el Paso 11; hasta entonces {@code EquipoTableModel} sigue ordenando y cablear esta capa sin
+     * tocarlo <b>sí</b> rompería el orden global).
+     *
+     * <h2>Por qué se acepta hoy, con números</h2>
+     * Producción tiene ~1 400 equipos entre las dos tablas (482 + 946, medidos en el Paso 2 del
+     * plan). Sobre las 6 000 filas de la base sintética —4,2× ese volumen— la consulta tarda
+     * <b>6,6 ms en la página 1 y 6,8 ms en la última</b> ({@code SHOW PROFILES}, offset 1750). Que
+     * las dos cifras sean casi iguales es una <em>virtud</em> de esta forma: no hay degradación por
+     * {@code OFFSET} profundo, porque el costo no depende de qué página se pida. A cambio se dejó de
+     * traer y de repintar el histórico completo <em>con los materiales joineados</em>, que es lo que
      * este paso vino a arreglar.
      *
-     * <p><b>La salida, escrita acá para que nadie tenga que redescubrirla el día que duela:</b> para
-     * los primeros {@code OFFSET + LIMIT} de un orden global, a cada rama le alcanza con <em>sus</em>
-     * primeros {@code OFFSET + LIMIT} — así que el {@code LIMIT} se puede empujar dentro de cada
-     * rama ({@code (SELECT … ORDER BY … LIMIT ?) UNION ALL (SELECT … ORDER BY … LIMIT ?)}) y el
-     * derivado baja de "toda la historia" a 2 × (offset + 50). Para que además desaparezca el
-     * filesort de cada rama haría falta un índice compuesto {@code (estado, fecha_ingreso)}, que la
-     * V23 no trae: son dos índices de una columna cada uno. Nada de esto se hace antes de que una
-     * medición lo pida — lo decide el Paso 13 del plan.
+     * <h2>La salida, para que nadie la redescubra — y el callejón sin salida, para que nadie lo pruebe</h2>
+     * El costo es proporcional a la historia entera en cada vista de página. Cuando eso moleste
+     * —del orden de decenas de miles de equipos, no de los 1 400 de hoy— hay dos caminos, y sólo
+     * uno sirve:
+     *
+     * <ul>
+     *   <li><b>Empujar el {@code LIMIT} dentro de cada rama</b>
+     *       ({@code (SELECT … ORDER BY … LIMIT ?) UNION ALL (SELECT … ORDER BY … LIMIT ?)}, con
+     *       {@code ? = offset + tamaño}): es correcto —para los primeros {@code offset + tamaño} de
+     *       un orden global, a cada rama le alcanza con <em>sus</em> primeros {@code offset +
+     *       tamaño}— y baja el derivado de toda la historia a 2 × (offset + 50). Pero <b>los scans
+     *       quedan</b>: misma asintótica, un recorte parcial sobre una consulta que hoy son 6 ms.</li>
+     *   <li><b>⚠️ Un índice compuesto {@code (estado, fecha_ingreso)} NO sirve, aunque sea lo
+     *       primero que uno intenta.</b> El orden que se pide es el de {@code orden_estado}, que es
+     *       un {@code CASE} sobre {@code estado}, y el orden alfabético de la columna no tiene nada
+     *       que ver con el del flujo:
+     *       <pre>
+     *       flujo:      Nuevo, Lavando, Lavado, Empaquetado, Esterilizando, Esterilizado, Entregado
+     *       alfabético: Empaquetado, Entregado, Esterilizando, Esterilizado, Lavado, Lavando, Nuevo
+     *       </pre>
+     *       Un índice sobre {@code estado} entrega el segundo, así que no puede evitar el sort. Para
+     *       que un índice sirviera habría que <b>persistir el orden</b> en una columna propia
+     *       ({@code estado_orden}), mantenida por los dos {@code recalcularEstadoEquipo} — o sea una
+     *       migración <b>más un cambio en el camino de escritura</b>, que este plan pone
+     *       explícitamente fuera de alcance (anti-patrón A10: si un paso necesita tocar una
+     *       escritura, parar y preguntar). Es un paso propio, con su decisión, no algo que se cuela
+     *       acá.</li>
+     * </ul>
+     *
+     * <p>Nada de esto se hace antes de que una medición con los tres puestos en uso lo pida — lo
+     * decide el Paso 13 del plan.
      */
     private static final String SQL_ORDEN =
         " ORDER BY u.orden_estado ASC, u.fecha_ingreso DESC, u.tipo ASC, u.id DESC";
