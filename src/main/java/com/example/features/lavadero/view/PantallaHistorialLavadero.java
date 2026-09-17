@@ -1,6 +1,7 @@
 package com.example.features.lavadero.view;
 
 import com.example.common.constants.Constantes;
+import com.example.common.paginacion.Pagina;
 import com.example.common.util.DateTimeDisplayUtils;
 import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.IngresoHistorial;
@@ -8,6 +9,7 @@ import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.PanelHeader;
+import com.example.ui.common.PanelPaginacion;
 import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.TableStyler;
 import com.toedter.calendar.JDateChooser;
@@ -18,15 +20,20 @@ import java.awt.*;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.IntConsumer;
 
 /**
  * Pantalla de consulta del Historial de Lavadero: una tabla maestra de ingresos con filtros.
  * Doble clic sobre una fila abre {@code DetalleHistorialDialog} con la trazabilidad de ese
  * ingreso (el controller lee ese detalle bajo demanda).
  *
- * <p>Sólo lectura: no importa ningún service ni DAO. Recibe la lista ya filtrada vía
- * {@link #actualizarIngresos(List)} y expone getters de filtros + setters de callbacks; el
- * controller es quien filtra y repinta.</p>
+ * <p>Sólo lectura: no importa ningún service ni DAO. Recibe <b>una página</b> —los filtros se
+ * resuelven en SQL, no acá— vía {@link #actualizarIngresos(List)} y
+ * {@link #mostrarPaginacion(Pagina)}, y expone getters de filtros + setters de callbacks; el
+ * controller es quien pide y repinta.</p>
+ *
+ * <p>La barra de paginación se oculta sola cuando hay una sola página, así que en volumen chico
+ * la pantalla se ve igual que antes.</p>
  */
 public class PantallaHistorialLavadero extends JPanel {
 
@@ -43,8 +50,9 @@ public class PantallaHistorialLavadero extends JPanel {
     private PanelHeader             header;
     private final DefaultTableModel modeloTabla;
     private final JTable            tablaIngresos;
+    private final PanelPaginacion   panelPaginacion = new PanelPaginacion();
 
-    /** La misma lista que se pintó, para resolver el doble clic a un ingreso. */
+    /** La página que se pintó, para resolver el doble clic a un ingreso. */
     private List<IngresoHistorial> filasVisibles = List.of();
 
     private JTextField                txtCliente;
@@ -97,8 +105,12 @@ public class PantallaHistorialLavadero extends JPanel {
         JLabel lblHint = new JLabel("Doble clic para ver el detalle del ingreso");
         lblHint.setFont(Estilos.Fuentes.LABEL);
         lblHint.setForeground(Estilos.Colores.TEXTO_AYUDA);
-        JPanel panelSur = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
-        panelSur.add(lblHint);
+        JPanel panelHint = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
+        panelHint.add(lblHint);
+
+        JPanel panelSur = new JPanel(new BorderLayout());
+        panelSur.add(panelPaginacion, BorderLayout.NORTH);
+        panelSur.add(panelHint,       BorderLayout.SOUTH);
         add(panelSur, BorderLayout.SOUTH);
     }
 
@@ -176,7 +188,20 @@ public class PantallaHistorialLavadero extends JPanel {
 
     // ── API pública ────────────────────────────────────────────────────────────
 
-    /** Repuebla la tabla con la lista ya filtrada y la guarda para el doble clic. */
+    /** Qué hacer cuando el operador pide otra página. Recibe el número pedido, base 1. */
+    public void setAlCambiarPagina(IntConsumer accion) {
+        panelPaginacion.setAlCambiarPagina(accion);
+    }
+
+    /**
+     * Actualiza la barra de paginación con la página que se acaba de pintar. Va junto con
+     * {@link #actualizarIngresos(List)}: la barra describe lo que la tabla muestra.
+     */
+    public void mostrarPaginacion(Pagina<?> pagina) {
+        panelPaginacion.mostrar(pagina);
+    }
+
+    /** Repuebla la tabla con la página recibida y la guarda para el doble clic. */
     public void actualizarIngresos(List<IngresoHistorial> ingresos) {
         filasVisibles = ingresos != null ? List.copyOf(ingresos) : List.of();
         modeloTabla.setRowCount(0);

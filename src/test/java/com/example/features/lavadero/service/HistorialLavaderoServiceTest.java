@@ -4,7 +4,6 @@ import com.example.common.exception.ValidationException;
 import com.example.common.paginacion.CriteriosPagina;
 import com.example.common.paginacion.Pagina;
 import com.example.features.lavadero.dao.HistorialLavaderoDAO;
-import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.FiltroHistorial;
 import com.example.features.lavadero.model.IngresoHistorial;
 import com.example.features.lavadero.model.LineaHistorial;
@@ -14,10 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -40,17 +36,6 @@ class HistorialLavaderoServiceTest {
     @Test
     void constructor_daoNull_lanzaIllegalArgument() {
         assertThrows(IllegalArgumentException.class, () -> new HistorialLavaderoService(null));
-    }
-
-    @Test
-    void obtenerHistorial_delegaEnElDao() {
-        List<IngresoHistorial> esperado = List.of(new IngresoHistorial(
-            1, "Cliente", LocalDateTime.now(), new BigDecimal("5.0"), 1,
-            EstadoIngresoLavadero.PENDIENTE, Set.of(), Set.of()));
-        when(dao.obtenerHistorial()).thenReturn(esperado);
-
-        assertEquals(esperado, service.obtenerHistorial());
-        verify(dao).obtenerHistorial();
     }
 
     @Test

@@ -16,9 +16,13 @@ import java.util.List;
  *
  * <p>El historial es de sólo lectura. {@link #obtenerPagina(FiltroHistorial, CriteriosPagina)}
  * trae una página de la tabla maestra con los filtros ya resueltos en SQL —es lo que usa la
- * pantalla—; {@link #obtenerHistorial()} trae la maestra entera sin filtrar, y sobrevive como
- * implementación de referencia del test de equivalencia del DAO; {@link #obtenerDetalle(int)} lee
- * la trazabilidad de un solo ingreso, bajo demanda.</p>
+ * pantalla—, y {@link #obtenerDetalle(int)} lee la trazabilidad de un solo ingreso, bajo
+ * demanda.</p>
+ *
+ * <p><b>No hay un {@code obtenerHistorial()} que traiga todo.</b> Lo había mientras el filtrado
+ * era en memoria; se fue con la paginación, porque un service que ofrece leer el histórico
+ * completo es una invitación a volver a filtrar 50 de 5000. Sigue existiendo en el DAO, sin
+ * llamador de producción, como implementación de referencia del test de equivalencia.</p>
  */
 public class HistorialLavaderoService {
 
@@ -27,11 +31,6 @@ public class HistorialLavaderoService {
     public HistorialLavaderoService(HistorialLavaderoDAO dao) {
         if (dao == null) throw new IllegalArgumentException("HistorialLavaderoDAO no puede ser nulo");
         this.dao = dao;
-    }
-
-    /** Todos los ingresos, del más reciente al más viejo. El filtrado es en memoria. */
-    public List<IngresoHistorial> obtenerHistorial() {
-        return dao.obtenerHistorial();
     }
 
     /**

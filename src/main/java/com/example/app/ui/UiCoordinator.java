@@ -17,6 +17,8 @@ import com.example.features.lavadero.controller.SalidasLavaderoController;
 import com.example.features.lavadero.controller.VerCiclosController;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.IngresoHistorial;
+import com.example.features.lavadero.service.HistorialLavaderoService;
+import com.example.common.paginacion.Pagina;
 import com.example.features.ajustes.controller.AjustesController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
@@ -305,13 +307,23 @@ public class UiCoordinator {
             this::mostrarErrorDeRefresco);
     }
 
-    /** La pantalla que consulta el historial completo del lavadero. */
-    private RefrescadorPantallas<List<IngresoHistorial>> crearRefrescadorHistorialLavadero(
+    /**
+     * La pantalla que consulta el historial del lavadero, <b>de a una página</b>.
+     *
+     * <p>El lector corre en el hilo de fondo y el filtro y la página son estado del controller,
+     * que sólo se toca en el EDT. Por eso no lee campos del controller: lee la
+     * {@code ConsultaHistorial} inmutable que el controller publicó —leerla en el momento de
+     * lanzar, y no capturarla al construir el lector, es lo que hace que el botón de página
+     * funcione: capturada, la primera página quedaría congelada para siempre.</p>
+     */
+    private RefrescadorPantallas<Pagina<IngresoHistorial>> crearRefrescadorHistorialLavadero(
         HistorialLavaderoController historial
     ) {
+        HistorialLavaderoService service = context.getHistorialLavaderoService();
+
         return new RefrescadorPantallas<>(
             "refresco-historial-lavadero",
-            context.getHistorialLavaderoService()::obtenerHistorial,
+            () -> historial.consultaActual().leer(service),
             historial::pintar,
             this::mostrarErrorDeRefresco);
     }

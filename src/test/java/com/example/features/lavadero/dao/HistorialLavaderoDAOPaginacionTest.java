@@ -3,8 +3,6 @@ package com.example.features.lavadero.dao;
 import com.example.AbstractDAOTest;
 import com.example.common.paginacion.CriteriosPagina;
 import com.example.common.paginacion.Pagina;
-import com.example.features.lavadero.controller.helpers.HistorialFilterCriteria;
-import com.example.features.lavadero.controller.helpers.HistorialFilterStrategy;
 import com.example.features.lavadero.model.FiltroHistorial;
 import com.example.features.lavadero.model.IngresoHistorial;
 import com.example.infrastructure.db.ConnectionPool;
@@ -27,9 +25,10 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p><b>El test que sostiene el paso entero es el de equivalencia:</b> para cada filtro, el
  * conjunto que devuelven las páginas tiene que ser <em>exactamente</em> el que
- * {@link HistorialFilterStrategy} —el filtrado en memoria que esta traducción reemplaza— saca
- * del listado completo. Un filtro que se quedara en memoria, o una traducción que corriera un
- * borde de fecha, pasaría cualquier test de "la página trae 50 filas" y sólo se vería acá.</p>
+ * {@link FiltradoEnMemoria} —el filtrado en memoria que esta traducción reemplaza, transcripto al
+ * pie de esta clase— saca del listado completo. Un filtro que se quedara en memoria, o una
+ * traducción que corriera un borde de fecha, pasaría cualquier test de "la página trae 50 filas" y
+ * sólo se vería acá.</p>
  *
  * <p>Va en una clase aparte de {@code HistorialLavaderoDAOTest} a propósito: aquellos tests son
  * la red de seguridad de {@code obtenerHistorial()} y tienen que seguir pasando sin tocarse.</p>
@@ -308,19 +307,81 @@ class HistorialLavaderoDAOPaginacionTest extends AbstractDAOTest {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     /**
-     * El filtro en SQL devuelve exactamente lo mismo que {@link HistorialFilterStrategy} sobre el
+     * El filtro en SQL devuelve exactamente lo mismo que {@link FiltradoEnMemoria} sobre el
      * listado completo, en el mismo orden. Se recorren todas las páginas con un tamaño chico para
      * que la comparación también cubra los cortes entre páginas.
      */
     private void assertEquivalente(FiltroHistorial filtro) {
-        HistorialFilterCriteria criteria = new HistorialFilterCriteria(
-            filtro.cliente(), filtro.estados(), filtro.desde(), filtro.hasta(),
-            filtro.elemento(), filtro.lavarropas());
-        List<IngresoHistorial> enMemoria =
-            new HistorialFilterStrategy().filter(dao.obtenerHistorial(), criteria);
+        List<IngresoHistorial> enMemoria = FiltradoEnMemoria.filtrar(dao.obtenerHistorial(), filtro);
 
         assertEquals(enMemoria, todasLasPaginas(filtro, 3), "filtro: " + filtro);
         assertEquals(enMemoria.size(), dao.contarHistorial(filtro), "conteo del filtro: " + filtro);
+    }
+
+    /**
+     * El filtrado en memoria que la traducción a SQL reemplazó, transcripto tal cual de
+     * {@code HistorialFilterStrategy} —la clase que el Paso 9 borró al quedarse sin uso en
+     * producción.
+     *
+     * <p><b>Vive acá a propósito.</b> Es la semántica que aquella clase documentaba, y es contra
+     * la que se compara el {@code WHERE} en SQL. Guardada sólo en el historial de git no
+     * verificaría nada; acá, cualquier cambio del filtro en SQL que se aparte de estas reglas hace
+     * fallar la comparación. Si alguna regla tiene que cambiar, se cambia en los dos lados y el
+     * test lo obliga.</p>
+     *
+     * <ul>
+     *   <li>Cliente: vacío → pasa; si no, {@code contains} insensible a mayúsculas sobre el nombre.</li>
+     *   <li>Estados: lista vacía → pasa; si no, {@code estado.name()} tiene que estar en la lista
+     *       (insensible a mayúsculas).</li>
+     *   <li>Fechas: {@code fechaIngreso.toLocalDate()} dentro de {@code [desde, hasta]}; extremo
+     *       {@code null} = abierto; {@code fechaIngreso == null} sólo pasa si ambos extremos son
+     *       {@code null}.</li>
+     *   <li>Elemento: vacío → pasa; si no, algún nombre de {@code elementos()} contiene el texto
+     *       (insensible a mayúsculas).</li>
+     *   <li>Lavarropas: {@code null} → pasa; si no, {@code lavarropas().contains(n)}.</li>
+     * </ul>
+     */
+    private static final class FiltradoEnMemoria {
+
+        static List<IngresoHistorial> filtrar(List<IngresoHistorial> fuente, FiltroHistorial f) {
+            return fuente.stream()
+                .filter(i -> cumpleCliente(i, f.cliente()))
+                .filter(i -> cumpleEstado(i, f.estados()))
+                .filter(i -> cumpleFechas(i, f.desde(), f.hasta()))
+                .filter(i -> cumpleElemento(i, f.elemento()))
+                .filter(i -> cumpleLavarropas(i, f.lavarropas()))
+                .toList();
+        }
+
+        private static boolean cumpleCliente(IngresoHistorial ingreso, String filtro) {
+            if (filtro == null || filtro.isBlank()) return true;
+            String nombre = ingreso.clienteNombre();
+            return nombre != null && nombre.toLowerCase().contains(filtro.toLowerCase());
+        }
+
+        private static boolean cumpleEstado(IngresoHistorial ingreso, List<String> estados) {
+            return estados.isEmpty()
+                || estados.stream().anyMatch(e -> e.equalsIgnoreCase(ingreso.estado().name()));
+        }
+
+        private static boolean cumpleFechas(IngresoHistorial ingreso, LocalDate desde, LocalDate hasta) {
+            if (ingreso.fechaIngreso() == null) return desde == null && hasta == null;
+            LocalDate dia = ingreso.fechaIngreso().toLocalDate();
+            if (desde != null && dia.isBefore(desde)) return false;
+            if (hasta != null && dia.isAfter(hasta))  return false;
+            return true;
+        }
+
+        private static boolean cumpleElemento(IngresoHistorial ingreso, String filtro) {
+            if (filtro == null || filtro.isBlank()) return true;
+            String texto = filtro.toLowerCase();
+            return ingreso.elementos().stream()
+                .anyMatch(e -> e != null && e.toLowerCase().contains(texto));
+        }
+
+        private static boolean cumpleLavarropas(IngresoHistorial ingreso, Integer numero) {
+            return numero == null || ingreso.lavarropas().contains(numero);
+        }
     }
 
     private List<IngresoHistorial> todasLasPaginas(FiltroHistorial filtro, int tamanio) {
