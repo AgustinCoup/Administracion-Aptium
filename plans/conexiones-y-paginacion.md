@@ -909,6 +909,45 @@ mvn clean package && java -jar target/aptium.jar
 3. Tiene que quedar **a lo sumo una** consulta de historial corriendo, no una por F5.
 4. En el log de la app, ninguna línea de error de cara al usuario por las canceladas.
 
+> ⚠️ **Corrido el 2026-09-17, y el smoke NO discrimina. La versión anterior de este paso daba por
+> sentado que sí.** Resultado: `SHOW FULL PROCESSLIST` mostró 3 conexiones a `sistema_empresa`, las
+> tres en `Sleep`, cero consultas vivas; log limpio (`PermisosLibres=5/5` al arrancar, ningún WARN de
+> presión, ningún error de cara al usuario, cierre ordenado). Pero **el JAR anterior al Paso 4 habría
+> dado exactamente el mismo resultado**, por dos motivos independientes:
+>
+> 1. **El F5 mantenido no genera ráfaga en esa pantalla.** Historial va por `RefrescadorPantallas`
+>    (`UiCoordinator.crearRefrescadorHistorialLavadero`), y `solicitar()` hace
+>    `temporizador.restart()`: el auto-repeat del teclado reinicia la ventana de 150 ms y la lectura
+>    dispara **una sola vez**, al soltar. El log lo confirma — 3 lecturas en 15 s, separadas por
+>    segundos: tres pulsaciones sueltas, no una ráfaga.
+> 2. **Aunque se solaparan, no se verían.** Cada lectura tardó 4-8 ms; terminan mucho antes de que
+>    nadie alcance a tipear el `SHOW PROCESSLIST`.
+>
+> Sirve como **no-regresión** (nada se rompió, nada quedó retenido), no como prueba de la
+> cancelación. Lo que sí la prueba es la tarea 7.
+
+7. **`CancelacionContraMySQL` (`src/test/java/com/example/perf/`) — la prueba que H2 no puede dar.**
+   Apagado por defecto (`@EnabledIfSystemProperty(named = "aptium.mysql")`, y su nombre no termina en
+   `Test`, así que Surefire tampoco lo agarra por patrón). Sólo lectura (`SELECT SLEEP`), con guarda
+   de host local por la misma razón que el sembrador.
+
+   ```bash
+   mvn test -Dtest=CancelacionContraMySQL -Daptium.mysql=true   # en PowerShell, entrecomillar los -D
+   ```
+
+   Hace lo mismo que `TareaUI.doInBackground` (token al `ThreadLocal`, `ConnectionPool.getConnection()`),
+   lanza un `SELECT SLEEP(20)` marcado con un UUID, **verifica que la consulta aparezca** en
+   `INFORMATION_SCHEMA.PROCESSLIST` —contraprueba, para que no pase por vacío—, cancela el token y
+   verifica que desaparezca.
+
+   > **Resultado, 2026-09-17 11:06 (MySQL 8.0.45 local):** la consulta desapareció del PROCESSLIST
+   > **en 20 ms**, contra los 20 000 ms que le quedaban de `SLEEP`. La sentencia levantó
+   > `MySQLStatementCancelledException: Statement cancelled due to client request` — exactamente la
+   > excepción que el paso predecía, y la que `done()` no rutea a `siFalla` porque la tarea ya está
+   > marcada cancelada (`TareaUITest.canceladaNoDisparaSiFalla`). El permiso del semáforo volvió.
+   > El `SLEEP(20)` está por debajo del techo de 30 s a propósito: lo que la mata tiene que ser el
+   > `cancel()`, no el `queryTimeout`, o el test probaría otra cosa.
+
 ### Criterio de salida
 
 - [x] Toda sentencia de una conexión **autocommit** sale con `queryTimeout` seteado, y las
@@ -917,8 +956,10 @@ mvn clean package && java -jar target/aptium.jar
       `transaccional_noPoneQueryTimeout`, los dos leyendo el valor de vuelta con
       `getQueryTimeout()` sobre una conexión H2 nueva (el timeout de H2 es de sesión y una
       conexión reciclada arrastra el que le puso otra lectura)
-- [ ] `SHOW PROCESSLIST` después de la ráfaga de F5 muestra a lo sumo una consulta viva (smoke
-      manual, pendiente del usuario)
+- [x] `SHOW PROCESSLIST` después de la ráfaga de F5 muestra a lo sumo una consulta viva — **cero, y
+      sin capacidad de discriminar**: el debounce de 150 ms colapsa el F5 mantenido en una sola
+      lectura y cada lectura dura 4-8 ms. Vale como no-regresión. La prueba real de que el
+      `KILL QUERY` llega es `CancelacionContraMySQL` (tarea 7): consulta de 20 s muerta en **20 ms**
 - [x] El registro es por **token**, no por hilo, y existe el test de "cancelar una tarea terminada no
       mata la consulta de otra" (anti-patrón A13):
       `cancelarTareaMuerta_noMataLaConsultaDeLaSiguiente`, con contraprueba explícita para que no
@@ -950,6 +991,10 @@ mvn clean package && java -jar target/aptium.jar
   no tarde 8 segundos. Misma costura que `setDataSourceForTesting`; producción nunca lo cambia.
 - **`ConnectionPool.permisosDisponibles()`** y `PermisosLibres=n/m` en `getStats()` — sin eso, la
   saturación del techo es tan invisible en el log como era la del pool antes del Paso 3.
+- **`CancelacionContraMySQL`** — el smoke del plan resultó no discriminar (ver arriba), y el criterio
+  de salida del paso es justamente sobre MySQL. Apagado por defecto, de sólo lectura.
+- **El javadoc de `RefrescadorPantallas`** repetía la frase que este paso dejó falsa en `TareaUI`
+  ("la cancelación es de aplicación"). Commit `0280ff6`.
 
 ---
 
