@@ -1,13 +1,17 @@
 package com.example.ui.common;
 
 import com.example.common.exception.ValidationException;
+import com.example.infrastructure.db.ConexionesSupervisadas;
 import com.example.infrastructure.db.ConnectionPool;
+import com.example.infrastructure.db.TokenTarea;
 
 import java.awt.EventQueue;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import javax.swing.SwingWorker;
@@ -40,10 +44,23 @@ import org.slf4j.LoggerFactory;
  * todo lo demás va a ERROR con la traza completa.
  *
  * <p><b>Cancelación:</b> {@link #lanzar()} devuelve una {@link Ejecucion} cancelable.
- * La cancelación es de <i>aplicación</i>, no de <i>ejecución</i>: una query JDBC ya
- * lanzada termina igual, pero su resultado se descarta. Una tarea cancelada no ejecuta
- * {@code pintar}, {@code siFalla} ni {@code despues}: quien cancela es responsable de
- * lo que quede en pantalla (típicamente porque lanza otra tarea en su lugar).
+ * Cancelar hace dos cosas: descarta el resultado —una tarea cancelada no ejecuta
+ * {@code pintar}, {@code siFalla} ni {@code despues}, así que quien cancela es responsable
+ * de lo que quede en pantalla, típicamente porque lanza otra tarea en su lugar— <b>y además
+ * cancela en el servidor las consultas que esa tarea tenga en vuelo</b>
+ * ({@link ConexionesSupervisadas#cancelarDe}). Sin lo segundo, mantener F5 apretado dejaba N
+ * consultas corriendo en MySQL, cada una reteniendo una conexión del pool hasta terminar.
+ *
+ * <p>Lo que sigue sin ser confiable es interrumpir el <i>hilo</i> — por eso el
+ * {@code worker.cancel(false)}. Lo confiable es {@code Statement.cancel()}, que en Connector/J
+ * manda un {@code KILL QUERY}.
+ *
+ * <p>⚠️ Ese {@code cancel()} <b>abre una conexión nueva</b> para mandar el {@code KILL}: es I/O, y
+ * {@link Ejecucion#cancelar()} se llama desde el hilo de la interfaz
+ * ({@code RefrescadorPantallas.refrescarAhora()}). Por eso se despacha al ejecutor daemon
+ * {@code cancelador-sql}, que es la <b>segunda</b> excepción de la app a "no hay {@code new Thread()}
+ * fuera de {@code TareaUI}" —la primera es el shutdown hook de {@code App}—. Un hilo alcanza:
+ * cancelar es raro y rápido.
  *
  * @param <T> tipo del resultado que viaja de {@code leer} a {@code pintar}
  */
@@ -52,6 +69,17 @@ public final class TareaUI<T> {
     private static final Logger log = LoggerFactory.getLogger(TareaUI.class);
 
     private static final String NOMBRE_POR_DEFECTO = "tarea-ui";
+
+    /**
+     * Único hilo donde corre {@code Statement.cancel()}. Ver el javadoc de la clase: ese cancel
+     * hace I/O y {@code cancelar()} se llama desde el hilo de la interfaz. Daemon para que no
+     * impida el cierre de la aplicación.
+     */
+    private static final ExecutorService CANCELADOR = Executors.newSingleThreadExecutor(tarea -> {
+        Thread hilo = new Thread(tarea, "cancelador-sql");
+        hilo.setDaemon(true);
+        return hilo;
+    });
 
     /** Handle de una tarea lanzada. */
     public interface Ejecucion {
@@ -138,6 +166,8 @@ public final class TareaUI<T> {
                 Thread hilo = Thread.currentThread();
                 String nombreOriginal = hilo.getName();
                 hilo.setName(nombre);
+                TokenTarea token = handle.token();
+                TokenTarea.asociarAlHiloActual(token);
                 long inicio = System.nanoTime();
                 try {
                     return leer.call();
@@ -146,6 +176,11 @@ public final class TareaUI<T> {
                     if (ConnectionPool.hayPresion()) {
                         log.warn("Pool bajo presión tras la tarea '{}': {}", nombre, ConnectionPool.getStats());
                     }
+                    // El hilo vuelve al pool de SwingWorker y lo hereda otra tarea: sacar el token
+                    // y olvidar el registro es lo que impide que cancelar ESTA tarea, ya terminada,
+                    // mate la consulta viva de la que venga después.
+                    TokenTarea.desasociarDelHiloActual();
+                    ConexionesSupervisadas.olvidar(token);
                     hilo.setName(nombreOriginal);
                 }
             }
@@ -214,10 +249,16 @@ public final class TareaUI<T> {
         }
     }
 
-    private static final class Handle implements Ejecucion {
+    private final class Handle implements Ejecucion {
 
         private final AtomicBoolean cancelada = new AtomicBoolean(false);
+        /** Creado en el constructor, no en {@code doInBackground}: se puede cancelar antes de arrancar. */
+        private final TokenTarea token = TokenTarea.nuevo(nombre);
         private volatile SwingWorker<?, ?> worker;
+
+        TokenTarea token() {
+            return token;
+        }
 
         void asociar(SwingWorker<?, ?> worker) {
             this.worker = worker;
@@ -232,6 +273,10 @@ public final class TareaUI<T> {
                 // Esto solo evita que arranque si todavía estaba encolada.
                 actual.cancel(false);
             }
+            // Lo que sí es confiable: cancelar la sentencia en el servidor. Fuera del hilo de UI
+            // porque cancel() abre una conexión para mandar el KILL QUERY — ver el javadoc de la
+            // clase. Si la tarea ya terminó, el token no tiene sentencias y esto no hace nada.
+            CANCELADOR.execute(() -> ConexionesSupervisadas.cancelarDe(token));
         }
 
         @Override

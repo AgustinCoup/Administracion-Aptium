@@ -270,7 +270,8 @@ del 10**, o el 10 rehace trabajo.
 - [ ] Ningún DAO devuelve lista vacía o parcial ante un error
 - [ ] Ninguna migración existente modificada
 - [ ] **Ninguna operación mantiene dos conexiones abiertas a la vez** (desde el Paso 4: es el
-      invariante del que depende la aritmética del semáforo; hoy se cumple, pero por accidente)
+      invariante del que depende la aritmética del semáforo; hoy se cumple, pero por accidente).
+      Escrito en el javadoc de `ConexionesSupervisadas` y en `CLAUDE.md` desde el Paso 4
 - [ ] **Ninguna escritura tocada** — ni su SQL, ni su guarda, ni el tipo de excepción que propaga
 
 ---
@@ -749,8 +750,8 @@ mvn clean package && java -jar target/aptium.jar   # y leer el log
 - [x] Sembrador sintético (tarea 4) implementado con sus tres guardas, corrido con `FACTOR=1`
       contra `aptium_perf` (mismo MySQL local, sin necesitar Docker), y su resultado analizado en
       la tarea 7.1
-- [ ] Commit: `feat: TareaUI mide lectura y pintado, y avisa cuando el pool está bajo presión`
-- [ ] Commit: `test: sembrador sintético para medir el pintado con volumen sobre MySQL local`
+- [x] Commit: `feat: TareaUI mide lectura y pintado, y avisa cuando el pool está bajo presión` (`120763e`)
+- [x] Commit: `test: sembrador sintético para medir el pintado con volumen sobre MySQL local` (`d99557d`)
 
 ---
 
@@ -910,20 +911,45 @@ mvn clean package && java -jar target/aptium.jar
 
 ### Criterio de salida
 
-- [ ] Toda sentencia de una conexión **autocommit** sale con `queryTimeout` seteado, y las
-      **transaccionales NO** — las dos cosas verificadas por test (anti-patrón A12)
-- [ ] `SHOW PROCESSLIST` después de la ráfaga de F5 muestra a lo sumo una consulta viva (smoke hecho)
-- [ ] El registro es por **token**, no por hilo, y existe el test de "cancelar una tarea terminada no
-      mata la consulta de otra" (anti-patrón A13)
-- [ ] El semáforo está en el **checkout de conexión**, no alrededor de `leer`, y una tarea sin JDBC
-      no toma permiso (anti-patrón A14)
-- [ ] La cancelación **no** corre en el EDT (verificable con `-Daptium.edt.strict=true` en el test)
-- [ ] El javadoc de `TareaUI` ya no dice que la cancelación es sólo de aplicación
-- [ ] El semáforo deriva su tamaño de `maximumPoolSize`; los dos números viven en un solo lugar
-- [ ] El invariante "ninguna operación mantiene dos conexiones a la vez" está escrito en el javadoc
-      y agregado a la lista de invariantes por paso
-- [ ] `CLAUDE.md` documenta `ConexionesSupervisadas`, la exención transaccional y el `cancelador-sql`
+- [x] Toda sentencia de una conexión **autocommit** sale con `queryTimeout` seteado, y las
+      **transaccionales NO** — las dos cosas verificadas por test (anti-patrón A12).
+      `ConexionesSupervisadasTest.autocommit_poneQueryTimeout` /
+      `transaccional_noPoneQueryTimeout`, los dos leyendo el valor de vuelta con
+      `getQueryTimeout()` sobre una conexión H2 nueva (el timeout de H2 es de sesión y una
+      conexión reciclada arrastra el que le puso otra lectura)
+- [ ] `SHOW PROCESSLIST` después de la ráfaga de F5 muestra a lo sumo una consulta viva (smoke
+      manual, pendiente del usuario)
+- [x] El registro es por **token**, no por hilo, y existe el test de "cancelar una tarea terminada no
+      mata la consulta de otra" (anti-patrón A13):
+      `cancelarTareaMuerta_noMataLaConsultaDeLaSiguiente`, con contraprueba explícita para que no
+      pueda pasar por vacío
+- [x] El semáforo está en el **checkout de conexión**, no alrededor de `leer`, y una tarea sin JDBC
+      no toma permiso (anti-patrón A14): `TareaUITest.tareaSinJdbcNoTomaPermiso`.
+      **El hilo de UI tampoco toma permiso** (`EdtGuard.esHiloUi()`): la reserva de 3 existe para
+      los cinco autocompletados sincrónicos, que es lo que el propio plan dice en "Lo que no es un
+      hallazgo" ("les acota el daño con la reserva de conexiones del Paso 4") — si también pagaran
+      permiso, la reserva no sería de nadie
+- [x] La cancelación **no** corre en el EDT: `TareaUITest.cancelarCancelaLaSentenciaEnVuelo` llama a
+      `cancelar()` desde el EDT (como hace `RefrescadorPantallas`) y verifica que el `cancel()`
+      ocurrió en el hilo `cancelador-sql`. `-Daptium.edt.strict=true` no alcanzaría: el `cancel()`
+      de Connector/J abre su conexión por `DriverManager`, no por `ConnectionPool`, así que
+      `EdtGuard` no lo vería
+- [x] El javadoc de `TareaUI` ya no dice que la cancelación es sólo de aplicación
+- [x] El semáforo deriva su tamaño de `maximumPoolSize`; los dos números viven en un solo lugar
+      (`MAX_POOL` − `RESERVA_CONEXIONES`, atado por `permisosConexion_seDerivanDelTamanoDelPool`)
+- [x] El invariante "ninguna operación mantiene dos conexiones a la vez" está escrito en el javadoc
+      de `ConexionesSupervisadas` y en `CLAUDE.md`
+- [x] `CLAUDE.md` documenta `ConexionesSupervisadas`, la exención transaccional y el `cancelador-sql`
 - [ ] Commit: `fix: una lectura cancelada se cancela en MySQL y las lecturas no agotan el pool`
+
+### Lo que se agregó y el plan no pedía, con su motivo
+
+- **`EdtGuard.esHiloUi()`** — el semáforo necesita distinguir al hilo de UI para que la reserva sea
+  de alguien. El detector ya estaba inyectado; sólo faltaba exponerlo sin el chequeo de error.
+- **`ConnectionPool.timeoutPermisoMs`** — campo, no constante, sólo para que el test de saturación
+  no tarde 8 segundos. Misma costura que `setDataSourceForTesting`; producción nunca lo cambia.
+- **`ConnectionPool.permisosDisponibles()`** y `PermisosLibres=n/m` en `getStats()` — sin eso, la
+  saturación del techo es tan invisible en el log como era la del pool antes del Paso 3.
 
 ---
 

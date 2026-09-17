@@ -56,12 +56,26 @@ public final class EdtGuard {
     }
 
     /**
+     * ¿El hilo actual es el de la interfaz?
+     *
+     * <p>No es un chequeo de error: lo consulta {@code ConnectionPool} para dejar fuera del techo
+     * de lecturas concurrentes a los cinco autocompletados sincrónicos, que piden conexión desde el
+     * hilo de UI y son una excepción aceptada y documentada. Justamente porque bloquean la interfaz
+     * mientras esperan, son los que no pueden quedarse sin conexión.
+     *
+     * <p>Sin detector inyectado devuelve {@code false}, igual que {@link #verificarFueraDelHiloUi()}.
+     */
+    public static boolean esHiloUi() {
+        return detectorHiloUi.getAsBoolean();
+    }
+
+    /**
      * Verifica que el hilo actual no sea el de la interfaz.
      *
      * @throws IllegalStateException si lo es y el modo estricto está activo
      */
     public static void verificarFueraDelHiloUi() {
-        if (!detectorHiloUi.getAsBoolean()) {
+        if (!esHiloUi()) {
             return;
         }
         if (Boolean.getBoolean(PROP_ESTRICTO)) {

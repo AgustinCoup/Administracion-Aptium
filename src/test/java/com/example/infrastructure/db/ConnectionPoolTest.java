@@ -11,7 +11,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.lang.reflect.Field;
+import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +42,7 @@ class ConnectionPoolTest {
     @AfterEach
     void restaurarEstado() throws Exception {
         campo("fallaDeArranque").set(null, null);
+        ConnectionPool.timeoutPermisoMs = ConnectionPool.TIMEOUT_PERMISO_MS;
         ConnectionPool.setDataSourceForTesting(testDataSourceOriginal);
     }
 
@@ -128,6 +136,102 @@ class ConnectionPoolTest {
         } finally {
             dataSourceField.set(null, original);
         }
+    }
+
+    // ---------- techo de lecturas concurrentes ----------
+
+    @Test
+    void permisosConexion_seDerivanDelTamanoDelPool() {
+        // Si alguien baja maximumPoolSize y deja el techo escrito aparte, la reserva de los
+        // autocompletados desaparece sin que nadie se entere.
+        assertEquals(ConnectionPool.MAX_POOL - ConnectionPool.RESERVA_CONEXIONES,
+            ConnectionPool.PERMISOS_CONEXION);
+        assertTrue(ConnectionPool.PERMISOS_CONEXION > 0);
+    }
+
+    @Test
+    void timeoutDelPermiso_esMenorQueElConnectionTimeoutDeHikari() {
+        // Si fueran iguales, saturar el semáforo y saturar el pool darían el mismo síntoma.
+        assertTrue(ConnectionPool.TIMEOUT_PERMISO_MS < ConnectionPool.CONNECTION_TIMEOUT_MS,
+            "los dos techos tienen que distinguirse en el log");
+    }
+
+    @Test
+    void semaforoSaturado_elCheckoutSiguienteFallaConUnMensajeDistintoAlDelPool() throws Exception {
+        ConnectionPool.timeoutPermisoMs = 100;   // el test no puede tardar 8 s
+        try (HikariDataSource h2 = h2ConPool(ConnectionPool.PERMISOS_CONEXION + 2)) {
+            ConnectionPool.setDataSourceForTesting(h2);
+            List<Connection> tomadas = new ArrayList<>();
+            try {
+                for (int i = 0; i < ConnectionPool.PERMISOS_CONEXION; i++) {
+                    tomadas.add(ConnectionPool.getConnection());
+                }
+
+                SQLException e = assertThrows(SQLException.class, ConnectionPool::getConnection);
+
+                assertTrue(e.getMessage().contains("Techo de lecturas concurrentes"), e.getMessage());
+                assertTrue(e.getMessage().contains("No es el connectionTimeout"), e.getMessage());
+            } finally {
+                for (Connection c : tomadas) {
+                    c.close();
+                }
+            }
+
+            assertEquals(ConnectionPool.PERMISOS_CONEXION, ConnectionPool.permisosDisponibles());
+        }
+    }
+
+    @Test
+    void elPermisoSeLiberaAunqueLaOperacionFalle() throws Exception {
+        try (HikariDataSource h2 = h2ConPool(2)) {
+            ConnectionPool.setDataSourceForTesting(h2);
+            int antes = ConnectionPool.permisosDisponibles();
+
+            assertThrows(SQLException.class, () -> {
+                try (Connection conn = ConnectionPool.getConnection();
+                     java.sql.Statement st = conn.createStatement()) {
+                    st.execute("SELECT * FROM tabla_que_no_existe");
+                }
+            });
+
+            assertEquals(antes, ConnectionPool.permisosDisponibles());
+        }
+    }
+
+    @Test
+    void masOperacionesConcurrentesQuePermisos_ningunaFallaPorFaltaDeConexion() throws Exception {
+        int concurrentes = ConnectionPool.PERMISOS_CONEXION + 2;
+        try (HikariDataSource h2 = h2ConPool(ConnectionPool.MAX_POOL)) {
+            ConnectionPool.setDataSourceForTesting(h2);
+            ExecutorService hilos = Executors.newFixedThreadPool(concurrentes);
+            try {
+                List<Future<Boolean>> resultados = new ArrayList<>();
+                for (int i = 0; i < concurrentes; i++) {
+                    resultados.add(hilos.submit(() -> {
+                        try (Connection conn = ConnectionPool.getConnection();
+                             java.sql.Statement st = conn.createStatement()) {
+                            return st.executeQuery("SELECT 1").next();
+                        }
+                    }));
+                }
+                for (Future<Boolean> r : resultados) {
+                    assertTrue(r.get(30, TimeUnit.SECONDS), "una operación concurrente no leyó");
+                }
+            } finally {
+                hilos.shutdownNow();
+            }
+
+            assertEquals(ConnectionPool.PERMISOS_CONEXION, ConnectionPool.permisosDisponibles());
+        }
+    }
+
+    private static HikariDataSource h2ConPool(int tamano) {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl("jdbc:h2:mem:permisos_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1");
+        config.setUsername("sa");
+        config.setPassword("");
+        config.setMaximumPoolSize(tamano);
+        return new HikariDataSource(config);
     }
 
     private static RuntimeException simularFallaDeArranque() throws Exception {

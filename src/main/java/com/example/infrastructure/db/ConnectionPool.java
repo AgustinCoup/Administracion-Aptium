@@ -98,6 +98,56 @@ public class ConnectionPool {
     static final int CONNECTION_TIMEOUT_MS = 10_000;
 
     /**
+     * Tamaño del pool. <b>Sólo baja, nunca sube</b> (anti-patrón A8): con N puestos remotos son
+     * N × este número contra el {@code max_connections} del servidor, y ahí el agotamiento tumba a
+     * todos los puestos a la vez, no a uno.
+     */
+    static final int MAX_POOL = 8;
+
+    /**
+     * Conexiones que el techo de concurrencia <b>nunca</b> deja consumir al trabajo de fondo: dos
+     * para los cinco autocompletados sincrónicos —que piden desde el hilo de UI y por eso son los
+     * que no pueden esperar— y una para la transacción de una escritura concurrente.
+     */
+    static final int RESERVA_CONEXIONES = 3;
+
+    /**
+     * Techo de checkouts simultáneos del trabajo de fondo. <b>Derivado</b> de {@link #MAX_POOL} a
+     * propósito: escribir los dos números por separado es la forma de que alguien cambie uno y deje
+     * el otro, y la reserva desaparezca sin que nadie se entere.
+     */
+    static final int PERMISOS_CONEXION = MAX_POOL - RESERVA_CONEXIONES;
+
+    /**
+     * Cuánto espera un permiso antes de rendirse. <b>Menor que {@link #CONNECTION_TIMEOUT_MS}</b>,
+     * para que en el log se distinga cuál de los dos techos se tocó: si fueran iguales, la
+     * saturación del semáforo y la del pool darían el mismo síntoma y no habría forma de saber si
+     * hay que subir el pool o bajar la concurrencia. Atado por {@code ConnectionPoolTest}.
+     */
+    static final int TIMEOUT_PERMISO_MS = 8_000;
+
+    /**
+     * El valor vigente de {@link #TIMEOUT_PERMISO_MS}. Es campo y no constante por un solo motivo:
+     * el test de saturación tardaría 8 segundos. Producción nunca lo cambia — mismo tipo de costura
+     * que {@link #setDataSourceForTesting}.
+     */
+    static volatile int timeoutPermisoMs = TIMEOUT_PERMISO_MS;
+
+    /**
+     * Techo de lecturas concurrentes, tomado <b>en el checkout de conexión</b> y no alrededor del
+     * {@code leer} de {@code TareaUI} (anti-patrón A14): {@code TareaUI} envuelve tareas que no
+     * tocan la base —{@code ajustes-descargar-actualizacion} y
+     * {@code arranque-descargar-actualizacion} bajan el fat JAR y tardan minutos—, y ésas
+     * consumirían permisos de <em>conexión</em> que no usan mientras
+     * {@code registrar-estado-confirmar} espera. Acá el permiso mide exactamente lo que escasea.
+     *
+     * <p>Justo ({@code fair}) para que una ráfaga de refrescos no deje a una escritura esperando
+     * indefinidamente.
+     */
+    private static final java.util.concurrent.Semaphore PERMISOS =
+        new java.util.concurrent.Semaphore(PERMISOS_CONEXION, true);
+
+    /**
      * Falla del bloque {@code static}, guardada en vez de propagada. Propagada llegaba como
      * {@code ExceptionInInitializerError}: lleva la causa, pero es un {@code Error} y el
      * {@code catch (Exception)} de {@code App} no la agarra, y además el primer toque de la
@@ -372,12 +422,9 @@ public class ConnectionPool {
             config.setUsername(PROPS.getProperty("db.user", "root"));
             config.setPassword(PROPS.getProperty("db.pass", "root"));
             
-            // Configuración del pool
-            // maximumPoolSize SÓLO BAJA, nunca sube: con N puestos son N×8 contra max_connections
-            // del servidor, y ahí el agotamiento tumba a todos los puestos a la vez. El techo de
-            // lecturas concurrentes del Paso 4 se dimensiona a partir de este número: si cambia
-            // uno, mirar el otro.
-            config.setMaximumPoolSize(8);
+            // Configuración del pool. Ver el javadoc de MAX_POOL: sólo baja, nunca sube, y el
+            // techo de lecturas concurrentes (PERMISOS_CONEXION) se deriva de este mismo número.
+            config.setMaximumPoolSize(MAX_POOL);
             config.setMinimumIdle(2);             // baja de 5: menos ociosas que el túnel pueda matar en silencio
             config.setConnectionTimeout(CONNECTION_TIMEOUT_MS);
             config.setKeepaliveTime(120000);      // pinga las ociosas cada 2 min para que el NAT de Tailscale no las corte (< maxLifetime, >= 30 s)
@@ -424,11 +471,42 @@ public class ConnectionPool {
      * IMPORTANTE: Siempre usar try-with-resources para garantizar que la
      * conexión se devuelva al pool. NO cerrar manualmente en finally.
      * 
+     * <p>La conexión que devuelve viene <b>supervisada</b> ({@link ConexionesSupervisadas}): sus
+     * sentencias llevan techo de tiempo si está en autocommit, y quedan registradas contra la tarea
+     * de fondo vigente para poder cancelarlas de verdad en el servidor. El {@code DataSource} de
+     * test pasa por el mismo camino a propósito: que los tests ejerciten otra ruta que producción
+     * sería perder la mitad del valor.
+     *
+     * <p>Antes de pedirle la conexión al pool se toma un permiso del techo de concurrencia, salvo
+     * cuando quien pide es el hilo de la interfaz: los cinco autocompletados sincrónicos son la
+     * excepción para la que existe la {@link #RESERVA_CONEXIONES}.
+     *
      * @return Conexión del pool (nunca null)
      * @throws SQLException Si no hay conexiones disponibles después del timeout
      */
     public static Connection getConnection() throws SQLException {
         EdtGuard.verificarFueraDelHiloUi();
+        boolean conPermiso = !EdtGuard.esHiloUi();
+        if (conPermiso) {
+            adquirirPermiso();
+        }
+        Runnable alCerrar = conPermiso ? PERMISOS::release : () -> { };
+        boolean entregada = false;
+        Connection real = null;
+        try {
+            real = abrirConexionReal();
+            Connection supervisada = ConexionesSupervisadas.envolver(real, alCerrar);
+            entregada = true;
+            return supervisada;
+        } finally {
+            if (!entregada) {
+                cerrarEnSilencio(real);
+                alCerrar.run();
+            }
+        }
+    }
+
+    private static Connection abrirConexionReal() throws SQLException {
         javax.sql.DataSource override = testDataSource;
         if (override != null) {
             return override.getConnection();
@@ -438,6 +516,41 @@ public class ConnectionPool {
             throw new SQLException("Connection Pool no inicializado");
         }
         return dataSource.getConnection();
+    }
+
+    /**
+     * El mensaje dice explícitamente que <b>no</b> es el {@code connectionTimeout} del pool: son
+     * dos techos distintos con síntomas idénticos, y confundirlos lleva a subir el pool cuando lo
+     * que sobra es concurrencia de lecturas.
+     */
+    private static void adquirirPermiso() throws SQLException {
+        try {
+            if (!PERMISOS.tryAcquire(timeoutPermisoMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                throw new SQLException(String.format(
+                    "Techo de lecturas concurrentes alcanzado: %d conexiones de fondo simultáneas, "
+                    + "sin permiso libre tras %d ms. No es el connectionTimeout del pool.",
+                    PERMISOS_CONEXION, timeoutPermisoMs));
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SQLException("Espera de conexión interrumpida", e);
+        }
+    }
+
+    private static void cerrarEnSilencio(Connection conn) {
+        if (conn == null) {
+            return;
+        }
+        try {
+            conn.close();
+        } catch (SQLException e) {
+            log.warn("No se pudo devolver al pool una conexión que no llegó a entregarse", e);
+        }
+    }
+
+    /** Permisos del techo de lecturas concurrentes todavía libres. Diagnóstico y tests. */
+    public static int permisosDisponibles() {
+        return PERMISOS.availablePermits();
     }
     
     /**
@@ -508,11 +621,13 @@ public class ConnectionPool {
         }
 
         return String.format(
-            "Pool Stats: Total=%d, Activas=%d, Idle=%d, Esperando=%d",
+            "Pool Stats: Total=%d, Activas=%d, Idle=%d, Esperando=%d, PermisosLibres=%d/%d",
             mxBean.getTotalConnections(),
             mxBean.getActiveConnections(),
             mxBean.getIdleConnections(),
-            mxBean.getThreadsAwaitingConnection()
+            mxBean.getThreadsAwaitingConnection(),
+            permisosDisponibles(),
+            PERMISOS_CONEXION
         );
     }
 

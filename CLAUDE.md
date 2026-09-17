@@ -245,9 +245,9 @@ builder.throwIfHasErrors();
 **Concurrencia — regla dura:** ningún acceso a BD corre en el EDT. `TareaUI` (`ui/common/`) es el
 **único** mecanismo de trabajo en fondo de la app: `.leer` hace el I/O, `.pintar` vuelve al EDT,
 `.siFalla` maneja el error, `.antes`/`.despues` apagan y reencienden el botón. No hay `new Thread()`
-ni `SwingWorker` fuera de esa clase (el único `new Thread()` que queda es el shutdown hook de
-`App.java`). `EdtGuard` (`infrastructure/db/`) grita en el log si alguien vuelve a poner I/O en el
-EDT, y con `-Daptium.edt.strict=true` lanza en vez de avisar.
+ni `SwingWorker` fuera de esa clase, con **dos** excepciones: el shutdown hook de `App.java` y el
+ejecutor `cancelador-sql` de `TareaUI` (ver abajo). `EdtGuard` (`infrastructure/db/`) grita en el log
+si alguien vuelve a poner I/O en el EDT, y con `-Daptium.edt.strict=true` lanza en vez de avisar.
 
 *Excepción aceptada:* los **cinco autocompletados por tecla** (`AutocompleteListener` de
 clientes/profesionales/instituciones, el `CatalogoLookup` de ortopedias, el de `catalogo_otros` y el
@@ -255,6 +255,46 @@ de clientes de `LavaderoController`) siguen siendo síncronos: son lookups de un
 volverlos asíncronos sin debounce trae resultados fuera de orden. Consecuencia práctica: **en
 `strict` esos campos lanzan**, así que los smokes manuales se corren sin `strict`, leyendo los WARNs
 del log.
+
+**Cancelar una tarea cancela la consulta en el servidor.** `TareaUI.Ejecucion.cancelar()` ya no es
+sólo "descartar el resultado": `ConexionesSupervisadas` (`infrastructure/db/`) envuelve con un
+`Proxy` toda conexión que entrega `ConnectionPool.getConnection()`, registra sus sentencias contra un
+`TokenTarea`, y el `cancelar()` manda `Statement.cancel()` sobre las que sigan vivas. Sin eso, F5
+mantenido dejaba N consultas corriendo en MySQL, **cada una reteniendo una conexión**. Tres cosas del
+diseño que no son opinables:
+
+- **El registro va por token de tarea, nunca por `Thread`.** `SwingWorker` reutiliza sus 10 hilos y
+  `RefrescadorPantallas.refrescarAhora()` cancela `enVuelo` aunque esa tarea ya haya terminado (el
+  campo nunca se pone en `null`). Indexado por hilo, cancelar una tarea muerta mataría la consulta
+  **viva** de otra pantalla que heredó ese hilo. El test que lo detecta —el único que lo haría— es
+  `ConexionesSupervisadasTest.cancelarTareaMuerta_noMataLaConsultaDeLaSiguiente`.
+- **El `cancel()` corre en el ejecutor daemon `cancelador-sql`**, no en el EDT: en Connector/J
+  `cancel()` **abre una conexión nueva** para mandar el `KILL QUERY`, o sea que es I/O, y
+  `cancelar()` se llama desde el EDT. Es la **segunda** excepción a "no hay `new Thread()` fuera de
+  `TareaUI`", y está acá porque no es una excepción colada.
+- **El techo de consulta (`setQueryTimeout`, 30 s) va sólo en conexiones con `autoCommit = true`.**
+  Las tres guardas `FOR UPDATE` del lavadero **bloquean y esperan por diseño** hasta el
+  `innodb_lock_wait_timeout` de 50 s; un techo de 30 s les gana siempre y devuelve
+  `ER_QUERY_INTERRUPTED` (1317), que `ControlConcurrencia.esContencionDeLock` **no** reconoce (mapea
+  1213, 1205 y 50200): el choque entre operadores saldría como error técnico en vez de como "alguien
+  se te adelantó". `TransactionalConnection` pone `autoCommit = false` en su constructor, así que la
+  condición es exacta y no hace falta ningún flag. Las escrituras quedan acotadas por el
+  `socketTimeout` de 60 s, que es **mayor** que los 50 s del lock wait: el 1205 sigue llegando.
+
+**Techo de lecturas concurrentes.** `ConnectionPool.getConnection()` toma un permiso de un semáforo
+de `MAX_POOL − RESERVA_CONEXIONES` (8 − 3 = 5) antes de pedirle la conexión al pool, y lo devuelve en
+el `close()` de la conexión envuelta. Va **en el checkout**, no alrededor del `leer` de `TareaUI`:
+`TareaUI` también envuelve tareas que no tocan la base (`ajustes-descargar-actualizacion` baja el fat
+JAR y tarda minutos) y ésas consumirían permisos de *conexión* que no usan. **El hilo de UI no toma
+permiso**: la reserva de 3 existe justamente para los cinco autocompletados sincrónicos, que piden
+desde el EDT y por eso son los que no pueden esperar. Flyway y la creación de la base no pasan por
+`getConnection()`, así que quedan exentos de todo esto —a propósito: un `CREATE INDEX` largo no puede
+morir por el techo de consulta.
+
+> **Invariante del que depende la aritmética del semáforo:** *ninguna operación mantiene dos
+> conexiones abiertas a la vez.* Hoy se cumple —`HistorialLavaderoDAO.obtenerHistorial()` toma cuatro,
+> pero **secuencialmente**—. Si alguna vez se anidaran dos, serían 5 × 2 = 10 > 8 y el pool se
+> agotaría **con el techo puesto**.
 
 **Estado mutable de un controller:** se lee y escribe **sólo en el EDT** (`pintar`, diálogos, DnD).
 Nada de eso puede tocarse desde el hilo de fondo.

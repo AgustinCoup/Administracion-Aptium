@@ -6,7 +6,18 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.example.infrastructure.db.ConexionesSupervisadas;
+import com.example.infrastructure.db.ConnectionPool;
 import java.awt.EventQueue;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -147,6 +158,104 @@ class TareaUITest {
 
         assertTrue(ejecucion.estaCancelada());
         assertFalse(pinto.get(), "un resultado de una tarea cancelada no debe pintarse");
+    }
+
+    @Test
+    @DisplayName("cancelar una tarea en vuelo cancela su consulta, y fuera del hilo de UI")
+    void cancelarCancelaLaSentenciaEnVuelo() throws Exception {
+        // Con un doble y no con una consulta real: el test no puede depender de que H2 cancele
+        // igual que MySQL. Lo que se verifica es que el token llegue del proxy JDBC al Handle, y
+        // que el cancel() —que en Connector/J abre una conexión para mandar el KILL QUERY— no
+        // corra en el hilo de la interfaz, que es desde donde se llama a cancelar().
+        AtomicReference<String> hiloDelCancel = new AtomicReference<>();
+        Statement sentencia = mock(Statement.class);
+        doAnswer(invocacion -> {
+            hiloDelCancel.set(Thread.currentThread().getName());
+            return null;
+        }).when(sentencia).cancel();
+        Connection real = mock(Connection.class);
+        when(real.getAutoCommit()).thenReturn(true);
+        when(real.createStatement()).thenReturn(sentencia);
+
+        CountDownLatch consultaEnVuelo = new CountDownLatch(1);
+        CountDownLatch puedeTerminar   = new CountDownLatch(1);
+
+        TareaUI.Ejecucion ejecucion = TareaUI.<String>nueva()
+            .nombre("refresco-historial-lavadero")
+            .leer(() -> {
+                try (Connection conn = ConexionesSupervisadas.envolver(real, () -> { })) {
+                    conn.createStatement();
+                    consultaEnVuelo.countDown();
+                    puedeTerminar.await(TIMEOUT_SEGUNDOS, TimeUnit.SECONDS);
+                }
+                return "datos viejos";
+            })
+            .lanzar();
+
+        esperar(consultaEnVuelo);
+        SwingUtilities.invokeAndWait(ejecucion::cancelar);   // como lo hace RefrescadorPantallas
+
+        verify(sentencia, timeout(TIMEOUT_SEGUNDOS * 1000L)).cancel();
+        assertEquals("cancelador-sql", hiloDelCancel.get(),
+            "el cancel() hace I/O: no puede correr en el hilo de la interfaz");
+        puedeTerminar.countDown();
+    }
+
+    @Test
+    @DisplayName("la cancelación no dispara siFalla ni pintar")
+    void canceladaNoDisparaSiFalla() throws Exception {
+        CountDownLatch arranco       = new CountDownLatch(1);
+        CountDownLatch puedeTerminar = new CountDownLatch(1);
+        CountDownLatch leyo          = new CountDownLatch(1);
+        AtomicBoolean pinto  = new AtomicBoolean(false);
+        AtomicBoolean fallo  = new AtomicBoolean(false);
+
+        TareaUI.Ejecucion ejecucion = TareaUI.<String>nueva()
+            .leer(() -> {
+                arranco.countDown();
+                puedeTerminar.await(TIMEOUT_SEGUNDOS, TimeUnit.SECONDS);
+                leyo.countDown();
+                // Es lo que tira una consulta cancelada de verdad: no puede llegar al usuario
+                // como un cartel de error por un refresco que él mismo reemplazó.
+                throw new SQLException("Statement cancelled due to client request");
+            })
+            .pintar(valor -> pinto.set(true))
+            .siFalla(e -> fallo.set(true))
+            .lanzar();
+
+        esperar(arranco);
+        ejecucion.cancelar();
+        puedeTerminar.countDown();
+        esperar(leyo);
+        vaciarColaDelHiloUi();
+
+        assertFalse(pinto.get(), "una tarea cancelada no pinta");
+        assertFalse(fallo.get(), "el error de una consulta cancelada no puede llegar al usuario");
+    }
+
+    @Test
+    @DisplayName("una tarea que no toca la base no consume un permiso de conexión")
+    void tareaSinJdbcNoTomaPermiso() throws Exception {
+        // Anti-patrón A14: ajustes-descargar-actualizacion baja el fat JAR y tarda minutos. Un
+        // techo alrededor de leer la haría retener un permiso de conexión que no usa mientras
+        // registrar-estado-confirmar espera.
+        int antes = ConnectionPool.permisosDisponibles();
+        AtomicInteger durante = new AtomicInteger();
+        CountDownLatch termino = new CountDownLatch(1);
+
+        TareaUI.<String>nueva()
+            .nombre("ajustes-descargar-actualizacion")
+            .leer(() -> {
+                durante.set(ConnectionPool.permisosDisponibles());
+                return "descargado";
+            })
+            .despues(termino::countDown)
+            .lanzar();
+
+        esperar(termino);
+
+        assertEquals(antes, durante.get(), "una tarea sin JDBC no puede consumir permisos");
+        assertEquals(antes, ConnectionPool.permisosDisponibles());
     }
 
     @Test
