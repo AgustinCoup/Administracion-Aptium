@@ -190,19 +190,36 @@ La rama `ConexionesYPaginacion` agrega **V23** (índices de `fecha_ingreso` y `e
 `equipos`, `equipo_otros` e `ingresos_lavadero`). El chequeo del §2.2 ya existe desde este build,
 así que esta vez **sí funciona**, y hay que saber qué significa:
 
-**El primer puesto que se actualice migra la base a V23, y a partir de ese momento todo puesto que
-siga con un JAR anterior deja de arrancar**, con `EsquemaDesactualizadoException` y el ofrecimiento
-de actualizarse solo. No es una falla del deploy: es la protección funcionando. Un cliente viejo
-contra una base nueva escribe sin guardas y sin bumpear `version`, que es el bug que V21 vino a
-cerrar.
+**El primer puesto que se actualice migra la base a V23**, y a partir de ese momento todo puesto que
+siga con un JAR anterior no puede seguir arrancando como si nada. No es una falla del deploy: es la
+protección funcionando. Un cliente viejo contra una base nueva escribe sin guardas y sin bumpear
+`version`, que es el bug que V21 vino a cerrar.
+
+**Qué ve exactamente el operador del puesto atrasado — no es una pantalla muerta.**
+`DatabaseInitializer` lanza `EsquemaDesactualizadoException`, y `App` no muestra el error de una:
+llama a `OfertaActualizacionAlArrancar`, que consulta GitHub Releases y **ofrece la actualización
+obligatoria** (diálogo *"Actualización requerida"*, con **Actualizar ahora** / **Más tarde**). Si
+acepta: descarga, confirma, instala y sigue. Se cierra con el diálogo de esquema desactualizado sólo
+si:
+
+- elige **Más tarde**, o rechaza la confirmación de instalar; o
+- **no hay release publicado** que sea más nuevo; o
+- falla el chequeo, la descarga o la instalación (sin red, descarga interrumpida).
+
+O sea: **"actualización obligatoria", con salida a puerta cerrada si se la rechaza o si no la
+encuentra.** Esa última rama es la que importa para el orden del deploy.
 
 Consecuencias prácticas, en orden:
 
-1. **Avisarle a los tres puestos antes**, no después de que uno se quede afuera. El corte es
-   inmediato y no tiene aviso previo del lado del que no se actualizó.
-2. **Actualizar los tres en la misma jornada**, igual que en el deploy anterior. Cada puesto se
-   autoactualiza desde GitHub Releases cuando quiere; acá ese "cuando quiere" deja de ser gratis.
-3. **El `CREATE INDEX` no es un riesgo con el volumen actual.** Medido el 2026-09-15: la tabla más
+1. **Publicar el release ANTES de que ningún puesto migre la base.** Es la que se pasa por alto: si
+   la base salta a V23 y todavía no hay release en GitHub, los otros dos puestos caen en
+   *"no hay actualización disponible"* y se cierran **sin camino de vuelta desde la app** — hay que
+   copiarles el JAR a mano.
+2. **Avisarle a los tres puestos igual.** Aunque la app ofrezca actualizarse sola, el operador que
+   apriete "Más tarde" se queda sin app hasta que vuelva a abrirla y acepte.
+3. **Actualizar los tres en la misma jornada**, igual que en el deploy anterior. Cada puesto se
+   autoactualiza cuando quiere; acá ese "cuando quiere" deja de ser gratis.
+4. **El `CREATE INDEX` no es un riesgo con el volumen actual.** Medido el 2026-09-15: la tabla más
    grande es `otros_material_movimientos` con 9 505 filas y 0,3 MB. Son milisegundos, muy lejos de
    los 60 s de `socketTimeout` que abortarían a Flyway del lado del cliente y dejarían una fila
    fallida en `flyway_schema_history` — que sí bloquearía el arranque de **todos** los puestos hasta
