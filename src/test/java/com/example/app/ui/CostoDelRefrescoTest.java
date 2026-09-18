@@ -10,9 +10,7 @@ import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.common.paginacion.CriteriosPagina;
 import com.example.features.catalogo.service.CatalogoService;
-import com.example.features.equipos.dao.CdeConsultaDAO;
 import com.example.features.equipos.model.FiltroEquipos;
-import com.example.features.equipos.service.CdeConsultaService;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
@@ -63,8 +61,6 @@ class CostoDelRefrescoTest extends AbstractDAOTest {
     private final AutoclaveService   autoclaveService   = new AutoclaveService(new AutoclaveDAO());
     private final CatalogoService    catalogoService    = new CatalogoService(new CatalogoDAO());
     private final LoteService        loteService        = new LoteService(new LoteDAO());
-    private final CdeConsultaService cdeConsultaService =
-        new CdeConsultaService(new CdeConsultaDAO(equipoDAO, equipoOtrosDAO));
 
     private final LectorDatosOperativos operativo = new LectorDatosOperativos(
         equipoService, equipoOtrosService, autoclaveService, catalogoService, loteService);
@@ -112,7 +108,7 @@ class CostoDelRefrescoTest extends AbstractDAOTest {
 
     /**
      * La misma propiedad que antes —el costo en idas y vueltas no crece con el volumen— pero sobre
-     * lo que las pantallas del CDE leen hoy: una página.
+     * lo que "Ver Equipos" lee hoy: una página por grilla.
      *
      * <p>Antes este test exigía lo contrario (una sentencia por equipo "otros") y lo llamaba "la
      * contraparte del reparto". En producción era el defecto: cada una de esas sentencias agregaba
@@ -120,21 +116,23 @@ class CostoDelRefrescoTest extends AbstractDAOTest {
      * vueltas — y desde la paginación tampoco cuesta las filas del histórico entero.
      */
     @Test
-    @DisplayName("una página del CDE cuesta las mismas sentencias con y sin histórico acumulado")
-    void paginaDelCde_cantidadDeSentenciasIndependienteDelVolumen() {
+    @DisplayName("una página de Ver Equipos cuesta las mismas sentencias con y sin histórico")
+    void paginaDeVerEquipos_cantidadDeSentenciasIndependienteDelVolumen() {
         sembrarActivos(3);
-        int sinHistorico = contarSentencias(this::leerUnaPaginaDelCde);
+        int sinHistorico = contarSentencias(this::leerUnaPaginaDeVerEquipos);
 
         sembrarEntregados(HISTORICO);
-        int conHistorico = contarSentencias(this::leerUnaPaginaDelCde);
+        int conHistorico = contarSentencias(this::leerUnaPaginaDeVerEquipos);
 
         assertEquals(sinHistorico, conHistorico,
             "leer una página no debe hacer una sentencia por equipo: "
                 + sinHistorico + " → " + conHistorico);
     }
 
-    private void leerUnaPaginaDelCde() {
-        cdeConsultaService.obtenerPagina(FiltroEquipos.sinFiltros(), CriteriosPagina.primera());
+    /** Las dos grillas, que es lo que el grupo {@code refresco-ver-equipos} lee de una vez. */
+    private void leerUnaPaginaDeVerEquipos() {
+        equipoService.obtenerPagina(FiltroEquipos.sinFiltros(), CriteriosPagina.primera());
+        equipoOtrosService.obtenerPagina(FiltroEquipos.sinFiltros(), CriteriosPagina.primera());
     }
 
     // ── Lo que leía el snapshot único, para tener con qué comparar ────────────

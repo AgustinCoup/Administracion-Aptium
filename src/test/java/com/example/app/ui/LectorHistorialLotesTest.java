@@ -23,7 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  *
  * <p>Era {@code LectoresHistorialTest} y cubría también al de equipos. Ése desapareció con la
  * paginación: las dos pantallas del CDE ya no leen listas completas sino páginas, y qué leen lo
- * deciden {@code ConsultaEquipos} y {@code ConsultaCde}, testeadas con sus controllers. Ver Lotes
+ * decide {@code ConsultaEquipos}, testeada con su controller. Ver Lotes
  * sigue como estaba porque su volumen tiene techo.
  */
 @ExtendWith(MockitoExtension.class)

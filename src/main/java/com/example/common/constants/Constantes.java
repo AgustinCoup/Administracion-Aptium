@@ -20,8 +20,6 @@ public final class Constantes {
         public static final String ESTERILIZACION        = "ESTERILIZACION";
         public static final String ES_ORTOPEDIA          = "ES_ORTOPEDIA";
         public static final String INGRESO_ORTOPEDIA     = "INGRESO_ORTOPEDIA";
-        public static final String VER_CDE               = "VER_CDE";
-        public static final String VER_CDE_V2            = "VER_CDE_V2";
         public static final String REGISTRAR_ESTADO      = "REGISTRAR_ESTADO";
         public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS_PARA_ENTREGAR";
         public static final String LOTES                 = "LOTES";
@@ -327,7 +325,6 @@ public final class Constantes {
         public static final String CENTRO_ESTERILIZACION = "CENTRO DE ESTERILIZACIÓN";
         public static final String INGRESO               = "INGRESO";
         public static final String INGRESO_ORTOPEDIA     = "INGRESO ORTOPEDIA";
-        public static final String ESTADO_PROCESOS       = "ESTADO DE PROCESOS EN TIEMPO REAL";
         public static final String REGISTRAR_ESTADO      = "REGISTRAR ESTADO";
         public static final String EQUIPOS_PARA_ENTREGAR = "EQUIPOS PARA ENTREGAR";
         public static final String LOTES                 = "LOTES DE ESTERILIZACIÓN";
@@ -535,8 +532,6 @@ public final class Constantes {
         public static final String DIALOG_TITULO_AGREGAR                 = "Agregar nuevo/a %s";
         public static final String DIALOG_MENSAJE_AGREGAR                = "<html>El/la %s no existe.<br>¿Desea agregarlo/la a la base de datos?</html>";
         public static final String LABEL_NOMBRE                          = "Nombre:";
-        public static final String EJEMPLO_CAJA_INSTRUMENTAL             = "Caja de Instrumental #102";
-        public static final String EJEMPLO_SET_CIRUGIA                   = "Set de Cirugía Menor #05";
         public static final String ENTIDAD_CLIENTE                       = "Cliente";
         public static final String ENTIDAD_PROFESIONAL                   = "Profesional";
         public static final String ENTIDAD_INSTITUCION                   = "Institución";

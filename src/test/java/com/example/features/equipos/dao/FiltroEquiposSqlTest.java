@@ -15,8 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * El armado del {@code WHERE} en aislamiento: sin base, sin JDBC. Lo que se prueba acá es la forma
  * del SQL y la correspondencia entre marcadores y parámetros — lo que se prueba contra H2, en
- * {@code EquipoDAOPaginacionTest} y {@code CdeConsultaDAOTest}, es que el resultado coincida con el
- * filtrado en memoria de hoy.
+ * {@code EquipoDAOPaginacionTest}, es que el resultado coincida con el filtrado en memoria de hoy.
  */
 class FiltroEquiposSqlTest {
 
@@ -94,8 +93,7 @@ class FiltroEquiposSqlTest {
 
             for (FiltroEquiposSql.Condicion condicion : List.of(
                     FiltroEquiposSql.paraOrtopedias(todos),
-                    FiltroEquiposSql.paraOtros(todos),
-                    FiltroEquiposSql.paraOtrosEnUnionCde(todos))) {
+                    FiltroEquiposSql.paraOtros(todos))) {
                 for (String alias : List.of("c.nombre", "p.nombre", "i.nombre")) {
                     if (condicion.sql().contains(alias)) {
                         String tabla = alias.substring(0, 1);
@@ -223,55 +221,6 @@ class FiltroEquiposSqlTest {
 
             assertEquals("", FiltroEquiposSql.paraOrtopedias(filtro).sql());
             assertTrue(FiltroEquiposSql.paraOtros(filtro).sql().contains("eo.tipo_ingreso IN (?)"));
-        }
-    }
-
-    @Nested
-    @DisplayName("la asimetría de Estado de Procesos")
-    class AsimetriaDelCde {
-
-        /**
-         * El filtrado en memoria pasaba {@code getDescripcionSecundaria()} —cadena vacía para
-         * "otros"— por {@code containsIgnoreCase}, que con filtro no vacío da falso siempre. O sea
-         * que con el campo institución escrito, ningún "otros" entra.
-         */
-        @Test
-        @DisplayName("con institución escrita, ningún 'otros' entra en la unión")
-        void institucionConTexto_excluyeATodosLosOtros() {
-            FiltroEquipos filtro = new FiltroEquipos(
-                List.of(), null, null, null, "hospital", List.of(), null, null);
-
-            FiltroEquiposSql.Condicion condicion = FiltroEquiposSql.paraOtrosEnUnionCde(filtro);
-
-            assertTrue(condicion.sql().contains("1 = 0"),
-                "la condición imposible es la traducción literal de containsIgnoreCase(\"\", x)");
-        }
-
-        @Test
-        @DisplayName("con institución en blanco, los 'otros' entran normalmente")
-        void institucionVacia_noAgregaNada() {
-            FiltroEquipos filtro = new FiltroEquipos(
-                List.of("Nuevo"), null, null, null, "   ", List.of(), null, null);
-
-            FiltroEquiposSql.Condicion condicion = FiltroEquiposSql.paraOtrosEnUnionCde(filtro);
-
-            assertFalse(condicion.sql().contains("1 = 0"),
-                "un campo en blanco no es un filtro puesto");
-            assertEquals(FiltroEquiposSql.paraOtros(filtro).sql(), condicion.sql());
-        }
-
-        @Test
-        @DisplayName("la condición imposible se suma al resto del WHERE, no lo reemplaza")
-        void seCombinaConLosOtrosFiltros() {
-            FiltroEquipos filtro = new FiltroEquipos(
-                List.of("Nuevo"), "clínica", null, null, "hospital", List.of(), null, null);
-
-            FiltroEquiposSql.Condicion condicion = FiltroEquiposSql.paraOtrosEnUnionCde(filtro);
-
-            assertTrue(condicion.sql().startsWith(" WHERE "), condicion.sql());
-            assertTrue(condicion.sql().endsWith(" AND 1 = 0"), condicion.sql());
-            assertEquals(condicion.parametros().size(), contarMarcadores(condicion.sql()),
-                "la condición imposible no lleva parámetro y no puede correr los índices");
         }
     }
 

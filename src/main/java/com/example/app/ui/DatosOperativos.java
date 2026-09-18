@@ -18,8 +18,8 @@ import java.util.Map;
  * de la empresa, que es exactamente lo que no tiene por qué crecer.
  *
  * <p>El histórico vive en las pantallas de consulta, que leen solo cuando el
- * usuario las abre: {@link HistorialLotes} lo trae completo, y las dos del CDE
- * lo traen de a una página ({@code refresco-ver-equipos} y {@code refresco-cde}).
+ * usuario las abre: {@link HistorialLotes} lo trae completo, y Ver Equipos lo trae
+ * de a una página por grilla ({@code refresco-ver-equipos}).
  *
  * <p>Es inmutable de raíz para adentro: se construye en un hilo de fondo y se
  * consume en el hilo de UI. Los modelos que contiene se tratan como de solo

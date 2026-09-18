@@ -48,34 +48,16 @@ public class EquipoTableModel extends AbstractTableModel {
      * Actualiza el modelo <b>ordenando por estado</b> (más atrasado primero), sobre la lista
      * completa que recibe. Acepta cualquier implementación de {@link EquipoRegistrableInterface}.
      *
-     * <p>La usan las pantallas que reciben <b>todo</b> lo que van a mostrar en una sola lista —
-     * Registrar Estado y Correcciones, que comen de la cola operativa—. Para una lista que es una
-     * <b>página</b> de un conjunto más grande está {@link #actualizarDatosEnOrden(List)}: ver ahí
-     * por qué ordenar acá rompería el orden global.
+     * <p>Las dos pantallas que entran por acá —Registrar Estado y Correcciones— reciben <b>todo</b>
+     * lo que van a mostrar en una sola lista, de la cola operativa, y ninguna pagina. Si alguna
+     * llegara a paginar, ordenar acá ordenaría <em>dentro de la página</em>: un orden global sólo
+     * puede salir del único lugar que ve todas las filas, que es SQL.
      */
     public void actualizarDatos(List<EquipoRegistrableInterface> equiposCompletos) {
         List<EquipoRegistrableInterface> ordenados = new ArrayList<>(equiposCompletos);
         ordenados.sort((e1, e2) ->
             Integer.compare(e1.calcularEstado().getOrden(), e2.calcularEstado().getOrden()));
         volcar(ordenados);
-    }
-
-    /**
-     * Actualiza el modelo <b>respetando el orden en que viene la lista</b>.
-     *
-     * <h2>Por qué Estado de Procesos entra por acá y no por {@link #actualizarDatos(List)}</h2>
-     * Esa pantalla dejó de recibir el histórico completo: recibe una <b>página de 50</b> que la
-     * base ya ordenó por estado sobre el conjunto entero. Reordenar acá ordenaría <em>dentro de la
-     * página</em>, que no es lo mismo: la página 2 volvería a empezar por los más atrasados de esa
-     * página y el operador vería el mismo estado repetirse pestaña tras pestaña. Un orden global
-     * sólo puede salir del único lugar que ve todas las filas, que es SQL
-     * ({@code CdeConsultaDAO.SQL_ORDEN}).
-     *
-     * <p>El criterio es el mismo en los dos lados —{@code EstadoEquipo.getOrden()} ascendente—, así
-     * que lo que cambia es <b>dónde</b> se ordena, no cómo.
-     */
-    public void actualizarDatosEnOrden(List<EquipoRegistrableInterface> pagina) {
-        volcar(pagina);
     }
 
     private void volcar(List<EquipoRegistrableInterface> enOrden) {

@@ -13,8 +13,6 @@ import com.example.features.equipos.ortopedias.view.PantallaIngresoOrtopedia;
 import com.example.features.equipos.ortopedias.view.PantallaRegistrarEstado;
 import com.example.features.equipos.otros.view.PantallaIngresoOtros;
 import com.example.features.equipos.view.PantallaVerEquipos;
-import com.example.features.equipos.ortopedias.view.PantallaVerCDEv1;
-import com.example.features.equipos.ortopedias.view.PantallaVerCDEv2;
 import com.example.features.lavadero.view.PantallaClasificacionLavadero;
 import com.example.features.lavadero.view.PantallaCiclos;
 import com.example.features.lavadero.view.PantallaHistorialLavadero;
@@ -40,7 +38,6 @@ public class PantallaPrincipal extends JFrame {
 
     // ── Pantallas ─────────────────────────────────────────────────────────────
     private final PantallaIngresoOrtopedia      ingresoOrtopedia;
-    private final PantallaVerCDEv2              verCDEv2;
     private final PantallaRegistrarEstado       registrarEstado;
     private final PantallaEquiposParaEntregar   equiposParaEntregar;
     private final PantallaCorrecciones          correcciones;
@@ -84,9 +81,7 @@ public class PantallaPrincipal extends JFrame {
         PantallaMenu           menu           = new PantallaMenu(navegador, contenedor);
         PantallaEsterilizacion esterilizacion = new PantallaEsterilizacion(navegador, contenedor);
         PantallaEsOrtopedia    esOrtopedia    = new PantallaEsOrtopedia(navegador, contenedor);
-        PantallaVerCDEv1       verCDE         = new PantallaVerCDEv1(navegador, contenedor);
 
-        verCDEv2            = new PantallaVerCDEv2(navegador, contenedor);
         ingresoOrtopedia    = new PantallaIngresoOrtopedia(navegador, contenedor);
         registrarEstado     = new PantallaRegistrarEstado(navegador, contenedor);
         equiposParaEntregar = new PantallaEquiposParaEntregar(navegador, contenedor);
@@ -108,8 +103,6 @@ public class PantallaPrincipal extends JFrame {
         contenedor.add(menu,                Constantes.Pantallas.MENU_PRINCIPAL);
         contenedor.add(esterilizacion,      Constantes.Pantallas.ESTERILIZACION);
         contenedor.add(esOrtopedia,         Constantes.Pantallas.ES_ORTOPEDIA);
-        contenedor.add(verCDE,              Constantes.Pantallas.VER_CDE);
-        contenedor.add(verCDEv2,            Constantes.Pantallas.VER_CDE_V2);
         contenedor.add(ingresoOrtopedia,    Constantes.Pantallas.INGRESO_ORTOPEDIA);
         contenedor.add(registrarEstado,     Constantes.Pantallas.REGISTRAR_ESTADO);
         contenedor.add(equiposParaEntregar, Constantes.Pantallas.EQUIPOS_PARA_ENTREGAR);
@@ -134,7 +127,6 @@ public class PantallaPrincipal extends JFrame {
 
     public PantallaIngresoOrtopedia    getPanelIngresoOrtopedia()      { return ingresoOrtopedia; }
     public PantallaIngresoOtros        getPanelIngresoOtros()          { return ingresoOtros; }
-    public PantallaVerCDEv2            getPantallaVerCDEv2()           { return verCDEv2; }
     public PantallaRegistrarEstado     getPantallaRegistrarEstado()    { return registrarEstado; }
     public PantallaEquiposParaEntregar getPantallaEquiposParaEntregar(){ return equiposParaEntregar; }
     public PantallaCorrecciones        getPantallaCorrecciones()       { return correcciones; }

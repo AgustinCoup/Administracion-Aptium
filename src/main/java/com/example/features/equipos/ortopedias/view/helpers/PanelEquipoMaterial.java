@@ -107,16 +107,6 @@ public class PanelEquipoMaterial extends JPanel {
         modeloMateriales.limpiar();
     }
 
-    /**
-     * Vuelca una <b>página</b> ya ordenada por la base, sin reordenarla. La usa Estado de Procesos;
-     * ver {@link EquipoTableModel#actualizarDatosEnOrden(List)} para por qué reordenar acá rompería
-     * el orden global.
-     */
-    public void actualizarEquiposEnOrden(List<EquipoRegistrableInterface> pagina) {
-        modeloEquipos.actualizarDatosEnOrden(pagina);
-        modeloMateriales.limpiar();
-    }
-
     public EquipoRegistrableInterface getEquipoSeleccionado() {
         int row = tablaEquipos.getSelectedRow();
         return row >= 0 ? modeloEquipos.getEquipoAt(row) : null;

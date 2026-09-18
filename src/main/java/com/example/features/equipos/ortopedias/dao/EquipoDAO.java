@@ -578,13 +578,10 @@ public class EquipoDAO implements DAO<Equipo, String> {
 
     /**
      * El detalle completo —con materiales— de un conjunto de ids. Segundo viaje de
-     * {@link #obtenerPagina}, y también lo que usa
-     * {@link com.example.features.equipos.dao.CdeConsultaDAO} para la mitad de ortopedias de su
-     * unión: los dos necesitan exactamente lo mismo, y tener dos copias del mapeo sería la
-     * divergencia esperando a pasar.
+     * {@link #obtenerPagina}.
      *
      * <p>El orden que devuelve es el de {@link #SQL_ORDEN_PAGINA}, no el de {@code ids}: quien
-     * necesite el orden de una unión lo reordena por su cuenta.
+     * necesite otro orden lo reordena por su cuenta.
      *
      * @param ids no vacío; con la lista vacía el {@code IN ()} no es SQL válido
      */

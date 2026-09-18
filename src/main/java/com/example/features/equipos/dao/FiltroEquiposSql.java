@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Traduce un {@link FiltroEquipos} al {@code WHERE} de las consultas paginadas del CDE.
+ * Traduce un {@link FiltroEquipos} al {@code WHERE} de las consultas paginadas de Ver Equipos.
  *
  * <h2>Qué es esto y qué NO es</h2>
  * Es una clase plana de armado de SQL, sin JDBC propio y sin estado — el patrón de
@@ -22,9 +22,9 @@ import java.util.Locale;
  * justamente lo que este paso tiene prohibido extraer: las dos tablas tienen columnas, modelos y
  * modalidades distintas, y sólo comparten la <em>forma</em> de las consultas. Lo que se comparte
  * acá es otra cosa: la <b>semántica de los filtros</b>, que sí es una sola y tiene que seguir
- * siéndolo. Los tres métodos de abajo emiten SQL <em>distinto</em> sobre tablas distintas; lo que
+ * siéndolo. Los dos métodos de abajo emiten SQL <em>distinto</em> sobre tablas distintas; lo que
  * garantizan en común es que "contiene", "entre fechas" y "en esta lista de estados" quieran decir
- * lo mismo en los tres.
+ * lo mismo en los dos.
  *
  * <h2>Por qué un solo lugar arma el WHERE de la página y el del conteo</h2>
  * No es estilo, es corrección. Si el conteo y la página usaran {@code WHERE} distintos, la UI
@@ -132,8 +132,7 @@ public final class FiltroEquiposSql {
      * <p><b>Profesional, paciente e institución no se aplican, y eso es deliberado.</b>
      * El filtrado en memoria de Ver Equipos se los aplicaba únicamente a la grilla de
      * ortopedias: escribir un profesional filtra la tabla de arriba y deja la de abajo intacta. Es
-     * el comportamiento que el operador conoce y este paso no lo cambia. La otra pantalla del CDE
-     * hace algo distinto con institución — ver {@link #paraOtrosEnUnionCde(FiltroEquipos)}.
+     * el comportamiento que el operador conoce y este paso no lo cambia.
      */
     public static Condicion paraOtros(FiltroEquipos filtro) {
         List<String> clausulas = new ArrayList<>();
@@ -148,39 +147,6 @@ public final class FiltroEquiposSql {
         fechas("eo.fecha_ingreso", filtro, clausulas, parametros);
 
         return armar(joins, clausulas, parametros);
-    }
-
-    /**
-     * El mismo {@code WHERE} que {@link #paraOtros(FiltroEquipos)} <b>más la asimetría de Estado de
-     * Procesos</b>: con el campo institución escrito, ningún "otros" entra.
-     *
-     * <h2>De dónde sale {@code 1 = 0} y por qué no es un truco</h2>
-     * El filtrado en memoria que esta pantalla hacía —el {@code CdeFilterStrategy} que el Paso 11
-     * borró, transcripto en {@code CdeConsultaDAOTest.FiltradoDeReferencia}— iba por
-     * {@code eq.getDescripcionSecundaria()}, que para
-     * {@code EquipoOtros} devuelve <b>cadena vacía</b> por diseño
-     * ({@code EquipoOtros.getDescripcionSecundaria()}), y lo pasa por
-     * {@code TextFilterUtils.containsIgnoreCase(valor, filtro)}, que es verdadero cuando el filtro
-     * está vacío y falso en cuanto tiene texto —{@code "".contains("x")} es {@code false}—. O sea
-     * que hoy, en esa pantalla, <b>los "otros" aparecen sólo mientras el campo institución esté en
-     * blanco</b>. {@code 1 = 0} es la traducción literal de esa constante, no una simplificación:
-     * cualquier otra cosa cambiaría lo que el operador ve.
-     *
-     * <p>Efecto secundario bueno: MySQL y H2 reconocen la condición imposible y ni tocan la tabla
-     * (el {@code EXPLAIN} lo dice: <em>Impossible WHERE</em>), así que la rama de la unión sale
-     * gratis en vez de barrer {@code equipo_otros} para descartarlo todo.
-     *
-     * <p><b>Que esto viva acá y no en el controller es el punto del paso.</b> Si la asimetría se
-     * quedara en memoria, filtraría los 50 de la página en vez de las 50 primeras de las que
-     * matchean.
-     */
-    public static Condicion paraOtrosEnUnionCde(FiltroEquipos filtro) {
-        Condicion base = paraOtros(filtro);
-        if (!tieneTexto(filtro.institucion())) {
-            return base;
-        }
-        String sql = base.sql().isEmpty() ? " WHERE 1 = 0" : base.sql() + " AND 1 = 0";
-        return new Condicion(base.joins(), sql, base.parametros());
     }
 
     // ── piezas ───────────────────────────────────────────────────────────────
@@ -201,14 +167,12 @@ public final class FiltroEquiposSql {
      * <h2>{@code NULL} cuenta como {@code NUEVO}, y tiene que contar</h2>
      * La columna es <b>nullable</b> en las dos tablas (V1, V2: {@code VARCHAR(50) DEFAULT 'Nuevo'},
      * sin {@code NOT NULL}). Un {@code IN (…)} pelado deja afuera a las filas con {@code NULL} —y
-     * no las manda a otra página: las hace <b>invisibles en las dos pantallas del CDE</b>, incluso
-     * bajo el filtro por defecto, que es "todos menos ENTREGADO". Una fila que no está en ninguna
-     * página no se parece a un error y nadie la reporta.
+     * no las manda a otra página: las hace <b>invisibles en las dos grillas de Ver Equipos</b>,
+     * incluso bajo el filtro por defecto. Una fila que no está en ninguna página no se parece a un
+     * error y nadie la reporta.
      *
      * <p>El filtrado en memoria que esto reemplaza no tenía el problema: mapeaba la columna con
-     * {@code EstadoEquipo.desdeBD}, que devuelve {@code NUEVO} ante {@code null}. Y el
-     * {@code ELSE} de {@code CdeConsultaDAO.casoOrdenEstado} ya toma esa misma decisión para el
-     * <b>orden</b>. Acá se toma para el <b>filtro</b>, que es la otra mitad de lo mismo.
+     * {@code EstadoEquipo.desdeBD}, que devuelve {@code NUEVO} ante {@code null}.
      *
      * <p>Se agrega {@code OR … IS NULL} sólo cuando {@code NUEVO} está entre los estados pedidos,
      * que es exactamente cuando {@code desdeBD} las habría dejado pasar. No anula el índice: sigue
@@ -304,16 +268,6 @@ public final class FiltroEquiposSql {
     /** Pone los parámetros desde el índice 1 y devuelve el índice del siguiente libre. */
     public static int aplicar(PreparedStatement ps, List<Object> parametros) throws SQLException {
         int indice = 1;
-        for (Object parametro : parametros) {
-            ps.setObject(indice++, parametro);
-        }
-        return indice;
-    }
-
-    /** Pone los parámetros desde {@code desde} y devuelve el índice del siguiente libre. */
-    public static int aplicarDesde(PreparedStatement ps, int desde, List<?> parametros)
-            throws SQLException {
-        int indice = desde;
         for (Object parametro : parametros) {
             ps.setObject(indice++, parametro);
         }

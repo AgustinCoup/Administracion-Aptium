@@ -4,14 +4,12 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Los filtros de las dos pantallas de consulta del CDE —Ver Equipos y Estado de Procesos—, tal como
- * viajan del controller al service y del service al DAO, que los resuelve <b>en SQL</b>.
+ * Los filtros de Ver Equipos, tal como viajan del controller al service y del service al DAO, que
+ * los resuelve <b>en SQL</b>.
  *
- * <h2>Un solo record para las dos pantallas, y para las dos tablas</h2>
- * Ver Equipos ofrece los siete campos; Estado de Procesos ofrece tres (cliente, institución,
- * estados) y deja el resto sin poner. Partirlo en dos records no compraría nada: el segundo sería
- * un subconjunto exacto del primero, y {@link com.example.features.equipos.dao.CdeConsultaDAO}
- * —que une las dos tablas— necesitaría convertir entre ellos.
+ * <h2>Un solo record para las dos tablas</h2>
+ * Las dos grillas ofrecen los mismos siete campos y cada DAO aplica los que le corresponden; ver
+ * abajo los tres que "otros" ignora.
  *
  * <h2>Regla de oro: todos los filtros van a SQL o ninguno</h2>
  * Filtrar en memoria una página traída con {@code LIMIT} filtra 50 de 5000, no las 50 primeras de
@@ -20,25 +18,12 @@ import java.util.List;
  * lo note.
  *
  * <h2>⚠️ Tres campos no aplican a "otros", y eso es comportamiento, no un descuido</h2>
- * {@code equipo_otros} no tiene profesional, paciente ni institución. Lo que hace la UI hoy con
- * cada uno hay que <b>preservarlo exactamente</b>, porque es lo que el operador conoce, y las dos
- * pantallas no hacen lo mismo:
+ * {@code equipo_otros} no tiene profesional, paciente ni institución, y Ver Equipos aplica esos
+ * tres <b>sólo</b> a la grilla de ortopedias: escribir un profesional filtra la de arriba y deja la
+ * de abajo intacta. Se <b>ignoran</b> en {@code EquipoOtrosDAO}.
  *
- * <ul>
- *   <li><b>Ver Equipos</b> aplica profesional,
- *       paciente e institución <b>sólo</b> a la tabla de ortopedias; la de "otros" nunca los ve.
- *       O sea: escribir un profesional filtra la grilla de arriba y deja la de abajo intacta. Esos
- *       tres campos se <b>ignoran</b> en {@code EquipoOtrosDAO}.</li>
- *   <li><b>Estado de Procesos</b> aplicaba el de institución a las dos,
- *       vía {@code getDescripcionSecundaria()}, que para "otros" devuelve cadena vacía. Como
- *       {@code TextFilterUtils.containsIgnoreCase("", filtro)} sólo es verdadero con el filtro
- *       vacío, el efecto es: <b>los "otros" aparecen únicamente cuando el campo institución está
- *       en blanco</b>, y desaparecen en cuanto se escribe algo. Esa asimetría la reproduce
- *       {@code CdeConsultaDAO}, no {@code EquipoOtrosDAO}, porque es de esa pantalla.</li>
- * </ul>
- *
- * <p>Ninguna de las dos se "arregla" acá. Cambiar cualquiera de ellas es un cambio de
- * comportamiento visible que hay que decidir aparte; este paso mueve el filtrado a SQL y nada más.
+ * <p>Eso no se "arregla" acá: es lo que el operador conoce, y cambiarlo es un cambio de
+ * comportamiento visible que hay que decidir aparte.
  *
  * <h2>Semántica de cada campo</h2>
  * <ul>

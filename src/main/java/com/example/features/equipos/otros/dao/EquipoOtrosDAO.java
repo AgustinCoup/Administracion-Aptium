@@ -419,9 +419,7 @@ public class EquipoOtrosDAO {
 
     /**
      * El detalle completo —con materiales— de un conjunto de ids. Segundo viaje de
-     * {@link #obtenerPagina}, y también lo que usa {@code CdeConsultaDAO} para la mitad "otros" de
-     * su unión: los dos necesitan exactamente lo mismo, y tener dos copias del mapeo sería la
-     * divergencia esperando a pasar.
+     * {@link #obtenerPagina}.
      *
      * @param ids no vacío; con la lista vacía el {@code IN ()} no es SQL válido
      */

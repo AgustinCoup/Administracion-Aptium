@@ -23,8 +23,6 @@ import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.ortopedias.service.EstadoValidatorImpl;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
 import com.example.features.equipos.ortopedias.service.MaterialService;
-import com.example.features.equipos.dao.CdeConsultaDAO;
-import com.example.features.equipos.service.CdeConsultaService;
 import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.lotes.service.LoteService;
 import com.example.features.profesionales.service.ProfesionalService;
@@ -75,7 +73,6 @@ public class AppContext {
     private final IEstadoValidator estadoValidator;
     private final CatalogoOtrosService catalogoOtrosService;
     private final EquipoOtrosService equipoOtrosService;
-    private final CdeConsultaService cdeConsultaService;
     private final EquipoCorreccionService equipoCorreccionService;
     private final EquipoOtrosCorreccionService equipoOtrosCorreccionService;
     private final LavaderoService lavaderoService;
@@ -103,7 +100,6 @@ public class AppContext {
         IEstadoValidator estadoValidator,
         CatalogoOtrosService catalogoOtrosService,
         EquipoOtrosService equipoOtrosService,
-        CdeConsultaService cdeConsultaService,
         EquipoCorreccionService equipoCorreccionService,
         EquipoOtrosCorreccionService equipoOtrosCorreccionService,
         LavaderoService lavaderoService,
@@ -123,7 +119,7 @@ public class AppContext {
             || profesionalService == null || institucionService == null || materialService == null
             || autoclaveService == null || loteService == null || estadoValidator == null
             || catalogoOtrosService == null
-            || equipoOtrosService == null || cdeConsultaService == null
+            || equipoOtrosService == null
             || equipoCorreccionService == null
             || equipoOtrosCorreccionService == null || lavaderoService == null
             || clasificacionLavaderoService == null
@@ -147,7 +143,6 @@ public class AppContext {
         this.estadoValidator = estadoValidator;
         this.catalogoOtrosService = catalogoOtrosService;
         this.equipoOtrosService = equipoOtrosService;
-        this.cdeConsultaService = cdeConsultaService;
         this.equipoCorreccionService = equipoCorreccionService;
         this.equipoOtrosCorreccionService = equipoOtrosCorreccionService;
         this.lavaderoService = lavaderoService;
@@ -184,10 +179,6 @@ public class AppContext {
         EquipoOtrosCorreccionService equipoOtrosCorreccionService = new EquipoOtrosCorreccionService(
             equipoOtrosDAO, auditoriaDAO);
         EquipoOtrosService equipoOtrosService = new EquipoOtrosService(equipoOtrosDAO);
-        // La lista unificada del CDE cruza las dos tablas de equipos, asi que su DAO no vive en
-        // ninguna de las dos features: recibe a los dos y ninguno lo conoce a el.
-        CdeConsultaService cdeConsultaService =
-            new CdeConsultaService(new CdeConsultaDAO(equipoDAO, equipoOtrosDAO));
         CatalogoService catalogoService = new CatalogoService(catalogoDAO);
         CatalogoOtrosService catalogoOtrosService = new CatalogoOtrosService(catalogoOtrosDAO);
         FusionClientesDAO fusionClientesDAO = new FusionClientesDAO();
@@ -254,7 +245,6 @@ public class AppContext {
             estadoValidator,
             catalogoOtrosService,
             equipoOtrosService,
-            cdeConsultaService,
             equipoCorreccionService,
             equipoOtrosCorreccionService,
             lavaderoService,
@@ -270,10 +260,6 @@ public class AppContext {
             actualizacionService,
             versionInfo
         );
-    }
-
-    public CdeConsultaService getCdeConsultaService() {
-        return cdeConsultaService;
     }
 
     public EquipoService getEquipoService() {
