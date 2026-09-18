@@ -21,21 +21,67 @@
 > | 12 — paginación en memoria | `b7db1c7` | Ver Lotes y Ver Ciclos pintan de a 50 |
 > | 13 — medir, revisar y cerrar | `1f8f4b3` + este commit | Los tres hallazgos de `/code-review high` aplicados; documentación y cierre |
 >
-> ## ⚠️ Lo que queda pendiente, y es del usuario
+> ## Verificado a mano el 2026-09-18 — las tres pasaron
 >
-> **Las tareas 1 y 2 del Paso 13 exigen abrir la app y recorrer las pantallas a mano.** No se
-> pueden automatizar y **no están hechas**. Concretamente:
+> | Verificación | Resultado |
+> |---|---|
+> | Cortar Tailscale a mitad de una lectura ⇒ error en ≤ 60 s y la app sigue usable | ✅ |
+> | F5 mantenido + `SHOW PROCESSLIST` ⇒ a lo sumo una consulta viva | ✅ ninguna corriendo; las tres conexiones en `Sleep` |
+> | Las cinco pantallas en ráfaga ⇒ sin "Pool bajo presión" | ✅ **cero ocurrencias en todo `app.log`**, no sólo en la corrida |
 >
-> - la columna "post Fase C" de la tabla del Paso 3 sigue vacía;
-> - las tres verificaciones de que *el problema original se fue* —F5 mantenido + `SHOW PROCESSLIST`,
->   las cinco pantallas en ráfaga sin "Pool bajo presión", y **cortar Tailscale a mitad de una
->   lectura**— siguen sin correr. La tercera es la que valida el Paso 2 y la única que no tiene
->   ningún sustituto automático;
-> - el relevamiento de `Max_used_connections` con los 3 puestos en uso diario sigue siendo el de
->   **un** puesto (2026-09-15).
+> Arranque limpio contra `aptium_perf`: `Timeouts: connect=5000 ms, socket=60000 ms,
+> connection=10000 ms, keepalive=120000 ms`, cero WARN de Hikari, Flyway en schema 23.
 >
-> **El plan no se declara verificado en producción.** Se declara *implementado y revisado*. El
-> procedimiento exacto de cada verificación está en el Paso 13, tarea 2, y no se borró.
+> ## Medición post Fase C (2026-09-18, `aptium_perf`, mismas filas que el baseline)
+>
+> Medianas de las últimas 3 lecturas del último arranque (anti-patrón A7: la primera apertura
+> descartada — hubo cuatro arranques y se usó el último).
+>
+> | Tarea | leer antes | leer ahora | pintar antes | pintar ahora | Veredicto |
+> |---|---|---|---|---|---|
+> | `refresco-ver-equipos` | 187 ms | **10 ms** | 7 ms | 2 ms | **−95 %** ✅ |
+> | `refresco-cde` | 187 ms | — | 7 ms | — | **no medible: la pantalla es inalcanzable** (ver abajo) |
+> | `refresco-historial-lavadero` | 11 ms | 5 ms | 4 ms | 1 ms | −55 %, pero sobre 6 ms |
+> | `refresco-historial-ciclos` | 11 ms | 10 ms | 3 ms | 2 ms | sin cambio |
+> | `refresco-historial-lotes` | 8 ms | 11 ms | 3 ms | 4 ms | sin cambio (ruido) |
+>
+> Las dos filas de `refresco-*-equipos` se comparan **cada una** contra los mismos 187 ms del
+> grupo que el Paso 11 disolvió, no sumadas.
+>
+> **Las tres últimas no mejoraron, y es el resultado correcto**, no un paso que falló: Ver Lotes y
+> Ver Ciclos pasaron por paginación **en memoria**, que por el anti-patrón A3 arregla el pintado y
+> no la consulta — y el pintado ya era de 3 ms. No había nada que mejorar ahí. El Paso 12 se
+> justifica por el techo que pone, no por un número que baje hoy.
+>
+> ## ⚠️ Hallazgo de la medición: Estado de Procesos no es alcanzable desde la app
+>
+> `refresco-cde` no aparece en **ningún** log, por más veces que se abra la app, y el motivo no es
+> la medición: **nadie navega a esa pantalla.** `VER_CDE_V2` aparece exactamente dos veces en todo
+> `src/main` —donde se define la constante y donde `PantallaPrincipal` registra la card en el
+> `CardLayout`—, y ningún `navegador.show(...)`. Lo mismo `VER_CDE`, su versión anterior.
+>
+> **Vienen del primer commit del proyecto** (`707aba6`, *"primera demo de pantalla de ingreso y
+> pantalla de vista v1 y v2"*): son los dos prototipos originales de la pantalla "Ver", que quedó
+> reemplazada por `VER_EQUIPOS` / `PantallaVerEquipos` —ésa sí alcanzable, desde el botón "Ver
+> equipos" de `PantallaEsterilizacion`— y nunca se borraron. Están muertas desde mucho antes de
+> `8b662b8`: **no es una regresión de esta rama.**
+>
+> **Lo que sí es de esta rama es haber construido sobre ellas sin verificarlo.** El Paso 10 —el más
+> caro del plan— cubría "Ver Equipos **+ Estado de Procesos**". La mitad de Ver Equipos está viva y
+> mide −95 %. La otra mitad —`CdeConsultaDAO`, `CdeConsultaService`, `EstadoProcesosController` y
+> su cableado— **sirve únicamente a una pantalla que no se puede abrir**: `CdeConsultaService` no
+> tiene otro consumidor que el `crearRefrescadorCde` de `UiCoordinator`. Y el Paso 11 le dedicó
+> media sesión a disolver un grupo de refresco por una pantalla muerta.
+>
+> Ni el plan ni `CLAUDE.md` lo detectaron porque los dos la tratan como una de las once pantallas
+> con botón de refresco. **Es el mismo error que el plan venía marcando en otros lados —algo que no
+> se parece a un error— aplicado al plan mismo.** Decidir si se le cablea un botón o si se borra el
+> trabajo es una sesión aparte; no se toca acá.
+>
+> ## Lo que sigue pendiente
+>
+> El relevamiento de `Max_used_connections` con los **3 puestos en uso diario** sigue siendo el de
+> **un** puesto (2026-09-15). Todo lo demás de la tarea 2 está verificado.
 
 **Objetivo:** que la app deje de quedarse sin conexiones. Tres frentes, en este orden de urgencia:
 **A)** que ninguna operación pueda bloquearse para siempre ni retener una conexión sin techo
@@ -1934,8 +1980,9 @@ mvn clean package && java -jar target/aptium.jar
 
 ### Criterio de salida
 
-- [ ] **PENDIENTE (usuario)** — La columna "post Fase C" está llena con medianas de 3
-- [ ] **PENDIENTE (usuario)** — Las tres verificaciones del punto 2, incluido el corte de red a mano
+- [x] La columna "post Fase C" está llena con medianas de 3 — ver el bloque CERRADO arriba
+- [x] Las tres verificaciones del punto 2, incluido el corte de red a mano (2026-09-18). Queda
+      pendiente sólo el relevamiento con los 3 puestos en uso diario
 - [x] `/code-review high` corrido; los tres hallazgos aplicados (`1f8f4b3`), ninguno postergado
 - [x] `mvn verify` en verde (1 343 tests) y las clases nuevas en 80 %+:
       `Pagina` 100 %, `CriteriosPagina` 100 %, `PaginadorEnMemoria` 86 %,
@@ -2507,3 +2554,23 @@ advertencias del plan siguen en pie para cuando se mida:
 **Y una hipótesis que este plan ya dio por refutada, para que no se vuelva a testear:** el pintado
 **no** era el cuello de botella del CDE. A 6 000 filas era ≈4 % del total contra 187 ms de `leer`.
 Si Ver Equipos sigue lento después de la V23, la respuesta está en el `EXPLAIN`, no en el `addRow`.
+
+---
+
+**2026-09-18 — Medición post Fase C y el hallazgo que destapó.** Los números y las tres
+verificaciones están en el bloque CERRADO del tope. Lo que corresponde anotar acá, por el protocolo
+de "un paso que no movió la aguja es información":
+
+| Paso | Movió la aguja | Hipótesis |
+|---|---|---|
+| 5 + 6 + 10 (índices, subconsultas, datos paginados) sobre **Ver Equipos** | **Sí: 187 → 10 ms, −95 %** | Era lo previsto por el Paso 3: el cuello era `leer`, no el pintado |
+| 12 (paginación en memoria) sobre **Ver Lotes** y **Ver Ciclos** | **No, y estaba previsto que no** | Arregla el pintado (A3), que ya era de 3 ms a 2 000 filas. Se justifica por el techo que pone, no por un número que baje hoy. **No migrarlas a SQL por simetría** |
+| 8 + 9 sobre **Historial de Lavadero** | Marginal: 11 → 5 ms | Pasa el ≥ 30 % pero sobre 6 ms. La pantalla tiene 0 filas en producción; el Paso 3 ya había dicho que hoy no se paga solo y que se construye antes de que esté en uso pesado |
+| 10 + 11 sobre **Estado de Procesos** | **No medible** | La pantalla no es alcanzable desde la app — ver el bloque CERRADO |
+
+**Y un dato sin baseline comparable, para que no se lea como alarma ni se pierda:**
+`refresco-operativo` quedó en ~318 ms, el más lento de todos. No pagina, por diseño. La hipótesis es
+que es artefacto del sembrador —creó 6 000 equipos casi todos sin entregar, así que la "cola activa"
+sintética no tiene el techo natural que tiene en producción—, **pero no se verificó**. Si alguna vez
+hay que mirarlo, el baseline de `refresco-operativo` sobre `aptium_perf` no existe: el del Paso 3
+(7 ms) es sobre la base local chica y **no** sirve para comparar.
