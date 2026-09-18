@@ -3,15 +3,18 @@ package com.example.features.equipos.ortopedias.view;
 import javax.swing.*;
 import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoRegistrableInterface;
+import com.example.common.paginacion.Pagina;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.view.helpers.PanelEquipoMaterial;
 import com.example.ui.common.PanelHeader;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.CheckableComboBox;
+import com.example.ui.common.PanelPaginacion;
 import java.awt.*;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.IntConsumer;
 
 /**
  * Pantalla para visualizar el estado de equipos y materiales en tiempo real.
@@ -28,6 +31,7 @@ public class PantallaVerCDEv2 extends JPanel {
     private CheckableComboBox<String>  cmbFiltroEstado;
     private JButton                    btnLimpiarFiltros;
     private Runnable                   onFiltrosChanged;
+    private final PanelPaginacion      panelPaginacion = new PanelPaginacion();
 
     public PantallaVerCDEv2(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout());
@@ -64,11 +68,15 @@ public class PantallaVerCDEv2 extends JPanel {
     }
 
     private JPanel crearPanelSur(CardLayout navegador, JPanel contenedor) {
-        JPanel panelSur = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         btnVerLotes = new JButton(Constantes.Botones.VER_LOTES);
         btnVerLotes.setFont(Estilos.Fuentes.BOTON);
         btnVerLotes.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.VER_LOTES));
-        panelSur.add(btnVerLotes);
+        panelBotones.add(btnVerLotes);
+
+        JPanel panelSur = new JPanel(new BorderLayout());
+        panelSur.add(panelPaginacion, BorderLayout.NORTH);
+        panelSur.add(panelBotones,    BorderLayout.SOUTH);
         return panelSur;
     }
 
@@ -111,9 +119,28 @@ public class PantallaVerCDEv2 extends JPanel {
 
     // ── API pública ───────────────────────────────────────────────────────────
 
-    /** Actualiza la tabla con la lista filtrada de equipos (ortopedia + otros). */
+    /**
+     * Vuelca la página de equipos (ortopedia + otros) a la tabla, <b>en el orden en que viene</b>.
+     *
+     * <p>El orden lo fija la base, que es el único lugar que ve todas las filas; reordenar acá
+     * ordenaría dentro de la página. Por eso va a {@code actualizarEquiposEnOrden} y no a
+     * {@code actualizarEquipos}.
+     */
     public void actualizarTabla(List<EquipoRegistrableInterface> equipos) {
-        panelTablas.actualizarEquipos(equipos);
+        panelTablas.actualizarEquiposEnOrden(equipos);
+    }
+
+    /** Qué hacer cuando el operador pide otra página. Recibe el número pedido, base 1. */
+    public void setAlCambiarPagina(IntConsumer accion) {
+        panelPaginacion.setAlCambiarPagina(accion);
+    }
+
+    /**
+     * Actualiza la barra de paginación con la página que se acaba de pintar. Va junto con
+     * {@link #actualizarTabla(List)}: la barra describe lo que la tabla muestra.
+     */
+    public void mostrarPaginacion(Pagina<?> pagina) {
+        panelPaginacion.mostrar(pagina);
     }
 
     /**
@@ -128,18 +155,31 @@ public class PantallaVerCDEv2 extends JPanel {
     }
 
     /**
-     * Aplica el filtro por defecto de la pantalla: oculta los equipos ya
-     * entregados. Esta pantalla muestra el estado de los procesos en curso, y un
-     * equipo entregado ya no está en curso.
+     * Aplica el filtro por defecto de la pantalla: oculta los equipos ya entregados. Esta pantalla
+     * muestra el estado de los procesos en curso, y un equipo entregado ya no está en curso.
      *
-     * <p>Es un default de la vista, <b>no</b> un {@code WHERE}: los datos llegan
-     * completos, así que destildar ENTREGADO en el combo (o "Limpiar filtros") los
-     * trae de vuelta. Si el filtro viviera en la consulta, esa opción del combo
-     * quedaría vacía para siempre y nadie lo notaría.
+     * <h2>⚠️ Es un filtro de la CONSULTA. Antes no lo era, y el javadoc decía lo contrario</h2>
+     * Hasta la paginación, esto era un default de la <em>vista</em>: los datos llegaban completos y
+     * el combo filtraba en memoria. El javadoc de entonces advertía que meterlo en la consulta
+     * dejaría "esa opción del combo vacía para siempre". <b>Ese argumento ya no aplica, por dos
+     * razones verificables en este archivo:</b>
      *
-     * <p>No dispara el callback de filtros: quien navega a esta pantalla pide
-     * datos frescos justo después, y repintar acá mostraría un instante la lista
-     * vieja.
+     * <ul>
+     *   <li>el combo <b>no se puebla de los datos</b>, se puebla de {@code EstadoEquipo.values()}
+     *       (ver {@link #crearPanelFiltros()}), así que ninguna opción puede quedar vacía por lo que
+     *       traiga la consulta;</li>
+     *   <li>destildar ENTREGADO —o "Limpiar filtros"— <b>dispara una consulta nueva</b>, que los
+     *       trae. El riesgo que el javadoc viejo describía era el de un combo poblado del snapshot;
+     *       no es éste.</li>
+     * </ul>
+     *
+     * <p><b>Y como filtro de vista ahora sería un bug:</b> aplicado sobre una página de 50 mostraría
+     * 8 filas y el operador creería que hay 8. Filtrar en memoria lo que la base ya paginó da 8 de
+     * 50, no los 8 primeros de los que matchean.
+     *
+     * <p>No dispara el callback de filtros: quien navega a esta pantalla pide la página justo
+     * después (ver {@code EstadoProcesosController}), y repintar acá mostraría un instante la
+     * página de la visita anterior.
      */
     public void aplicarFiltroInicial() {
         cmbFiltroEstado.setSelectedItems(estadosVisiblesPorDefecto());

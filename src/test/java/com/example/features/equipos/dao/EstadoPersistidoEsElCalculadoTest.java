@@ -27,10 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code calcularEstado()} computa en memoria, para <b>toda</b> fila.
  *
  * <h2>Por qué esta equivalencia decide un diseño entero</h2>
- * La pantalla Estado de Procesos filtra por {@code eq.calcularEstado().getNombre()}
- * ({@code CdeFilterStrategy}) y <b>ordena</b> por {@code calcularEstado().getOrden()}
- * ({@code EquipoTableModel.actualizarDatos}): las dos cosas sobre un valor <em>derivado</em>, no
- * sobre una columna. Para paginar en SQL hay que filtrar y ordenar en SQL, y hay exactamente dos
+ * La pantalla Estado de Procesos filtraba en memoria por {@code eq.calcularEstado().getNombre()} y
+ * ordenaba por {@code calcularEstado().getOrden()} ({@code EquipoTableModel.actualizarDatos}): las
+ * dos cosas sobre un valor <em>derivado</em>, no sobre una columna. Para paginar en SQL hay que filtrar y ordenar en SQL, y hay exactamente dos
  * salidas:
  *
  * <ol>

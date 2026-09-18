@@ -101,8 +101,19 @@ public class PanelEquipoMaterial extends JPanel {
 
     // ── API pública ───────────────────────────────────────────────────────────
 
+    /** Vuelca una lista completa, ordenándola por estado. La usan Registrar Estado y Correcciones. */
     public void actualizarEquipos(List<EquipoRegistrableInterface> equipos) {
         modeloEquipos.actualizarDatos(equipos);
+        modeloMateriales.limpiar();
+    }
+
+    /**
+     * Vuelca una <b>página</b> ya ordenada por la base, sin reordenarla. La usa Estado de Procesos;
+     * ver {@link EquipoTableModel#actualizarDatosEnOrden(List)} para por qué reordenar acá rompería
+     * el orden global.
+     */
+    public void actualizarEquiposEnOrden(List<EquipoRegistrableInterface> pagina) {
+        modeloEquipos.actualizarDatosEnOrden(pagina);
         modeloMateriales.limpiar();
     }
 

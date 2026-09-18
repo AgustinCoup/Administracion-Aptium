@@ -1,12 +1,12 @@
 package com.example.features.equipos.controller;
 
-import com.example.app.ui.HistorialEquipos;
 import com.example.features.clientes.service.ClienteService;
+import com.example.features.equipos.controller.helpers.ConsultaEquipos;
+import com.example.features.equipos.controller.helpers.PaginasEquipos;
+import com.example.features.equipos.model.FiltroEquipos;
 import com.example.features.equipos.ortopedias.model.Equipo;
-import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.service.EquipoReporteService;
 import com.example.features.equipos.otros.model.EquipoOtros;
-import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.instituciones.service.InstitucionService;
@@ -25,12 +25,37 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Date;
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Objects;
 
 
+/**
+ * Cablea la pantalla <b>Ver Equipos</b>: dos grillas —ortopedias y "otros"— que paginan por
+ * separado sobre el mismo panel de filtros, con los filtros y el orden resueltos en SQL.
+ *
+ * <h2>Ya no hay snapshot completo, y por eso tampoco hay flag "cargado"</h2>
+ * Esta pantalla recibía el histórico entero de las dos tablas y filtraba en memoria. El viejo
+ * {@code cargado} existía porque {@code aplicarFiltros()} podía correr —por un cambio de filtro—
+ * antes de que llegara el primer snapshot, y sin él habría filtrado dos listas vacías. Con
+ * paginación cada cambio de filtro <b>es</b> una lectura: no queda ningún estado "todavía no
+ * cargué" que proteger.
+ *
+ * <h2>Dos paginadores, un filtro</h2>
+ * Las dos grillas son tablas distintas, con modelos distintos y volúmenes distintos, así que cada
+ * una tiene su página. El filtro es uno solo, porque el panel de filtros es uno solo: los campos
+ * que no aplican a "otros" —profesional, paciente, institución— los ignora su DAO, que es
+ * exactamente lo que hacía el filtrado en memoria. Ver {@link FiltroEquipos}.
+ *
+ * <h2>El filtro y las páginas se publican, no se leen desde el hilo de fondo</h2>
+ * {@code RefrescadorPantallas} lee con un {@code Supplier} sin parámetros que corre fuera del EDT.
+ * Todo cambio publica una {@link ConsultaEquipos} nueva —inmutable, en el EDT— en {@link #consulta},
+ * y el lector lee esa referencia. Nada de este controller se toca desde el hilo de fondo salvo ese
+ * campo {@code volatile}.
+ *
+ * <p><b>Invariante del que depende ese esquema:</b> toda publicación va seguida de
+ * {@code solicitarRefresco.run()}, que cancela la lectura en vuelo. Por eso los totales que llegan
+ * a {@code pintar} corresponden siempre al filtro publicado.</p>
+ */
 public class VerEquiposController {
 
     private static final Logger log = LoggerFactory.getLogger(VerEquiposController.class);
@@ -41,14 +66,22 @@ public class VerEquiposController {
     private final InstitucionService       institucionService;
     private final EquipoReporteService     equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
-
-    private List<Equipo>      todosOrtopedia = List.of();
-    private List<EquipoOtros> todosOtros     = List.of();
-    private boolean           cargado        = false;
+    private final Runnable                 solicitarRefresco;
 
     /**
-     * Alcance: lectura de equipos para la grilla y el detalle, autocompletado de
+     * Lo que el lector de fondo tiene que leer. <b>Se escribe sólo en el EDT</b> y se lee desde el
+     * hilo de fondo; por eso es {@code volatile} y por eso lo que guarda es inmutable.
+     */
+    private volatile ConsultaEquipos consulta =
+        ConsultaEquipos.primeraPagina(FiltroEquipos.sinFiltros());
+
+    /**
+     * Alcance: lectura paginada de equipos para las dos grillas y el detalle, autocompletado de
      * cliente/institución en los diálogos de impresión, y los dos reportes.
+     *
+     * <p>La lectura de las páginas no pasa por acá: la arma {@code UiCoordinator} sobre
+     * {@link #consultaActual()}, que es lo que hace que el lector corra en el hilo de fondo sin
+     * tocar estado del EDT.
      */
     public VerEquiposController(PantallaVerEquipos panel,
                                 EquipoOtrosService equipoOtrosService,
@@ -57,26 +90,31 @@ public class VerEquiposController {
                                 EquipoReporteService equipoReporteService,
                                 EquipoOtrosReporteService equipoOtrosReporteService,
                                 Runnable solicitarRefresco) {
-        this.panel                   = panel;
-        this.equipoOtrosService      = equipoOtrosService;
-        this.clienteService          = clienteService;
-        this.institucionService      = institucionService;
-        this.equipoReporteService    = equipoReporteService;
-        this.equipoOtrosReporteService = equipoOtrosReporteService;
+        this.panel                   = Objects.requireNonNull(panel, "panel");
+        this.equipoOtrosService      = Objects.requireNonNull(equipoOtrosService, "equipoOtrosService");
+        this.clienteService          = Objects.requireNonNull(clienteService, "clienteService");
+        this.institucionService      = Objects.requireNonNull(institucionService, "institucionService");
+        this.equipoReporteService    = Objects.requireNonNull(equipoReporteService, "equipoReporteService");
+        this.equipoOtrosReporteService =
+            Objects.requireNonNull(equipoOtrosReporteService, "equipoOtrosReporteService");
+        this.solicitarRefresco       = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
 
         panel.setOnImprimirOrtopedias(this::abrirDialogoOrtopedias);
         panel.setOnImprimirOtros(this::abrirDialogoOtros);
-        panel.configurarFiltros(this::aplicarFiltros);
+        panel.configurarFiltros(this::alCambiarFiltros);
+        panel.setAlCambiarPaginaOrtopedias(this::alCambiarPaginaOrtopedias);
+        panel.setAlCambiarPaginaOtros(this::alCambiarPaginaOtros);
 
-        // El botón "Actualizar" reusa el mismo disparador del componentShown.
-        panel.setAccionRefrescar(solicitarRefresco);
+        // El botón "Actualizar" (y F5) releen lo mismo que se está mirando —mismo filtro, mismas
+        // páginas— con los totales al día. Esta pantalla no acumula estado, así que no lleva guarda.
+        panel.setAccionRefrescar(this::refrescar);
 
         panel.addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e) {
-                // Sin notificar: pintar() es el único que filtra y repinta,
-                // para no mostrar un flash con datos viejos.
+                // Sin notificar: la relectura la pide alCambiarFiltros(), y pintar() es el único
+                // que repinta, para no mostrar un flash con la página de la visita anterior.
                 panel.aplicarFiltroInicial();
-                solicitarRefresco.run();
+                alCambiarFiltros();
             }
         });
 
@@ -93,74 +131,78 @@ public class VerEquiposController {
         });
     }
 
+    /**
+     * Qué tiene que leer el hilo de fondo. Es el único miembro de esta clase que se puede tocar
+     * fuera del EDT.
+     */
+    public ConsultaEquipos consultaActual() {
+        return consulta;
+    }
+
     // ── Carga de datos ────────────────────────────────────────────────────────
 
-    /**
-     * Vuelca el snapshot a la grilla. Los filtros que el usuario tenga puestos
-     * sobreviven: {@code aplicarFiltros()} los relee del panel en cada pintado.
-     */
-    public void pintar(HistorialEquipos datos) {
-        todosOrtopedia = datos.equipos();
-        todosOtros     = datos.equiposOtros();
-        cargado        = true;
-        aplicarFiltros();
+    /** Vuelca las dos páginas a sus grillas y a sus barras de paginación. Sin I/O. */
+    public void pintar(PaginasEquipos paginas) {
+        // Los totales recién leídos se arrastran: el próximo cambio de página no vuelve a contar.
+        consulta = consulta.conTotales(
+            paginas.ortopedias().totalFilas(), paginas.otros().totalFilas());
+        panel.setDatosOrtopedia(paginas.ortopedias());
+        panel.setDatosOtros(paginas.otros());
         panel.marcarActualizado();
-        log.info("Ver equipos: {} ortopedia, {} otros", todosOrtopedia.size(), todosOtros.size());
+        log.info("Ver equipos: página {} de ortopedias ({} en total), página {} de otros ({} en total)",
+            paginas.ortopedias().numeroPagina(), paginas.ortopedias().totalFilas(),
+            paginas.otros().numeroPagina(), paginas.otros().totalFilas());
     }
 
-    // ── Filtrado ──────────────────────────────────────────────────────────────
+    // ── Disparadores ──────────────────────────────────────────────────────────
 
-    private void aplicarFiltros() {
-        if (!cargado) return;
-
-        List<String> estados      = panel.getCmbEstados().getSelectedItems();
-        String       cliente      = panel.getTxtCliente().getText().trim().toLowerCase();
-        String       profesional  = panel.getTxtProfesional().getText().trim().toLowerCase();
-        String       paciente     = panel.getTxtPaciente().getText().trim().toLowerCase();
-        String       institucion  = panel.getTxtInstitucion().getText().trim().toLowerCase();
-        List<String> tiposIngreso = panel.getCmbTipoIngreso().getSelectedItems();
-        LocalDate    desde        = toLocalDate(panel.getDateDesde().getDate());
-        LocalDate    hasta        = toLocalDate(panel.getDateHasta().getDate());
-
-        List<Equipo> filtradosOrt = todosOrtopedia.stream()
-            .filter(e -> cumpleEstado(e.getEstado(), estados))
-            .filter(e -> cumpleTexto(e.getClienteNombre(),   cliente))
-            .filter(e -> cumpleTexto(e.getProfesionalNombre(), profesional))
-            .filter(e -> cumpleTexto(e.getPacienteNombre(),  paciente))
-            .filter(e -> cumpleTexto(e.getInstitucionNombre(), institucion))
-            .filter(e -> cumpleFecha(e.getFechaIngreso(), desde, hasta))
-            .collect(Collectors.toList());
-
-        List<EquipoOtros> filtradosOtros = todosOtros.stream()
-            .filter(e -> cumpleEstado(e.getEstado(), estados))
-            .filter(e -> cumpleTexto(e.getClienteNombre(), cliente))
-            .filter(e -> cumpleTipoIngreso(e.getTipoIngreso(), tiposIngreso))
-            .filter(e -> cumpleFecha(e.getFechaIngreso(), desde, hasta))
-            .collect(Collectors.toList());
-
-        panel.setDatosOrtopedia(filtradosOrt);
-        panel.setDatosOtros(filtradosOtros);
+    /** Filtro nuevo ⇒ las dos grillas vuelven a la página 1 y los dos totales se recuentan. */
+    private void alCambiarFiltros() {
+        publicarYPedir(ConsultaEquipos.primeraPagina(filtroDeLaPantalla()));
     }
 
-    private boolean cumpleEstado(EstadoEquipo estado, List<String> seleccionados) {
-        return seleccionados.isEmpty() || seleccionados.contains(estado.getNombre());
+    /** Otra página de ortopedias: no mueve la de "otros" ni recuenta nada. */
+    private void alCambiarPaginaOrtopedias(int numeroPagina) {
+        publicarYPedir(consulta.ortopediasEnPagina(numeroPagina));
     }
 
-    private boolean cumpleTexto(String campo, String filtro) {
-        if (filtro.isEmpty()) return true;
-        return campo != null && campo.toLowerCase().contains(filtro);
+    /** Otra página de "otros": no mueve la de ortopedias ni recuenta nada. */
+    private void alCambiarPaginaOtros(int numeroPagina) {
+        publicarYPedir(consulta.otrosEnPagina(numeroPagina));
     }
 
-    private boolean cumpleTipoIngreso(TipoIngresoOtros tipo, List<String> seleccionados) {
-        return seleccionados.isEmpty() || seleccionados.contains(tipo.getNombre());
+    /** Refresco pedido por el operador: las mismas páginas y el mismo filtro, contando de nuevo. */
+    private void refrescar() {
+        publicarYPedir(consulta.recontando());
     }
 
-    private boolean cumpleFecha(LocalDateTime fecha, LocalDate desde, LocalDate hasta) {
-        if (fecha == null) return desde == null && hasta == null;
-        LocalDate dia = fecha.toLocalDate();
-        if (desde != null && dia.isBefore(desde)) return false;
-        if (hasta != null && dia.isAfter(hasta))  return false;
-        return true;
+    /**
+     * Publica qué hay que leer y pide la lectura, en ese orden y siempre juntos: el
+     * {@code solicitar()} cancela lo que haya en vuelo, y así lo que llegue a {@code pintar}
+     * corresponde a lo último publicado.
+     */
+    private void publicarYPedir(ConsultaEquipos nueva) {
+        consulta = nueva;
+        solicitarRefresco.run();
+    }
+
+    /**
+     * Los siete filtros de la pantalla, tal como los va a resolver la base.
+     *
+     * <p>Los textos viajan sin normalizar: {@code FiltroEquiposSql} los trata como substring
+     * insensible a mayúsculas y considera vacío lo que esté en blanco, que es lo mismo que hacía el
+     * {@code contains} en memoria.
+     */
+    private FiltroEquipos filtroDeLaPantalla() {
+        return new FiltroEquipos(
+            panel.getCmbEstados().getSelectedItems(),
+            panel.getTxtCliente().getText().trim(),
+            panel.getTxtProfesional().getText().trim(),
+            panel.getTxtPaciente().getText().trim(),
+            panel.getTxtInstitucion().getText().trim(),
+            panel.getCmbTipoIngreso().getSelectedItems(),
+            toLocalDate(panel.getDateDesde().getDate()),
+            toLocalDate(panel.getDateHasta().getDate()));
     }
 
     private LocalDate toLocalDate(Date date) {

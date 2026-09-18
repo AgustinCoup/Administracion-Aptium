@@ -8,7 +8,11 @@ import com.example.features.autoclaves.dao.AutoclaveDAO;
 import com.example.features.autoclaves.service.AutoclaveService;
 import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
+import com.example.common.paginacion.CriteriosPagina;
 import com.example.features.catalogo.service.CatalogoService;
+import com.example.features.equipos.dao.CdeConsultaDAO;
+import com.example.features.equipos.model.FiltroEquipos;
+import com.example.features.equipos.service.CdeConsultaService;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
@@ -59,6 +63,8 @@ class CostoDelRefrescoTest extends AbstractDAOTest {
     private final AutoclaveService   autoclaveService   = new AutoclaveService(new AutoclaveDAO());
     private final CatalogoService    catalogoService    = new CatalogoService(new CatalogoDAO());
     private final LoteService        loteService        = new LoteService(new LoteDAO());
+    private final CdeConsultaService cdeConsultaService =
+        new CdeConsultaService(new CdeConsultaDAO(equipoDAO, equipoOtrosDAO));
 
     private final LectorDatosOperativos operativo = new LectorDatosOperativos(
         equipoService, equipoOtrosService, autoclaveService, catalogoService, loteService);
@@ -104,23 +110,31 @@ class CostoDelRefrescoTest extends AbstractDAOTest {
             "el refresco por guardado debe costar menos: antes " + viejo + ", ahora " + nuevo);
     }
 
+    /**
+     * La misma propiedad que antes —el costo en idas y vueltas no crece con el volumen— pero sobre
+     * lo que las pantallas del CDE leen hoy: una página.
+     *
+     * <p>Antes este test exigía lo contrario (una sentencia por equipo "otros") y lo llamaba "la
+     * contraparte del reparto". En producción era el defecto: cada una de esas sentencias agregaba
+     * toda la tabla de movimientos y "Ver Equipos" tardaba minutos. Leer cuesta filas, no idas y
+     * vueltas — y desde la paginación tampoco cuesta las filas del histórico entero.
+     */
     @Test
-    @DisplayName("el histórico trae más filas con el volumen, pero no más sentencias")
-    void historial_cantidadDeSentenciasIndependienteDelVolumen() {
+    @DisplayName("una página del CDE cuesta las mismas sentencias con y sin histórico acumulado")
+    void paginaDelCde_cantidadDeSentenciasIndependienteDelVolumen() {
         sembrarActivos(3);
-        int sinHistorico = contarSentencias(
-            new LectorHistorialEquipos(equipoService, equipoOtrosService)::get);
+        int sinHistorico = contarSentencias(this::leerUnaPaginaDelCde);
 
         sembrarEntregados(HISTORICO);
-        int conHistorico = contarSentencias(
-            new LectorHistorialEquipos(equipoService, equipoOtrosService)::get);
+        int conHistorico = contarSentencias(this::leerUnaPaginaDelCde);
 
-        // Antes este test exigía lo contrario (una sentencia por equipo "otros") y lo
-        // llamaba "la contraparte del reparto". En producción era el defecto: cada una
-        // de esas sentencias agregaba toda la tabla de movimientos y "Ver Equipos"
-        // tardaba minutos. Leer el histórico cuesta filas, no idas y vueltas.
         assertEquals(sinHistorico, conHistorico,
-            "el histórico no debe hacer una sentencia por equipo: " + sinHistorico + " → " + conHistorico);
+            "leer una página no debe hacer una sentencia por equipo: "
+                + sinHistorico + " → " + conHistorico);
+    }
+
+    private void leerUnaPaginaDelCde() {
+        cdeConsultaService.obtenerPagina(FiltroEquipos.sinFiltros(), CriteriosPagina.primera());
     }
 
     // ── Lo que leía el snapshot único, para tener con qué comparar ────────────

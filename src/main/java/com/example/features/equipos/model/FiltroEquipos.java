@@ -25,11 +25,11 @@ import java.util.List;
  * pantallas no hacen lo mismo:
  *
  * <ul>
- *   <li><b>Ver Equipos</b> ({@code VerEquiposController.aplicarFiltros}) aplica profesional,
+ *   <li><b>Ver Equipos</b> aplica profesional,
  *       paciente e institución <b>sólo</b> a la tabla de ortopedias; la de "otros" nunca los ve.
  *       O sea: escribir un profesional filtra la grilla de arriba y deja la de abajo intacta. Esos
  *       tres campos se <b>ignoran</b> en {@code EquipoOtrosDAO}.</li>
- *   <li><b>Estado de Procesos</b> ({@code CdeFilterStrategy}) aplica el de institución a las dos,
+ *   <li><b>Estado de Procesos</b> aplicaba el de institución a las dos,
  *       vía {@code getDescripcionSecundaria()}, que para "otros" devuelve cadena vacía. Como
  *       {@code TextFilterUtils.containsIgnoreCase("", filtro)} sólo es verdadero con el filtro
  *       vacío, el efecto es: <b>los "otros" aparecen únicamente cuando el campo institución está

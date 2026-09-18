@@ -197,7 +197,7 @@ class FiltroEquiposSqlTest {
     class NoAplicaAOtros {
 
         /**
-         * {@code VerEquiposController.aplicarFiltros} aplica profesional, paciente e institución
+         * El filtrado en memoria de Ver Equipos aplicaba profesional, paciente e institución
          * <b>sólo</b> a la grilla de ortopedias. Preservarlo es el punto: es el comportamiento que
          * el operador conoce.
          */
@@ -231,7 +231,7 @@ class FiltroEquiposSqlTest {
     class AsimetriaDelCde {
 
         /**
-         * {@code CdeFilterStrategy} pasa {@code getDescripcionSecundaria()} —cadena vacía para
+         * El filtrado en memoria pasaba {@code getDescripcionSecundaria()} —cadena vacía para
          * "otros"— por {@code containsIgnoreCase}, que con filtro no vacío da falso siempre. O sea
          * que con el campo institución escrito, ningún "otros" entra.
          */

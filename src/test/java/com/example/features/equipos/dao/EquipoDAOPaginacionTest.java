@@ -34,10 +34,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * predicado en memoria que la pantalla usa hoy— sobre el mismo conjunto, y exige el mismo
  * resultado.
  *
- * <p>El predicado en memoria vive en {@link FiltradoDeReferencia}, transcripto de
- * {@code VerEquiposController.aplicarFiltros}. Es una transcripción y no una llamada porque ese
- * método es privado y está adentro de una clase de Swing; el Paso 11 del plan lo borra, y esta
- * copia queda como lo único que documenta qué hacía.
+ * <p>El predicado en memoria vive en {@link FiltradoDeReferencia}, transcripto del
+ * {@code aplicarFiltros()} que {@code VerEquiposController} tenía. Fue una transcripción y no una
+ * llamada porque ese método era privado y estaba adentro de una clase de Swing; el Paso 11 lo
+ * <b>borró</b>, así que esta copia es hoy lo único que documenta qué hacía — y, al ejecutarse
+ * contra el {@code WHERE} real, lo único que lo sigue verificando.
  */
 class EquipoDAOPaginacionTest extends AbstractDAOTest {
 

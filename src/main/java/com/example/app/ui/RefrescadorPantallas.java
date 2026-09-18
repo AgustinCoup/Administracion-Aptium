@@ -17,9 +17,16 @@ import javax.swing.Timer;
  * <p><b>Un refrescador por grupo.</b> No todas las pantallas quieren lo mismo ni
  * en el mismo momento: las operativas necesitan la cola activa en cada guardado,
  * las de consulta necesitan el histórico completo solo cuando el usuario las abre.
- * Por eso el tipo del snapshot es un parámetro: {@link DatosOperativos},
- * {@link HistorialEquipos} e {@link HistorialLotes} usan el mismo mecanismo con
- * disparadores y costos distintos.
+ * Por eso el tipo del snapshot es un parámetro: {@link DatosOperativos} y
+ * {@link HistorialLotes} usan el mismo mecanismo con disparadores y costos
+ * distintos.
+ *
+ * <p><b>Y desde la paginación, ese tipo no siempre es un snapshot completo.</b> Las
+ * pantallas paginadas leen una {@link com.example.common.paginacion.Pagina} —o un
+ * par de ellas—, con el filtro y la página que el controller publicó. El mecanismo
+ * es el mismo; lo que cambia es que el lector ya no dice "traé todo" sino "traé
+ * esto", y por eso esas pantallas no comparten grupo con nadie: dos pantallas con
+ * filtros propios no pueden repartirse una misma lectura.
  *
  * <p><b>Debounce.</b> Las ráfagas son la norma, no la excepción: una corrección
  * dispara el refresco de equipos <i>y</i> el de cambios aplicados. Un

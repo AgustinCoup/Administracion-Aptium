@@ -1,6 +1,7 @@
 package com.example.features.equipos.view;
 
 import com.example.common.constants.Constantes;
+import com.example.common.paginacion.Pagina;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.otros.model.EquipoOtros;
@@ -9,6 +10,7 @@ import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.PanelHeader;
+import com.example.ui.common.PanelPaginacion;
 import com.example.ui.common.TableStyler;
 import com.toedter.calendar.JDateChooser;
 
@@ -20,6 +22,7 @@ import java.awt.event.MouseMotionAdapter;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
 
 public class PantallaVerEquipos extends JPanel {
@@ -66,6 +69,12 @@ public class PantallaVerEquipos extends JPanel {
     private final JLabel  lblConteoOtros;
     private final JButton btnImprimirOrtopedias;
     private final JButton btnImprimirOtros;
+
+    // ── Paginación ────────────────────────────────────────────────────────────
+    // Una barra por grilla: las dos tablas paginan independientemente, así que pasar a la página 3
+    // de ortopedias no mueve la de "otros". Comparten el panel de filtros, no la página.
+    private final PanelPaginacion paginacionOrtopedias = new PanelPaginacion();
+    private final PanelPaginacion paginacionOtros      = new PanelPaginacion();
 
     public PantallaVerEquipos(CardLayout navegador, JPanel contenedor) {
         setLayout(new BorderLayout(5, 5));
@@ -160,7 +169,9 @@ public class PantallaVerEquipos extends JPanel {
 
         JPanel panelTabOrtopedia = new JPanel(new BorderLayout(0, 4));
         panelTabOrtopedia.add(new JScrollPane(tablaOrtopedias), BorderLayout.CENTER);
-        panelTabOrtopedia.add(crearPanelSurTab(lblConteoOrtopedias, btnImprimirOrtopedias), BorderLayout.SOUTH);
+        panelTabOrtopedia.add(
+            crearPanelSurTab(lblConteoOrtopedias, btnImprimirOrtopedias, paginacionOrtopedias),
+            BorderLayout.SOUTH);
 
         // ── Tab Otros ────────────────────────────────────────────────────────
         String[] colsOtros = {"Fecha Ingreso", "Cliente", "Tipo Ingreso", "Estado"};
@@ -182,7 +193,9 @@ public class PantallaVerEquipos extends JPanel {
 
         JPanel panelTabOtros = new JPanel(new BorderLayout(0, 4));
         panelTabOtros.add(new JScrollPane(tablaOtros), BorderLayout.CENTER);
-        panelTabOtros.add(crearPanelSurTab(lblConteoOtros, btnImprimirOtros), BorderLayout.SOUTH);
+        panelTabOtros.add(
+            crearPanelSurTab(lblConteoOtros, btnImprimirOtros, paginacionOtros),
+            BorderLayout.SOUTH);
 
         tabs = new JTabbedPane();
         tabs.setFont(Estilos.Fuentes.LABEL);
@@ -214,7 +227,29 @@ public class PantallaVerEquipos extends JPanel {
         header.marcarActualizado();
     }
 
-    public void setDatosOrtopedia(List<Equipo> lista) {
+    /** Qué hacer cuando el operador pide otra página de ortopedias. Número pedido, base 1. */
+    public void setAlCambiarPaginaOrtopedias(IntConsumer accion) {
+        paginacionOrtopedias.setAlCambiarPagina(accion);
+    }
+
+    /** Qué hacer cuando el operador pide otra página de "otros". Número pedido, base 1. */
+    public void setAlCambiarPaginaOtros(IntConsumer accion) {
+        paginacionOtros.setAlCambiarPagina(accion);
+    }
+
+    /**
+     * Vuelca la página de ortopedias: la tabla, la barra de paginación y el conteo, juntos.
+     *
+     * <p>El conteo muestra el <b>total del filtro</b>, no las filas de la página: decir
+     * "50 registros" cuando hay 1 200 que matchean sería peor que no decir nada. Las 50 que se ven
+     * las informa la barra ("Mostrando 1-50 de 1200").
+     */
+    public void setDatosOrtopedia(Pagina<Equipo> pagina) {
+        volcarOrtopedias(pagina.contenido(), pagina.totalFilas());
+        paginacionOrtopedias.mostrar(pagina);
+    }
+
+    private void volcarOrtopedias(List<Equipo> lista, long total) {
         listaOrtopedias = lista;
         modeloOrtopedias.setRowCount(0);
         for (Equipo eq : lista) {
@@ -227,10 +262,16 @@ public class PantallaVerEquipos extends JPanel {
                 eq.getEstado().getNombre()
             });
         }
-        lblConteoOrtopedias.setText(lista.size() + " registro" + (lista.size() == 1 ? "" : "s"));
+        lblConteoOrtopedias.setText(textoConteo(total));
     }
 
-    public void setDatosOtros(List<EquipoOtros> lista) {
+    /** Vuelca la página de "otros": la tabla, la barra de paginación y el conteo, juntos. */
+    public void setDatosOtros(Pagina<EquipoOtros> pagina) {
+        volcarOtros(pagina.contenido(), pagina.totalFilas());
+        paginacionOtros.mostrar(pagina);
+    }
+
+    private void volcarOtros(List<EquipoOtros> lista, long total) {
         listaOtros = lista;
         modeloOtros.setRowCount(0);
         for (EquipoOtros eq : lista) {
@@ -241,7 +282,11 @@ public class PantallaVerEquipos extends JPanel {
                 eq.getEstado().getNombre()
             });
         }
-        lblConteoOtros.setText(lista.size() + " registro" + (lista.size() == 1 ? "" : "s"));
+        lblConteoOtros.setText(textoConteo(total));
+    }
+
+    private static String textoConteo(long total) {
+        return total + " registro" + (total == 1 ? "" : "s");
     }
 
     public void actualizarFiltrosParaTab(int tabIndex) {
@@ -260,10 +305,12 @@ public class PantallaVerEquipos extends JPanel {
         FilterUiHelper.bindOnDateChange(notificar, dateDesde, dateHasta);
         cmbTipoIngreso.setOnSelectionChange(notificar);
         btnLimpiar.addActionListener(e -> limpiarFiltros(onCambio));
-        tabs.addChangeListener(e -> {
-            actualizarFiltrosParaTab(tabs.getSelectedIndex());
-            onCambio.run();
-        });
+        // Cambiar de pestaña sólo muestra u oculta los filtros exclusivos de cada grilla; sus
+        // valores no cambian, así que el resultado de las dos consultas es el mismo que ya está en
+        // pantalla. Antes esto notificaba —era gratis, porque re-filtraba un snapshot en memoria—;
+        // con paginación cada notificación es una lectura, y además volvería las dos grillas a la
+        // página 1: el operador perdería la página por mirar la otra pestaña.
+        tabs.addChangeListener(e -> actualizarFiltrosParaTab(tabs.getSelectedIndex()));
     }
 
     public Equipo      getEquipoOrtopediaAt(int modelRow) { return modelRow >= 0 && modelRow < listaOrtopedias.size() ? listaOrtopedias.get(modelRow) : null; }
@@ -302,12 +349,15 @@ public class PantallaVerEquipos extends JPanel {
      * Distinto de {@link #limpiarFiltros()}, que muestra todos los estados sin
      * excepción.
      *
-     * <p>No dispara el callback de {@link #configurarFiltros}: quien navega a
-     * esta pantalla suele recargar datos frescos justo después (ver
-     * VerEquiposController), y renderizar acá repintaría con la lista vieja
-     * un instante antes de que esa recarga la reemplace. Usar
-     * {@link #aplicarFiltroInicialYNotificar()} si hace falta el repintado
-     * inmediato.
+     * <p>Como el de la otra pantalla del CDE, <b>es un filtro de la consulta</b>: los estados
+     * tildados viajan en el {@code WHERE} y el total refleja el filtro, no el universo. No queda
+     * ningún filtro de vista — filtrar en memoria una página de 50 daría 8 de 50 en vez de los 8
+     * primeros de los que matchean.
+     *
+     * <p>No dispara el callback de {@link #configurarFiltros}: quien navega a esta pantalla pide la
+     * página justo después (ver {@code VerEquiposController}), y repintar acá mostraría un instante
+     * la página de la visita anterior. Usar {@link #aplicarFiltroInicialYNotificar()} si hace falta
+     * el repintado inmediato.
      */
     public void aplicarFiltroInicial() {
         silenciandoCallback = true;
@@ -342,16 +392,21 @@ public class PantallaVerEquipos extends JPanel {
             .collect(Collectors.toList());
     }
 
-    private JPanel crearPanelSurTab(JLabel lblConteo, JButton btnImprimir) {
+    private JPanel crearPanelSurTab(JLabel lblConteo, JButton btnImprimir,
+                                    PanelPaginacion paginacion) {
         JLabel lblHint = new JLabel("Doble clic para ver detalle");
         lblHint.setFont(Estilos.Fuentes.LABEL);
         lblHint.setForeground(Color.GRAY);
         JPanel panelEste = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         panelEste.add(lblHint);
         panelEste.add(btnImprimir);
+        JPanel fila = new JPanel(new BorderLayout());
+        fila.add(lblConteo, BorderLayout.WEST);
+        fila.add(panelEste, BorderLayout.EAST);
+
         JPanel panel = new JPanel(new BorderLayout());
-        panel.add(lblConteo, BorderLayout.WEST);
-        panel.add(panelEste, BorderLayout.EAST);
+        panel.add(paginacion, BorderLayout.NORTH);
+        panel.add(fila,       BorderLayout.SOUTH);
         return panel;
     }
 

@@ -2,7 +2,12 @@ package com.example.app.ui;
 
 import com.example.app.AppContext;
 import com.example.common.constants.Constantes;
+import com.example.common.model.EquipoRegistrableInterface;
+import com.example.features.equipos.controller.helpers.PaginasEquipos;
 import com.example.features.equipos.ortopedias.controller.EstadoProcesosController;
+import com.example.features.equipos.ortopedias.service.EquipoService;
+import com.example.features.equipos.otros.service.EquipoOtrosService;
+import com.example.features.equipos.service.CdeConsultaService;
 import com.example.features.equipos.ortopedias.controller.CorreccionesController;
 import com.example.features.equipos.common.controller.EquiposParaEntregarController;
 import com.example.features.equipos.ortopedias.controller.IngresoOrtopediaController;
@@ -62,16 +67,25 @@ public class UiCoordinator {
         //    y ellos necesitan poder pedirle una lectura. Se cablean después de crear
         //    ambos; hasta entonces solicitar() es un no-op.
         //
-        //    Son cinco grupos con disparadores distintos, no un refresco global:
+        //    Son seis grupos con disparadores distintos, no un refresco global:
         //      · operativo          → cada guardado; la cola activa, sin histórico.
-        //      · historial equipos  → al abrir "Ver Equipos" o "Estado de procesos".
+        //      · ver equipos        → al abrir "Ver Equipos"; dos páginas, una por grilla.
+        //      · cde                → al abrir "Estado de procesos"; una página.
         //      · historial lotes    → al abrir "Ver Lotes".
         //      · historial ciclos   → al abrir "Ver Ciclos".
         //      · historial lavadero → al abrir "Historial".
         //    Las pantallas de consulta se releen cuando el usuario las mira; antes
         //    se releían en cada guardado incluso estando ocultas.
+        //
+        //    Los dos primeros de consulta eran UNO solo ("historial equipos"), que repartía el
+        //    mismo snapshot a las dos pantallas del CDE. Con paginación no hay snapshot común: cada
+        //    una pide su página con sus propios filtros, así que un grupo que repartiera dos
+        //    páginas distintas a dos pantallas distintas no sería un grupo, sería dos. Se pierde la
+        //    coherencia entre ellas y está aceptado: son dos cards del CardLayout y nunca se miran
+        //    juntas, así que esa coherencia era invisible.
         Disparador operativo         = new Disparador();
-        Disparador historialEquipos  = new Disparador();
+        Disparador verEquipos        = new Disparador();
+        Disparador cde               = new Disparador();
         Disparador historialLotes    = new Disparador();
         Disparador historialCiclos   = new Disparador();
         Disparador historialLavadero = new Disparador();
@@ -82,7 +96,7 @@ public class UiCoordinator {
         // ── Controllers ──────────────────────────────────────────────────────
 
         EstadoProcesosController cdeViewController = new EstadoProcesosController(
-            vista.getPantallaVerCDEv2(), historialEquipos);
+            vista.getPantallaVerCDEv2(), cde);
 
         RegistrarEstadoController registrarEstadoController = new RegistrarEstadoController(
             vista.getPantallaRegistrarEstado(),
@@ -133,7 +147,7 @@ public class UiCoordinator {
             context.getInstitucionService(),
             context.getEquipoReporteService(),
             context.getEquipoOtrosReporteService(),
-            historialEquipos);
+            verEquipos);
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
         correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());
@@ -146,8 +160,9 @@ public class UiCoordinator {
         operativo.cablear(crearRefrescadorOperativo(
             registrarEstadoController, equiposParaEntregarController, lotesController));
 
-        historialEquipos.cablear(crearRefrescadorHistorialEquipos(
-            cdeViewController, verEquiposController));
+        verEquipos.cablear(crearRefrescadorVerEquipos(verEquiposController));
+
+        cde.cablear(crearRefrescadorCde(cdeViewController));
 
         historialLotes.cablear(crearRefrescadorHistorialLotes(verLotesController));
 
@@ -266,22 +281,50 @@ public class UiCoordinator {
             "refresco-operativo", lector, repartir, this::mostrarErrorDeRefresco);
     }
 
-    /** Las dos pantallas que consultan el histórico de equipos. */
-    private RefrescadorPantallas<HistorialEquipos> crearRefrescadorHistorialEquipos(
-        EstadoProcesosController cde,
+    /**
+     * "Ver Equipos", <b>de a una página por grilla</b>.
+     *
+     * <p>Era la mitad del grupo {@code refresco-historial-equipos}, que alimentaba también a
+     * "Estado de procesos" desde un snapshot común. Con paginación ese snapshot no existe: cada
+     * pantalla pide su página con sus filtros, así que el grupo se partió en dos. <b>Las dos dejan
+     * de estar garantizadamente coherentes entre sí, y está aceptado</b>: son dos cards del
+     * {@code CardLayout}, sólo una está visible, y nunca se miran juntas.
+     *
+     * <p>El lector corre en el hilo de fondo y el filtro y las páginas son estado del controller,
+     * que sólo se toca en el EDT. Por eso no lee campos del controller: lee la
+     * {@code ConsultaEquipos} inmutable que el controller publicó — <b>en el momento de lanzar</b>,
+     * no capturada al construir el lector, que congelaría la primera página para siempre.
+     */
+    private RefrescadorPantallas<PaginasEquipos> crearRefrescadorVerEquipos(
         VerEquiposController verEquipos
     ) {
-        LectorHistorialEquipos lector = new LectorHistorialEquipos(
-            context.getEquipoService(),
-            context.getEquipoOtrosService());
-
-        Consumer<HistorialEquipos> repartir = datos -> {
-            cde.pintar(datos);
-            verEquipos.pintar(datos);
-        };
+        EquipoService      ortopedias = context.getEquipoService();
+        EquipoOtrosService otros      = context.getEquipoOtrosService();
 
         return new RefrescadorPantallas<>(
-            "refresco-historial-equipos", lector, repartir, this::mostrarErrorDeRefresco);
+            "refresco-ver-equipos",
+            () -> verEquipos.consultaActual().leer(ortopedias, otros),
+            verEquipos::pintar,
+            this::mostrarErrorDeRefresco);
+    }
+
+    /**
+     * "Estado de procesos", <b>de a una página</b>. La otra mitad del grupo disuelto; ver
+     * {@link #crearRefrescadorVerEquipos} para por qué son dos y qué se perdió al separarlos.
+     *
+     * <p>Su página sale de {@code CdeConsultaDAO}, que es el que une las dos tablas: por eso este
+     * grupo lee de un service propio y no de los dos de equipos.
+     */
+    private RefrescadorPantallas<Pagina<EquipoRegistrableInterface>> crearRefrescadorCde(
+        EstadoProcesosController cde
+    ) {
+        CdeConsultaService service = context.getCdeConsultaService();
+
+        return new RefrescadorPantallas<>(
+            "refresco-cde",
+            () -> cde.consultaActual().leer(service),
+            cde::pintar,
+            this::mostrarErrorDeRefresco);
     }
 
     /** La pantalla que consulta el histórico de lotes. */

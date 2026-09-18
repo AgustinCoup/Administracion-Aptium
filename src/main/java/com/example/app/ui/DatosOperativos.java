@@ -17,8 +17,9 @@ import java.util.Map;
  * salga de la base. Sin eso el trabajo por guardado crece con el volumen acumulado
  * de la empresa, que es exactamente lo que no tiene por qué crecer.
  *
- * <p>El histórico completo vive en {@link HistorialEquipos} e {@link HistorialLotes},
- * que se leen solo cuando el usuario abre una pantalla de consulta.
+ * <p>El histórico vive en las pantallas de consulta, que leen solo cuando el
+ * usuario las abre: {@link HistorialLotes} lo trae completo, y las dos del CDE
+ * lo traen de a una página ({@code refresco-ver-equipos} y {@code refresco-cde}).
  *
  * <p>Es inmutable de raíz para adentro: se construye en un hilo de fondo y se
  * consume en el hilo de UI. Los modelos que contiene se tratan como de solo

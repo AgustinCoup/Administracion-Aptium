@@ -78,8 +78,9 @@ public final class FiltroEquiposSql {
      * porque es lo que hace la pantalla: escribe un pedazo del nombre, no un número.
      *
      * <p>{@code tiposIngreso} se ignora: las ortopedias no tienen modalidad de ingreso. Es lo que
-     * hace hoy {@code VerEquiposController.aplicarFiltros}, que sólo se lo aplica a la grilla de
-     * "otros".
+     * hacía el filtrado en memoria de Ver Equipos, que sólo se lo aplicaba a la grilla de
+     * "otros" — transcripto en {@code EquipoDAOPaginacionTest.FiltradoDeReferencia}, que es lo
+     * que sigue verificando esta equivalencia.
      */
     public static Condicion paraOrtopedias(FiltroEquipos filtro) {
         List<String> clausulas = new ArrayList<>();
@@ -128,7 +129,7 @@ public final class FiltroEquiposSql {
      * aplica la grilla de "otros" de Ver Equipos</b>: estados, cliente, tipo de ingreso y fechas.
      *
      * <p><b>Profesional, paciente e institución no se aplican, y eso es deliberado.</b>
-     * {@code VerEquiposController.aplicarFiltros} se los aplica únicamente a la grilla de
+     * El filtrado en memoria de Ver Equipos se los aplicaba únicamente a la grilla de
      * ortopedias: escribir un profesional filtra la tabla de arriba y deja la de abajo intacta. Es
      * el comportamiento que el operador conoce y este paso no lo cambia. La otra pantalla del CDE
      * hace algo distinto con institución — ver {@link #paraOtrosEnUnionCde(FiltroEquipos)}.
@@ -153,7 +154,9 @@ public final class FiltroEquiposSql {
      * Procesos</b>: con el campo institución escrito, ningún "otros" entra.
      *
      * <h2>De dónde sale {@code 1 = 0} y por qué no es un truco</h2>
-     * {@code CdeFilterStrategy} filtra por {@code eq.getDescripcionSecundaria()}, que para
+     * El filtrado en memoria que esta pantalla hacía —el {@code CdeFilterStrategy} que el Paso 11
+     * borró, transcripto en {@code CdeConsultaDAOTest.FiltradoDeReferencia}— iba por
+     * {@code eq.getDescripcionSecundaria()}, que para
      * {@code EquipoOtros} devuelve <b>cadena vacía</b> por diseño
      * ({@code EquipoOtros.getDescripcionSecundaria()}), y lo pasa por
      * {@code TextFilterUtils.containsIgnoreCase(valor, filtro)}, que es verdadero cuando el filtro
@@ -237,7 +240,7 @@ public final class FiltroEquiposSql {
      *   <li><b>Un equipo sin fecha pasa sólo si los dos extremos son nulos.</b>
      *       {@code fecha_ingreso} es nullable en las dos tablas (V1, V2). En SQL,
      *       {@code NULL >= ?} y {@code NULL < ?} son desconocidos y no pasan; sin extremos no hay
-     *       cláusula y pasa. Coincide con {@code VerEquiposController.cumpleFecha}, que devuelve
+     *       cláusula y pasa. Coincide con el {@code cumpleFecha} que la pantalla tenía, que devolvía
      *       {@code desde == null && hasta == null} para fecha nula. La rama existe traducida, no
      *       borrada.</li>
      * </ul>

@@ -7,8 +7,6 @@ import com.example.common.paginacion.CriteriosPagina;
 import com.example.common.paginacion.Pagina;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.equipos.model.FiltroEquipos;
-import com.example.features.equipos.ortopedias.controller.helpers.CdeFilterCriteria;
-import com.example.features.equipos.ortopedias.controller.helpers.CdeFilterStrategy;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
@@ -37,9 +35,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>Tres cosas distintas que hay que probar, y sólo una es obvia</h2>
  * <ol>
- *   <li><b>Qué filas entran</b> — {@link Equivalencia} lo compara contra {@code CdeFilterStrategy},
- *       que es el filtro que la pantalla usa hoy. Acá sí se <em>llama</em> al original y no se
- *       transcribe: es una clase plana, sin Swing.</li>
+ *   <li><b>Qué filas entran</b> — {@link Equivalencia} lo compara contra
+ *       {@link FiltradoDeReferencia}, la transcripción del {@code CdeFilterStrategy} que esta
+ *       pantalla usaba antes de paginar. <b>Ese original ya no existe</b>: lo borró el Paso 11 al
+ *       quedarse sin uso, y su semántica está acá porque es lo único que la sigue verificando —
+ *       guardada sólo en el historial de git no verificaría nada.</li>
  *   <li><b>En qué orden salen</b> — {@link Orden}. La pantalla ordena por estado (más atrasado
  *       primero), no por fecha; si el orden no fuera global, la página 2 volvería a empezar por los
  *       más atrasados <em>de esa página</em>.</li>
@@ -53,8 +53,6 @@ class CdeConsultaDAOTest extends AbstractDAOTest {
     private final EquipoDAO equipoDAO = new EquipoDAO();
     private final EquipoOtrosDAO equipoOtrosDAO = new EquipoOtrosDAO(new CatalogoOtrosDAO());
     private final CdeConsultaDAO dao = new CdeConsultaDAO(equipoDAO, equipoOtrosDAO);
-
-    private final CdeFilterStrategy estrategiaDeHoy = new CdeFilterStrategy();
 
     @Override
     protected void limpiarTablas() throws SQLException {
@@ -228,10 +226,10 @@ class CdeConsultaDAOTest extends AbstractDAOTest {
         }
     }
 
-    // ── equivalencia con CdeFilterStrategy ───────────────────────────────────
+    // ── equivalencia con el filtrado en memoria que reemplaza ────────────────
 
     @Nested
-    @DisplayName("equivalencia con CdeFilterStrategy")
+    @DisplayName("equivalencia con el filtrado en memoria de la pantalla")
     class Equivalencia {
 
         @Test
@@ -267,6 +265,31 @@ class CdeConsultaDAOTest extends AbstractDAOTest {
                 menosEntregado, null, null, null, null, List.of(), null, null));
         }
 
+        /**
+         * El default entra por el {@code WHERE}, así que el total tiene que ser el del filtro y no
+         * el del universo. Es lo que separa un filtro de consulta de uno de vista: con el segundo,
+         * la barra diría "de 1200" y la grilla mostraría los que no están entregados.
+         */
+        @Test
+        @DisplayName("con el default puesto, el total es menor que el universo")
+        void elTotalRefleljaElFiltroYNoElUniverso() {
+            sembrarElUniverso();
+            List<String> menosEntregado = java.util.Arrays.stream(EstadoEquipo.values())
+                .filter(e -> e != EstadoEquipo.ENTREGADO)
+                .map(EstadoEquipo::getNombre)
+                .toList();
+
+            long universo = dao.contar(FiltroEquipos.sinFiltros());
+            Pagina<EquipoRegistrableInterface> pagina = dao.obtenerPagina(
+                new FiltroEquipos(menosEntregado, null, null, null, null, List.of(), null, null),
+                new CriteriosPagina(1, 1000));
+
+            assertTrue(pagina.totalFilas() < universo,
+                "el universo sembrado tiene entregados: " + pagina.totalFilas() + " vs " + universo);
+            assertEquals(pagina.contenido().size(), pagina.totalFilas(),
+                "y el total tiene que ser el de las filas que realmente matchean");
+        }
+
         @Test
         @DisplayName("cliente")
         void porCliente() {
@@ -276,8 +299,8 @@ class CdeConsultaDAOTest extends AbstractDAOTest {
         }
 
         /**
-         * <b>La semántica rara que hay que preservar exactamente.</b> {@code CdeFilterStrategy}
-         * filtra por {@code getDescripcionSecundaria()}, que para "otros" es cadena vacía: con el
+         * <b>La semántica rara que hay que preservar exactamente.</b> El filtrado de la pantalla
+         * iba por {@code getDescripcionSecundaria()}, que para "otros" es cadena vacía: con el
          * campo institución escrito, los "otros" desaparecen de la grilla; con el campo en blanco,
          * aparecen todos. No se arregla: es el comportamiento que el operador conoce, y arreglarlo
          * sería un cambio visible decidido de contrabando.
@@ -320,27 +343,74 @@ class CdeConsultaDAOTest extends AbstractDAOTest {
         }
 
         /**
-         * Compara el conjunto que devuelve el SQL contra el que devuelve {@code CdeFilterStrategy}
-         * sobre el mismo universo — el original, no una transcripción: es una clase plana.
-         * Conjuntos y no listas, porque el orden lo cuidan los tests de {@link Orden}.
+         * Compara el conjunto que devuelve el SQL contra el que devolvía el filtrado en memoria
+         * sobre el mismo universo. Conjuntos y no listas, porque el orden lo cuidan los tests de
+         * {@link Orden}.
          */
         private void exigirEquivalencia(FiltroEquipos filtro) {
             List<EquipoRegistrableInterface> universo = new ArrayList<>();
             universo.addAll(equipoDAO.obtenerTodos());
             universo.addAll(equipoOtrosDAO.obtenerTodos());
 
-            CdeFilterCriteria criterio = new CdeFilterCriteria(
-                filtro.cliente() == null ? "" : filtro.cliente(),
-                filtro.institucion() == null ? "" : filtro.institucion(),
-                filtro.estados());
-            Set<String> enMemoria = Set.copyOf(claves(estrategiaDeHoy.filter(universo, criterio)));
+            Set<String> enMemoria =
+                Set.copyOf(claves(FiltradoDeReferencia.filtrar(universo, filtro)));
 
             Pagina<EquipoRegistrableInterface> pagina = dao.obtenerPagina(filtro, new CriteriosPagina(1, 1000));
 
             assertEquals(enMemoria, Set.copyOf(claves(pagina.contenido())),
-                "el filtro en SQL y CdeFilterStrategy tienen que dar el mismo conjunto");
+                "el filtro en SQL y el filtrado en memoria tienen que dar el mismo conjunto");
             assertEquals(enMemoria.size(), pagina.totalFilas(),
                 "y el total tiene que coincidir con ese conjunto");
+        }
+    }
+
+    /**
+     * El filtrado que {@code EstadoProcesosController} hacía en memoria, transcripto literalmente
+     * desde el {@code CdeFilterStrategy} que el Paso 11 borró.
+     *
+     * <h2>Por qué se transcribe y no se importa</h2>
+     * Porque el original ya no existe: quedó sin uso cuando los tres filtros pasaron a SQL, y el
+     * repo no deja clases muertas. Lo que esa clase documentaba —qué filas entran— es justamente lo
+     * que no se puede perder, así que vive acá, que es el único lugar donde se sigue ejecutando y
+     * comparando contra el {@code WHERE} real.
+     *
+     * <h2>Las tres reglas, tal cual estaban</h2>
+     * <ul>
+     *   <li>cliente: {@code contains} insensible a mayúsculas sobre {@code getClienteNombre()};</li>
+     *   <li>institución: lo mismo sobre {@code getDescripcionSecundaria()}, que para "otros" es
+     *       cadena vacía — de ahí que escribir algo los haga desaparecer;</li>
+     *   <li>estados: lista vacía pasa; si no, {@code calcularEstado().getNombre()} tiene que estar
+     *       en la lista. El SQL usa la <b>columna</b>, que vale lo mismo — lo sostiene
+     *       {@link EstadoPersistidoEsElCalculadoTest}, y que esta comparación use
+     *       {@code calcularEstado()} y el SQL la columna es parte de lo que se prueba acá.</li>
+     * </ul>
+     *
+     * <p>Los cuatro campos restantes de {@link FiltroEquipos} —profesional, paciente, tipo de
+     * ingreso y fechas— no los ofrece esta pantalla, así que no se transcriben: van siempre vacíos.
+     */
+    private static final class FiltradoDeReferencia {
+
+        static List<EquipoRegistrableInterface> filtrar(List<EquipoRegistrableInterface> todos,
+                                                        FiltroEquipos f) {
+            String cliente     = normalizar(f.cliente());
+            String institucion = normalizar(f.institucion());
+
+            return todos.stream()
+                .filter(eq -> contiene(eq.getClienteNombre(), cliente))
+                .filter(eq -> contiene(eq.getDescripcionSecundaria(), institucion))
+                .filter(eq -> f.estados().isEmpty()
+                           || f.estados().contains(eq.calcularEstado().getNombre()))
+                .toList();
+        }
+
+        private static String normalizar(String valor) {
+            return valor == null ? "" : valor.trim().toLowerCase(java.util.Locale.ROOT);
+        }
+
+        /** {@code TextFilterUtils.containsIgnoreCase}: filtro vacío pasa siempre, campo nulo no. */
+        private static boolean contiene(String campo, String filtro) {
+            if (filtro.isEmpty()) return true;
+            return campo != null && campo.toLowerCase(java.util.Locale.ROOT).contains(filtro);
         }
     }
 

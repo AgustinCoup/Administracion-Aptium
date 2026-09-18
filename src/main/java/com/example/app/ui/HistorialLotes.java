@@ -8,9 +8,9 @@ import java.util.List;
  * El histórico completo de lotes, más los autoclaves que llenan su filtro.
  *
  * <p>Lo consume {@code Ver Lotes}, que es una pantalla de consulta: se lee al
- * abrirla, no en cada guardado. Va separado de {@link HistorialEquipos} porque
- * son dos pantallas distintas y ninguna necesita lo de la otra: mezclarlas haría
- * que abrir {@code Ver Lotes} leyera además el histórico entero de equipos.
+ * abrirla, no en cada guardado. Va separado de lo que leen las pantallas del CDE
+ * porque son pantallas distintas y ninguna necesita lo de la otra: mezclarlas
+ * haría que abrir {@code Ver Lotes} leyera además el histórico de equipos.
  *
  * @param autoclaves    autoclaves configurados, para el filtro de la grilla
  * @param todosLosLotes histórico completo de lotes
