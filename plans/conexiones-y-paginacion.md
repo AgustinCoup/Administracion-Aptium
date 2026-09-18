@@ -1,5 +1,42 @@
 # Plan — Conexiones a la base y paginación de las pantallas de consulta
 
+> # ✅ CERRADO — 2026-09-18
+>
+> Los 13 pasos están ejecutados y commiteados en la rama `ConexionesYPaginacion`, que arranca de
+> `main` en `8b662b8`. `mvn verify` en verde: **1 343 tests**, 0 fallos.
+>
+> | Paso | Commit(s) | Qué dejó |
+> |---|---|---|
+> | 1 — rama y absorción del plan previo | `adf06f3` | `rendimiento-historiales.md` con su bloque de superseded |
+> | 2 — timeouts, keepalive, pool, arranque diagnosticable | `3bfa1fd`, `ce84495`, `7eac53c`, `4f6f3ea`, `9e60a3d` | `connectTimeout` 5 s, `socketTimeout` 60 s, pool 8/2/10 s, keepalive 2 min, `verificarArranque()` |
+> | 3 — instrumentación y baseline | `120763e`, `d99557d` | `TareaUI` mide `leer` y `pintar`; aviso de pool bajo presión; sembrador sintético |
+> | 4 — cancelación real y techo de concurrencia | `52bd792`, `0280ff6`, `2bce7d2` | `ConexionesSupervisadas`, `TokenTarea`, semáforo de 5, ejecutor `cancelador-sql` |
+> | 5 — índices | `a604043` | Migración **V23**: seis índices de fecha y estado |
+> | 6 — subconsultas de movimientos | `9e9e48e` | Muertas las tres tablas derivadas `mv`; los listados propagan sus errores |
+> | 7 — infraestructura de paginación | `93452f4` | `Pagina`, `CriteriosPagina`, `PaginadorEnMemoria`, `PanelPaginacion` |
+> | 8 — Historial de Lavadero: datos | `9cad2e7` | `HistorialLavaderoDAO` devuelve páginas con los filtros en SQL |
+> | 9 — Historial de Lavadero: UI | `cc4b7a2` | La pantalla se lee y se muestra de a 50 |
+> | 10 — CDE: datos | `ecad88e`, `11936b7` | `CdeConsultaDAO`, `FiltroEquiposSql`, paginación en dos viajes |
+> | 11 — CDE: UI y disolución del grupo | `02e68a6` | `refresco-historial-equipos` → `refresco-ver-equipos` + `refresco-cde` |
+> | 12 — paginación en memoria | `b7db1c7` | Ver Lotes y Ver Ciclos pintan de a 50 |
+> | 13 — medir, revisar y cerrar | `1f8f4b3` + este commit | Los tres hallazgos de `/code-review high` aplicados; documentación y cierre |
+>
+> ## ⚠️ Lo que queda pendiente, y es del usuario
+>
+> **Las tareas 1 y 2 del Paso 13 exigen abrir la app y recorrer las pantallas a mano.** No se
+> pueden automatizar y **no están hechas**. Concretamente:
+>
+> - la columna "post Fase C" de la tabla del Paso 3 sigue vacía;
+> - las tres verificaciones de que *el problema original se fue* —F5 mantenido + `SHOW PROCESSLIST`,
+>   las cinco pantallas en ráfaga sin "Pool bajo presión", y **cortar Tailscale a mitad de una
+>   lectura**— siguen sin correr. La tercera es la que valida el Paso 2 y la única que no tiene
+>   ningún sustituto automático;
+> - el relevamiento de `Max_used_connections` con los 3 puestos en uso diario sigue siendo el de
+>   **un** puesto (2026-09-15).
+>
+> **El plan no se declara verificado en producción.** Se declara *implementado y revisado*. El
+> procedimiento exacto de cada verificación está en el Paso 13, tarea 2, y no se borró.
+
 **Objetivo:** que la app deje de quedarse sin conexiones. Tres frentes, en este orden de urgencia:
 **A)** que ninguna operación pueda bloquearse para siempre ni retener una conexión sin techo
 (timeouts, keepalive, dimensionamiento del pool); **B)** que una lectura cancelada se **cancele de
@@ -1897,13 +1934,17 @@ mvn clean package && java -jar target/aptium.jar
 
 ### Criterio de salida
 
-- [ ] La columna "post Fase C" está llena con medianas de 3
-- [ ] Las tres verificaciones del punto 2 están hechas, incluido el corte de red a mano
-- [ ] `/code-review high` corrido; CRITICAL y HIGH aplicados
-- [ ] `mvn verify` en verde y las clases nuevas en 80 %+
-- [ ] `CLAUDE.md`, los dos docs y la memoria actualizados
-- [ ] Los dos planes cerrados
-- [ ] Commit: `docs: cierre del plan de conexiones y paginación`
+- [ ] **PENDIENTE (usuario)** — La columna "post Fase C" está llena con medianas de 3
+- [ ] **PENDIENTE (usuario)** — Las tres verificaciones del punto 2, incluido el corte de red a mano
+- [x] `/code-review high` corrido; los tres hallazgos aplicados (`1f8f4b3`), ninguno postergado
+- [x] `mvn verify` en verde (1 343 tests) y las clases nuevas en 80 %+:
+      `Pagina` 100 %, `CriteriosPagina` 100 %, `PaginadorEnMemoria` 86 %,
+      `ConexionesSupervisadas` 93 % (`ManejadorSentencia` 94 %, `ManejadorConexion` 79 %),
+      `CdeConsultaDAO` 90 %, `FiltroEquiposSql` 94 %. `PanelPaginacion` 17 %: es Swing, convención
+      del repo
+- [x] `CLAUDE.md`, los dos docs y la memoria actualizados
+- [x] Los dos planes cerrados
+- [x] Commit: `docs: cierre del plan de conexiones y paginación`
 
 ---
 
@@ -2433,3 +2474,36 @@ justificación falsa de sacar `connectionTestQuery`, el choque entre `connectTim
 `connectionTimeout`, dos `ORDER BY` de `EquipoDAO` sin desempate, `SQL_RESUMEN` que ya termina en su
 `ORDER BY`, el llamador de escritura de `obtenerPorId`, `fecha_ingreso` confirmada nullable,
 `setQueryTimeout` a nivel sesión en H2, y la fila de baseline que desaparece con el Paso 11.
+
+---
+
+**2026-09-18 — Paso 13: lo que la revisión de cierre encontró, y lo que no se midió.**
+
+`/code-review high` sobre el diff completo contra `8b662b8` (46 archivos de `src/main`, +11,9k/-867)
+devolvió **tres** hallazgos reales, los tres aplicados en `1f8f4b3`. Ninguno se postergó, así que no
+hay MEDIUM anotados como "se decide no tocar". Los tres son del mismo tipo — **una fila o un número
+que desaparece sin parecerse a un error** — que es justamente el que este plan venía marcando como
+el caro:
+
+| # | Qué estaba mal | Por qué no lo vio ningún paso |
+|---|---|---|
+| 1 | `RefrescadorPantallas.solicitar()` cancelaba recién al disparar el debounce, así que una lectura de la consulta anterior que terminara dentro de los 150 ms pintaba igual y le dejaba su total a la consulta nueva — **permanente**, porque un total conocido no se recuenta | El Paso 11 escribió en `CLAUDE.md` que "toda publicación va seguida del `solicitar()`, que cancela lo que haya en vuelo". Era cierto salvo por **cuándo**, y ese "cuándo" era todo. La afirmación quedó documentada antes de ser verdadera |
+| 2 | `estado IN (…)` dejaba afuera a las filas con `estado` nulo, que el filtrado en memoria mapeaba a `NUEVO` vía `desdeBD` | El Paso 10 verificó la equivalencia columna/`calcularEstado()` con un test fila por fila (`EstadoPersistidoEsElCalculadoTest`) — pero sobre filas **sembradas por las rutas de escritura reales**, que nunca escriben nulo. El caso que importa es el de los datos que ya estaban |
+| 3 | `EquipoOtrosDAO.listar` perdió el orden de los materiales; su gemelo `EquipoDAO` lo repuso en memoria en el mismo commit | Asimetría entre dos DAO que el Paso 6 tocó a la vez. El javadoc de `EquipoOtrosDAO` incluso afirmaba que el orden no importaba — y sí importa: las dos pantallas del CDE muestran esa grilla |
+
+**Lo que NO se midió, y por qué el umbral de mejora no se aplicó a nada.** La tarea 1 pedía volver a
+correr las mismas pantallas y declarar mejora sólo con ≥ 30 % o ≥ 300 ms. **No se corrió**: exige
+abrir la app de escritorio y recorrer las pantallas a mano, y esta sesión no puede hacerlo. La
+columna "post Fase C" queda vacía y **ningún paso tiene todavía una mejora declarada**. Las dos
+advertencias del plan siguen en pie para cuando se mida:
+
+- la fila `refresco-historial-equipos` del baseline **ya no existe** (el Paso 11 disolvió el grupo).
+  `refresco-ver-equipos` y `refresco-cde` se comparan **cada una** contra los mismos 187 ms, y se
+  dice que es así. Sumarlas daría una mejora inventada;
+- `detalle-historial-lavadero` (1,1-2,4 s de pintado) **no es un paso que no movió la aguja**: es una
+  pantalla que ningún paso tocó, y su costo es de construcción del diálogo de Swing. Sigue fuera de
+  alcance.
+
+**Y una hipótesis que este plan ya dio por refutada, para que no se vuelva a testear:** el pintado
+**no** era el cuello de botella del CDE. A 6 000 filas era ≈4 % del total contra 187 ms de `leer`.
+Si Ver Equipos sigue lento después de la V23, la respuesta está en el `EXPLAIN`, no en el `addRow`.

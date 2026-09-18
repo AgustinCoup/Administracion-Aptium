@@ -5,6 +5,22 @@
 > borra. Si el Paso 13 del plan nuevo mide que Ver Lotes o Ver Ciclos siguen molestando, este
 > plan es la respuesta y se reabre.
 > **Su numeración de migraciones quedó obsoleta: decía V21, y la próxima libre es V23.**
+>
+> **Confirmado al cerrar el plan nuevo (2026-09-18).** Los 13 pasos de
+> `conexiones-y-paginacion.md` están ejecutados; los índices salieron como **V23** (ya aplicada) y
+> la numeración de este archivo no se corrigió a propósito: se deja como estaba, con esta
+> advertencia arriba, para no reescribir un plan cerrado.
+>
+> **La Fase B (carga en dos fases) no se reabrió, y hoy no hay dato que la justifique.** El
+> sembrador sintético del Paso 3 midió Ver Lotes y Ver Ciclos a 2 000 filas en 8-11 ms de lectura y
+> 3 ms de pintado: molestan cero. Las dos quedaron con paginación **en memoria** (Paso 12), que es
+> la palanca barata sobre el pintado — la única que tendría efecto ahí. **La condición para
+> reabrirla no es "alguna pantalla está lenta" sino "Ver Lotes o Ver Ciclos están lentas y su
+> `pintar` domina el total"**; con cualquier otra forma del problema, ésta no es la respuesta.
+>
+> Lo que sí quedó vivo y **no** lo cubre ninguno de los dos planes: `detalle-historial-lavadero`
+> tarda 1,1-2,4 s en pintar el diálogo de traza de **un** ingreso, sin relación con el volumen del
+> listado. Es costo de construcción del diálogo de Swing. Necesita su propio plan.
 
 # Plan — Rendimiento de las pantallas de consulta
 

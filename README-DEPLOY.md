@@ -167,6 +167,9 @@ al primer arranque Flyway aplica, en una sola pasada:
 V7–V12 y V15 se aplican **fuera de orden** (`outOfOrder(true)` en `DatabaseInitializer`),
 que es exactamente el caso para el que esa opción está activada. No requiere nada especial.
 
+> La rama `ConexionesYPaginacion` suma **V23** (índices de fecha y estado). Si se despliega junto
+> con este deploy, son 14 migraciones y no 13. Lo que cambia para la operación está en el §2.2.1.
+
 **Las migraciones no tienen rollback.** El único camino de vuelta es restaurar un dump.
 Por eso el backup del §3.4 no es opcional.
 
@@ -180,6 +183,31 @@ que V21 introdujo.
 
 > **Regla del día:** todos los puestos se actualizan en la misma jornada. No se deja
 > ninguno "para mañana". A partir del próximo deploy, la app misma lo va a impedir.
+
+### 2.2.1 La V23 corta el arranque de los puestos desactualizados — y eso es lo correcto
+
+La rama `ConexionesYPaginacion` agrega **V23** (índices de `fecha_ingreso` y `estado` sobre
+`equipos`, `equipo_otros` e `ingresos_lavadero`). El chequeo del §2.2 ya existe desde este build,
+así que esta vez **sí funciona**, y hay que saber qué significa:
+
+**El primer puesto que se actualice migra la base a V23, y a partir de ese momento todo puesto que
+siga con un JAR anterior deja de arrancar**, con `EsquemaDesactualizadoException` y el ofrecimiento
+de actualizarse solo. No es una falla del deploy: es la protección funcionando. Un cliente viejo
+contra una base nueva escribe sin guardas y sin bumpear `version`, que es el bug que V21 vino a
+cerrar.
+
+Consecuencias prácticas, en orden:
+
+1. **Avisarle a los tres puestos antes**, no después de que uno se quede afuera. El corte es
+   inmediato y no tiene aviso previo del lado del que no se actualizó.
+2. **Actualizar los tres en la misma jornada**, igual que en el deploy anterior. Cada puesto se
+   autoactualiza desde GitHub Releases cuando quiere; acá ese "cuando quiere" deja de ser gratis.
+3. **El `CREATE INDEX` no es un riesgo con el volumen actual.** Medido el 2026-09-15: la tabla más
+   grande es `otros_material_movimientos` con 9 505 filas y 0,3 MB. Son milisegundos, muy lejos de
+   los 60 s de `socketTimeout` que abortarían a Flyway del lado del cliente y dejarían una fila
+   fallida en `flyway_schema_history` — que sí bloquearía el arranque de **todos** los puestos hasta
+   un `repair` manual. Si algún día estas tablas crecen de orden, volver a mirar este número antes
+   de agregar un índice.
 
 ### 2.3 TLS pasó a ser obligatorio
 

@@ -107,8 +107,47 @@ el lector, que es la otra tentación, congelaría la primera página para siempr
 va seguida del `solicitar()`, que cancela lo que haya en vuelo: por eso el total que llega a
 `pintar` corresponde siempre al filtro publicado.
 
+**Y `solicitar()` cancela en el acto, no cuando dispara el debounce.** Es lo que sostiene la frase
+anterior, y se rompe sin que nada deje de compilar. Con la cancelación en `refrescarAhora()`, una
+lectura de la consulta *anterior* que terminara dentro de los 150 ms del debounce corría igual su
+`pintar` — y `pintar` arrastra el total leído a la consulta actual, que ya es otra. Como un total ya
+conocido **no se vuelve a contar nunca** (ver abajo), el filtro nuevo se quedaba con el total del
+viejo de forma permanente: páginas fantasma, o filas inalcanzables. Cancelando en `solicitar()` no
+hay ventana, porque el `done()` de `TareaUI` también corre en el EDT: o ya pintó —con la consulta
+que le correspondía— o ve la cancelación y no pinta. La regresión la ataja
+`RefrescadorPantallasTest.lecturaVieja_queTerminaDentroDelDebounce_noPinta`.
+
 **El reset de página cuelga del cambio de filtro, no del `pintar`.** En `pintar`, cada F5 mandaría a
 la página 1.
+
+**El total se recuenta sólo cuando cambia el filtro.** `null` en el total de una `Consulta*`
+significa "contá de nuevo"; un valor significa "arrastralo". Pasar de la página 3 a la 4 no cambia
+el total, así que no cuesta un `COUNT(*)`. Un refresco pedido por el operador sí recuenta
+(`recontando()`), porque es justo cuando puede haber cambiado lo que hay.
+
+### Tres pantallas paginan en SQL, dos en memoria, y seis no paginan
+
+| Pantalla | Cómo pagina | Por qué así |
+|---|---|---|
+| Ver Equipos | **SQL**, dos páginas de 50 | Volumen sin techo: `equipos` + `equipo_otros` crecen para siempre y no se podan |
+| Estado de Procesos | **SQL**, una página de 50 | Ídem — es la misma unión, con otros filtros |
+| Historial de Lavadero | **SQL**, una página de 50 | Ídem; hoy son 0 filas, pero se llena cuando entren los otros dos puestos |
+| Ver Lotes | **memoria**, de a 50 | `PaginadorEnMemoria` sobre el snapshot completo |
+| Ver Ciclos | **memoria**, de a 50 | Ídem |
+| Las otras seis | no paginan | La cola activa tiene techo por definición: lo que está en curso |
+
+**No son dos formas de lo mismo: arreglan cosas distintas, y confundirlas es el error caro.**
+Paginar en memoria arregla **el pintado** — las tablas hacen `setRowCount(0)` + un `addRow` por
+fila **en el EDT** — y no toca la base: la consulta sigue trayendo todo. Paginar en SQL es lo único
+que **alivia la base**, y cuesta mucho más, porque obliga a mover todos los filtros y el orden a SQL
+(regla de abajo).
+
+**El criterio es si el volumen tiene techo, no cuántas filas hay hoy.** Ver Lotes y Ver Ciclos
+crecen, pero medidos con el sembrador sintético a 2 000 filas resolvían en 8-11 ms de lectura y 3 ms
+de pintado: un porcentaje alto de un número irrelevante. Ver Equipos, a 6 000 filas, gastaba 187 ms
+en `leer` contra 7 ms de `pintar` — o sea que **ahí la paginación en memoria no habría comprado
+nada**, que es exactamente la trampa. Si alguna vez Ver Lotes o Ver Ciclos molestan, la palanca es
+el pintado y ya está puesta; no hay que migrarlas a SQL por simetría.
 
 **Si una pantalla pagina, TODOS sus filtros y su orden van a SQL.** No hay mitad de camino: filtrar
 en memoria una página traída con `LIMIT` da 50 de 5000, no las 50 primeras de las que matchean. Eso
@@ -116,6 +155,16 @@ incluye los *defaults de la vista* —el "sin entregados" de las dos pantallas d
 del `WHERE`, no un filtro de la grilla—, y también el **orden**: `EquipoTableModel` tiene dos
 entradas (`actualizarDatos`, que ordena, y `actualizarDatosEnOrden`, que no) justamente porque
 reordenar una página ordenaría dentro de ella y rompería el orden global.
+
+**Mover un filtro a SQL es traducir `desdeBD`, no sólo el `WHERE`.** La columna `estado` es
+**nullable** en `equipos` y en `equipo_otros` (V1, V2: `VARCHAR(50) DEFAULT 'Nuevo'`, sin
+`NOT NULL`), y el filtrado en memoria mapeaba `NULL` a `NUEVO` con `EstadoEquipo.desdeBD`. Un
+`IN (…)` pelado no las manda a otra página: las hace **invisibles en las dos pantallas del CDE**,
+incluso bajo el filtro por defecto. Por eso `FiltroEquiposSql.estados` agrega `OR … IS NULL` cuando
+`NUEVO` está entre los estados pedidos —exactamente cuando `desdeBD` las habría dejado pasar— y el
+`ELSE` de `CdeConsultaDAO.casoOrdenEstado` toma la misma decisión para el orden. **Una fila que no
+está en ninguna página no se parece a un error y nadie la reporta**; es el mismo argumento que "un
+cartel que miente".
 
 **Qué le pasa a lo pendiente — es el texto del cartel, no documentación.** Un cartel que miente
 entrena al operador a apretar "Sí" sin leer, y desactiva también los avisos verdaderos (mismo

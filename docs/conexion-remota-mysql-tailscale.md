@@ -191,10 +191,33 @@ app ya no puede quedarse esperando a la red para siempre. Valores en `Connection
 | `socketTimeout` (URL JDBC) | 60 s | 60 s sin recibir un byte del servidor | El túnel se cortó a mitad de una lectura: la pantalla muestra el error de lectura en vez de quedar colgada, y la conexión vuelve al pool. Es el **respaldo de red**: la consulta puede seguir corriendo en MySQL. |
 | `connectionTimeout` (Hikari) | 10 s | Esperar una conexión libre con el pool lleno | `Connection is not available, request timed out after 10000ms`. Si aparece seguido, el pool se está agotando (ver el Paso 4 del plan). |
 | `keepaliveTime` (Hikari) | 2 min | — | Pinga las conexiones ociosas para que el NAT del túnel no las corte en silencio. Sin síntoma visible. |
-| `queryTimeout` | 30 s (reservado) | Techo de consulta | **Todavía no aplicado**: llega con el Paso 4. Tiene que quedar menor que `socketTimeout`. |
+| `queryTimeout` | 30 s | Techo de consulta, **sólo en conexiones con `autoCommit = true`** | Una lectura que se pasa de 30 s muere del lado del servidor, no sólo del cliente: en el log, `Statement cancelled due to timeout or client request`. Es el **único** de estos que mata la consulta en MySQL; los dos de arriba sólo abandonan el socket. |
+| `innodb_lock_wait_timeout` (servidor) | 50 s | Esperar un lock de fila | El operador ve *"alguien se te adelantó"*, no un error técnico. **Por eso el `queryTimeout` no se aplica a las transacciones** (ver abajo). |
+
+**Por qué el techo de consulta no vale para las escrituras.** Las tres guardas `FOR UPDATE` del
+lavadero **bloquean y esperan por diseño** hasta los 50 s de `innodb_lock_wait_timeout`. Un techo de
+30 s les gana siempre y devuelve `ER_QUERY_INTERRUPTED` (1317), que `ControlConcurrencia` no
+reconoce como contención: el choque entre dos operadores saldría como traza en vez de como aviso
+accionable. `TransactionalConnection` pone `autoCommit = false` en su constructor, así que
+`ConexionesSupervisadas` usa esa condición y no hace falta ningún flag. Las escrituras quedan
+acotadas por el `socketTimeout` de 60 s, que es **mayor** que los 50 s del lock wait — por eso el
+1205 sigue llegando.
+
+**Si tres números se tocan, se tocan juntos:** `connectTimeout` (5 s) < `connectionTimeout` de
+Hikari (10 s), y `queryTimeout` (30 s) < `socketTimeout` (60 s) < nada que espere lock. Las dos
+relaciones están atadas por test en `ConnectionPoolTest`, porque son las que se invierten al cambiar
+un solo número sin mirar el otro.
 
 Pool por puesto: `maximumPoolSize = 8`, `minimumIdle = 2`. Con N puestos, el servidor ve
 hasta **N × 8** conexiones: ese número tiene que entrar con margen en `max_connections`.
+
+**Techo de lecturas concurrentes.** Dentro de esas 8, `ConnectionPool.getConnection()` toma un
+permiso de un semáforo de **5** (8 − 3 de reserva) antes de pedirle la conexión al pool. Las 3
+reservadas son para los cinco autocompletados sincrónicos —que piden desde el hilo de interfaz y por
+eso no pueden esperar— y para la transacción de una escritura concurrente. Si el semáforo se satura,
+sale como `SQLException` visible, igual que un `connectionTimeout` agotado, no como un cuelgue.
+Flyway y la creación de la base no pasan por `getConnection()`: quedan exentos a propósito, para que
+un `CREATE INDEX` largo no muera por el techo de consulta.
 
 Medición del servidor de producción (`SHOW VARIABLES LIKE 'max_connections'`,
 `SHOW STATUS LIKE 'Threads_connected'`, `SHOW STATUS LIKE 'Max_used_connections'`):
