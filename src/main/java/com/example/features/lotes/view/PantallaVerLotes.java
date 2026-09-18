@@ -1,6 +1,7 @@
 package com.example.features.lotes.view;
 
 import com.example.common.constants.Constantes;
+import com.example.common.paginacion.Pagina;
 import com.example.common.util.DateTimeDisplayUtils;
 import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.view.helpers.EstadoCellRenderer;
@@ -8,6 +9,7 @@ import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.PanelHeader;
+import com.example.ui.common.PanelPaginacion;
 import com.example.ui.common.TableStyler;
 import com.toedter.calendar.JDateChooser;
 
@@ -17,6 +19,7 @@ import java.awt.*;
 import java.awt.event.ActionListener;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.function.IntConsumer;
 
 /**
  * Pantalla de consulta de lotes de esterilización.
@@ -32,6 +35,7 @@ public class PantallaVerLotes extends JPanel {
     private PanelHeader             header;
     private final DefaultTableModel modeloTabla;
     private final JTable            tablaLotes;
+    private final PanelPaginacion   panelPaginacion = new PanelPaginacion();
 
     // ── Controles de filtro ───────────────────────────────────────────────────
     private JTextField                  txtFiltroId;
@@ -87,7 +91,11 @@ public class PantallaVerLotes extends JPanel {
         tablaLotes.getColumnModel().getColumn(5).setCellRenderer(new EstadoCellRenderer());
 
         add(new JScrollPane(tablaLotes), BorderLayout.CENTER);
-        add(crearPanelSur(), BorderLayout.SOUTH);
+
+        JPanel panelSur = new JPanel(new BorderLayout());
+        panelSur.add(panelPaginacion, BorderLayout.NORTH);
+        panelSur.add(crearPanelSur(), BorderLayout.SOUTH);
+        add(panelSur, BorderLayout.SOUTH);
     }
 
     /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
@@ -98,6 +106,19 @@ public class PantallaVerLotes extends JPanel {
     /** Muestra la hora del último pintado en el header. */
     public void marcarActualizado() {
         header.marcarActualizado();
+    }
+
+    /** Qué hacer cuando el operador pide otra página. Recibe el número pedido, base 1. */
+    public void setAlCambiarPagina(IntConsumer accion) {
+        panelPaginacion.setAlCambiarPagina(accion);
+    }
+
+    /**
+     * Actualiza la barra de paginación con la página que se acaba de pintar. Va junto con
+     * {@link #actualizarLotes(List)}: la barra describe lo que la tabla muestra.
+     */
+    public void mostrarPaginacion(Pagina<?> pagina) {
+        panelPaginacion.mostrar(pagina);
     }
 
     private JPanel crearPanelSur() {

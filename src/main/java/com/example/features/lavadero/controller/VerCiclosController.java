@@ -1,5 +1,8 @@
 package com.example.features.lavadero.controller;
 
+import com.example.common.paginacion.CriteriosPagina;
+import com.example.common.paginacion.Pagina;
+import com.example.common.paginacion.PaginadorEnMemoria;
 import com.example.common.util.AbstractFilterController;
 import com.example.common.util.FilterStrategy;
 import com.example.features.lavadero.controller.helpers.CicloFilterCriteria;
@@ -17,12 +20,21 @@ public class VerCiclosController extends AbstractFilterController<CicloLavadero>
     private final PantallaVerCiclos pantalla;
     private final FilterStrategy<CicloLavadero, CicloFilterCriteria> filterStrategy = new CicloFilterStrategy();
 
+    /**
+     * Paginación en memoria (anti-patrón A3: no alivia la base, sólo el pintado — ver
+     * {@link PaginadorEnMemoria}). Se resetea a la página 1 sólo cuando cambia un filtro
+     * ({@link #alCambiarFiltros()}), nunca dentro de {@link #aplicarFiltros()}: ese método lo llama
+     * también {@code recargarCache} en cada refresco (anti-patrón A15).
+     */
+    private CriteriosPagina criteriosPagina = CriteriosPagina.primera();
+
     /** Alcance: pintar la grilla desde el refresco global. Sin I/O propia. */
     public VerCiclosController(PantallaVerCiclos pantalla, Runnable solicitarRefresco) {
         this.pantalla = pantalla;
         Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
 
-        pantalla.setOnFiltrosChanged(this::aplicarFiltros);
+        pantalla.setOnFiltrosChanged(this::alCambiarFiltros);
+        pantalla.setAlCambiarPagina(this::alCambiarPagina);
         pantalla.setOnLimpiar(pantalla::limpiarFiltros);
 
         // El botón "Actualizar" reusa el mismo disparador del componentShown.
@@ -47,6 +59,21 @@ public class VerCiclosController extends AbstractFilterController<CicloLavadero>
             pantalla.getFiltroFechaDesde(),
             pantalla.getFiltroFechaHasta()
         );
-        pantalla.actualizarCiclos(filterStrategy.filter(getCache(), criteria));
+        List<CicloLavadero> filtrados = filterStrategy.filter(getCache(), criteria);
+        Pagina<CicloLavadero> pagina = PaginadorEnMemoria.paginar(filtrados, criteriosPagina);
+        pantalla.actualizarCiclos(pagina.contenido());
+        pantalla.mostrarPaginacion(pagina);
+    }
+
+    /** Filtro nuevo ⇒ página 1, igual que en las pantallas paginadas por SQL. */
+    private void alCambiarFiltros() {
+        criteriosPagina = CriteriosPagina.primera();
+        aplicarFiltros();
+    }
+
+    /** Otra página del mismo filtro. */
+    private void alCambiarPagina(int numeroPagina) {
+        criteriosPagina = criteriosPagina.conPagina(numeroPagina);
+        aplicarFiltros();
     }
 }

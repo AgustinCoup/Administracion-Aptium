@@ -1,6 +1,7 @@
 package com.example.features.lavadero.view;
 
 import com.example.common.constants.Constantes;
+import com.example.common.paginacion.Pagina;
 import com.example.common.util.DateTimeDisplayUtils;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.view.helpers.CicloEstadoCellRenderer;
@@ -8,6 +9,7 @@ import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
 import com.example.ui.common.FilterUiHelper;
 import com.example.ui.common.PanelHeader;
+import com.example.ui.common.PanelPaginacion;
 import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.TableStyler;
 import com.toedter.calendar.JDateChooser;
@@ -17,6 +19,7 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.function.IntConsumer;
 
 public class PantallaVerCiclos extends JPanel {
 
@@ -31,6 +34,7 @@ public class PantallaVerCiclos extends JPanel {
     private PanelHeader             header;
     private final DefaultTableModel modeloTabla;
     private final JTable            tablaCiclos;
+    private final PanelPaginacion   panelPaginacion = new PanelPaginacion();
 
     private JTextField                txtFiltroNumero;
     private CheckableComboBox<String> cmbFiltroEstado;
@@ -68,6 +72,7 @@ public class PantallaVerCiclos extends JPanel {
         tablaCiclos.setFillsViewportHeight(true);
 
         add(new JScrollPane(tablaCiclos), BorderLayout.CENTER);
+        add(panelPaginacion, BorderLayout.SOUTH);
     }
 
     /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
@@ -78,6 +83,19 @@ public class PantallaVerCiclos extends JPanel {
     /** Muestra la hora del último pintado en el header. */
     public void marcarActualizado() {
         header.marcarActualizado();
+    }
+
+    /** Qué hacer cuando el operador pide otra página. Recibe el número pedido, base 1. */
+    public void setAlCambiarPagina(IntConsumer accion) {
+        panelPaginacion.setAlCambiarPagina(accion);
+    }
+
+    /**
+     * Actualiza la barra de paginación con la página que se acaba de pintar. Va junto con
+     * {@link #actualizarCiclos(List)}: la barra describe lo que la tabla muestra.
+     */
+    public void mostrarPaginacion(Pagina<?> pagina) {
+        panelPaginacion.mostrar(pagina);
     }
 
     private JPanel crearPanelFiltros() {

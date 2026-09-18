@@ -1,6 +1,9 @@
 package com.example.features.lotes.controller;
 
 import com.example.app.ui.HistorialLotes;
+import com.example.common.paginacion.CriteriosPagina;
+import com.example.common.paginacion.Pagina;
+import com.example.common.paginacion.PaginadorEnMemoria;
 import com.example.common.util.AbstractFilterController;
 import com.example.common.util.FilterStrategy;
 import com.example.features.autoclaves.model.Autoclave;
@@ -27,6 +30,14 @@ public class VerLotesController extends AbstractFilterController<Lote> {
     private final FilterStrategy<Lote, LotesFilterCriteria> filterStrategy;
     private final LoteReporteService                reporteService;
 
+    /**
+     * Paginación en memoria (anti-patrón A3: no alivia la base, sólo el pintado — ver
+     * {@link PaginadorEnMemoria}). Se resetea a la página 1 sólo cuando cambia un filtro
+     * ({@link #alCambiarFiltros()}), nunca dentro de {@link #aplicarFiltros()}: ese método lo llama
+     * también {@code recargarCache} en cada refresco (anti-patrón A15).
+     */
+    private CriteriosPagina criteriosPagina = CriteriosPagina.primera();
+
     /** Alcance: pintar la grilla desde el refresco global, más la impresión del reporte. */
     public VerLotesController(PantallaVerLotes panel,
                               LoteReporteService reporteService,
@@ -36,7 +47,8 @@ public class VerLotesController extends AbstractFilterController<Lote> {
         this.reporteService   = reporteService;
         Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
 
-        this.panel.setOnFiltrosChanged(this::aplicarFiltros);
+        this.panel.setOnFiltrosChanged(this::alCambiarFiltros);
+        this.panel.setAlCambiarPagina(this::alCambiarPagina);
         this.panel.setOnImprimir(this::abrirDialogoImprimir);
 
         // El botón "Actualizar" reusa el mismo disparador del componentShown.
@@ -70,7 +82,21 @@ public class VerLotesController extends AbstractFilterController<Lote> {
         );
 
         List<Lote> filtrados = filterStrategy.filter(getCache(), criteria);
-        panel.actualizarLotes(filtrados);
+        Pagina<Lote> pagina = PaginadorEnMemoria.paginar(filtrados, criteriosPagina);
+        panel.actualizarLotes(pagina.contenido());
+        panel.mostrarPaginacion(pagina);
+    }
+
+    /** Filtro nuevo ⇒ página 1, igual que en las pantallas paginadas por SQL. */
+    private void alCambiarFiltros() {
+        criteriosPagina = CriteriosPagina.primera();
+        aplicarFiltros();
+    }
+
+    /** Otra página del mismo filtro. */
+    private void alCambiarPagina(int numeroPagina) {
+        criteriosPagina = criteriosPagina.conPagina(numeroPagina);
+        aplicarFiltros();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
