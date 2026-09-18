@@ -275,6 +275,53 @@ class FiltroEquiposSqlTest {
         }
     }
 
+    /**
+     * La columna {@code estado} es nullable en las dos tablas y el filtrado en memoria que este SQL
+     * reemplaza mapeaba {@code NULL} a {@code NUEVO} vía {@code EstadoEquipo.desdeBD}. Un
+     * {@code IN (…)} pelado las dejaría afuera de <b>toda</b> página de las dos pantallas del CDE,
+     * incluido el filtro por defecto — invisibles, no mal ordenadas.
+     */
+    @Nested
+    @DisplayName("el estado NULL cuenta como NUEVO, igual que desdeBD")
+    class EstadoNulo {
+
+        @Test
+        @DisplayName("si NUEVO está entre los pedidos, la fila con estado NULL entra")
+        void conNuevo_aceptaNull() {
+            for (FiltroEquiposSql.Condicion condicion : ambasTablas(estados("Nuevo", "Lavando"))) {
+                assertTrue(condicion.sql().contains("IS NULL"), condicion.sql());
+                assertEquals(2, contarMarcadores(condicion.sql()),
+                    "IS NULL no agrega un parámetro: " + condicion.sql());
+                assertEquals(2, condicion.parametros().size());
+            }
+        }
+
+        @Test
+        @DisplayName("si NUEVO no está entre los pedidos, la fila con estado NULL queda afuera")
+        void sinNuevo_noAceptaNull() {
+            for (FiltroEquiposSql.Condicion condicion : ambasTablas(estados("Lavando", "Entregado"))) {
+                assertFalse(condicion.sql().contains("IS NULL"), condicion.sql());
+                assertEquals(2, condicion.parametros().size());
+            }
+        }
+
+        @Test
+        @DisplayName("sin filtro de estado no se agrega ninguna cláusula")
+        void sinEstados_ningunaClausula() {
+            for (FiltroEquiposSql.Condicion condicion : ambasTablas(estados())) {
+                assertEquals("", condicion.sql());
+            }
+        }
+
+        private List<FiltroEquiposSql.Condicion> ambasTablas(FiltroEquipos filtro) {
+            return List.of(FiltroEquiposSql.paraOrtopedias(filtro), FiltroEquiposSql.paraOtros(filtro));
+        }
+
+        private FiltroEquipos estados(String... estados) {
+            return new FiltroEquipos(List.of(estados), null, null, null, null, List.of(), null, null);
+        }
+    }
+
     @Test
     @DisplayName("marcadores() emite tantos ? como valores")
     void marcadores() {

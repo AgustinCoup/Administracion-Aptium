@@ -256,8 +256,13 @@ public class EquipoOtrosDAO {
      * <p>Los materiales de cada equipo salen sin clave de material en el {@code ORDER BY}: un
      * {@code ORDER BY} multi-tabla (equipo + material) no lo cubre ningún índice de una sola
      * tabla, así que forzaba un filesort del join entero en cada listado y anulaba el índice de
-     * fecha/estado (V23). El orden de los materiales dentro de cada equipo no importa para estos
-     * listados (la UI los agrupa por equipo, no los muestra en una grilla plana ordenada).
+     * fecha/estado (V23). <b>Se ordenan acá, en memoria</b>, igual que en
+     * {@code EquipoDAO.obtenerEquiposConJoin}: son listas de 3-10 elementos, y el plegado por
+     * {@code LinkedHashMap} no depende de que las filas de un equipo lleguen contiguas.
+     *
+     * <p>Sacar la clave del {@code ORDER BY} <b>sin</b> reponer este orden dejaba a los materiales
+     * en el orden que devolviera el motor, que no es estable: la grilla de materiales de las dos
+     * pantallas del CDE los muestra, así que las filas se reacomodarían solas entre refrescos.
      *
      * @param where       WHERE ya armado (sobre columnas de {@code eo}), o vacío
      * @param orden       ORDER BY de los equipos, sin la palabra clave
@@ -289,6 +294,9 @@ public class EquipoOtrosDAO {
         } catch (SQLException e) {
             log.error("Error al obtener {}", descripcion, e);
             throw new DatabaseException("Error al obtener " + descripcion, e);
+        }
+        for (EquipoOtros eq : porId.values()) {
+            eq.getMateriales().sort(java.util.Comparator.comparingInt(MaterialOtros::getId));
         }
         return new ArrayList<>(porId.values());
     }

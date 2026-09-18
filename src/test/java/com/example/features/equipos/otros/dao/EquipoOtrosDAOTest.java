@@ -73,6 +73,36 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
         assertNull(equipoDetalles.getRemitoId());
     }
 
+    /**
+     * El {@code ORDER BY} de los listados dejó de llevar la clave de material —forzaba un filesort
+     * del join entero y anulaba los índices de la V23—, así que el orden de los materiales dentro
+     * de cada equipo pasó a resolverse en memoria, igual que en {@code EquipoDAO}. Sin eso quedaban
+     * en el orden que devolviera el motor, que no está garantizado: la grilla de materiales de las
+     * dos pantallas del CDE los muestra, así que se reacomodarían solos entre refrescos.
+     *
+     * <p>Fija el contrato del DAO, no el del motor: H2 puede devolverlos ya ordenados por su cuenta
+     * y aun así la garantía tiene que ser del DAO, que es lo único igual en H2 y en MySQL.
+     */
+    @Test
+    void obtenerTodos_devuelveLosMaterialesOrdenadosPorId() {
+        EquipoOtros equipo = new EquipoOtros();
+        equipo.setNroCliente(1);
+        equipo.setTipoIngreso(TipoIngresoOtros.DETALLES);
+        equipo.agregarMaterial(new MaterialOtros("TestDescOrden A", 1));
+        equipo.agregarMaterial(new MaterialOtros("TestDescOrden B", 1));
+        equipo.agregarMaterial(new MaterialOtros("TestDescOrden C", 1));
+        equipo.agregarMaterial(new MaterialOtros("TestDescOrden D", 1));
+        dao.guardar(equipo);
+
+        List<Integer> ids = dao.obtenerTodos().stream()
+            .filter(e -> e.getId().equals(equipo.getId()))
+            .findFirst().orElseThrow()
+            .getMateriales().stream().map(MaterialOtros::getId).toList();
+
+        assertEquals(4, ids.size());
+        assertEquals(ids.stream().sorted().toList(), ids, "los materiales salen ordenados por id");
+    }
+
     // ── guardar — REMITO ──────────────────────────────────────────────────────
 
     @Test

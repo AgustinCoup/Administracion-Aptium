@@ -199,6 +199,95 @@ class ConexionesSupervisadasTest {
         conexionEnVuelo.close();
     }
 
+    /**
+     * Misma razón que en la sentencia: el {@code InvocationHandler} recibe {@code equals},
+     * {@code hashCode} y {@code toString} como cualquier otro método, y delegarlos a la conexión
+     * real haría que dos proxies de la misma conexión se vieran iguales.
+     */
+    @Test
+    @DisplayName("una conexión supervisada es igual sólo a sí misma y se identifica como tal")
+    void identidadDeConexion_esLaDelProxy() throws Exception {
+        try (Connection real = h2();
+             Connection supervisada = ConexionesSupervisadas.envolver(real, SIN_PERMISO);
+             Connection otra = ConexionesSupervisadas.envolver(h2(), SIN_PERMISO)) {
+
+            assertEquals(supervisada, supervisada);
+            assertEquals(false, supervisada.equals(otra));
+            assertEquals(System.identityHashCode(supervisada), supervisada.hashCode());
+            assertEquals(true, supervisada.toString().startsWith("ConexionSupervisada["));
+            assertEquals(true, supervisada.isWrapperFor(Connection.class));
+            assertEquals(false, supervisada.isWrapperFor(org.h2.jdbc.JdbcConnection.class));
+        }
+    }
+
+    /**
+     * El {@code prepareCall} del proxy existe para que ningún overload se escape: el despacho es
+     * por <b>nombre</b> de método justamente para no tener que enumerar firmas.
+     */
+    @Test
+    @DisplayName("prepareCall también sale supervisado, no crudo")
+    void prepareCall_tambienSaleSupervisado() throws Exception {
+        try (Connection real = h2();
+             Connection supervisada = ConexionesSupervisadas.envolver(real, SIN_PERMISO);
+             Statement sentencia = supervisada.prepareCall("{? = CALL 1}")) {
+
+            assertEquals(true, sentencia.toString().startsWith("SentenciaSupervisada["));
+        }
+    }
+
+    // ---------- identidad del proxy de sentencia ----------
+
+    /**
+     * La sentencia también va envuelta, y su proxy tiene que ser tan hermético como el de la
+     * conexión: si {@code unwrap} devolviera la sentencia cruda, quien la use sale del registro por
+     * token y su {@code cancel()} deja de llegarle — que es todo el mecanismo del Paso 4.
+     */
+    @Test
+    @DisplayName("unwrap de una sentencia devuelve el proxy, no la sentencia cruda")
+    void unwrapDeSentencia_noDejaEscaparLaReal() throws Exception {
+        try (Connection real = h2();
+             Connection supervisada = ConexionesSupervisadas.envolver(real, SIN_PERMISO);
+             Statement sentencia = supervisada.createStatement()) {
+
+            assertSame(sentencia, sentencia.unwrap(Statement.class));
+            assertEquals(true, sentencia.isWrapperFor(Statement.class));
+            assertThrows(SQLException.class, () -> sentencia.unwrap(org.h2.jdbc.JdbcStatement.class));
+        }
+    }
+
+    /**
+     * {@code equals}/{@code hashCode}/{@code toString} se manejan explícitamente porque un
+     * {@code InvocationHandler} los recibe como cualquier otro método: delegarlos a la sentencia
+     * real haría que dos proxies distintos de la misma sentencia se vieran iguales, y el registro
+     * es un {@code Map} con las sentencias de clave.
+     */
+    @Test
+    @DisplayName("una sentencia supervisada es igual sólo a sí misma y no filtra la real en toString")
+    void identidadDeSentencia_esLaDelProxy() throws Exception {
+        try (Connection real = h2();
+             Connection supervisada = ConexionesSupervisadas.envolver(real, SIN_PERMISO);
+             Statement una = supervisada.createStatement();
+             Statement otra = supervisada.createStatement()) {
+
+            assertEquals(una, una);
+            assertEquals(false, una.equals(otra));
+            assertEquals(System.identityHashCode(una), una.hashCode());
+            assertEquals(true, una.toString().startsWith("SentenciaSupervisada["));
+        }
+    }
+
+    /** Volver a la conexión desde la sentencia no puede saltearse el proxy. */
+    @Test
+    @DisplayName("getConnection() de una sentencia devuelve la conexión supervisada")
+    void getConnectionDeSentencia_devuelveElProxy() throws Exception {
+        try (Connection real = h2();
+             Connection supervisada = ConexionesSupervisadas.envolver(real, SIN_PERMISO);
+             Statement sentencia = supervisada.createStatement()) {
+
+            assertSame(supervisada, sentencia.getConnection());
+        }
+    }
+
     // ---------- helpers ----------
 
     /** Conexión en autocommit que devuelve siempre la misma sentencia, cualquiera sea el overload. */

@@ -1,6 +1,7 @@
 package com.example.features.equipos.dao;
 
 import com.example.features.equipos.model.FiltroEquipos;
+import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -196,10 +197,40 @@ public final class FiltroEquiposSql {
      * <p>Sin {@code UPPER()}/{@code LOWER()} alrededor de la columna, que también anularía el
      * índice: los valores que guarda son siempre {@code EstadoEquipo.getNombre()} y del combo
      * salen esos mismos strings.
+     *
+     * <h2>{@code NULL} cuenta como {@code NUEVO}, y tiene que contar</h2>
+     * La columna es <b>nullable</b> en las dos tablas (V1, V2: {@code VARCHAR(50) DEFAULT 'Nuevo'},
+     * sin {@code NOT NULL}). Un {@code IN (…)} pelado deja afuera a las filas con {@code NULL} —y
+     * no las manda a otra página: las hace <b>invisibles en las dos pantallas del CDE</b>, incluso
+     * bajo el filtro por defecto, que es "todos menos ENTREGADO". Una fila que no está en ninguna
+     * página no se parece a un error y nadie la reporta.
+     *
+     * <p>El filtrado en memoria que esto reemplaza no tenía el problema: mapeaba la columna con
+     * {@code EstadoEquipo.desdeBD}, que devuelve {@code NUEVO} ante {@code null}. Y el
+     * {@code ELSE} de {@code CdeConsultaDAO.casoOrdenEstado} ya toma esa misma decisión para el
+     * <b>orden</b>. Acá se toma para el <b>filtro</b>, que es la otra mitad de lo mismo.
+     *
+     * <p>Se agrega {@code OR … IS NULL} sólo cuando {@code NUEVO} está entre los estados pedidos,
+     * que es exactamente cuando {@code desdeBD} las habría dejado pasar. No anula el índice: sigue
+     * siendo una condición de rango sobre la misma columna.
+     *
+     * <p><b>Lo que esto deliberadamente no cubre</b> es un valor no nulo que no corresponda a
+     * ningún {@code EstadoEquipo}, que {@code desdeBD} también mapearía a {@code NUEVO}. Cubrirlo
+     * pide un {@code NOT IN (todos los estados)} que sí anula el índice, y no hay ruta que lo
+     * produzca: las nueve escrituras de las dos tablas guardan {@code getEstado().getNombre()}, y
+     * {@code getEstado()} nunca es nulo (el constructor del modelo lo arranca en {@code NUEVO}).
      */
     private static void estados(String columna, FiltroEquipos filtro,
                                 List<String> clausulas, List<Object> parametros) {
-        enLista(columna, filtro.estados(), clausulas, parametros);
+        List<String> valores = filtro.estados();
+        if (valores.isEmpty()) {
+            return;
+        }
+        String enLista = columna + " IN (" + marcadores(valores.size()) + ")";
+        clausulas.add(valores.contains(EstadoEquipo.NUEVO.getNombre())
+            ? "(" + enLista + " OR " + columna + " IS NULL)"
+            : enLista);
+        parametros.addAll(valores);
     }
 
     private static void enLista(String columna, List<String> valores,

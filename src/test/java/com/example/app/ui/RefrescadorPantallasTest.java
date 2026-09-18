@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.EventQueue;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -137,6 +140,60 @@ class RefrescadorPantallasTest {
         assertEquals(2, lecturas.get(), "las dos lecturas llegan a ejecutarse");
         assertEquals(1, pintados.get(), "el resultado viejo se descarta, no se pinta");
         assertEquals("nueva", ultimoPintado.get(), "lo pintado es la lectura nueva");
+    }
+
+    /**
+     * La regresión de la cancelación diferida. El test de arriba mantiene la lectura vieja colgada
+     * <em>hasta después</em> de que la nueva pintó; acá termina <b>dentro de la ventana de
+     * debounce</b>, que es el caso real y el que la cancelación en {@code refrescarAhora()} dejaba
+     * pasar: el temporizador todavía no disparó, así que nadie la canceló y su {@code pintar} corre.
+     *
+     * <p>En una pantalla paginada eso no es un parpadeo: {@code pintar} arrastra el total leído a la
+     * consulta actual —que para entonces ya es otra—, y un total ya conocido no se vuelve a contar
+     * nunca. El filtro nuevo queda con el total del viejo, de forma permanente.
+     */
+    @Test
+    @DisplayName("una lectura que termina dentro del debounce del refresco siguiente no se pinta")
+    void lecturaVieja_queTerminaDentroDelDebounce_noPinta() throws Exception {
+        CountDownLatch primeraArranco  = new CountDownLatch(1);
+        CountDownLatch primeraContinua = new CountDownLatch(1);
+        AtomicInteger lecturas = new AtomicInteger();
+        List<String> pintados  = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch pintoLaNueva = new CountDownLatch(1);
+
+        Supplier<String> lector = () -> {
+            if (lecturas.incrementAndGet() == 1) {
+                primeraArranco.countDown();
+                try {
+                    primeraContinua.await(TIMEOUT_SEGUNDOS, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return "vieja";
+            }
+            return "nueva";
+        };
+
+        RefrescadorPantallas<String> refrescador = new RefrescadorPantallas<>(
+            "test",
+            lector,
+            datos -> { pintados.add(datos); if ("nueva".equals(datos)) pintoLaNueva.countDown(); },
+            e -> { },
+            DEBOUNCE_TEST_MS);
+
+        refrescador.solicitar();
+        esperar(primeraArranco);
+
+        // El operador cambia el filtro: el controller publica la consulta nueva y pide la lectura.
+        refrescador.solicitar();
+        // Y la lectura anterior termina acá, ANTES de que el temporizador dispare.
+        primeraContinua.countDown();
+
+        esperar(pintoLaNueva);
+        vaciarColaDelHiloUi();
+
+        assertEquals(List.of("nueva"), pintados,
+            "sólo se pinta la lectura posterior al último solicitar()");
     }
 
     // ── Utilidades ───────────────────────────────────────────────────────────
