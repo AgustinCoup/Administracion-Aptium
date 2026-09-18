@@ -2574,3 +2574,31 @@ que es artefacto del sembrador —creó 6 000 equipos casi todos sin entregar, a
 sintética no tiene el techo natural que tiene en producción—, **pero no se verificó**. Si alguna vez
 hay que mirarlo, el baseline de `refresco-operativo` sobre `aptium_perf` no existe: el del Paso 3
 (7 ms) es sobre la base local chica y **no** sirve para comparar.
+
+---
+
+**2026-09-18 — Estado de Procesos borrada (después del cierre, antes del merge).** Resolución del
+hallazgo del bloque CERRADO: el usuario decidió **borrar**, no cablearle un botón, sobre la base de
+que era un prototipo abandonado. Re-verificado antes de tocar nada: `VER_CDE_V2` y `VER_CDE`
+aparecían exactamente dos veces cada una en `src/main` (constante + `contenedor.add`), ningún
+`navegador.show`, y ningún TODO, botón comentado ni rama que indicara trabajo en curso.
+
+Commit `3a6a0a0`. Se fue: `CdeConsultaDAO`, `CdeConsultaService`, `EstadoProcesosController`,
+`ConsultaCde`, `PantallaVerCDEv1`/`v2`, su cableado (`AppContext`, `UiCoordinator`,
+`PantallaPrincipal`), las constantes `VER_CDE`, `VER_CDE_V2`, `Titulos.ESTADO_PROCESOS` y los dos
+`Textos.EJEMPLO_*` de la maqueta de la v1. Y tres piezas que quedaron sin llamador:
+`FiltroEquiposSql.paraOtrosEnUnionCde` (la asimetría `1 = 0`), `FiltroEquiposSql.aplicarDesde`, y
+`EquipoTableModel.actualizarDatosEnOrden` con su envoltorio en `PanelEquipoMaterial` —ningún otro
+consumidor de ese panel pagina—.
+
+Se quedó todo lo que usa Ver Equipos: `FiltroEquiposSql`, los métodos paginados de los dos DAO,
+`PanelEquipoMaterial`, `EquipoRegistrableInterface`. `CostoDelRefrescoTest` se reapuntó a Ver
+Equipos en vez de borrarse. Tests: 1 345 → **1 310**, y la baja son exactamente los 35 casos
+borrados (16 + 6 + 10 de los tres archivos, 3 de `FiltroEquiposSqlTest.AsimetriaDelCde`).
+
+**Qué cambia para lo de arriba de esta sección:** los grupos de refresco son **cinco**, no seis; las
+pantallas con botón de refresco son **diez**, no once; la fila `refresco-cde` de las tablas de
+medición queda como registro histórico. **Lo que no cambia es el costo:** los Pasos 10 y 11
+invirtieron la mitad de su trabajo en una pantalla que nadie podía abrir, y eso no lo devuelve el
+borrado. La lección es la del bloque CERRADO — verificar que una pantalla es alcanzable antes de
+planificar sobre ella.

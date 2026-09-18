@@ -58,9 +58,9 @@ a propósito (unificarlos es un refactor transversal aparte); el tercero es a pe
 
 | Disparador | Dónde | Cómo |
 |---|---|---|
-| `componentShown` en el controller | Pantallas del CDE y las de consulta (`EquiposParaEntregarController`, `EstadoProcesosController`, `VerEquiposController`, `VerLotesController`, `VerCiclosController`, `HistorialLavaderoController`) y las del grupo `operativo` `RegistrarEstadoController` y `LotesController` | El `ComponentAdapter` del panel pide la relectura al mostrarse |
+| `componentShown` en el controller | Pantallas del CDE y las de consulta (`EquiposParaEntregarController`, `VerEquiposController`, `VerLotesController`, `VerCiclosController`, `HistorialLavaderoController`) y las del grupo `operativo` `RegistrarEstadoController` y `LotesController` | El `ComponentAdapter` del panel pide la relectura al mostrarse |
 | `ActionListener` del botón de menú en `UiCoordinator` | Pantallas operativas de Lavadero (`ClasificacionController`, `CiclosController`, `SalidasLavaderoController`) | El listener del botón hace `navegador.show(...)` **y** llama al método de carga (`cargarIngresosSinClasificar()`, `abrirPantalla()`, `cargarDatos()`) — `UiCoordinator:198-201`, `:209-212`, `:227-230` |
-| Botón "Actualizar" / **F5** en el `PanelHeader` | Las 11 pantallas que muestran datos de BD | `setAccionRefrescar(Runnable)` cablea **la función de carga que la pantalla ya tenía**; `setGuardRefresco(...)` interpone la confirmación donde hace falta. Plan: `plans/botones-refresco-por-pantalla.md` |
+| Botón "Actualizar" / **F5** en el `PanelHeader` | Las 10 pantallas que muestran datos de BD | `setAccionRefrescar(Runnable)` cablea **la función de carga que la pantalla ya tenía**; `setGuardRefresco(...)` interpone la confirmación donde hace falta. Plan: `plans/botones-refresco-por-pantalla.md` |
 
 Las tres pantallas de Lavadero se muestran **sólo** desde esos tres listeners (no hay `navegador.show(CLASIFICACION_LAVADERO|CICLOS_LAVADERO|SALIDAS_LAVADERO)` en ningún otro lado), así que la segunda convención cubre el 100 % de sus rutas de entrada. `CiclosController.componentShown` **no** relee (sólo colapsa cards / configura DnD): la relectura va en `abrirPantalla()`, que resetea sólo las cards libres para no pisar lo que el operador tipea en otra card — ver su javadoc.
 
@@ -76,32 +76,25 @@ la pantalla —que sí resetea los filtros al default y va a la página 1— es 
 propósito: el total se arrastra entre cambios de página (no cambió el filtro, no cambió el total),
 pero un refresco es justamente cuando puede haber cambiado lo que hay.
 
-## Seis grupos de refresco, y tres pantallas que leen páginas
+## Cinco grupos de refresco, y dos pantallas que leen páginas
 
 | Grupo (`UiCoordinator`) | Pantallas | Qué lee |
 |---|---|---|
 | `refresco-operativo` | Registrar Estado, Equipos para Entregar, Lotes | snapshot de la cola activa |
 | `refresco-ver-equipos` | Ver Equipos | **dos páginas**, una por grilla |
-| `refresco-cde` | Estado de Procesos | **una página** de la lista unificada |
 | `refresco-historial-lotes` | Ver Lotes | snapshot completo |
 | `refresco-historial-ciclos` | Ver Ciclos | snapshot completo |
 | `refresco-historial-lavadero` | Historial de Lavadero | **una página** |
 
-**Los dos primeros de consulta eran uno solo.** `refresco-historial-equipos` repartía el mismo
-snapshot a las dos pantallas del CDE, y ésa era toda su razón de ser: que quedaran coherentes entre
-sí. Con paginación no hay snapshot común —cada una pide su página con *sus* filtros—, así que un
-grupo que repartiera dos páginas distintas a dos pantallas distintas no sería un grupo, sería dos.
-**Se pierde la coherencia entre ellas y está aceptado:** son dos cards del `CardLayout`, sólo una
-está visible, nunca se miran juntas. La coherencia que el grupo garantizaba era invisible.
-
 **Una pantalla paginada no comparte grupo con nadie, y ésa es la regla.** Dos pantallas con filtros
-propios no pueden repartirse una misma lectura. Si mañana aparece una tercera que quiera los mismos
-datos, va en su propio grupo.
+propios no pueden repartirse una misma lectura: un grupo que repartiera dos páginas distintas a dos
+pantallas distintas no sería un grupo, sería dos. Si mañana aparece otra que quiera los mismos
+datos que Ver Equipos, va en su propio grupo.
 
 **Cómo llega el filtro al hilo de fondo: publicando, nunca leyendo campos del controller.**
 `RefrescadorPantallas` lee con un `Supplier` sin parámetros que corre fuera del EDT, y el filtro y
 la página son estado de controller, que sólo se toca en el EDT. Cada cambio arma un valor inmutable
-—`ConsultaHistorial`, `ConsultaEquipos`, `ConsultaCde`, clases planas sin Swing— y lo deja en un
+—`ConsultaHistorial`, `ConsultaEquipos`, clases planas sin Swing— y lo deja en un
 campo `volatile`; el lector lee esa referencia **en el momento de lanzar**. Capturarla al construir
 el lector, que es la otra tentación, congelaría la primera página para siempre. Y toda publicación
 va seguida del `solicitar()`, que cancela lo que haya en vuelo: por eso el total que llega a
@@ -125,12 +118,11 @@ significa "contá de nuevo"; un valor significa "arrastralo". Pasar de la págin
 el total, así que no cuesta un `COUNT(*)`. Un refresco pedido por el operador sí recuenta
 (`recontando()`), porque es justo cuando puede haber cambiado lo que hay.
 
-### Tres pantallas paginan en SQL, dos en memoria, y seis no paginan
+### Dos pantallas paginan en SQL, dos en memoria, y seis no paginan
 
 | Pantalla | Cómo pagina | Por qué así |
 |---|---|---|
 | Ver Equipos | **SQL**, dos páginas de 50 | Volumen sin techo: `equipos` + `equipo_otros` crecen para siempre y no se podan |
-| Estado de Procesos | **SQL**, una página de 50 | Ídem — es la misma unión, con otros filtros |
 | Historial de Lavadero | **SQL**, una página de 50 | Ídem; hoy son 0 filas, pero se llena cuando entren los otros dos puestos |
 | Ver Lotes | **memoria**, de a 50 | `PaginadorEnMemoria` sobre el snapshot completo |
 | Ver Ciclos | **memoria**, de a 50 | Ídem |
@@ -151,18 +143,19 @@ el pintado y ya está puesta; no hay que migrarlas a SQL por simetría.
 
 **Si una pantalla pagina, TODOS sus filtros y su orden van a SQL.** No hay mitad de camino: filtrar
 en memoria una página traída con `LIMIT` da 50 de 5000, no las 50 primeras de las que matchean. Eso
-incluye los *defaults de la vista* —el "sin entregados" de las dos pantallas del CDE es hoy parte
-del `WHERE`, no un filtro de la grilla—, y también el **orden**: `EquipoTableModel` tiene dos
-entradas (`actualizarDatos`, que ordena, y `actualizarDatosEnOrden`, que no) justamente porque
-reordenar una página ordenaría dentro de ella y rompería el orden global.
+incluye los *defaults de la vista* —el "sin entregados" de Ver Equipos es hoy parte del `WHERE`,
+no un filtro de la grilla—, y también el **orden**: Ver Equipos ordena en SQL
+(`SQL_ORDEN_PAGINA` de cada DAO) y vuelca la página tal como llega. Reordenar una página en la
+vista ordenaría dentro de ella y rompería el orden global. Ojo con `EquipoTableModel.actualizarDatos`
+(Registrar Estado, Correcciones): **ordena**, así que no sirve para una pantalla que pagine.
 
 **Mover un filtro a SQL es traducir `desdeBD`, no sólo el `WHERE`.** La columna `estado` es
 **nullable** en `equipos` y en `equipo_otros` (V1, V2: `VARCHAR(50) DEFAULT 'Nuevo'`, sin
 `NOT NULL`), y el filtrado en memoria mapeaba `NULL` a `NUEVO` con `EstadoEquipo.desdeBD`. Un
-`IN (…)` pelado no las manda a otra página: las hace **invisibles en las dos pantallas del CDE**,
-incluso bajo el filtro por defecto. Por eso `FiltroEquiposSql.estados` agrega `OR … IS NULL` cuando
-`NUEVO` está entre los estados pedidos —exactamente cuando `desdeBD` las habría dejado pasar— y el
-`ELSE` de `CdeConsultaDAO.casoOrdenEstado` toma la misma decisión para el orden. **Una fila que no
+`IN (…)` pelado no las manda a otra página: las hace **invisibles en las dos grillas de Ver
+Equipos**, incluso bajo el filtro por defecto. Por eso `FiltroEquiposSql.estados` agrega
+`OR … IS NULL` cuando `NUEVO` está entre los estados pedidos —exactamente cuando `desdeBD` las
+habría dejado pasar—. **Una fila que no
 está en ninguna página no se parece a un error y nadie la reporta**; es el mismo argumento que "un
 cartel que miente".
 
@@ -177,7 +170,7 @@ argumento que "por qué las tablas de detalle no llevan `version`"). Por eso hay
 | Ciclos | sí, sin descarte | La config tipeada **se conserva** — el botón va a `recargar()`, **no** a `abrirPantalla()`, que la resetea. *Salvo* lo cargado en un lavarropas que otro operador ocupó mientras tanto: eso se descarta solo, en cualquier relectura, y **se avisa** (ver abajo) |
 | Registrar Estado | sí, **con descarte** | Los movimientos armados **se descartan** (`descartarCambiosPendientes` antes de releer) |
 | Clasificación | sí, **con descarte** | Los elementos del formulario **se descartan**: `PantallaClasificacionLavadero.refrescar()` reconstruye el `PanelElementosClasificacion` entero |
-| Las otras 7 | no | No acumulan estado entre lecturas |
+| Las otras 6 | no | No acumulan estado entre lecturas |
 
 **La regla para decidir si una pantalla necesita guarda:** *toda pantalla que acumule estado en
 memoria entre lecturas la necesita; el guard de Volver (`setGuardVolver`) es una pista de dónde
@@ -269,7 +262,7 @@ del ingreso (elemento → lavarropas → fecha de lavado → fecha listo → des
 - **El detalle se lee bajo demanda por `TareaUI`**, no en el snapshot maestro: traerlo para todos
   los ingresos en cada refresco costaría O(historia completa).
 - Tiene **grupo de refresco propio** (`refresco-historial-lavadero`): nadie más consume esos datos —
-  y además pagina, que es razón suficiente (ver "Seis grupos de refresco").
+  y además pagina, que es razón suficiente (ver "Cinco grupos de refresco").
 - `HistorialLavaderoDAO` cruza clasificación + ciclos + instancias + salidas (aparte de
   `IngresoLavaderoDAO`, igual que `SalidaLavaderoDAO`). `cantBolsas` y los agregados de
   elementos/lavarropas van en consultas separadas: meterlos en el `LEFT JOIN` maestro infla los
@@ -542,7 +535,7 @@ lo es: un test de deadlock pasaría en H2 y mentiría sobre producción.
 
 ## Tests
 
-JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1130 tests en `src/test/java`,
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1310 tests en `src/test/java`,
 reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
 DAO/Service/Controller/helper relevante).
 
