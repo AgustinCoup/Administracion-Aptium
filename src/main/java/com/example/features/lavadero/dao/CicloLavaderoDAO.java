@@ -66,12 +66,27 @@ public class CicloLavaderoDAO {
         "ORDER BY CASE WHEN cl.fecha_fin IS NULL THEN 0 ELSE 1 END, cl.fecha_fin DESC";
 
     /**
-     * Insumos de todos los ciclos, para cruzar en memoria por {@code ciclo_id} con
-     * {@link #SQL_TODOS}. Consulta propia y no un {@code LEFT JOIN} en la maestra —que multiplicaría
-     * las filas de ciclo, el bug que {@code HistorialLavaderoDAO} documenta para {@code cantBolsas}—
-     * ni un {@code GROUP_CONCAT}, que no se comporta igual en H2 y en MySQL (ver
+     * Insumos de TODOS los ciclos (activos y finalizados), para cruzar en memoria por
+     * {@code ciclo_id} con la fila que haya leído cada uno de los tres métodos de arriba.
+     * Consulta propia y no un {@code LEFT JOIN} en la maestra —que multiplicaría las filas de
+     * ciclo, el bug que {@code HistorialLavaderoDAO} documenta para {@code cantBolsas}— ni un
+     * {@code GROUP_CONCAT}, que no se comporta igual en H2 y en MySQL (ver
      * {@code TextoLavarropas}). Sin parámetros: trae todo de un tirón en vez de armar un
      * {@code IN (?,?,…)} por concatenación.
+     *
+     * <p><b>Es la única consulta de insumos que existe, y es intencional que no haya una
+     * variante acotada a "sólo los activos" o "sólo los finalizados".</b> El cruce con
+     * {@code FilaCiclo} ya ignora las entradas de este mapa que no correspondan a un id leído
+     * por la maestra, así que acotar la consulta no ahorra nada. Y acotarla por
+     * {@code fecha_fin} tiene un costo que no es obvio: esa columna puede cambiar entre las dos
+     * lecturas (no comparten transacción). Con la consulta acotada, un ciclo que se finaliza
+     * en la ventana entre las dos lecturas de {@link #obtenerCiclosActivosPorLavarropas()}
+     * queda leído por la maestra (todavía estaba `fecha_fin IS NULL` en ese momento) pero
+     * afuera del filtro de insumos (ya no lo está) — se pinta como "ciclo activo sin insumos",
+     * el mismo dato faltante disfrazado que el comentario de la sección de arriba explica para
+     * el orden ciclos-antes-que-insumos. Con esta consulta sin filtro, esa ventana no existe:
+     * el resultado depende sólo del snapshot de la maestra, nunca de una segunda condición
+     * evaluada en otro instante.</p>
      *
      * <p><b>El {@code JOIN} a {@code catalogo_insumos} NO filtra por {@code activo}, y no hay que
      * agregárselo.</b> Es un join <b>histórico</b>: un insumo dado de baja tiene que seguir
@@ -83,24 +98,6 @@ public class CicloLavaderoDAO {
         "SELECT icl.ciclo_id, ci.id, ci.nombre, ci.activo " +
         "FROM insumos_ciclo_lavadero icl " +
         "JOIN catalogo_insumos ci ON ci.id = icl.insumo_id " +
-        "ORDER BY icl.ciclo_id, ci.nombre";
-
-    /** {@link #SQL_INSUMOS_TODOS} acotado a los ciclos de {@link #SQL_ACTIVOS}. Tampoco filtra por {@code activo}. */
-    private static final String SQL_INSUMOS_DE_ACTIVOS =
-        "SELECT icl.ciclo_id, ci.id, ci.nombre, ci.activo " +
-        "FROM insumos_ciclo_lavadero icl " +
-        "JOIN catalogo_insumos ci ON ci.id = icl.insumo_id " +
-        "JOIN ciclos_lavadero cl  ON cl.id = icl.ciclo_id " +
-        "WHERE cl.fecha_fin IS NULL " +
-        "ORDER BY icl.ciclo_id, ci.nombre";
-
-    /** {@link #SQL_INSUMOS_TODOS} acotado a los ciclos de {@link #SQL_FINALIZADOS}. Tampoco filtra por {@code activo}. */
-    private static final String SQL_INSUMOS_DE_FINALIZADOS =
-        "SELECT icl.ciclo_id, ci.id, ci.nombre, ci.activo " +
-        "FROM insumos_ciclo_lavadero icl " +
-        "JOIN catalogo_insumos ci ON ci.id = icl.insumo_id " +
-        "JOIN ciclos_lavadero cl  ON cl.id = icl.ciclo_id " +
-        "WHERE cl.fecha_fin IS NOT NULL " +
         "ORDER BY icl.ciclo_id, ci.nombre";
 
     private static final String SQL_ELEMENTOS_DE_CICLO =
@@ -257,7 +254,7 @@ public class CicloLavaderoDAO {
             log.error("Error al obtener ciclos activos", e);
             return new LinkedHashMap<>();
         }
-        Map<Integer, List<InsumoCatalogo>> insumos = leerInsumos(SQL_INSUMOS_DE_ACTIVOS);
+        Map<Integer, List<InsumoCatalogo>> insumos = leerInsumos(SQL_INSUMOS_TODOS);
 
         Map<Integer, CicloLavadero> mapa = new LinkedHashMap<>();
         for (FilaCiclo fila : filas) {
@@ -279,7 +276,7 @@ public class CicloLavaderoDAO {
             log.error("Error al obtener ciclos finalizados", e);
             return new ArrayList<>();
         }
-        Map<Integer, List<InsumoCatalogo>> insumos = leerInsumos(SQL_INSUMOS_DE_FINALIZADOS);
+        Map<Integer, List<InsumoCatalogo>> insumos = leerInsumos(SQL_INSUMOS_TODOS);
         return conInsumos(filas, insumos);
     }
 

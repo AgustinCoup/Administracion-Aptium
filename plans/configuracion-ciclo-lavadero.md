@@ -1,3 +1,12 @@
+> ✅ **CERRADO el 2026-09-21.** SHAs de cada paso:
+> - Paso 1 (V24): `a82e6cb`
+> - Paso 2 (modelo): `a5556fc`
+> - Paso 3 (DAO): `48ce4a1`
+> - Paso 4 (service): `c8d4977`
+> - Paso 5 (card): `4936e97`
+> - Paso 6 (controller/Ver Ciclos/cableado): `20f9d7e`, aprobación del smoke: `da1702f`
+> - Paso 7 (revisión, cobertura, docs, cierre): ver commit de este mismo cambio
+
 # Plan A — Configuración del ciclo de lavado: fuera los litros totales, adentro los insumos extra
 
 **Objetivo:** sacar **"L Tot."** (litros totales) de la configuración de un ciclo, y reemplazar los
@@ -1143,3 +1152,33 @@ catálogos no descartan nada").
 automáticamente: suite completa (1382, 0 fallos) y arranque del JAR 45 s contra la base de
 desarrollo sin ERROR ni WARN de `EdtGuard`. Los 8 puntos los corrió el usuario a mano el
 2026-09-21: **pasan todos**, el 5 incluido (F5 conserva la config y los insumos elegidos).
+
+### 2026-09-21 — Paso 7: `/code-review high` sobre el diff completo (`4216d6e..HEAD`)
+
+**HIGH aplicado — condición de carrera "dato faltante disfrazado" en sentido inverso.**
+`obtenerCiclosActivosPorLavarropas()` y `obtenerCiclosFinalizados()` acotaban su segunda lectura con
+`SQL_INSUMOS_DE_ACTIVOS`/`SQL_INSUMOS_DE_FINALIZADOS` (mismo `WHERE fecha_fin` que la maestra). Como
+las dos lecturas no comparten transacción, un ciclo finalizado en la ventana entre ambas quedaba
+leído por la maestra (todavía `fecha_fin IS NULL` en ese momento) pero afuera del filtro de insumos
+(ya no lo estaba) — se pintaba como "ciclo activo sin insumos", exactamente el dato faltante
+disfrazado que el orden ciclos-antes-que-insumos existe para evitar, sólo que reintroducido por el
+lado del filtro en vez del orden. **Arreglo:** las tres lecturas usan ahora la única
+`SQL_INSUMOS_TODOS`, sin `WHERE fecha_fin`; el cruce en memoria (`FilaCiclo#conInsumos`) ya ignora
+las entradas que no correspondan a un id leído por la maestra, así que acotar la consulta no
+aportaba nada y sí abría la ventana. Se borraron las dos constantes y se extendió el javadoc de
+`SQL_INSUMOS_TODOS` explicando por qué es la única que existe. `mvn test` en verde para
+`CicloLavaderoDAOTest`, `CicloLavaderoServiceTest` y `ConcurrenciaOptimistaTest` después del cambio.
+
+**MEDIUM anotado, sin tocar — cuatro hallazgos:**
+
+| Hallazgo | Por qué no se tocó |
+|---|---|
+| Un fallo de SQL en la maestra ahora descarta las filas ya leídas (antes devolvía el mapa/lista parcial construido hasta el punto de falla) | Es un cambio de comportamiento real, pero **más seguro**, no menos: pintar un snapshot a medio leer es la misma clase de dato-a-medias que el resto del paso evita. No hay caso de negocio que dependa de la devolución parcial. |
+| `PanelInsumosCard` tiene la lógica de agregar/quitar/deduplicar en la clase Swing, en vez de extraerla a una clase plana (patrón del repo: `AgrupadorIngresosLote`, `ConstructorVistaCiclos`, etc.) | El Paso 5 ya consideró esto explícitamente ("`PanelInsumosCardTest` propio ... si al escribirlo queda más limpio") y decidió que no. La lógica es un chip-list de ~15 líneas; extraerla movería la complejidad sin reducirla. Revisar si crece con el plan de Ajustes (copiar/pegar, catálogo con `activo`). |
+| `jabonesCargados`/`insumosCargados` en `CiclosController` duplican la misma forma (flag + decisión en el EDT + ternario en `leerDatos` + bloque en `pintar`) en vez de un mecanismo genérico para "catálogo que se lee una sola vez" | Es exactamente el trabajo que el plan de Ajustes (`ajustes-lavadero-catalogos.md`) ya tiene previsto hacer para los tres catálogos a la vez, con más cuidado del que este plan necesita para uno solo. Generalizarlo acá es adelantar ese plan a medias. |
+| `CatalogoInsumosDAO`/`CatalogoInsumosService` repiten el boilerplate de `CatalogoJabonesDAO`/`CatalogoJabonesService` byte a byte; `obtenerCiclosFinalizados()` y `obtenerTodosLosCiclos()` quedaron con la misma forma (leer fila → `leerInsumos` → `conInsumos`) | Dos catálogos con la misma forma no son todavía la presión real que justifica una abstracción (YAGNI) — recién con el tercer catálogo del plan de Ajustes se sabrá si vale la pena. Extraer un helper para dos métodos de 15 líneas que sólo cambian la consulta y el manejo de error tampoco simplifica una sola de las dos lecturas por separado. |
+
+**Verificación de cierre:** `mvn verify` en verde — **1347 tests**, 0 fallos. Cobertura JaCoCo de las
+clases planas nuevas: `CatalogoInsumosService` 100 %, `ConfiguracionCiclo` 100 %, `InsumoCatalogo`
+100 %, `CicloLavaderoService` 94 %, `CatalogoInsumosDAO` 84 %, `PanelInsumosCard` 83 %,
+`CicloLavaderoDAO` 88 % — todas por encima del 80 % mínimo del repo.

@@ -250,6 +250,31 @@ PENDIENTE → CLASIFICADO → LAVADO → FINALIZADO
 `destino = NULL`, y `NULL` significa "lista, sin destino todavía" — un estado legítimo, no un dato
 faltante. Un mismo ingreso puede tener parte de su ropa lista y parte todavía en un lavarropas.
 
+## Lavadero — configuración de un ciclo
+
+Un ciclo (`ciclos_lavadero`) lleva **tipo de lavado, jabón y mL de jabón** (obligatorios) y una
+**lista de insumos extra** (opcional — `Suavizante`, `Potenciador`, y lo que agregue
+`catalogo_insumos`). Antes de `V24`/`V25` esos insumos eran dos columnas booleanas fijas y había
+además `litros_totales`, un dato que nadie consultaba y que sin embargo bloqueaba el lanzamiento;
+las tres columnas se borraron.
+
+- **Persistencia:** tabla puente `insumos_ciclo_lavadero (ciclo_id, insumo_id)`, PK compuesta — un
+  insumo no se repite en un ciclo, y eso lo sostiene la base, no la card. Se escriben **dentro** de
+  la transacción de `CicloLavaderoDAO.lanzarTanda`, igual que los elementos: un ciclo lanzado con la
+  mitad de su configuración es un ciclo que nadie puede corregir.
+- **`tieneConfiguracionCompleta()` de `LavarropasCard` pide tres campos, no cuatro:** tipo, jabón y
+  mL de jabón. Los insumos son opcionales — un ciclo sin suavizante es un ciclo válido.
+- **Lectura sin N+1:** los insumos de un ciclo se leen en una consulta aparte (`SQL_INSUMOS_TODOS`),
+  agrupada en memoria, nunca con `GROUP_CONCAT`/`STRING_AGG` (se comportan distinto en H2 y MySQL,
+  ver `TextoLavarropas`) ni con un `LEFT JOIN` a la maestra (multiplicaría las filas de ciclo, el
+  bug que `HistorialLavaderoDAO` documenta para `cantBolsas`). Es **una sola** consulta, sin
+  variantes acotadas a "activos" o "finalizados": acotarla por `fecha_fin` abriría una ventana entre
+  las dos lecturas (no comparten transacción) donde un ciclo que se finaliza en el medio se pintaría
+  como "activo sin insumos" — el mismo dato faltante disfrazado que el orden ciclos-antes-que-insumos
+  ya evita en el otro sentido.
+- **El `JOIN` a `catalogo_insumos` no filtra por `activo`:** es un join histórico, un insumo dado de
+  baja tiene que seguir mostrando su nombre en los ciclos viejos.
+
 ## Lavadero — Historial
 
 Pantalla de **consulta de sólo lectura** (botón "Historial" del menú de Lavadero, hoy grilla 2×3).
@@ -399,8 +424,12 @@ morir por el techo de consulta.
 
 > **Invariante del que depende la aritmética del semáforo:** *ninguna operación mantiene dos
 > conexiones abiertas a la vez.* Hoy se cumple —`HistorialLavaderoDAO.obtenerHistorial()` toma cuatro,
-> pero **secuencialmente**—. Si alguna vez se anidaran dos, serían 5 × 2 = 10 > 8 y el pool se
-> agotaría **con el techo puesto**.
+> pero **secuencialmente**—, y lo mismo hacen los tres métodos de lectura de
+> `CicloLavaderoDAO` (`obtenerCiclosActivosPorLavarropas`, `obtenerCiclosFinalizados`,
+> `obtenerTodosLosCiclos`): cada uno lee primero los ciclos con su propio
+> `try-with-resources` y **después**, ya cerrada esa conexión, lee sus insumos con
+> `leerInsumos`. Si alguna vez se anidaran dos, serían 5 × 2 = 10 > 8 y el pool se agotaría
+> **con el techo puesto**.
 
 **Estado mutable de un controller:** se lee y escribe **sólo en el EDT** (`pintar`, diálogos, DnD).
 Nada de eso puede tocarse desde el hilo de fondo.
@@ -552,7 +581,7 @@ lo es: un test de deadlock pasaría en H2 y mentiría sobre producción.
 
 ## Tests
 
-JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1325 tests en `src/test/java`,
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1347 tests en `src/test/java`,
 reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
 DAO/Service/Controller/helper relevante).
 
