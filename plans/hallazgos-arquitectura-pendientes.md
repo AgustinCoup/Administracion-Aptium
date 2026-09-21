@@ -17,6 +17,7 @@ pasada contra la app real ese mismo día. Del plan de sesiones queda **sólo el 
 | #8 Lavadero (Ciclos + Clasificación) fuera del modelo EDT (agregado 2026-08-27, derivado de la verificación de #6/4b) | hecho (2026-08-27) — `CiclosController` colapsó sus 4 lecturas en un `recargar()` con el record `DatosCiclos` + `ConstructorVistaCiclos`, y sus 3 escrituras van por un helper `ejecutar(...)`; `ClasificacionController` y `LavaderoController.guardar()` al patrón de 4b. 970 tests, smoke pasado | `95c9e33` |
 | #9 huecos que dejó abierto el bloqueo optimista (agregado 2026-09-04) | **hecho (2026-09-04)** — las diez rutas de Correcciones, el reintento de secuencia de lotes, y las dos rutas alcanzables de ABM (eliminar/fusionar clientes). 11 pasos en [`guardas-correcciones-y-secuencia-de-lotes.md`](guardas-correcciones-y-secuencia-de-lotes.md) | `e0876db`..`6aaca8f` |
 | #10 código muerto destapado por #9 (agregado 2026-09-04) | **anotado, no tocado** — ver más abajo | — |
+| #11 lecturas del histórico: lo que dejó abierto el hotfix de "Ver Equipos" (agregado 2026-09-11) | **hecho (2026-09-21)** — (a), (b) y (c) cerrados por [`conexiones-y-paginacion.md`](conexiones-y-paginacion.md); la revisión de cierre dejó dos defectos (carrera en la cancelación, tabla derivada en la unificación), también cerrados. Ver "Cierre" más abajo | hotfix: `cbf3cb3` (`v1.2.0.2`) · cierre: `3bfa1fd`..`44f5b39` |
 
 Las referencias de línea de abajo fueron **re-verificadas tras los commits de hoy**.
 
@@ -361,6 +362,181 @@ viva `PantallaVerCDEv1` en el punto 4 del plan de sesiones de abajo.
   de los dos tiene llamador, ni en `src/main` ni en `src/test`). No es el mismo caso que los de
   arriba: `EquipoDAO.actualizar` sí bumpea `version` correctamente (ver su javadoc), así que no es
   un agujero de bloqueo optimista si algún día se reconecta — es puro código sin ruta de llamada.
+
+---
+
+## #11 — Lecturas del histórico: lo que dejó abierto el hotfix de "Ver Equipos" (agregado 2026-09-11)
+
+### Cierre (2026-09-21) — hecho
+
+Lo de abajo es el diagnóstico tal como se escribió; los números de pool que cita (10 conexiones,
+`connectionTimeout` 30 s, líneas de `ConnectionPool`) son los de entonces. Cómo se cerró cada punto:
+
+| Punto | Cómo se cerró | Commits |
+|---|---|---|
+| **(a)** lecturas zombie (ALTO) | Se hizo la opción que acá no se recomendaba, porque resultó barata: `Statement.cancel()` de verdad, sin pasar la sentencia desde el DAO — `ConexionesSupervisadas` envuelve toda conexión y registra sus sentencias por `TokenTarea`. Además, techo de consulta de 30 s (sólo en autocommit), timeouts de red, pool 10 → 8 y un semáforo de 5 lecturas de fondo concurrentes. Verificado contra MySQL: la consulta muere en 20 ms (`CancelacionContraMySQL`). La observabilidad que faltó: duración de `leer`/`pintar` a INFO (`120763e`), y a WARN sobre un umbral de **1 s** (no los 5 s que sugería este texto: el peor caso medido es ~318 ms) | `3bfa1fd`, `120763e`, `52bd792`, `2bce7d2`, `0280ff6`, `1f8f4b3`, `44f5b39` |
+| **(b)** `EquipoOtrosDAO.listar` se come los errores (MEDIO) | `listar()` propaga `DatabaseException`, incluido `obtenerPorId()` (confirmado con el usuario). `VerEquiposController.abrirDetalleOtros` salió del EDT a `TareaUI` | `9e9e48e` |
+| **(c)** el histórico se lee entero (BAJO) | Último movimiento por subconsulta correlacionada en vez de tabla derivada; índices de fecha/estado (V23); Ver Equipos pagina en SQL de a 50 con todos los filtros y el orden en el `WHERE`/`ORDER BY` (187 → 10 ms a 6 000 filas). Estado de Procesos, que leía lo mismo, se borró por inalcanzable | `a604043`, `9e9e48e`, `93452f4`, `ecad88e`, `11936b7`, `02e68a6`, `3a6a0a0` |
+
+**Dos defectos de la revisión de cierre**, los dos MEDIO y los dos cerrados:
+
+1. **Carrera en la cancelación** — `3414204`. `cancelarDe(token)` sólo alcanzaba sentencias ya
+   registradas: una tarea esperando permiso en el semáforo (justo el caso con presión) o cancelada
+   entre dos sentencias corría la siguiente consulta entera. Ahora `cancelar()` prende una marca en
+   el `TokenTarea` en el EDT antes de despachar el `cancelarDe`, y se revisa después de tomar el
+   permiso (lo devuelve), después de registrar cada sentencia y antes de cada `execute*`. Lanza
+   `TareaCanceladaException`; `FiltroTareaCancelada` saca de `error.log` los errores de tareas ya
+   canceladas (ya pasaba con el `KILL QUERY`), sin tocar los DAOs. Queda una ventana de
+   microsegundos entre la última revisión y que el driver marque la sentencia como en ejecución:
+   sólo la cubre el techo de 30 s.
+2. **Tabla derivada de movimientos en el camino de escritura** — `b37daac`. La unificación de
+   materiales duplicados (Registrar Estado, dentro de la transacción y sin techo de consulta)
+   agrupaba toda la tabla de movimientos una vez por grupo. Pasó a la misma subconsulta
+   correlacionada de (c). No había tests de unificación: se agregaron seis (superviviente por
+   fecha, desempate por id, sin movimientos pierde), que pasan igual con el SQL anterior.
+
+**Queda abierto, decisión del usuario (mismo criterio que #10):** `EquipoService.obtenerTodos`,
+`EquipoOtrosService.obtenerTodos` y `EquipoOtrosDAO.obtenerTodos` quedaron sin llamador en
+`src/main` al borrar Estado de Procesos. Los dos services sólo los usan sus tests unitarios y
+`CostoDelRefrescoTest`; `EquipoOtrosDAO.obtenerTodos` es además el **oráculo** de 19 usos en tests
+(`EquipoOtrosDAOTest`, `EquipoOtrosDAOPaginacionTest`, `EstadoPersistidoEsElCalculadoTest`,
+`LoteDAOTest`, `ConcurrenciaOptimistaTest`). `EquipoDAO.obtenerTodos` lo exige `DAO<T,ID>`.
+
+### El incidente que lo originó
+
+En producción (`v1.2.0`), **Ver Equipos** y **Estado de Procesos** quedaban vacías y sin la hora de
+"actualizado". El resto de las pantallas andaba. `error.log` estaba vacío; la única pista eran estos
+avisos en `app.log`:
+
+```
+WARN  c.zaxxer.hikari.pool.ProxyLeakTask - Connection leak detection triggered for
+      com.mysql.cj.jdbc.ConnectionImpl@554e218 on thread refresco-historial-equipos
+...   (7 conexiones distintas entre 08:27 y 08:30)
+INFO  ... Previously reported leaked connection ... was returned to the pool (unleaked)   (08:30:44)
+```
+
+**No eran leaks: eran lecturas lentas.** Cada lectura del histórico retenía la conexión unos 3,5 min
+y el `leakDetectionThreshold` (60 s, `ConnectionPool:304`) las reportaba. Todas se devolvieron al pool.
+
+**Causa:** `EquipoOtrosDAO.listar` hacía una sentencia por equipo para cargar sus materiales, y esa
+sentencia llevaba una tabla derivada `SELECT material_id, MAX(fecha) FROM otros_material_movimientos
+GROUP BY material_id`, que MySQL **materializa entera en cada ejecución**. Costo:
+O(equipos × movimientos), más un viaje de red por TLS por equipo. `CostoDelRefrescoTest` exigía ese
+comportamiento ("el histórico se lee entero", más sentencias con más volumen) y lo llamaba "la
+contraparte del reparto".
+
+**Hotfix `cbf3cb3` (`v1.2.0.2`):** una sola sentencia con `LEFT JOIN` a materiales, que agrupa las
+filas por equipo en un `LinkedHashMap` (el patrón que `EquipoDAO.obtenerEquiposConJoin` ya usaba),
+y el test invertido: ahora exige la **misma** cantidad de sentencias con o sin histórico. Verificado
+en producción: la pantalla carga en el acto.
+
+Quedan tres cosas que el hotfix no resolvió. El orden es por gravedad.
+
+### (a) Una lectura cancelada sigue corriendo y ocupa recursos compartidos por toda la app  (ALTO)
+
+**Qué pasa.** `RefrescadorPantallas.refrescarAhora()` cancela la lectura en vuelo antes de lanzar
+otra, pero `TareaUI.Handle.cancelar()` hace `worker.cancel(false)` **a propósito** ("interrumpir una
+query JDBC en curso no es confiable"): la cancelación sólo descarta el resultado. La sentencia sigue
+ejecutándose en MySQL y el hilo sigue esperándola. Cada F5, y cada vez que se vuelve a entrar a la
+pantalla, suma una lectura zombie. En el incidente se juntaron **7**.
+
+**Por qué es ALTO y no un detalle.** Cada zombie retiene dos recursos que **toda la app** comparte,
+y los dos tienen tope 10:
+
+1. **El pool de conexiones** — `maximumPoolSize = 10` (`ConnectionPool:291`). Con 10 tomadas,
+   cualquier pantalla del puesto espera `connectionTimeout = 30 s` y termina en error, **escrituras
+   incluidas** (Registrar Estado, Lanzar Lote, Lanzar Tanda).
+2. **Los hilos de `SwingWorker`** — el executor interno de `javax.swing.SwingWorker` tiene
+   `MAX_WORKER_THREADS = 10`, y `TareaUI` es el único mecanismo de trabajo en fondo de la app. Con 10
+   hilos colgados, las `TareaUI` nuevas **ni siquiera arrancan**: quedan encoladas sin error visible,
+   que es peor que el timeout del pool porque la pantalla no dice nada.
+
+Además, las zombies de todos los puestos caen sobre **el mismo servidor MySQL**, y pueden hacer más
+lentos a puestos que no tienen nada que ver.
+
+**Por qué el hotfix no lo cierra.** Sólo lo hace improbable: con una lectura de segundos, es difícil
+apilar 10. Pero cualquier query que mañana vuelva a ponerse lenta (volumen, un índice que falta, el
+servidor cargado) reproduce el cuadro completo, y ahora sabemos que no avisa por `error.log`.
+
+**Opciones (a decidir):**
+- **No lanzar mientras hay una en vuelo** — `refrescarAhora()` marca un "pendiente" y, cuando la
+  lectura en curso termina, relee una sola vez más si hacía falta. Acota a **una** lectura por grupo
+  y se queda con la semántica de "gana la última pedida". Es un cambio chico y local a
+  `RefrescadorPantallas`, pero **no alcanza** para `ClasificacionController` ni
+  `SalidasLavaderoController`, que tienen su propio `cargaEnCurso` fuera de `RefrescadorPantallas`
+  (ver CLAUDE.md, "Dos asimetrías").
+- **`Statement.setQueryTimeout(...)`** en las lecturas de histórico — pone un techo real al tiempo en
+  MySQL (Connector/J manda un `KILL QUERY`). Sirve de red de seguridad aunque se haga lo de arriba.
+  Hay que decidir qué ve el operador cuando salta: hoy caería en `mostrarErrorDeRefresco`.
+- **`Statement.cancel()` desde `cancelar()`** — la cancelación "de verdad". Más invasivo: `TareaUI`
+  no conoce la sentencia, habría que hacerla viajar desde el DAO. No lo recomiendo sin necesidad.
+
+**Observabilidad que faltó.** El diagnóstico salió del `ProxyLeakTask` de Hikari **por casualidad**.
+`RefrescadorPantallas` (o `TareaUI`) debería loguear la duración de cada lectura, y a WARN si pasa de
+un umbral (p. ej. 5 s). Con eso, "Ver Equipos tarda" se habría visto en `app.log` en el primer
+arranque de producción, antes del primer reclamo. Es barato y conviene hacerlo **primero**, antes
+que cualquier otra opción de este punto.
+
+### (b) `EquipoOtrosDAO.listar` se come los errores de SQL y devuelve una lista parcial  (MEDIO)
+
+**Qué pasa.** `listar` hace `catch (SQLException e) { log.error(...); }` y devuelve lo que alcanzó
+a leer. Su javadoc lo justifica como "el comportamiento histórico de estos listados". Es el gemelo
+de "otros" del hallazgo **#1 (fallos silenciosos ortopedias, `de1af06`)**, que cerró sólo el lado de
+ortopedias: `EquipoDAO.obtenerEquiposConJoin` sí lanza `DatabaseException`.
+
+**Por qué es problema.** Toda la app sale de este método para leer "otros":
+
+| Llamador | Qué pasa si la lectura falla a mitad |
+|---|---|
+| `obtenerTodos` → Ver Equipos / Estado de Procesos | Pinta una lista incompleta **y el cartel dice "actualizado HH:mm"**. El cartel miente, que es lo que el repo evita a propósito (CLAUDE.md, "Qué le pasa a lo pendiente"). |
+| `obtenerActivos` → cola operativa (Registrar Estado, Para Entregar, Lotes) | Equipos que desaparecen de la cola sin aviso. |
+| `obtenerEntreFechas` → reporte impreso de "otros" | **Un reporte en papel al que le faltan equipos**, sin ninguna marca. Es el caso más grave: sale del sistema y nadie lo vuelve a verificar. |
+| `obtenerPorId` → detalle, Correcciones | Devuelve `null`, que el llamador trata como "no existe". |
+
+**Lo empeoró el hotfix, un poco.** Con la sentencia por equipo, si fallaba la carga de materiales de
+un equipo, ese equipo no se agregaba. Con el `JOIN`, un fallo a mitad del `ResultSet` deja el
+**último equipo con parte de sus materiales**, y su `calcularEstado()` (el mínimo de sus materiales)
+puede dar un estado que no es el real.
+
+**Fix.** Igualarlo a `EquipoDAO`: `throw new DatabaseException(...)` en el `catch`, y ajustar el
+javadoc. `TareaUI` ya rutea la excepción a `siFalla` → `mostrarErrorDeRefresco` ("Lo que ves puede
+estar desactualizado"), que es el aviso correcto. **Antes de hacerlo:** revisar los llamadores de
+`obtenerPorId`/`obtenerEquiposNuevos` fuera de `TareaUI` (Correcciones, `DetalleOtrosDialog` vía
+`VerEquiposController.abrirDetalleOtros`), que hoy reciben `null`/lista vacía y pasarían a recibir
+una excepción. Buscar también tests que afirmen el comportamiento parcial.
+
+**De paso, algo que apareció al revisar esto:** `VerEquiposController.abrirDetalleOtros` (línea 189)
+llama `equipoOtrosService.obtenerPorId` **en el EDT**, en el doble clic. Viola la regla dura de
+CLAUDE.md ("ningún acceso a BD corre en el EDT") y no está en la lista de excepciones aceptadas (los
+cinco autocompletados). `EdtGuard` debería estar avisándolo en el log de producción. Hoy la lectura
+es de un solo equipo y rápida, pero lleva la tabla derivada de movimientos entera (ver (c)), así que
+su costo crece con el histórico. Pasarla a `TareaUI` es chico, y conviene hacerlo **junto con** el
+fix de arriba: los dos tocan cómo le llega el fallo de `obtenerPorId` a esa pantalla.
+
+### (c) El histórico se sigue leyendo entero: el costo crece en filas con los años  (BAJO)
+
+**Qué pasa.** `LectorHistorialEquipos` trae **todos** los equipos de ortopedias y "otros", entregados
+incluidos, con todos sus materiales. Después filtra en memoria, aunque el filtro por defecto de Ver
+Equipos oculte los `ENTREGADO` (`PantallaVerEquipos.estadosVisiblesPorDefecto`). Además, las dos
+tablas derivadas `MAX(fecha) ... GROUP BY material_id` agregan **toda** la tabla de movimientos en
+cada lectura. Tras el hotfix el costo es O(filas) en una sola ida y vuelta, no O(equipos ×
+movimientos), así que hoy no se nota. Pero crece con cada día de operación, y el snapshot entero
+queda en memoria en los dos controllers.
+
+**Por qué BAJO.** Ya no es cuadrático y no hay síntoma. Anotado para que la decisión se tome con
+datos, no cuando vuelva a haber un reclamo.
+
+**Cuándo actuar.** Cuando la duración logueada de la lectura (ver la observabilidad de (a)) pase de
+un par de segundos. **Opciones:**
+- **Filtrar `ENTREGADO` en SQL** mientras el operador no lo pida: al marcarlo en el combo, se relee
+  con el histórico completo. Es lo que más corta, porque lo entregado es la inmensa mayoría de
+  las filas.
+- **Ventana de fechas por defecto** (p. ej. últimos 6 meses), con los filtros Desde/Hasta que ya
+  existen yendo a SQL en vez de a memoria.
+- **Último movimiento sin tabla derivada**: una subconsulta correlacionada por material (usa
+  `idx_otros_mov_material` / `idx_mov_material`), o una columna `ultimo_movimiento` desnormalizada
+  que mantengan las escrituras. La segunda es más rápida pero agrega un lugar más que mantener
+  consistente, con el mismo riesgo de agujeros que describe #9(a) para `version`.
 
 ---
 

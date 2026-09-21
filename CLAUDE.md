@@ -552,7 +552,7 @@ lo es: un test de deadlock pasaría en H2 y mentiría sobre producción.
 
 ## Tests
 
-JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1310 tests en `src/test/java`,
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1325 tests en `src/test/java`,
 reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
 DAO/Service/Controller/helper relevante).
 
