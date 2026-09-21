@@ -1141,5 +1141,5 @@ catálogos no descartan nada").
 
 **El smoke de 8 puntos no lo pudo correr la sesión** (sin computer use disponible). Verificado
 automáticamente: suite completa (1382, 0 fallos) y arranque del JAR 45 s contra la base de
-desarrollo sin ERROR ni WARN de `EdtGuard`. **Los 8 puntos quedan pendientes del operador**, el 5
-en particular.
+desarrollo sin ERROR ni WARN de `EdtGuard`. Los 8 puntos los corrió el usuario a mano el
+2026-09-21: **pasan todos**, el 5 incluido (F5 conserva la config y los insumos elegidos).
