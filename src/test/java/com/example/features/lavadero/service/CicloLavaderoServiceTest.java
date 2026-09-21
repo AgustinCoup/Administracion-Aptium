@@ -164,6 +164,28 @@ class CicloLavaderoServiceTest {
     }
 
     @Test
+    void lanzarTanda_sinInsumos_esValida() {
+        ConfiguracionCiclo config = new ConfiguracionCiclo(
+            TipoLavado.SUCIO, SKIP, new BigDecimal("1.5"), List.of());
+        List<LanzamientoCiclo> tanda = tandaDe(ciclo(1, config));
+
+        service.lanzarTanda(tanda);
+
+        verify(dao).lanzarTanda(tanda);
+    }
+
+    @Test
+    void lanzarTanda_insumoRepetido_lanzaValidation() {
+        ConfiguracionCiclo config = new ConfiguracionCiclo(
+            TipoLavado.SUCIO, SKIP, new BigDecimal("1.5"),
+            List.of(new InsumoCatalogo(1, "Suavizante", true), new InsumoCatalogo(1, "Suavizante", true)));
+        List<LanzamientoCiclo> tanda = tandaDe(ciclo(1, config));
+
+        assertThrows(ValidationException.class, () -> service.lanzarTanda(tanda));
+        verifyNoInteractions(dao);
+    }
+
+    @Test
     void lanzarTanda_variosLavarropasCompartiendoInstancia_delegaLaTandaEntera() {
         List<LanzamientoCiclo> tanda = List.of(
             new LanzamientoCiclo(1, configValida(), List.of(new LineaLanzamiento(1, 1, 7, 2))),

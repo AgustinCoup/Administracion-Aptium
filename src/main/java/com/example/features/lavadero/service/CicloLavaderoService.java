@@ -6,6 +6,7 @@ import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
+import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.LanzamientoCiclo;
 import com.example.features.lavadero.model.LineaLanzamiento;
 
@@ -61,6 +62,13 @@ public class CicloLavaderoService {
                 prefijo + "debe seleccionar un jabón.");
             v.addErrorIf(config.litrosJabon() == null || config.litrosJabon().compareTo(BigDecimal.ZERO) <= 0,
                 prefijo + "los mililitros de jabón deben ser mayores a cero.");
+
+            // Los insumos son opcionales: una lista vacía es válida. La card ya evita duplicados
+            // y la PK compuesta de insumos_ciclo_lavadero también, pero sin esto un duplicado que
+            // se cuele por otra vía (el pegado del plan de Ajustes) sale como DatabaseException
+            // técnica en vez de un mensaje accionable.
+            long insumosUnicos = config.insumos().stream().map(InsumoCatalogo::id).distinct().count();
+            v.addErrorIf(insumosUnicos != config.insumos().size(), prefijo + "hay insumos repetidos.");
         }
 
         List<LineaLanzamiento> lineas = ciclo.lineas();
