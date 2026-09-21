@@ -23,6 +23,11 @@ import java.util.TreeSet;
  * <p><b>Corre en el hilo de la interfaz</b>, no en el de fondo: toca {@link StagingCiclos},
  * que es el estado mutable que también leen el arrastre y los diálogos de subdivisión. Lo
  * único que se hace en fondo es traer los {@link DatosCiclos}.
+ *
+ * <p><b>Los catálogos de {@link DatosCiclos} (jabones, insumos) no pasan por acá</b> y no
+ * descartan nada: son lo que alimenta los combos de las cards, y los insumos que el operador ya
+ * eligió son configuración de card, no staging. Que una relectura traiga un catálogo nuevo no es
+ * motivo para resetear ninguna card — {@code recargar()} / F5 no pisa lo que se está tipeando.
  */
 public final class ConstructorVistaCiclos {
 

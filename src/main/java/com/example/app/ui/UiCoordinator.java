@@ -207,7 +207,8 @@ public class UiCoordinator {
             vista.getPantallaCiclos(),
             context.getCicloLavaderoService(),
             context.getLavarropasService(),
-            context.getCatalogoJabonesService());
+            context.getCatalogoJabonesService(),
+            context.getCatalogoInsumosService());
 
         vista.getPantallaLavadero().getBtnCiclos().addActionListener(e -> {
             vista.getNavegador().show(vista.getContenedor(), Constantes.Pantallas.CICLOS_LAVADERO);

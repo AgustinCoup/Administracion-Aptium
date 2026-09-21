@@ -1125,3 +1125,21 @@ Se dejaron las dos.
 siguen tragándose un fallo de la maestra (mapa/lista vacía, como antes), pero un fallo al leer los
 insumos sale como `DatabaseException`: pintar los ciclos sin insumos sería el "dato faltante
 disfrazado" que el orden de lectura existe para evitar.
+
+### 2026-09-21 — Paso 6: el grep de salida y el smoke
+
+**El `grep` del criterio de salida no da vacío, y está bien.** Se escribió antes de la V25 y de los
+tests del Paso 3. Fuera de `V10`/`V12`/`V24`/`V25` quedan tres familias de coincidencias, ninguna
+de ellas código de los campos viejos: variables de `CicloLavaderoDAOTest` que nombran **insumos del
+catálogo** (`suavizante`, `potenciador`), `MigracionV24Test` (que tiene que nombrar las columnas
+viejas para sembrarlas y comprobar el `DROP`), y los javadoc de `InsumoCatalogo`/`ConfiguracionCiclo`
+que las usan de ejemplo. Ningún getter, campo ni columna vieja sobrevive en `src/main`.
+
+**`ConstructorVistaCiclos` no cambió de firma**: recibe `DatosCiclos` entero, así que el componente
+nuevo sólo tocó el `new DatosCiclos(...)` de su test. Se le agregó igual la nota de clase ("los
+catálogos no descartan nada").
+
+**El smoke de 8 puntos no lo pudo correr la sesión** (sin computer use disponible). Verificado
+automáticamente: suite completa (1382, 0 fallos) y arranque del JAR 45 s contra la base de
+desarrollo sin ERROR ni WARN de `EdtGuard`. **Los 8 puntos quedan pendientes del operador**, el 5
+en particular.

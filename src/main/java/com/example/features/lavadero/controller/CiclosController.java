@@ -17,6 +17,7 @@ import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.LanzamientoCiclo;
 import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.TipoLavado;
+import com.example.features.lavadero.service.CatalogoInsumosService;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.LavarropasService;
@@ -66,6 +67,7 @@ public class CiclosController {
     private final CicloLavaderoService  cicloLavaderoService;
     private final LavarropasService     lavarropasService;
     private final CatalogoJabonesService catalogoJabonesService;
+    private final CatalogoInsumosService catalogoInsumosService;
     private final Map<Integer, LavarropasCard> cards;
 
     private final StagingCiclos staging = new StagingCiclos();
@@ -84,6 +86,9 @@ public class CiclosController {
 
     /** El catálogo de jabones no cambia en runtime: se lee una sola vez, al abrir la pantalla. */
     private boolean jabonesCargados = false;
+
+    /** Ídem para el catálogo de insumos extra. */
+    private boolean insumosCargados = false;
 
     /**
      * Carga en vuelo, para descartar su resultado si se dispara otra. Dos refrescos rápidos
@@ -142,11 +147,13 @@ public class CiclosController {
 
     public CiclosController(PantallaCiclos pantalla, CicloLavaderoService cicloLavaderoService,
                              LavarropasService lavarropasService,
-                             CatalogoJabonesService catalogoJabonesService) {
+                             CatalogoJabonesService catalogoJabonesService,
+                             CatalogoInsumosService catalogoInsumosService) {
         this.pantalla = pantalla;
         this.cicloLavaderoService   = cicloLavaderoService;
         this.lavarropasService      = lavarropasService;
         this.catalogoJabonesService = catalogoJabonesService;
+        this.catalogoInsumosService = catalogoInsumosService;
         this.cards    = pantalla.getAllCards();
         // Sin I/O en el constructor: la pantalla no está visible al arrancar y
         // abrirPantalla() carga todo cuando el operador entra (patrón de la Fase 2).
@@ -237,12 +244,13 @@ public class CiclosController {
      */
     public void recargar() {
         cancelarCargaEnCurso();
-        // La decisión de traer los jabones se toma acá, en el EDT: si esta carga se cancela,
-        // jabonesCargados sigue en false y la siguiente los vuelve a pedir.
+        // La decisión de traer los catálogos se toma acá, en el EDT: si esta carga se cancela,
+        // los flags siguen en false y la siguiente los vuelve a pedir.
         boolean conJabones = !jabonesCargados;
+        boolean conInsumos = !insumosCargados;
         cargaEnCurso = TareaUI.<DatosCiclos>nueva()
             .nombre("carga-ciclos-lavadero")
-            .leer(() -> leerDatos(conJabones))
+            .leer(() -> leerDatos(conJabones, conInsumos))
             .pintar(this::pintar)
             .siFalla(e -> {
                 pantalla.mostrarError(Constantes.Mensajes.ERROR_CARGAR_DATOS);
@@ -268,7 +276,7 @@ public class CiclosController {
     }
 
     /** Fuera del hilo de la interfaz. No toca ningún campo del controller. */
-    private DatosCiclos leerDatos(boolean conJabones) {
+    private DatosCiclos leerDatos(boolean conJabones, boolean conInsumos) {
         Map<Integer, CicloLavadero> activos = cicloLavaderoService.obtenerCiclosActivosPorLavarropas();
 
         Map<Integer, List<ElementoCicloItem>> itemsActivos = new HashMap<>();
@@ -282,7 +290,8 @@ public class CiclosController {
             cicloLavaderoService.obtenerElementosDisponiblesParaCiclo(),
             lavarropasService.obtenerTodos(),
             itemsActivos,
-            conJabones ? catalogoJabonesService.obtenerTodos() : List.of()
+            conJabones ? catalogoJabonesService.obtenerTodos() : List.of(),
+            conInsumos ? catalogoInsumosService.obtenerTodos() : List.of()
         );
     }
 
@@ -290,6 +299,12 @@ public class CiclosController {
         if (!datos.jabones().isEmpty()) {
             cards.values().forEach(card -> card.setJabones(datos.jabones()));
             jabonesCargados = true;
+        }
+        // setInsumos repuebla sólo el combo: los insumos que el operador ya eligió son
+        // configuración y siguen ahí (recargar() / F5 no pisa lo que se está tipeando).
+        if (!datos.insumos().isEmpty()) {
+            cards.values().forEach(card -> card.setInsumos(datos.insumos()));
+            insumosCargados = true;
         }
 
         ciclosActivos = datos.ciclosActivos();
@@ -621,9 +636,11 @@ public class CiclosController {
 
     /**
      * {@code Optional.empty()} si el lavarropas no tiene nada que lanzar o le falta config;
-     * en el segundo caso además deja el motivo en {@code faltantes}. Los cuatro campos que se
-     * piden acá son los mismos que enciende {@link LavarropasCard#tieneConfiguracionCompleta()}:
-     * lo que cambia es que ahí se decide si el botón se prende y acá se dice qué falta.
+     * en el segundo caso además deja el motivo en {@code faltantes}. Los tres campos que se
+     * piden acá —tipo, jabón y mL de jabón— son los mismos que enciende
+     * {@link LavarropasCard#tieneConfiguracionCompleta()}: lo que cambia es que ahí se decide si
+     * el botón se prende y acá se dice qué falta. Los insumos extra son opcionales y viajan tal
+     * como están, lista vacía incluida.
      */
     private Optional<LanzamientoCiclo> prepararLanzamiento(int num, List<String> faltantes) {
         List<ElementoCicloItem> pendientes = staging.pendientesDe(num);
@@ -645,14 +662,8 @@ public class CiclosController {
             faltantes.add("Lavarropas #" + num + ": ingrese los mililitros de jabón.");
             return Optional.empty();
         }
-        BigDecimal litrosTotales = card.getLitrosTotales();
-        if (litrosTotales == null) {
-            faltantes.add("Lavarropas #" + num + ": ingrese los litros totales.");
-            return Optional.empty();
-        }
-
-        ConfiguracionCiclo config = new ConfiguracionCiclo(tipoLavado, jabon, litrosJabon,
-            card.isSuavizante(), card.isPotenciador(), litrosTotales);
+        ConfiguracionCiclo config = new ConfiguracionCiclo(
+            tipoLavado, jabon, litrosJabon, card.getInsumosSeleccionados());
 
         Map<Integer, Integer> fracciones = staging.fraccionesPorInstancia();
         List<LineaLanzamiento> lineas = new ArrayList<>();

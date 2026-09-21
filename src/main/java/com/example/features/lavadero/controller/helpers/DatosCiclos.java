@@ -2,6 +2,7 @@ package com.example.features.lavadero.controller.helpers;
 
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ElementoCicloItem;
+import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.Lavarropas;
 
@@ -20,10 +21,16 @@ import java.util.Map;
  * @param itemsPorLavarropasActivo  lavarropas ocupado → lo que hay adentro de su ciclo
  * @param jabones                   catálogo de jabones, o lista vacía si esta carga no lo
  *                                  pidió porque ya estaba en memoria (no cambia en runtime)
+ * @param insumos                   catálogo de insumos extra, o lista vacía si esta carga no lo
+ *                                  pidió porque ya estaba en memoria (no cambia en runtime).
+ *                                  Es el <b>catálogo</b> que alimenta el combo de cada card, no
+ *                                  los insumos elegidos: ésos son configuración de card y viven
+ *                                  sólo en el hilo de la interfaz
  */
 public record DatosCiclos(Map<Integer, CicloLavadero> ciclosActivos,
                           List<ElementoCicloItem> disponibles,
                           List<Lavarropas> lavarropas,
                           Map<Integer, List<ElementoCicloItem>> itemsPorLavarropasActivo,
-                          List<JabonCatalogo> jabones) {
+                          List<JabonCatalogo> jabones,
+                          List<InsumoCatalogo> insumos) {
 }

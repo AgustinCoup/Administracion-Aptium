@@ -38,6 +38,7 @@ import com.example.features.lavadero.dao.HistorialLavaderoDAO;
 import com.example.features.lavadero.dao.IngresoLavaderoDAO;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.dao.LavarropasDAO;
+import com.example.features.lavadero.dao.CatalogoInsumosDAO;
 import com.example.features.lavadero.dao.CatalogoJabonesDAO;
 import com.example.features.lavadero.dao.SalidaLavaderoDAO;
 import com.example.features.lavadero.dao.derivadores.AsignadorClienteAptium;
@@ -47,6 +48,7 @@ import com.example.features.lavadero.dao.derivadores.DerivadorFueraDeFlujo;
 import com.example.features.lavadero.dao.derivadores.DerivadorIngresoCDE;
 import com.example.features.lavadero.dao.derivadores.DerivadorSalidas;
 import com.example.features.lavadero.model.AccionSalida;
+import com.example.features.lavadero.service.CatalogoInsumosService;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
 import com.example.features.lavadero.service.ClasificacionLavaderoService;
@@ -80,6 +82,7 @@ public class AppContext {
     private final LavarropasService lavarropasService;
     private final CicloLavaderoService   cicloLavaderoService;
     private final CatalogoJabonesService catalogoJabonesService;
+    private final CatalogoInsumosService catalogoInsumosService;
     private final SalidaLavaderoService  salidaLavaderoService;
     private final HistorialLavaderoService historialLavaderoService;
     private final LoteReporteService loteReporteService;
@@ -107,6 +110,7 @@ public class AppContext {
         LavarropasService lavarropasService,
         CicloLavaderoService cicloLavaderoService,
         CatalogoJabonesService catalogoJabonesService,
+        CatalogoInsumosService catalogoInsumosService,
         SalidaLavaderoService salidaLavaderoService,
         HistorialLavaderoService historialLavaderoService,
         LoteReporteService loteReporteService,
@@ -124,7 +128,8 @@ public class AppContext {
             || equipoOtrosCorreccionService == null || lavaderoService == null
             || clasificacionLavaderoService == null
             || lavarropasService == null || cicloLavaderoService == null
-            || catalogoJabonesService == null || salidaLavaderoService == null
+            || catalogoJabonesService == null || catalogoInsumosService == null
+            || salidaLavaderoService == null
             || historialLavaderoService == null
             || loteReporteService == null
             || equipoReporteService == null || equipoOtrosReporteService == null
@@ -150,6 +155,7 @@ public class AppContext {
         this.lavarropasService       = lavarropasService;
         this.cicloLavaderoService    = cicloLavaderoService;
         this.catalogoJabonesService  = catalogoJabonesService;
+        this.catalogoInsumosService  = catalogoInsumosService;
         this.salidaLavaderoService   = salidaLavaderoService;
         this.historialLavaderoService = historialLavaderoService;
         this.loteReporteService = loteReporteService;
@@ -215,6 +221,7 @@ public class AppContext {
         CicloLavaderoService cicloLavaderoService = new CicloLavaderoService(cicloLavaderoDAO);
         CatalogoJabonesDAO catalogoJabonesDAO = new CatalogoJabonesDAO();
         CatalogoJabonesService catalogoJabonesService = new CatalogoJabonesService(catalogoJabonesDAO);
+        CatalogoInsumosService catalogoInsumosService = new CatalogoInsumosService(new CatalogoInsumosDAO());
 
         // Las tres acciones de salida del lavadero. Esta lista es el unico lugar donde se
         // decide que acciones existen: agregar un destino nuevo es una entrada mas aca.
@@ -252,6 +259,7 @@ public class AppContext {
             lavarropasService,
             cicloLavaderoService,
             catalogoJabonesService,
+            catalogoInsumosService,
             salidaLavaderoService,
             historialLavaderoService,
             loteReporteService,
@@ -332,6 +340,10 @@ public class AppContext {
 
     public CatalogoJabonesService getCatalogoJabonesService() {
         return catalogoJabonesService;
+    }
+
+    public CatalogoInsumosService getCatalogoInsumosService() {
+        return catalogoInsumosService;
     }
 
     public SalidaLavaderoService getSalidaLavaderoService() {

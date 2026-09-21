@@ -4,6 +4,7 @@ import com.example.common.constants.Constantes;
 import com.example.common.paginacion.Pagina;
 import com.example.common.util.DateTimeDisplayUtils;
 import com.example.features.lavadero.model.CicloLavadero;
+import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.view.helpers.CicloEstadoCellRenderer;
 import com.example.ui.common.CheckableComboBox;
 import com.example.ui.common.Estilos;
@@ -20,12 +21,13 @@ import java.awt.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.function.IntConsumer;
+import java.util.stream.Collectors;
 
 public class PantallaVerCiclos extends JPanel {
 
     private static final String[] COLUMNAS = {
         "ID", "Lavarropas", "Tipo de Lavado", "Jabón", "mL Jabón",
-        "Suavizante", "Potenciador", "L Totales", "Inicio", "Fin", "Estado"
+        "Insumos", "Inicio", "Fin", "Estado"
     };
 
     /** Derivado del array: agregar una columna antes de "Estado" no vuelve a romper el renderer. */
@@ -157,14 +159,18 @@ public class PantallaVerCiclos extends JPanel {
                 c.getTipoLavado().getNombre(),
                 c.getJabon().getNombre(),
                 c.getLitrosJabon(),
-                c.isSuavizante()   ? "Sí" : "No",
-                c.isPotenciador()  ? "Sí" : "No",
-                c.getLitrosTotales() != null ? c.getLitrosTotales() : "—",
+                textoInsumos(c),
                 DateTimeDisplayUtils.formatForUi(c.getFechaInicio()),
                 DateTimeDisplayUtils.formatForUi(c.getFechaFin()),
                 c.getEstado()
             });
         }
+    }
+
+    /** {@code "—"} es "no lleva insumos", distinto de una celda vacía, que se lee como error de carga. */
+    private static String textoInsumos(CicloLavadero c) {
+        return c.getInsumos().isEmpty() ? "—"
+            : c.getInsumos().stream().map(InsumoCatalogo::nombre).collect(Collectors.joining(", "));
     }
 
     public void limpiarFiltros() {
