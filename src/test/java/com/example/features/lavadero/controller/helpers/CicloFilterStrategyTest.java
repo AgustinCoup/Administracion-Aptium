@@ -134,7 +134,7 @@ public class CicloFilterStrategyTest {
     private CicloLavadero ciclo(int id, int lavarropas, LocalDateTime fechaFin) {
         return new CicloLavadero(
             id, lavarropas, TipoLavado.SUCIO, SKIP,
-            new BigDecimal("1.5"), false, false, null,
+            new BigDecimal("1.5"), List.of(),
             BASE.minusDays(7), fechaFin
         );
     }
@@ -142,7 +142,7 @@ public class CicloFilterStrategyTest {
     private CicloLavadero cicloActivo(int id, int lavarropas) {
         return new CicloLavadero(
             id, lavarropas, TipoLavado.SUCIO, SKIP,
-            new BigDecimal("1.5"), false, false, null,
+            new BigDecimal("1.5"), List.of(),
             BASE.minusDays(1), null
         );
     }

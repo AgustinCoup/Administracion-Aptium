@@ -6,6 +6,7 @@ import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
+import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.LanzamientoCiclo;
 import com.example.features.lavadero.model.LineaLanzamiento;
@@ -38,12 +39,16 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     private int elementoClasifId;
     private int elementoCatalogoId;
     private JabonCatalogo jabon;
+    private InsumoCatalogo suavizante;
+    private InsumoCatalogo potenciador;
 
     @BeforeEach
     void setUp() throws SQLException {
         dao = new CicloLavaderoDAO();
 
         jabon = primerJabon();
+        suavizante  = insumo("Suavizante");
+        potenciador = insumo("Potenciador");
 
         ejecutarSQL("INSERT INTO clientes (nombre) VALUES ('TestCicloCliente')");
         clienteId = lastInsertId();
@@ -63,6 +68,7 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
     @Override
     protected void limpiarTablas() throws SQLException {
+        ejecutarSQL("DELETE FROM insumos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM instancias_equipo_ciclo");
         ejecutarSQL("DELETE FROM ciclos_lavadero");
@@ -105,9 +111,9 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         // que el primer lavarropas ya alcanzó a escribir.
         ConfiguracionCiclo configRota = new ConfiguracionCiclo(
             TipoLavado.SUCIO, new JabonCatalogo(999_999, "Jabón inexistente"),
-            new BigDecimal("1.5"), false, false, null);
+            new BigDecimal("1.5"), List.of());
         List<LanzamientoCiclo> tanda = List.of(
-            new LanzamientoCiclo(1, config(new BigDecimal("1.5")),
+            new LanzamientoCiclo(1, config(new BigDecimal("1.5"), suavizante, potenciador),
                 List.of(new LineaLanzamiento(elementoClasifId, 1, STAGING_ID, 2))),
             new LanzamientoCiclo(2, configRota,
                 List.of(new LineaLanzamiento(elementoClasifId, 1, STAGING_ID, 2))));
@@ -119,12 +125,14 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         assertEquals(0, contarFilas("ciclos_lavadero"),
             "el ciclo del lavarropas 1 alcanzó a insertarse pero tiene que volver atrás");
         assertEquals(0, contarFilas("elementos_ciclo_lavadero"));
+        assertEquals(0, contarFilas("insumos_ciclo_lavadero"),
+            "los insumos del lavarropas 1 alcanzaron a escribirse y tienen que volver atrás con él");
     }
 
     @Test
     void lanzarTanda_cicloActivoPorLavarropas_apareceMapeado() {
         lanzarCiclo(2, new ConfiguracionCiclo(
-            TipoLavado.LIMPIO, jabon, new BigDecimal("2.00"), true, true, new BigDecimal("40.00")),
+            TipoLavado.LIMPIO, jabon, new BigDecimal("2.00"), List.of()),
             linea(3));
 
         Map<Integer, CicloLavadero> activos = dao.obtenerCiclosActivosPorLavarropas();
@@ -133,9 +141,109 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         CicloLavadero ciclo = activos.get(2);
         assertEquals(jabon.getId(), ciclo.getJabon().getId());
         assertEquals(jabon.getNombre(), ciclo.getJabon().getNombre());
-        assertTrue(ciclo.isSuavizante());
-        assertTrue(ciclo.isPotenciador());
         assertTrue(ciclo.estaActivo());
+    }
+
+    // ── insumos extra ────────────────────────────────────────────────────────
+    // Se escriben dentro de la transacción de lanzarTanda y se leen en una consulta propia,
+    // después de la maestra de ciclos.
+
+    @Test
+    void lanzarTanda_conDosInsumos_escribeDosFilasParaEseCiclo() {
+        lanzarCiclo(1, config(new BigDecimal("1.5"), suavizante, potenciador), linea(3));
+
+        assertEquals(2, contarFilas("insumos_ciclo_lavadero WHERE ciclo_id = " + lastInsertIdDeCiclos()));
+    }
+
+    @Test
+    void lanzarTanda_sinInsumos_noEscribeFilasYNoFalla() {
+        assertDoesNotThrow(() -> lanzarCiclo(1, config(new BigDecimal("1.5")), linea(3)));
+
+        assertEquals(1, contarFilas("ciclos_lavadero"));
+        assertEquals(0, contarFilas("insumos_ciclo_lavadero"));
+    }
+
+    /**
+     * La prueba de que los insumos se escriben adentro de la transacción: una tanda cuyo segundo
+     * ciclo choca por saldo no deja filas de insumos, ni del primero.
+     */
+    @Test
+    void lanzarTanda_queFallaPorSaldo_noDejaFilasDeInsumos() {
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.lanzarTanda(List.of(
+            new LanzamientoCiclo(1, config(new BigDecimal("1.5"), suavizante), List.of(linea(6))),
+            new LanzamientoCiclo(2, config(new BigDecimal("1.5"), potenciador), List.of(linea(5))))));
+
+        assertEquals(0, contarFilas("ciclos_lavadero"));
+        assertEquals(0, contarFilas("insumos_ciclo_lavadero"));
+    }
+
+    @Test
+    void obtenerTodosLosCiclos_traeLosInsumos_yUnCicloSinInsumosTraeListaVacia() throws SQLException {
+        lanzarCiclo(1, config(new BigDecimal("1.5"), suavizante, potenciador), linea(1));
+        dao.finalizarCiclo(lastInsertIdDeCiclos());
+        lanzarCiclo(2, config(new BigDecimal("1.5")), linea(1));
+
+        Map<Integer, CicloLavadero> porLavarropas = porLavarropas(dao.obtenerTodosLosCiclos());
+
+        assertEquals(List.of("Potenciador", "Suavizante"), nombres(porLavarropas.get(1)),
+            "ordenados por nombre, no por orden de carga");
+        assertNotNull(porLavarropas.get(2).getInsumos());
+        assertTrue(porLavarropas.get(2).getInsumos().isEmpty());
+    }
+
+    /** Es el que alimenta la card de la pantalla de Ciclos. */
+    @Test
+    void obtenerCiclosActivosPorLavarropas_tambienTraeLosInsumos() {
+        lanzarCiclo(3, config(new BigDecimal("1.5"), suavizante), linea(1));
+
+        CicloLavadero ciclo = dao.obtenerCiclosActivosPorLavarropas().get(3);
+
+        assertEquals(List.of(suavizante), ciclo.getInsumos());
+    }
+
+    @Test
+    void obtenerCiclosFinalizados_tambienTraeLosInsumos() throws SQLException {
+        lanzarCiclo(1, config(new BigDecimal("1.5"), potenciador), linea(1));
+        dao.finalizarCiclo(lastInsertIdDeCiclos());
+
+        List<CicloLavadero> finalizados = dao.obtenerCiclosFinalizados();
+
+        assertEquals(1, finalizados.size());
+        assertEquals(List.of(potenciador), finalizados.get(0).getInsumos());
+    }
+
+    /** Atrapa un agrupamiento mal hecho: cada ciclo tiene que quedarse sólo con los suyos. */
+    @Test
+    void dosCiclosConInsumosDistintos_noSeMezclan() {
+        dao.lanzarTanda(List.of(
+            new LanzamientoCiclo(1, config(new BigDecimal("1.5"), suavizante), List.of(linea(1))),
+            new LanzamientoCiclo(2, config(new BigDecimal("1.5"), potenciador), List.of(linea(1))),
+            new LanzamientoCiclo(3, config(new BigDecimal("1.5")), List.of(linea(1)))));
+
+        Map<Integer, CicloLavadero> porLavarropas = porLavarropas(dao.obtenerTodosLosCiclos());
+
+        assertEquals(List.of("Suavizante"),  nombres(porLavarropas.get(1)));
+        assertEquals(List.of("Potenciador"), nombres(porLavarropas.get(2)));
+        assertEquals(List.of(),              nombres(porLavarropas.get(3)));
+    }
+
+    /**
+     * El join a catalogo_insumos es histórico: un insumo dado de baja sigue apareciendo en los
+     * ciclos que lo llevaron.
+     */
+    @Test
+    void insumoDadoDeBaja_sigueApareciendoEnLosCiclosQueLoLlevaron() throws SQLException {
+        lanzarCiclo(1, config(new BigDecimal("1.5"), suavizante), linea(1));
+        ejecutarSQL("UPDATE catalogo_insumos SET activo = FALSE WHERE id = " + suavizante.id());
+        try {
+            List<InsumoCatalogo> insumos = dao.obtenerCiclosActivosPorLavarropas().get(1).getInsumos();
+
+            assertEquals(1, insumos.size());
+            assertEquals(suavizante.id(), insumos.get(0).id());
+            assertFalse(insumos.get(0).activo());
+        } finally {
+            ejecutarSQL("UPDATE catalogo_insumos SET activo = TRUE WHERE id = " + suavizante.id());
+        }
     }
 
     // ── tipo de lavado ───────────────────────────────────────────────────────
@@ -553,7 +661,31 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
     }
 
     private ConfiguracionCiclo config(BigDecimal litrosJabon, TipoLavado tipoLavado) {
-        return new ConfiguracionCiclo(tipoLavado, jabon, litrosJabon, false, false, null);
+        return new ConfiguracionCiclo(tipoLavado, jabon, litrosJabon, List.of());
+    }
+
+    private ConfiguracionCiclo config(BigDecimal litrosJabon, InsumoCatalogo... insumos) {
+        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, litrosJabon, List.of(insumos));
+    }
+
+    private static Map<Integer, CicloLavadero> porLavarropas(List<CicloLavadero> ciclos) {
+        Map<Integer, CicloLavadero> mapa = new HashMap<>();
+        for (CicloLavadero c : ciclos) {
+            mapa.put(c.getLavarropasNumero(), c);
+        }
+        return mapa;
+    }
+
+    private static List<String> nombres(CicloLavadero ciclo) {
+        return ciclo.getInsumos().stream().map(InsumoCatalogo::nombre).toList();
+    }
+
+    /** Del seed de la V24, por nombre: el id es AUTO_INCREMENT. */
+    private static InsumoCatalogo insumo(String nombre) {
+        return new CatalogoInsumosDAO().findAll().stream()
+            .filter(i -> i.nombre().equals(nombre))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("La V24 no sembró " + nombre));
     }
 
     private String tipoLavadoPersistido() throws SQLException {

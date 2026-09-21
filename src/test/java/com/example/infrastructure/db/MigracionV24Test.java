@@ -19,7 +19,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * Test de la migración de datos de V24__insumos_ciclo_lavadero: migra una H2 propia hasta V23
  * (ciclos con los booleanos {@code suavizante}/{@code potenciador}), siembra tres ciclos y aplica
  * V24 verificando que cada booleano en {@code TRUE} se convirtió en una fila de
- * {@code insumos_ciclo_lavadero}.
+ * {@code insumos_ciclo_lavadero}. Migra sin {@code target}, así que corre también la V25: la
+ * copia tiene que sobrevivir a los {@code DROP} de las tres columnas, que ya no existen.
  *
  * <p>Es el único test que puede probarlo: el H2 de {@code AbstractDAOTest} se construye entero
  * desde cero, así que nunca hay ciclos con booleanos esperando a ser migrados.
@@ -59,6 +60,8 @@ class MigracionV24Test {
                 "El catálogo nace con los dos insumos, activos");
             assertEquals(2, contar(ds, "SELECT COUNT(*) FROM catalogo_insumos"),
                 "No hay insumos inactivos ni de más");
+            assertEquals(List.of(), columnasBorradasPorV25(ds),
+                "La V25 borra los dos booleanos y litros_totales, después de la copia de la V24");
         }
     }
 
@@ -124,6 +127,17 @@ class MigracionV24Test {
         try (Connection conn = ds.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                  "SELECT nombre FROM catalogo_insumos WHERE activo = TRUE ORDER BY nombre")) {
+            return nombres(ps);
+        }
+    }
+
+    /** Consulta el esquema en vez de atrapar el {@code SQLException} de un {@code SELECT}. */
+    private List<String> columnasBorradasPorV25(HikariDataSource ds) throws SQLException {
+        try (Connection conn = ds.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT LOWER(COLUMN_NAME) FROM INFORMATION_SCHEMA.COLUMNS " +
+                 "WHERE LOWER(TABLE_NAME) = 'ciclos_lavadero' " +
+                 "AND LOWER(COLUMN_NAME) IN ('suavizante', 'potenciador', 'litros_totales')")) {
             return nombres(ps);
         }
     }

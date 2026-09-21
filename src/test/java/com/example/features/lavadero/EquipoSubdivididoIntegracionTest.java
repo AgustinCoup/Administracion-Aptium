@@ -113,6 +113,7 @@ class EquipoSubdivididoIntegracionTest extends AbstractDAOTest {
         ejecutarSQL("DELETE FROM equipo_otros WHERE nro_cliente IN "
                 + "(SELECT id FROM clientes WHERE nombre LIKE 'TestIntegracion%' OR nombre = '"
                 + Constantes.Lavadero.CLIENTE_APTIUM + "')");
+        ejecutarSQL("DELETE FROM insumos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM instancias_equipo_ciclo");
         ejecutarSQL("DELETE FROM ciclos_lavadero");
@@ -270,7 +271,7 @@ class EquipoSubdivididoIntegracionTest extends AbstractDAOTest {
     }
 
     private ConfiguracionCiclo configuracion() {
-        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), false, false, null);
+        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), List.of());
     }
 
     private void finalizarUltimoCiclo(int lavarropas) throws SQLException {

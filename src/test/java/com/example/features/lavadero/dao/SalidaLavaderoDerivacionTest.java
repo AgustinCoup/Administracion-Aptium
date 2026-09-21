@@ -113,6 +113,7 @@ class SalidaLavaderoDerivacionTest extends AbstractDAOTest {
         ejecutarSQL("DELETE FROM equipo_otros WHERE nro_cliente IN "
                 + "(SELECT id FROM clientes WHERE nombre LIKE 'TestDeriv%' OR nombre = '"
                 + Constantes.Lavadero.CLIENTE_APTIUM + "')");
+        ejecutarSQL("DELETE FROM insumos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM ciclos_lavadero");
         ejecutarSQL("DELETE FROM elementos_clasificacion_lavadero");
@@ -390,7 +391,7 @@ class SalidaLavaderoDerivacionTest extends AbstractDAOTest {
 
     private void lanzarYFinalizar(int lavarropas, LineaLanzamiento... lineas) throws SQLException {
         ciclosDao.lanzarTanda(List.of(new LanzamientoCiclo(lavarropas,
-            new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), false, false, null),
+            new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), List.of()),
             List.of(lineas))));
         ciclosDao.finalizarCiclo(escalar("SELECT MAX(id) FROM ciclos_lavadero"));
     }

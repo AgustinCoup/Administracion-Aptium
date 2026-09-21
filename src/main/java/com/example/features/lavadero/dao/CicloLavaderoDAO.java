@@ -12,6 +12,7 @@ import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.ElementoCicloMovimiento;
 import com.example.features.lavadero.model.EstadoIngresoLavadero;
+import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.LanzamientoCiclo;
 import com.example.features.lavadero.model.LineaLanzamiento;
@@ -21,6 +22,7 @@ import com.example.infrastructure.db.TransactionalConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigDecimal;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -30,8 +32,11 @@ public class CicloLavaderoDAO {
     private static final Logger log = LoggerFactory.getLogger(CicloLavaderoDAO.class);
 
     private static final String SQL_INSERTAR_CICLO =
-        "INSERT INTO ciclos_lavadero (lavarropas_numero, jabon_id, litros_jabon, suavizante, potenciador, litros_totales, tipo_lavado, fecha_inicio, estado) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), 'ACTIVO')";
+        "INSERT INTO ciclos_lavadero (lavarropas_numero, jabon_id, litros_jabon, tipo_lavado, fecha_inicio, estado) " +
+        "VALUES (?, ?, ?, ?, NOW(), 'ACTIVO')";
+
+    private static final String SQL_INSERTAR_INSUMO =
+        "INSERT INTO insumos_ciclo_lavadero (ciclo_id, insumo_id) VALUES (?, ?)";
 
     private static final String SQL_INSERTAR_ELEMENTO =
         "INSERT INTO elementos_ciclo_lavadero (ciclo_id, elemento_clasificacion_id, cantidad, instancia_equipo_id) VALUES (?, ?, ?, ?)";
@@ -41,26 +46,62 @@ public class CicloLavaderoDAO {
 
     private static final String SQL_ACTIVOS =
         "SELECT cl.id, cl.lavarropas_numero, cl.tipo_lavado, cl.jabon_id, cj.nombre AS jabon_nombre, " +
-        "       cl.litros_jabon, cl.suavizante, cl.potenciador, cl.litros_totales, cl.fecha_inicio " +
+        "       cl.litros_jabon, cl.fecha_inicio " +
         "FROM ciclos_lavadero cl " +
         "JOIN catalogo_jabones cj ON cj.id = cl.jabon_id " +
         "WHERE cl.fecha_fin IS NULL";
 
     private static final String SQL_FINALIZADOS =
         "SELECT cl.id, cl.lavarropas_numero, cl.tipo_lavado, cl.jabon_id, cj.nombre AS jabon_nombre, " +
-        "       cl.litros_jabon, cl.suavizante, cl.potenciador, cl.litros_totales, " +
-        "       cl.fecha_inicio, cl.fecha_fin " +
+        "       cl.litros_jabon, cl.fecha_inicio, cl.fecha_fin " +
         "FROM ciclos_lavadero cl " +
         "JOIN catalogo_jabones cj ON cj.id = cl.jabon_id " +
         "WHERE cl.fecha_fin IS NOT NULL ORDER BY cl.fecha_fin DESC";
 
     private static final String SQL_TODOS =
         "SELECT cl.id, cl.lavarropas_numero, cl.tipo_lavado, cl.jabon_id, cj.nombre AS jabon_nombre, " +
-        "       cl.litros_jabon, cl.suavizante, cl.potenciador, cl.litros_totales, " +
-        "       cl.fecha_inicio, cl.fecha_fin " +
+        "       cl.litros_jabon, cl.fecha_inicio, cl.fecha_fin " +
         "FROM ciclos_lavadero cl " +
         "JOIN catalogo_jabones cj ON cj.id = cl.jabon_id " +
         "ORDER BY CASE WHEN cl.fecha_fin IS NULL THEN 0 ELSE 1 END, cl.fecha_fin DESC";
+
+    /**
+     * Insumos de todos los ciclos, para cruzar en memoria por {@code ciclo_id} con
+     * {@link #SQL_TODOS}. Consulta propia y no un {@code LEFT JOIN} en la maestra —que multiplicaría
+     * las filas de ciclo, el bug que {@code HistorialLavaderoDAO} documenta para {@code cantBolsas}—
+     * ni un {@code GROUP_CONCAT}, que no se comporta igual en H2 y en MySQL (ver
+     * {@code TextoLavarropas}). Sin parámetros: trae todo de un tirón en vez de armar un
+     * {@code IN (?,?,…)} por concatenación.
+     *
+     * <p><b>El {@code JOIN} a {@code catalogo_insumos} NO filtra por {@code activo}, y no hay que
+     * agregárselo.</b> Es un join <b>histórico</b>: un insumo dado de baja tiene que seguir
+     * mostrando su nombre en los ciclos que lo llevaron. El {@code WHERE activo = TRUE} va en la
+     * lectura del catálogo que alimenta el combo de la card ({@code CatalogoInsumosDAO}), no acá
+     * ni en las dos variantes de abajo.</p>
+     */
+    private static final String SQL_INSUMOS_TODOS =
+        "SELECT icl.ciclo_id, ci.id, ci.nombre, ci.activo " +
+        "FROM insumos_ciclo_lavadero icl " +
+        "JOIN catalogo_insumos ci ON ci.id = icl.insumo_id " +
+        "ORDER BY icl.ciclo_id, ci.nombre";
+
+    /** {@link #SQL_INSUMOS_TODOS} acotado a los ciclos de {@link #SQL_ACTIVOS}. Tampoco filtra por {@code activo}. */
+    private static final String SQL_INSUMOS_DE_ACTIVOS =
+        "SELECT icl.ciclo_id, ci.id, ci.nombre, ci.activo " +
+        "FROM insumos_ciclo_lavadero icl " +
+        "JOIN catalogo_insumos ci ON ci.id = icl.insumo_id " +
+        "JOIN ciclos_lavadero cl  ON cl.id = icl.ciclo_id " +
+        "WHERE cl.fecha_fin IS NULL " +
+        "ORDER BY icl.ciclo_id, ci.nombre";
+
+    /** {@link #SQL_INSUMOS_TODOS} acotado a los ciclos de {@link #SQL_FINALIZADOS}. Tampoco filtra por {@code activo}. */
+    private static final String SQL_INSUMOS_DE_FINALIZADOS =
+        "SELECT icl.ciclo_id, ci.id, ci.nombre, ci.activo " +
+        "FROM insumos_ciclo_lavadero icl " +
+        "JOIN catalogo_insumos ci ON ci.id = icl.insumo_id " +
+        "JOIN ciclos_lavadero cl  ON cl.id = icl.ciclo_id " +
+        "WHERE cl.fecha_fin IS NOT NULL " +
+        "ORDER BY icl.ciclo_id, ci.nombre";
 
     private static final String SQL_ELEMENTOS_DE_CICLO =
         "SELECT ecl.id, ecl.ingreso_id, cel.nombre, ecl.cantidad, " +
@@ -180,46 +221,108 @@ public class CicloLavaderoDAO {
         "HAVING ya_procesada > ecl.cantidad " +
         "ORDER BY ecl.ingreso_id, cel.nombre";
 
+    // ── lectura de ciclos: dos consultas secuenciales ────────────────────────
+    //
+    // Los tres métodos públicos que devuelven ciclos leen en dos pasos: la maestra de ciclos, y
+    // DESPUÉS sus insumos (leerInsumos). Cada paso en su propio try-with-resources, y el segundo
+    // recién con la conexión del primero cerrada. Dos cosas distintas dependen de eso:
+    //
+    // 1. Una sola conexión a la vez. ConnectionPool reparte 5 permisos; una operación que anidara
+    //    dos conexiones haría 5 × 2 = 10 > 8 y agotaría el pool con el techo puesto. Misma forma
+    //    que HistorialLavaderoDAO.obtenerHistorial().
+    //
+    // 2. El ORDEN. Las dos lecturas no comparten transacción, así que un ciclo lanzado en el medio
+    //    cae en una sola de ellas. Con los ciclos primero, ese ciclo no está en la maestra: no se
+    //    pinta, y sus insumos quedan en el mapa sin usarse — inocuo. Con los insumos primero, el
+    //    ciclo sí saldría en la maestra pero el mapa no lo conocería: se pintaría sin insumos, un
+    //    dato faltante disfrazado de "ciclo sin insumos", que no se parece a un error y nadie
+    //    reporta. Por eso el cruce se hace sobre FilaCiclo ya leídas, con la primera conexión cerrada.
+
+    /**
+     * Ciclos sin finalizar, por número de lavarropas, con sus insumos (ver el comentario de arriba).
+     *
+     * <p>Un fallo al leer la maestra se loguea y devuelve el mapa vacío, como siempre hizo; un
+     * fallo al leer los insumos, en cambio, sale como {@link DatabaseException}: pintar los ciclos
+     * sin sus insumos sería mentir sobre su configuración.</p>
+     */
     public Map<Integer, CicloLavadero> obtenerCiclosActivosPorLavarropas() {
-        Map<Integer, CicloLavadero> mapa = new LinkedHashMap<>();
+        List<FilaCiclo> filas = new ArrayList<>();
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_ACTIVOS);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                CicloLavadero ciclo = mapearCiclo(rs);
-                mapa.put(ciclo.getLavarropasNumero(), ciclo);
+                filas.add(leerFila(rs, null));
             }
         } catch (SQLException e) {
             log.error("Error al obtener ciclos activos", e);
+            return new LinkedHashMap<>();
+        }
+        Map<Integer, List<InsumoCatalogo>> insumos = leerInsumos(SQL_INSUMOS_DE_ACTIVOS);
+
+        Map<Integer, CicloLavadero> mapa = new LinkedHashMap<>();
+        for (FilaCiclo fila : filas) {
+            mapa.put(fila.lavarropasNumero(), fila.conInsumos(insumos));
         }
         return mapa;
     }
 
+    /** Mismo manejo de errores que {@link #obtenerCiclosActivosPorLavarropas()}. */
     public List<CicloLavadero> obtenerCiclosFinalizados() {
-        List<CicloLavadero> lista = new ArrayList<>();
+        List<FilaCiclo> filas = new ArrayList<>();
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_FINALIZADOS);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                lista.add(mapearCicloCompleto(rs));
+                filas.add(leerFila(rs, rs.getObject("fecha_fin", LocalDateTime.class)));
             }
         } catch (SQLException e) {
             log.error("Error al obtener ciclos finalizados", e);
+            return new ArrayList<>();
         }
-        return lista;
+        Map<Integer, List<InsumoCatalogo>> insumos = leerInsumos(SQL_INSUMOS_DE_FINALIZADOS);
+        return conInsumos(filas, insumos);
     }
 
     public List<CicloLavadero> obtenerTodosLosCiclos() {
-        List<CicloLavadero> lista = new ArrayList<>();
+        List<FilaCiclo> filas = new ArrayList<>();
         try (Connection conn = ConnectionPool.getConnection();
              PreparedStatement ps = conn.prepareStatement(SQL_TODOS);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                lista.add(mapearCicloCompleto(rs));
+                filas.add(leerFila(rs, rs.getObject("fecha_fin", LocalDateTime.class)));
             }
-
         } catch (SQLException e) {
             throw new DatabaseException("Error al obtener todos los ciclos", e);
+        }
+        Map<Integer, List<InsumoCatalogo>> insumos = leerInsumos(SQL_INSUMOS_TODOS);
+        return conInsumos(filas, insumos);
+    }
+
+    /**
+     * {@code ciclo_id → sus insumos}. Consulta propia, agrupada en memoria; se llama siempre
+     * <b>después</b> de cerrar la conexión de la maestra (ver el comentario de la sección).
+     */
+    private Map<Integer, List<InsumoCatalogo>> leerInsumos(String sql) {
+        Map<Integer, List<InsumoCatalogo>> porCiclo = new HashMap<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                porCiclo.computeIfAbsent(rs.getInt("ciclo_id"), k -> new ArrayList<>())
+                    .add(new InsumoCatalogo(
+                        rs.getInt("id"), rs.getString("nombre"), rs.getBoolean("activo")));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al obtener los insumos de los ciclos", e);
+        }
+        return porCiclo;
+    }
+
+    private static List<CicloLavadero> conInsumos(List<FilaCiclo> filas,
+                                                  Map<Integer, List<InsumoCatalogo>> insumos) {
+        List<CicloLavadero> lista = new ArrayList<>(filas.size());
+        for (FilaCiclo fila : filas) {
+            lista.add(fila.conInsumos(insumos));
         }
         return lista;
     }
@@ -287,6 +390,10 @@ public class CicloLavaderoDAO {
      * <p>Lo mismo vale para el destino: ningún lavarropas de la tanda puede tener ya un ciclo sin
      * finalizar (ver {@link #SQL_CICLO_ACTIVO_DE_LAVARROPAS}). Las dos guardas se toman antes de
      * escribir nada y en orden fijo entre sus tablas.</p>
+     *
+     * <p>Los insumos extra de cada ciclo se escriben <b>adentro</b> de la misma transacción, por
+     * el mismo motivo que sus elementos: un ciclo lanzado con la mitad de su configuración es un
+     * ciclo que nadie puede corregir.</p>
      */
     public void lanzarTanda(List<LanzamientoCiclo> tanda) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
@@ -297,6 +404,7 @@ public class CicloLavaderoDAO {
             for (LanzamientoCiclo ciclo : tanda) {
                 int cicloId = insertarCiclo(conn, ciclo.lavarropasNumero(), ciclo.config());
                 insertarMovimientos(conn, cicloId, movimientosDe(ciclo, instancias));
+                insertarInsumos(conn, cicloId, ciclo.config().insumos());
             }
             tx.commit();
         } catch (SQLException e) {
@@ -341,16 +449,32 @@ public class CicloLavaderoDAO {
             ps.setInt(1, lavarropasNumero);
             ps.setInt(2, config.jabon().getId());
             ps.setBigDecimal(3, config.litrosJabon());
-            ps.setBoolean(4, config.suavizante());
-            ps.setBoolean(5, config.potenciador());
-            if (config.litrosTotales() != null) ps.setBigDecimal(6, config.litrosTotales());
-            else ps.setNull(6, Types.DECIMAL);
-            ps.setString(7, config.tipoLavado().name());
+            ps.setString(4, config.tipoLavado().name());
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 keys.next();
                 return keys.getInt(1);
             }
+        }
+    }
+
+    /**
+     * Los insumos extra del ciclo, en la transacción de {@link #lanzarTanda}.
+     *
+     * <p>El batch es correcto acá porque a nadie le importa el conteo de filas: no hay guarda de
+     * concurrencia sobre los insumos. Si alguna vez la hubiera, el conteo no puede salir de
+     * {@code executeBatch()} (ver la regla en {@code CLAUDE.md}).</p>
+     */
+    private void insertarInsumos(Connection conn, int cicloId,
+                                  List<InsumoCatalogo> insumos) throws SQLException {
+        if (insumos.isEmpty()) return;
+        try (PreparedStatement ps = conn.prepareStatement(SQL_INSERTAR_INSUMO)) {
+            for (InsumoCatalogo insumo : insumos) {
+                ps.setInt(1, cicloId);
+                ps.setInt(2, insumo.id());
+                ps.addBatch();
+            }
+            ps.executeBatch();
         }
     }
 
@@ -623,32 +747,25 @@ public class CicloLavaderoDAO {
         return lista;
     }
 
-    private CicloLavadero mapearCiclo(ResultSet rs) throws SQLException {
-        return new CicloLavadero(
-            rs.getInt("id"),
-            rs.getInt("lavarropas_numero"),
-            TipoLavado.desdeBD(rs.getString("tipo_lavado")),
-            new JabonCatalogo(rs.getInt("jabon_id"), rs.getString("jabon_nombre")),
-            rs.getBigDecimal("litros_jabon"),
-            rs.getBoolean("suavizante"),
-            rs.getBoolean("potenciador"),
-            rs.getBigDecimal("litros_totales"),
-            rs.getObject("fecha_inicio", LocalDateTime.class),
-            null
-        );
+    /** Un ciclo tal como sale de la maestra, sin sus insumos todavía. */
+    private record FilaCiclo(int id, int lavarropasNumero, TipoLavado tipoLavado, JabonCatalogo jabon,
+                             BigDecimal litrosJabon, LocalDateTime fechaInicio, LocalDateTime fechaFin) {
+
+        /** Un ciclo sin fila en el mapa no lleva insumos: lista vacía, nunca {@code null}. */
+        CicloLavadero conInsumos(Map<Integer, List<InsumoCatalogo>> insumos) {
+            return new CicloLavadero(id, lavarropasNumero, tipoLavado, jabon, litrosJabon,
+                insumos.getOrDefault(id, List.of()), fechaInicio, fechaFin);
+        }
     }
 
-    private CicloLavadero mapearCicloCompleto(ResultSet rs) throws SQLException {
-        LocalDateTime fechaFin = rs.getObject("fecha_fin", LocalDateTime.class);
-        return new CicloLavadero(
+    /** @param fechaFin la de la fila, o {@code null} en {@link #SQL_ACTIVOS}, que no la trae */
+    private static FilaCiclo leerFila(ResultSet rs, LocalDateTime fechaFin) throws SQLException {
+        return new FilaCiclo(
             rs.getInt("id"),
             rs.getInt("lavarropas_numero"),
             TipoLavado.desdeBD(rs.getString("tipo_lavado")),
             new JabonCatalogo(rs.getInt("jabon_id"), rs.getString("jabon_nombre")),
             rs.getBigDecimal("litros_jabon"),
-            rs.getBoolean("suavizante"),
-            rs.getBoolean("potenciador"),
-            rs.getBigDecimal("litros_totales"),
             rs.getObject("fecha_inicio", LocalDateTime.class),
             fechaFin
         );

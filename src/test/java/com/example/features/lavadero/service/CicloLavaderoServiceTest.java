@@ -3,6 +3,7 @@ package com.example.features.lavadero.service;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
+import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.LanzamientoCiclo;
 import com.example.features.lavadero.model.LineaLanzamiento;
@@ -73,7 +74,7 @@ class CicloLavaderoServiceTest {
     @Test
     void lanzarTanda_tipoLavadoNull_lanzaValidation() {
         ConfiguracionCiclo sinTipo = new ConfiguracionCiclo(
-            null, SKIP, new BigDecimal("1.5"), false, false, null);
+            null, SKIP, new BigDecimal("1.5"), List.of());
         assertThrows(ValidationException.class, () -> service.lanzarTanda(tandaDe(ciclo(1, sinTipo))));
         verifyNoInteractions(dao);
     }
@@ -153,9 +154,10 @@ class CicloLavaderoServiceTest {
     }
 
     @Test
-    void lanzarTanda_conSuavizanteYPotenciadorYLitrosTotales_delegaADAO() {
+    void lanzarTanda_conInsumos_delegaADAO() {
         ConfiguracionCiclo config = new ConfiguracionCiclo(
-            TipoLavado.SUCIO, LIDER, new BigDecimal("2.0"), true, true, new BigDecimal("30.00"));
+            TipoLavado.SUCIO, LIDER, new BigDecimal("2.0"),
+            List.of(new InsumoCatalogo(1, "Suavizante", true), new InsumoCatalogo(2, "Potenciador", true)));
         List<LanzamientoCiclo> tanda = tandaDe(ciclo(7, config));
         service.lanzarTanda(tanda);
         verify(dao).lanzarTanda(tanda);
@@ -219,6 +221,6 @@ class CicloLavaderoServiceTest {
     }
 
     private ConfiguracionCiclo config(JabonCatalogo jabon, BigDecimal litrosJabon) {
-        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, litrosJabon, false, false, null);
+        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, litrosJabon, List.of());
     }
 }

@@ -86,6 +86,7 @@ class HistorialLavaderoDAOPaginacionTest extends AbstractDAOTest {
 
     @Override
     protected void limpiarTablas() throws SQLException {
+        ejecutarSQL("DELETE FROM insumos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM ciclos_lavadero");
         ejecutarSQL("DELETE FROM elementos_clasificacion_lavadero");

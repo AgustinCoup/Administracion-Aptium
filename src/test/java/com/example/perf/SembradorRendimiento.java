@@ -382,9 +382,9 @@ class SembradorRendimiento {
 
     private void sembrarCiclosLavadero(Connection conn, List<Integer> jabones) throws SQLException {
         String sql =
-            "INSERT INTO ciclos_lavadero (lavarropas_numero, jabon_id, litros_jabon, suavizante, "
-            + "potenciador, litros_totales, fecha_inicio, fecha_fin, estado, tipo_lavado) "
-            + "VALUES (?,?,?,?,?,?,?,?,?,?)";
+            "INSERT INTO ciclos_lavadero (lavarropas_numero, jabon_id, litros_jabon, "
+            + "fecha_inicio, fecha_fin, estado, tipo_lavado) "
+            + "VALUES (?,?,?,?,?,?,?)";
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             int pendientes = 0;
@@ -393,17 +393,14 @@ class SembradorRendimiento {
                 ps.setInt(1, 1 + (i % 13));               // lavarropas 1-13, sembrados en V10
                 ps.setInt(2, elegir(jabones, i));
                 ps.setBigDecimal(3, new java.math.BigDecimal("0.5"));
-                ps.setBoolean(4, i % 2 == 0);
-                ps.setBoolean(5, i % 3 == 0);
-                ps.setBigDecimal(6, new java.math.BigDecimal("13.0"));
-                ps.setTimestamp(7, haceHoras(i));
+                ps.setTimestamp(4, haceHoras(i));
                 if (activo) {
-                    ps.setNull(8, java.sql.Types.TIMESTAMP);
+                    ps.setNull(5, java.sql.Types.TIMESTAMP);
                 } else {
-                    ps.setTimestamp(8, haceHoras(i - 1));
+                    ps.setTimestamp(5, haceHoras(i - 1));
                 }
-                ps.setString(9, activo ? "ACTIVO" : "FINALIZADO");
-                ps.setString(10, i % 2 == 0 ? "LIMPIO" : "SUCIO");
+                ps.setString(6, activo ? "ACTIVO" : "FINALIZADO");
+                ps.setString(7, i % 2 == 0 ? "LIMPIO" : "SUCIO");
                 ps.addBatch();
                 pendientes++;
                 if (pendientes >= TAMANO_LOTE_INSERT) {

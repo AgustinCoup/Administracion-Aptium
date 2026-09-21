@@ -115,6 +115,7 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
     @Override
     protected void limpiarTablas() throws SQLException {
         ejecutarSQL("DELETE FROM salidas_lavadero");
+        ejecutarSQL("DELETE FROM insumos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM instancias_equipo_ciclo");
         ejecutarSQL("DELETE FROM ciclos_lavadero");
@@ -602,7 +603,7 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
     }
 
     private ConfiguracionCiclo config() {
-        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), false, false, null);
+        return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), List.of());
     }
 
     // ── Helpers de lectura ────────────────────────────────────────────────────

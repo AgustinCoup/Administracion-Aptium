@@ -48,7 +48,7 @@ class ConstructorVistaCiclosTest {
     }
 
     private static CicloLavadero ciclo(int id, int lavarropasNumero) {
-        return new CicloLavadero(id, lavarropasNumero, null, null, null, false, false, null, null, null);
+        return new CicloLavadero(id, lavarropasNumero, null, null, null, List.of(), null, null);
     }
 
     private static DatosCiclos datos(Map<Integer, CicloLavadero> activos,

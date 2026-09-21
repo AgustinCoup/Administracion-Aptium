@@ -1096,3 +1096,32 @@ después de los `DROP`" de su encabezado se muda al de la V25.
 
 **Tocado fuera de lo previsto:** `DatabaseInitializerTest.sanityMaximoLocal` fija la última versión
 (23 → 24). Cada migración nueva lo mueve.
+
+### 2026-09-21 — Paso 3: lo que la lista literal no tenía, y cómo se verificó
+
+**Ocho tests con firma rota, no siete.** `lavadero/service/CicloLavaderoServiceTest.java` también
+construye `ConfiguracionCiclo` y no estaba en la tabla. Se arregló acá (mecánico, sin cambiar
+intención: el caso "con suavizante, potenciador y litros totales" pasó a "con insumos"). El Paso 4
+lo encuentra ya compilando.
+
+**`limpiarTablas()`: siete tests, no cuatro.** Además de los cuatro que nombra el anti-patrón,
+`ConcurrenciaOptimistaTest`, `EquipoSubdivididoIntegracionTest` y `HistorialLavaderoDAOPaginacionTest`
+también borran `ciclos_lavadero`. Se agregó `insumos_ciclo_lavadero` a los siete, por el mismo
+argumento del anti-patrón (o a todos, o a ninguno).
+
+**"`mvn test` en verde con la suite entera" no es commiteable en este paso**, y chocaba con el
+Paso 2 ("la app no compila hasta el Paso 6"): `CiclosController` y `PantallaVerCiclos` siguen
+usando los tres getters que se fueron. Se verificó con un parche **temporal y no commiteado** en
+esos dos archivos (`List.of()` de insumos y `"—"` en las tres columnas): `mvn test` → 1339 tests,
+0 fallos. El commit deja `main` sin compilar sólo en esos dos archivos, que son del Paso 6.
+
+**Un test más que los pedidos:** el de "tanda que falla por saldo" es trivialmente verde aunque los
+insumos se escribieran fuera de la transacción, porque la guarda de saldo corta antes de escribir
+nada. La prueba que de verdad muerde es `lanzarTanda_siUnCicloFalla_noQuedaNadaEscrito`, que ahora
+lanza el primer ciclo **con** insumos y verifica que vuelven atrás cuando el segundo viola la FK.
+Se dejaron las dos.
+
+**Lectura — manejo de errores:** `obtenerCiclosActivosPorLavarropas` y `obtenerCiclosFinalizados`
+siguen tragándose un fallo de la maestra (mapa/lista vacía, como antes), pero un fallo al leer los
+insumos sale como `DatabaseException`: pintar los ciclos sin insumos sería el "dato faltante
+disfrazado" que el orden de lectura existe para evitar.

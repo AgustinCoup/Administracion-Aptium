@@ -174,7 +174,7 @@ class VerCiclosControllerTest {
         JabonCatalogo jabon = new JabonCatalogo(1, "Jabón Neutro");
         for (int i = 0; i < cantidad; i++) {
             lista.add(new CicloLavadero(i, i % 5, TipoLavado.LIMPIO, jabon,
-                BigDecimal.ONE, false, false, BigDecimal.TEN,
+                BigDecimal.ONE, List.of(),
                 LocalDateTime.now().minusHours(1), LocalDateTime.now()));
         }
         return lista;
