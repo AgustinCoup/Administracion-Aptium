@@ -9,7 +9,8 @@ import java.sql.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests de integración para {@link EquipoOtrosMaterialHelper#materializarRemitoSplit}.
+ * Tests de integración para {@link EquipoOtrosMaterialHelper#materializarRemitoSplit} y para qué
+ * fila sobrevive en {@link EquipoOtrosMaterialHelper#unificarMaterialesDuplicados}.
  * Usan H2 in-memory a través de {@link AbstractDAOTest}.
  */
 class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
@@ -317,7 +318,101 @@ class EquipoOtrosMaterialHelperTest extends AbstractDAOTest {
         }
     }
 
+    // ── unificarMaterialesDuplicados: qué fila sobrevive ──────────────────────
+
+    @Test
+    void unificar_sobreviveElDeMovimientoMasReciente_aunqueTengaIdMenor() throws Exception {
+        int equipoId   = insertarEquipoRemito(5);
+        int catalogoId = obtenerOCrearCatalogo();
+        int viejo = insertarMaterial(equipoId, catalogoId, 2);
+        int nuevo = insertarMaterial(equipoId, catalogoId, 3);
+        insertarMovimiento(viejo, equipoId, "2026-09-10 12:00:00");
+        insertarMovimiento(nuevo, equipoId, "2026-09-01 12:00:00");
+
+        unificar(equipoId);
+
+        assertEquals(java.util.List.of(viejo), idsMateriales(equipoId));
+        assertEquals(5, sumaCantidades(equipoId));
+    }
+
+    @Test
+    void unificar_conMovimientosEmpatados_sobreviveElDeIdMayor() throws Exception {
+        int equipoId   = insertarEquipoRemito(5);
+        int catalogoId = obtenerOCrearCatalogo();
+        int menor = insertarMaterial(equipoId, catalogoId, 2);
+        int mayor = insertarMaterial(equipoId, catalogoId, 3);
+        insertarMovimiento(menor, equipoId, "2026-09-10 12:00:00");
+        insertarMovimiento(mayor, equipoId, "2026-09-10 12:00:00");
+
+        unificar(equipoId);
+
+        assertEquals(java.util.List.of(mayor), idsMateriales(equipoId));
+    }
+
+    @Test
+    void unificar_sinMovimientos_pierdeContraCualquierMovimiento() throws Exception {
+        int equipoId   = insertarEquipoRemito(5);
+        int catalogoId = obtenerOCrearCatalogo();
+        int conMovimiento = insertarMaterial(equipoId, catalogoId, 2);
+        insertarMaterial(equipoId, catalogoId, 3);   // id mayor, sin movimientos
+        insertarMovimiento(conMovimiento, equipoId, "2026-01-01 00:00:00");
+
+        unificar(equipoId);
+
+        assertEquals(java.util.List.of(conMovimiento), idsMateriales(equipoId));
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static void unificar(int equipoId) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection()) {
+            conn.setAutoCommit(false);
+            EquipoOtrosMaterialHelper.unificarMaterialesDuplicados(conn, equipoId);
+            conn.commit();
+        }
+    }
+
+    private static int insertarMaterial(int equipoId, int catalogoId, int cantidad) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "INSERT INTO equipo_otros_materiales (equipo_otros_id, catalogo_otros_id, descripcion, "
+                 + "cantidad, estado) VALUES (?, ?, 'Elementos', ?, 'Lavado')",
+                 Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, equipoId);
+            ps.setInt(2, catalogoId);
+            ps.setInt(3, cantidad);
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
+    }
+
+    private static void insertarMovimiento(int materialId, int equipoId, String fecha) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "INSERT INTO otros_material_movimientos (material_id, equipo_otros_id, cantidad, "
+                 + "estado_origen, estado_destino, fecha) VALUES (?, ?, 1, 'Lavando', 'Lavado', ?)")) {
+            ps.setInt(1, materialId);
+            ps.setInt(2, equipoId);
+            ps.setTimestamp(3, Timestamp.valueOf(fecha));
+            ps.executeUpdate();
+        }
+    }
+
+    private static java.util.List<Integer> idsMateriales(int equipoId) throws SQLException {
+        java.util.List<Integer> ids = new java.util.ArrayList<>();
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT id FROM equipo_otros_materiales WHERE equipo_otros_id = ? ORDER BY id")) {
+            ps.setInt(1, equipoId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getInt(1));
+            }
+        }
+        return ids;
+    }
 
     private int insertarEquipoRemito(int remitoCantidad) throws SQLException {
         try (Connection conn = ConnectionPool.getConnection();

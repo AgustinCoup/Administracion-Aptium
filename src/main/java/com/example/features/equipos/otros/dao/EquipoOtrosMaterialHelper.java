@@ -306,15 +306,13 @@ public final class EquipoOtrosMaterialHelper {
             String loteFilterSup  = loteId == null ? "m.lote_id IS NULL"  : "m.lote_id = ?";
             String loteFilterElim = loteId == null ? "lote_id IS NULL"     : "lote_id = ?";
 
+            // Correlacionada, no LEFT JOIN a un GROUP BY: ver EquipoMaterialHelper.unificarGrupo.
             String sqlSup =
                 "SELECT m.id FROM equipo_otros_materiales m " +
-                "LEFT JOIN (" +
-                "  SELECT material_id, MAX(fecha) AS uf " +
-                "  FROM otros_material_movimientos GROUP BY material_id" +
-                ") mv ON m.id = mv.material_id " +
                 "WHERE m.equipo_otros_id = ? AND m.descripcion = ? AND m.estado = ? " +
                 "AND " + loteFilterSup + " " +
-                "ORDER BY mv.uf DESC, m.id DESC LIMIT 1";
+                "ORDER BY (SELECT MAX(mv.fecha) FROM otros_material_movimientos mv WHERE mv.material_id = m.id) DESC, " +
+                "m.id DESC LIMIT 1";
 
             int supervivienteId;
             try (PreparedStatement ps = conn.prepareStatement(sqlSup)) {

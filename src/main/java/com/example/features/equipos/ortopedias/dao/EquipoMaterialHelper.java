@@ -200,16 +200,15 @@ public final class EquipoMaterialHelper {
         String loteFilterSup  = loteId == null ? "em.lote_id IS NULL"  : "em.lote_id = ?";
         String loteFilterElim = loteId == null ? "lote_id IS NULL"      : "lote_id = ?";
 
+        // Correlacionada, no LEFT JOIN a un GROUP BY: la tabla derivada agrupaba TODA la tabla de
+        // movimientos en cada grupo, dentro de la transacción de Registrar Estado.
         String sqlSuperviviente =
             "SELECT em.id " +
             "FROM equipo_materiales em " +
-            "LEFT JOIN (" +
-            "  SELECT material_id, MAX(fecha) AS ultima_fecha " +
-            "  FROM material_movimientos GROUP BY material_id" +
-            ") mm ON em.id = mm.material_id " +
             "WHERE em.equipo_id = ? AND em.codigo_catalogo = ? AND em.estado = ? " +
             "AND " + loteFilterSup + " " +
-            "ORDER BY mm.ultima_fecha DESC, em.id DESC " +
+            "ORDER BY (SELECT MAX(mm.fecha) FROM material_movimientos mm WHERE mm.material_id = em.id) DESC, " +
+            "em.id DESC " +
             "LIMIT 1";
 
         int supervivienteId;
