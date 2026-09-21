@@ -12,6 +12,10 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.example.infrastructure.db.ConexionesSupervisadas;
 import com.example.infrastructure.db.ConnectionPool;
 import com.example.infrastructure.db.TokenTarea;
@@ -27,6 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 class TareaUITest {
 
@@ -287,6 +292,41 @@ class TareaUITest {
 
         assertEquals(antes, durante.get(), "una tarea sin JDBC no puede consumir permisos");
         assertEquals(antes, ConnectionPool.permisosDisponibles());
+    }
+
+    @Test
+    @DisplayName("una lectura que supera el umbral se loguea a WARN; una normal, a INFO")
+    void lecturaLenta_vaAWarn() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(TareaUI.class);
+        ListAppender<ILoggingEvent> eventos = new ListAppender<>();
+        eventos.start();
+        logger.addAppender(eventos);
+        try {
+            TareaUI.umbralLecturaLentaMs = 0;   // cualquier lectura es "lenta"
+            lanzarYEsperar("lectura-lenta");
+            TareaUI.umbralLecturaLentaMs = Long.MAX_VALUE;
+            lanzarYEsperar("lectura-normal");
+        } finally {
+            TareaUI.umbralLecturaLentaMs = TareaUI.UMBRAL_LECTURA_LENTA_MS;
+            logger.detachAppender(eventos);
+        }
+
+        assertEquals(Level.WARN, nivelDeLaLectura(eventos, "lectura-lenta"));
+        assertEquals(Level.INFO, nivelDeLaLectura(eventos, "lectura-normal"));
+    }
+
+    private static void lanzarYEsperar(String nombre) throws InterruptedException {
+        CountDownLatch termino = new CountDownLatch(1);
+        TareaUI.<String>nueva().nombre(nombre).leer(() -> "x").despues(termino::countDown).lanzar();
+        esperar(termino);
+    }
+
+    private static Level nivelDeLaLectura(ListAppender<ILoggingEvent> eventos, String nombre) {
+        return eventos.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("Tarea '" + nombre + "' leyó en"))
+            .map(ILoggingEvent::getLevel)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no se logueó la lectura de " + nombre));
     }
 
     @Test

@@ -74,6 +74,22 @@ public final class TareaUI<T> {
     private static final String NOMBRE_POR_DEFECTO = "tarea-ui";
 
     /**
+     * A partir de cuánto una lectura se loguea a WARN en vez de INFO. Calibrado sobre lo medido en
+     * {@code plans/conexiones-y-paginacion.md}: las lecturas normales rondan los 15 ms y la peor
+     * medida es {@code refresco-operativo} con ~318 ms sobre 6 000 filas sintéticas. 1 s es ~3× ese
+     * peor caso, con margen para la latencia de Tailscale, y es donde un operador ya nota la espera.
+     * Las descargas del JAR ({@code *-descargar-actualizacion}) lo superan siempre: es esperado.
+     */
+    static final long UMBRAL_LECTURA_LENTA_MS = 1_000;
+
+    /**
+     * El valor vigente de {@link #UMBRAL_LECTURA_LENTA_MS}. Campo y no constante sólo para que el
+     * test no tenga que dormir un segundo; producción nunca lo cambia — misma costura que
+     * {@code ConnectionPool.timeoutPermisoMs}.
+     */
+    static volatile long umbralLecturaLentaMs = UMBRAL_LECTURA_LENTA_MS;
+
+    /**
      * Único hilo donde corre {@code Statement.cancel()}. Ver el javadoc de la clase: ese cancel
      * hace I/O y {@code cancelar()} se llama desde el hilo de la interfaz. Daemon para que no
      * impida el cierre de la aplicación.
@@ -175,7 +191,13 @@ public final class TareaUI<T> {
                 try {
                     return leer.call();
                 } finally {
-                    log.info("Tarea '{}' leyó en {} ms", nombre, milisegundosDesde(inicio));
+                    long ms = milisegundosDesde(inicio);
+                    if (ms >= umbralLecturaLentaMs) {
+                        log.warn("Tarea '{}' leyó en {} ms: lectura lenta (umbral {} ms)",
+                            nombre, ms, umbralLecturaLentaMs);
+                    } else {
+                        log.info("Tarea '{}' leyó en {} ms", nombre, ms);
+                    }
                     if (ConnectionPool.hayPresion()) {
                         log.warn("Pool bajo presión tras la tarea '{}': {}", nombre, ConnectionPool.getStats());
                     }
