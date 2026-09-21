@@ -19,6 +19,17 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Vive en {@code infrastructure.db} y no en {@code ui.common} porque quien lo <b>lee</b> es el
  * proxy JDBC; {@code TareaUI} sólo lo crea, lo asocia al hilo y lo saca.
+ *
+ * <h2>La marca de cancelado</h2>
+ *
+ * {@code ConexionesSupervisadas.cancelarDe} sólo alcanza a las sentencias <em>ya registradas</em>.
+ * Una tarea que todavía espera permiso en {@code ConnectionPool}, o que está entre dos sentencias,
+ * no tiene nada que cancelar, y la sentencia siguiente correría entera. La marca cierra ese hueco
+ * desde el otro lado: quien cancela la prende <b>antes</b> de recorrer el registro, y quien abre
+ * una sentencia la mira <b>después</b> de registrarla. Con ese orden no hay sentencia que se escape
+ * de los dos: o ya estaba registrada cuando se recorrió el registro, o ve la marca prendida.
+ *
+ * <p>Prenderla no hace I/O, así que se prende sincrónicamente en el hilo de la interfaz.
  */
 public final class TokenTarea {
 
@@ -27,6 +38,8 @@ public final class TokenTarea {
     private static final AtomicLong SECUENCIA = new AtomicLong();
 
     private final String descripcion;
+
+    private volatile boolean cancelado;
 
     private TokenTarea(String descripcion) {
         this.descripcion = descripcion;
@@ -57,6 +70,26 @@ public final class TokenTarea {
     /** El token de la tarea que corre en este hilo, o {@code null} si el hilo no es de una tarea. */
     public static TokenTarea vigente() {
         return VIGENTE.get();
+    }
+
+    /** Prende la marca de cancelado. Idempotente y sin I/O: ver el javadoc de la clase. */
+    public void marcarCancelado() {
+        cancelado = true;
+    }
+
+    public boolean estaCancelado() {
+        return cancelado;
+    }
+
+    /**
+     * Lanza {@link TareaCanceladaException} si la tarea fue cancelada.
+     *
+     * @param momento dónde se detectó, sólo para el mensaje
+     */
+    void exigirNoCancelado(String momento) throws TareaCanceladaException {
+        if (cancelado) {
+            throw new TareaCanceladaException(this, momento);
+        }
     }
 
     @Override

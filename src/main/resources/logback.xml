@@ -95,6 +95,9 @@
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>ERROR</level>
         </filter>
+        <!-- Sin los errores de tareas ya canceladas (F5 que reemplaza a otro): ver FiltroTareaCancelada.
+             Exige appender sincrónico: el filtro lee el token del hilo que loguea. -->
+        <filter class="com.example.infrastructure.db.FiltroTareaCancelada"/>
     </appender>
     
     <!-- ===== LOGGERS ESPECÍFICOS ===== -->

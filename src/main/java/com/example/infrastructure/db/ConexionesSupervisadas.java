@@ -75,6 +75,14 @@ import org.slf4j.LoggerFactory;
  * {@code KILL QUERY}: es I/O y no puede correr en el hilo de la interfaz. Quien cancela
  * ({@code TareaUI.Handle}) lo despacha al ejecutor {@code cancelador-sql}.
  *
+ * <p><b>Lo que {@code cancelarDe} no alcanza lo cubre la marca del token.</b> Una sentencia que
+ * todavía no existe —la tarea espera permiso, o está entre dos consultas— no está en el registro.
+ * Por eso toda sentencia nueva mira {@link TokenTarea#estaCancelado()} <em>después</em> de
+ * registrarse, y toda {@code execute*} la vuelve a mirar antes de ejecutar; si está prendida lanza
+ * {@link TareaCanceladaException} sin tocar el servidor. Queda una ventana de microsegundos, entre
+ * esa última mirada y que el driver marque la sentencia como en ejecución, que sólo el techo de
+ * consulta cubre: cerrarla exigiría la colaboración del driver.
+ *
  * <h2>Invariante del que depende el techo de concurrencia</h2>
  *
  * <b>Ninguna operación mantiene dos conexiones abiertas a la vez.</b> Hoy se cumple:
@@ -238,8 +246,24 @@ public final class ConexionesSupervisadas {
             if (token != null) {
                 registrar(token, sentencia);
                 propias.put(sentencia, token);
+                // Registrar y DESPUÉS mirar la marca: es el orden inverso al de TareaUI.cancelar()
+                // (marca y después recorre el registro), y es lo que cierra la carrera. Ver TokenTarea.
+                if (token.estaCancelado()) {
+                    propias.remove(sentencia);
+                    desregistrar(token, sentencia);
+                    cerrarEnSilencio(sentencia);
+                    token.exigirNoCancelado("antes de abrir una sentencia");
+                }
             }
             return envolverSentencia(sentencia, token);
+        }
+
+        private void cerrarEnSilencio(Statement sentencia) {
+            try {
+                sentencia.close();
+            } catch (SQLException | RuntimeException e) {
+                log.debug("No se pudo cerrar una sentencia de una tarea cancelada", e);
+            }
         }
 
         private Statement envolverSentencia(Statement sentencia, TokenTarea token) {
@@ -316,6 +340,12 @@ public final class ConexionesSupervisadas {
                         ConexionesSupervisadas.desregistrar(token, sentencia);
                         return invocarSentencia(metodo, args);
                     default:
+                        if (token != null && metodo.getName().startsWith("execute")) {
+                            // Connector/J ignora cancel() sobre una sentencia preparada que todavía
+                            // no se está ejecutando: sin esto, una cancelación entre prepare y
+                            // execute dejaría correr la consulta entera.
+                            token.exigirNoCancelado("antes de ejecutar una sentencia");
+                        }
                         return invocarSentencia(metodo, args);
                 }
             }

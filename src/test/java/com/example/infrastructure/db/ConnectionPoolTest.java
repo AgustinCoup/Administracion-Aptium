@@ -11,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -19,6 +21,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -223,6 +227,79 @@ class ConnectionPoolTest {
 
             assertEquals(ConnectionPool.PERMISOS_CONEXION, ConnectionPool.permisosDisponibles());
         }
+    }
+
+    @Test
+    void tareaCanceladaMientrasEsperaPermiso_noAbreConexionYDevuelveElPermiso() throws Exception {
+        // El caso con presión: semáforo lleno, F5 reemplaza una tarea que todavía no tiene
+        // sentencias. cancelarDe no encuentra nada; sin la marca, al conseguir el permiso la tarea
+        // corría la consulta entera para que su resultado se descartara.
+        ConnectionPool.timeoutPermisoMs = 5_000;
+        try (HikariDataSource h2 = h2ConPool(ConnectionPool.PERMISOS_CONEXION + 2)) {
+            AtomicInteger abiertas = new AtomicInteger();
+            ConnectionPool.setDataSourceForTesting(contandoAperturas(h2, abiertas));
+            List<Connection> tomadas = new ArrayList<>();
+            for (int i = 0; i < ConnectionPool.PERMISOS_CONEXION; i++) {
+                tomadas.add(ConnectionPool.getConnection());
+            }
+            int aperturasAntes = abiertas.get();
+
+            TokenTarea token = TokenTarea.nuevo("refresco-operativo");
+            AtomicReference<Throwable> loQueLevanto = new AtomicReference<>();
+            Thread tarea = new Thread(() -> {
+                TokenTarea.asociarAlHiloActual(token);
+                try (Connection conn = ConnectionPool.getConnection()) {
+                    conn.createStatement().executeQuery("SELECT 1");
+                } catch (Throwable t) {
+                    loQueLevanto.set(t);
+                } finally {
+                    TokenTarea.desasociarDelHiloActual();
+                }
+            }, "tarea-esperando-permiso");
+            try {
+                tarea.start();
+                esperarQueBloquee(tarea);
+
+                token.marcarCancelado();
+                ConexionesSupervisadas.cancelarDe(token);   // no encuentra nada: ése es el hueco
+                tomadas.remove(0).close();                  // le toca el turno
+                tarea.join(5_000);
+            } finally {
+                for (Connection c : tomadas) {
+                    c.close();
+                }
+            }
+
+            assertTrue(loQueLevanto.get() instanceof TareaCanceladaException, String.valueOf(loQueLevanto.get()));
+            assertEquals(aperturasAntes, abiertas.get(), "la tarea cancelada no puede abrir una conexión");
+            assertEquals(ConnectionPool.PERMISOS_CONEXION, ConnectionPool.permisosDisponibles(),
+                "el permiso que tomó al despertar tiene que volver");
+        }
+    }
+
+    private static void esperarQueBloquee(Thread hilo) throws InterruptedException {
+        long limite = System.currentTimeMillis() + 5_000;
+        while (hilo.getState() != Thread.State.TIMED_WAITING && System.currentTimeMillis() < limite) {
+            Thread.sleep(5);
+        }
+        assertEquals(Thread.State.TIMED_WAITING, hilo.getState(), "la tarea nunca quedó esperando permiso");
+    }
+
+    /** Delega en {@code real} contando los {@code getConnection}: abrir es lo que no debe pasar. */
+    private static DataSource contandoAperturas(DataSource real, AtomicInteger abiertas) {
+        return (DataSource) Proxy.newProxyInstance(
+            DataSource.class.getClassLoader(),
+            new Class<?>[] { DataSource.class },
+            (proxy, metodo, args) -> {
+                if (metodo.getName().equals("getConnection")) {
+                    abiertas.incrementAndGet();
+                }
+                try {
+                    return metodo.invoke(real, args);
+                } catch (InvocationTargetException e) {
+                    throw e.getCause();
+                }
+            });
     }
 
     private static HikariDataSource h2ConPool(int tamano) {

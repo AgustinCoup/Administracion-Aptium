@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.infrastructure.db.ConexionesSupervisadas;
 import com.example.infrastructure.db.ConnectionPool;
+import com.example.infrastructure.db.TokenTarea;
 import java.awt.EventQueue;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -199,6 +200,36 @@ class TareaUITest {
         assertEquals("cancelador-sql", hiloDelCancel.get(),
             "el cancel() hace I/O: no puede correr en el hilo de la interfaz");
         puedeTerminar.countDown();
+    }
+
+    @Test
+    @DisplayName("cancelar prende la marca del token en el acto, sin esperar al cancelador-sql")
+    void cancelarPrendeLaMarcaSincronicamente() throws Exception {
+        // La mitad de la carrera que cierra la marca: tiene que estar prendida ANTES de que
+        // cancelarDe recorra el registro, y eso sólo se garantiza si la prende el mismo cancelar().
+        AtomicReference<TokenTarea> tokenDeLaTarea = new AtomicReference<>();
+        CountDownLatch arranco       = new CountDownLatch(1);
+        CountDownLatch puedeTerminar = new CountDownLatch(1);
+
+        TareaUI.Ejecucion ejecucion = TareaUI.<String>nueva()
+            .leer(() -> {
+                tokenDeLaTarea.set(TokenTarea.vigente());
+                arranco.countDown();
+                puedeTerminar.await(TIMEOUT_SEGUNDOS, TimeUnit.SECONDS);
+                return "datos";
+            })
+            .lanzar();
+
+        esperar(arranco);
+        assertFalse(tokenDeLaTarea.get().estaCancelado());
+        AtomicBoolean marcadoAlVolver = new AtomicBoolean(false);
+        SwingUtilities.invokeAndWait(() -> {
+            ejecucion.cancelar();
+            marcadoAlVolver.set(tokenDeLaTarea.get().estaCancelado());
+        });
+        puedeTerminar.countDown();
+
+        assertTrue(marcadoAlVolver.get(), "la marca tiene que estar prendida al volver de cancelar()");
     }
 
     @Test

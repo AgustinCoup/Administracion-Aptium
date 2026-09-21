@@ -49,7 +49,10 @@ import org.slf4j.LoggerFactory;
  * de lo que quede en pantalla, típicamente porque lanza otra tarea en su lugar— <b>y además
  * cancela en el servidor las consultas que esa tarea tenga en vuelo</b>
  * ({@link ConexionesSupervisadas#cancelarDe}). Sin lo segundo, mantener F5 apretado dejaba N
- * consultas corriendo en MySQL, cada una reteniendo una conexión del pool hasta terminar.
+ * consultas corriendo en MySQL, cada una reteniendo una conexión del pool hasta terminar. Y como
+ * el {@code KILL} sólo alcanza a lo que ya está en vuelo, cancelar prende también la marca del
+ * {@link TokenTarea}: la tarea que esperaba permiso, o que iba por la segunda de varias consultas,
+ * no ejecuta ninguna más.
  *
  * <p>Lo que sigue sin ser confiable es interrumpir el <i>hilo</i> — por eso el
  * {@code worker.cancel(false)}. Lo confiable es {@code Statement.cancel()}, que en Connector/J
@@ -267,6 +270,9 @@ public final class TareaUI<T> {
         @Override
         public void cancelar() {
             cancelada.set(true);
+            // Sincrónico y ANTES de despachar el cancelarDe: la marca no hace I/O, y prenderla
+            // antes de recorrer el registro es la mitad de la carrera que cierra (ver TokenTarea).
+            token.marcarCancelado();
             SwingWorker<?, ?> actual = worker;
             if (actual != null) {
                 // Sin interrumpir: interrumpir una query JDBC en curso no es confiable.

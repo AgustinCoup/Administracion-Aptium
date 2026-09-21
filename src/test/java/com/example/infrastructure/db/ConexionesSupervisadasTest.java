@@ -185,10 +185,14 @@ class ConexionesSupervisadasTest {
             ConexionesSupervisadas.envolver(conexionFalsa(sentenciaEnVuelo), SIN_PERMISO);
         conexionEnVuelo.createStatement();
 
+        // Lo mismo que hace TareaUI.Handle.cancelar(): marca y después recorre el registro.
+        tareaTerminada.marcarCancelado();
         ConexionesSupervisadas.cancelarDe(tareaTerminada);
 
         verify(sentenciaDeLaTerminada, never()).cancel();
         verify(sentenciaEnVuelo, never()).cancel();
+        // La marca es del token muerto, no del hilo: la tarea nueva sigue abriendo sentencias.
+        assertDoesNotThrow(() -> { conexionEnVuelo.createStatement(); });
 
         // Contraprueba: sin esto el test pasaría igual si la sentencia nunca se hubiera
         // registrado, y no estaría verificando nada.
@@ -197,6 +201,79 @@ class ConexionesSupervisadasTest {
 
         conexionDeLaTerminada.close();
         conexionEnVuelo.close();
+    }
+
+    // ---------- marca de cancelado ----------
+
+    @Test
+    @DisplayName("cancelar entre dos sentencias: la segunda no llega a abrirse ni a ejecutarse")
+    void cancelarEntreDosSentencias_laSegundaNoSeEjecuta() throws Exception {
+        // Ver Equipos encadena contar → ids → detalle. Si la cancelación cae entre dos, cancelarDe
+        // no encuentra nada vivo que cancelar: lo que frena a la siguiente es la marca.
+        TokenTarea token = TokenTarea.nuevo("refresco-ver-equipos");
+        TokenTarea.asociarAlHiloActual(token);
+        PreparedStatement contar = mock(PreparedStatement.class);
+        PreparedStatement detalle = mock(PreparedStatement.class);
+        Connection real = mock(Connection.class);
+        when(real.getAutoCommit()).thenReturn(true);
+        when(real.prepareStatement(anyString())).thenReturn(contar, detalle);
+
+        Connection supervisada = ConexionesSupervisadas.envolver(real, SIN_PERMISO);
+        try (PreparedStatement primera = supervisada.prepareStatement("SELECT COUNT(*)")) {
+            primera.executeQuery();
+        }
+
+        token.marcarCancelado();
+        ConexionesSupervisadas.cancelarDe(token);
+
+        assertThrows(TareaCanceladaException.class, () -> supervisada.prepareStatement("SELECT detalle"));
+        verify(contar).executeQuery();
+        verify(detalle, never()).executeQuery();
+        verify(detalle).close();   // la sentencia real que alcanzó a crearse no queda colgando
+        assertEquals(0, ConexionesSupervisadas.tareasRegistradas(),
+            "la sentencia rechazada no puede quedar en el registro");
+        supervisada.close();
+    }
+
+    @Test
+    @DisplayName("cancelar entre prepare y execute: la consulta no se ejecuta")
+    void cancelarEntrePrepareYExecute_noEjecuta() throws Exception {
+        // Connector/J ignora cancel() sobre una sentencia que todavía no se está ejecutando:
+        // cancelarDe la encuentra registrada, le pide cancel() y no pasa nada. Frena la marca.
+        TokenTarea token = TokenTarea.nuevo("refresco-ver-equipos");
+        TokenTarea.asociarAlHiloActual(token);
+        PreparedStatement real = mock(PreparedStatement.class);
+        Connection conexion = mock(Connection.class);
+        when(conexion.getAutoCommit()).thenReturn(true);
+        when(conexion.prepareStatement(anyString())).thenReturn(real);
+
+        try (Connection supervisada = ConexionesSupervisadas.envolver(conexion, SIN_PERMISO);
+             PreparedStatement preparada = supervisada.prepareStatement("SELECT detalle")) {
+
+            token.marcarCancelado();
+            ConexionesSupervisadas.cancelarDe(token);
+
+            assertThrows(TareaCanceladaException.class, preparada::executeQuery);
+            assertThrows(TareaCanceladaException.class, preparada::executeUpdate);
+            verify(real, never()).executeQuery();
+            verify(real, never()).executeUpdate();
+        }
+    }
+
+    @Test
+    @DisplayName("sin tarea vigente (hilo de UI, autocompletados) la marca no interviene")
+    void sinToken_noHayMarcaQueMirar() throws Exception {
+        PreparedStatement real = mock(PreparedStatement.class);
+        Connection conexion = mock(Connection.class);
+        when(conexion.getAutoCommit()).thenReturn(true);
+        when(conexion.prepareStatement(anyString())).thenReturn(real);
+
+        try (Connection supervisada = ConexionesSupervisadas.envolver(conexion, SIN_PERMISO);
+             PreparedStatement preparada = supervisada.prepareStatement("SELECT 1")) {
+            preparada.executeQuery();
+        }
+
+        verify(real).executeQuery();
     }
 
     /**

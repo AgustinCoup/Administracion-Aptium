@@ -349,7 +349,7 @@ del log.
 sólo "descartar el resultado": `ConexionesSupervisadas` (`infrastructure/db/`) envuelve con un
 `Proxy` toda conexión que entrega `ConnectionPool.getConnection()`, registra sus sentencias contra un
 `TokenTarea`, y el `cancelar()` manda `Statement.cancel()` sobre las que sigan vivas. Sin eso, F5
-mantenido dejaba N consultas corriendo en MySQL, **cada una reteniendo una conexión**. Tres cosas del
+mantenido dejaba N consultas corriendo en MySQL, **cada una reteniendo una conexión**. Cinco cosas del
 diseño que no son opinables:
 
 - **El registro va por token de tarea, nunca por `Thread`.** `SwingWorker` reutiliza sus 10 hilos y
@@ -369,6 +369,23 @@ diseño que no son opinables:
   se te adelantó". `TransactionalConnection` pone `autoCommit = false` en su constructor, así que la
   condición es exacta y no hace falta ningún flag. Las escrituras quedan acotadas por el
   `socketTimeout` de 60 s, que es **mayor** que los 50 s del lock wait: el 1205 sigue llegando.
+- **El `KILL` sólo alcanza a lo que ya está en vuelo; lo demás lo frena la marca del token.** Una
+  tarea que espera permiso en el semáforo, o que está entre dos consultas (Ver Equipos encadena
+  contar → ids → detalle), no tiene sentencias registradas: `cancelarDe` no encuentra nada y la
+  consulta siguiente correría entera. `cancelar()` prende `TokenTarea.marcarCancelado()`
+  **sincrónicamente en el EDT** (no hace I/O) **antes** de despachar el `cancelarDe`, y se revisa
+  en tres lugares: `ConnectionPool.getConnection()` **después** de tomar el permiso (y lo devuelve),
+  `ConexionesSupervisadas.supervisar()` **después** de `registrar(...)`, y antes de cada `execute*`
+  (Connector/J ignora `cancel()` sobre una sentencia preparada que todavía no se ejecuta). El orden
+  es lo que cierra la carrera: uno marca y después recorre el registro, el otro registra y después
+  mira la marca. Lanza `TareaCanceladaException extends SQLException`, que viaja por los `catch`
+  de los DAOs sin que ninguno la conozca.
+- **Los errores de una tarea cancelada no van a `error.log`.** Los DAOs hacen `log.error` antes de
+  envolver cualquier `SQLException`, así que cada F5 que reemplazaba a otro escribía un error
+  falso. `FiltroTareaCancelada` (en el appender `ERROR_FILE` de `logback.xml`) los descarta si el
+  hilo que loguea tiene su token marcado — criterio por token y no por clase de excepción, para no
+  tapar el techo de 30 s de una tarea que nadie canceló. `app.log` los sigue mostrando. Exige
+  appender **sincrónico**: detrás de un `AsyncAppender` el filtro correría sin token.
 
 **Techo de lecturas concurrentes.** `ConnectionPool.getConnection()` toma un permiso de un semáforo
 de `MAX_POOL − RESERVA_CONEXIONES` (8 − 3 = 5) antes de pedirle la conexión al pool, y lo devuelve en

@@ -481,6 +481,10 @@ public class ConnectionPool {
      * cuando quien pide es el hilo de la interfaz: los cinco autocompletados sincrónicos son la
      * excepción para la que existe la {@link #RESERVA_CONEXIONES}.
      *
+     * <p>Si la tarea vigente fue cancelada mientras esperaba el permiso, lanza
+     * {@link TareaCanceladaException} y devuelve el permiso: sin esto, la tarea cancelada corría la
+     * consulta entera apenas le tocaba el turno, justo cuando hay presión (ver {@link TokenTarea}).
+     *
      * @return Conexión del pool (nunca null)
      * @throws SQLException Si no hay conexiones disponibles después del timeout
      */
@@ -494,6 +498,9 @@ public class ConnectionPool {
         boolean entregada = false;
         Connection real = null;
         try {
+            // Después del permiso y adentro del try: una tarea cancelada mientras esperaba no
+            // corre su consulta, y el finally devuelve el permiso que acaba de tomar.
+            exigirTareaNoCancelada("mientras esperaba conexión");
             real = abrirConexionReal();
             Connection supervisada = ConexionesSupervisadas.envolver(real, alCerrar);
             entregada = true;
@@ -503,6 +510,13 @@ public class ConnectionPool {
                 cerrarEnSilencio(real);
                 alCerrar.run();
             }
+        }
+    }
+
+    private static void exigirTareaNoCancelada(String momento) throws TareaCanceladaException {
+        TokenTarea token = TokenTarea.vigente();
+        if (token != null) {
+            token.exigirNoCancelado(momento);
         }
     }
 
