@@ -1,9 +1,11 @@
 package com.example.features.lavadero.view;
 
 import com.example.features.lavadero.model.ElementoCicloItem;
+import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.view.helpers.LavarropasCardTableModel;
+import com.example.features.lavadero.view.helpers.PanelInsumosCard;
 import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.TableStyler;
 import com.example.ui.common.dnd.TableSelectionSupport;
@@ -37,9 +39,7 @@ public class LavarropasCard extends JPanel {
     private final JComboBox<TipoLavado>    cmbTipoLavado    = new JComboBox<>(TipoLavado.values());
     private final JComboBox<JabonCatalogo> cmbJabon         = new JComboBox<>();
     private final JTextField              txtLitrosJabon   = new JTextField(4);
-    private final JCheckBox               chkSuavizante    = new JCheckBox("Suavizante");
-    private final JCheckBox               chkPotenciador   = new JCheckBox("Potenciador");
-    private final JTextField           txtLitrosTotales = new JTextField(4);
+    private final PanelInsumosCard        panelInsumos     = new PanelInsumosCard();
     private final JButton              btnAccion        = new JButton("Lanzar");
     private final JPanel               panelConfig;
 
@@ -122,26 +122,21 @@ public class LavarropasCard extends JPanel {
         config.setLayout(new BoxLayout(config, BoxLayout.Y_AXIS));
         config.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
-        for (JComponent c : new JComponent[]{cmbTipoLavado, cmbJabon, txtLitrosJabon,
-                                            chkSuavizante, chkPotenciador, txtLitrosTotales}) {
+        for (JComponent c : new JComponent[]{cmbTipoLavado, cmbJabon, txtLitrosJabon}) {
             c.setFont(FONT_CONFIG);
         }
         RestriccionesCampo.soloNumerosDecimales(txtLitrosJabon);
-        RestriccionesCampo.soloNumerosDecimales(txtLitrosTotales);
 
         // Obligatorios y sin default: arrancan vacíos para forzar una elección explícita.
         cmbTipoLavado.setSelectedItem(null);
         cmbTipoLavado.addActionListener(e -> notificarConfiguracionChanged());
         cmbJabon.addActionListener(e -> notificarConfiguracionChanged());
+        panelInsumos.setOnCambio(this::notificarConfiguracionChanged);
 
         config.add(rowPanel("Tipo:", cmbTipoLavado));
         config.add(rowPanel("Jabón:", cmbJabon));
         config.add(rowPanel("mL Jabón:", txtLitrosJabon));
-        JPanel chkRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 1));
-        chkRow.add(chkSuavizante);
-        chkRow.add(chkPotenciador);
-        config.add(chkRow);
-        config.add(rowPanel("L Tot.:", txtLitrosTotales));
+        config.add(panelInsumos);
 
         DocumentListener notificador = new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e)  { notificarConfiguracionChanged(); }
@@ -149,12 +144,11 @@ public class LavarropasCard extends JPanel {
             @Override public void changedUpdate(DocumentEvent e) { notificarConfiguracionChanged(); }
         };
         txtLitrosJabon.getDocument().addDocumentListener(notificador);
-        txtLitrosTotales.getDocument().addDocumentListener(notificador);
 
         return config;
     }
 
-    /** Un solo canal para todos los campos obligatorios de la config (tipo, jabón, mL de jabón y L totales). */
+    /** Un solo canal para todos los campos de la config: tipo, jabón, mL de jabón e insumos extra. */
     private void notificarConfiguracionChanged() {
         if (onConfiguracionChanged != null) SwingUtilities.invokeLater(onConfiguracionChanged);
     }
@@ -243,18 +237,15 @@ public class LavarropasCard extends JPanel {
     public Integer getCicloActivo() { return cicloActivo; }
 
     /**
-     * Deja la configuración (tipo de lavado, jabón, mililitros, suavizante, potenciador,
-     * litros totales) en su estado inicial. Se llama al abrir la pantalla, no en cada
-     * refresco: pisar esto durante un lanzamiento borraría lo que el operador está
-     * tipeando en otra card.
+     * Deja la configuración (tipo de lavado, jabón, mililitros de jabón e insumos extra) en su
+     * estado inicial. Se llama al abrir la pantalla, no en cada refresco: pisar esto durante un
+     * lanzamiento borraría lo que el operador está tipeando en otra card.
      */
     public void resetConfiguracion() {
         cmbTipoLavado.setSelectedItem(null);
         cmbJabon.setSelectedItem(null);
         txtLitrosJabon.setText("");
-        chkSuavizante.setSelected(false);
-        chkPotenciador.setSelected(false);
-        txtLitrosTotales.setText("");
+        panelInsumos.limpiar();
         actualizarBtnAccion();
     }
 
@@ -297,16 +288,20 @@ public class LavarropasCard extends JPanel {
         } catch (NumberFormatException e) { return null; }
     }
 
-    public boolean isSuavizante()   { return chkSuavizante.isSelected(); }
-    public boolean isPotenciador()  { return chkPotenciador.isSelected(); }
+    /**
+     * Repuebla el catálogo del combo de insumos, pero <b>no</b> borra los que el operador ya
+     * eligió — al revés que {@link #setJabones}, que sí deja el combo sin selección. La
+     * diferencia es a propósito: el jabón es un combo de elección única y repoblarlo no pierde
+     * nada, mientras que los insumos son una lista que el operador arma con varios clics, y
+     * pisarla en cada refresco sería el mismo bug que {@code recargar()} evita para el resto de
+     * la config.
+     */
+    public void setInsumos(java.util.List<InsumoCatalogo> catalogo) {
+        panelInsumos.setCatalogo(catalogo);
+    }
 
-    public BigDecimal getLitrosTotales() {
-        try {
-            String t = txtLitrosTotales.getText().trim().replace(",", ".");
-            if (t.isEmpty()) return null;
-            BigDecimal v = new BigDecimal(t);
-            return v.compareTo(BigDecimal.ZERO) > 0 ? v : null;
-        } catch (NumberFormatException e) { return null; }
+    public java.util.List<InsumoCatalogo> getInsumosSeleccionados() {
+        return panelInsumos.getSeleccionados();
     }
 
     // ── DnD ──────────────────────────────────────────────────────────────────
@@ -333,14 +328,14 @@ public class LavarropasCard extends JPanel {
     }
 
     /**
-     * Los cuatro campos obligatorios del ciclo: tipo de lavado, jabón, mililitros de jabón y
-     * litros totales. Es la <b>única</b> definición de "config completa" de la pantalla: la usa
-     * esta card para decidir si se puede lanzar y {@code CiclosController} para validar los
-     * grupos repartidos.
+     * Los tres campos obligatorios del ciclo: tipo de lavado, jabón y mililitros de jabón. Los
+     * insumos extra <b>no</b> entran acá — son opcionales, y un ciclo sin ninguno es un ciclo
+     * válido. Es la <b>única</b> definición de "config completa" de la pantalla: la usa esta card
+     * para decidir si se puede lanzar y {@code CiclosController} para validar los grupos
+     * repartidos.
      */
     public boolean tieneConfiguracionCompleta() {
-        return getTipoLavado() != null && getJabon() != null
-            && getLitrosJabon() != null && getLitrosTotales() != null;
+        return getTipoLavado() != null && getJabon() != null && getLitrosJabon() != null;
     }
 
     public void actualizarBtnAccion() {
