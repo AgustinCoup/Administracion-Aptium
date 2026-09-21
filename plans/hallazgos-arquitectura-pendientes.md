@@ -395,6 +395,24 @@ Lo de abajo es el diagnóstico tal como se escribió; los números de pool que c
    correlacionada de (c). No había tests de unificación: se agregaron seis (superviviente por
    fecha, desempate por id, sin movimientos pierde), que pasan igual con el SQL anterior.
 
+**Verificado contra MySQL 8.0.46 local (2026-09-21):**
+
+- *Connector/J 8.3.0 ignora `cancel()` antes del `execute`* — el supuesto de la revisión en
+  `execute*`: sin la marca, un `SELECT SLEEP(2)` cancelado entre `prepare` y `execute` corrió
+  entero (2 111 ms, devolvió 0); con la marca, rechazado en 2 ms sin llegar al servidor.
+- *El `KILL` no llega a `error.log`*: con el `logback.xml` real, la
+  `MySQLStatementCancelledException` de una tarea marcada, logueada como la loguean los DAOs, quedó
+  en `app.log` y no en `error.log`; la contraprueba (mismo `log.error` desde una tarea sin marca)
+  sí llegó. La consulta murió en 17 ms.
+  Los dos: `mvn test -Dtest=CancelacionContraMySQL -Daptium.mysql=true`.
+- *La unificación sobre `aptium_perf`* (sembrador + 60 000 movimientos por tabla, 6-12× producción),
+  `EXPLAIN ANALYZE` de un grupo duplicado: la tabla derivada materializaba 60 000 filas en 12 000
+  grupos, **110 ms** (ortopedias) y **93 ms** (otros) por grupo, dentro de la transacción; la
+  correlacionada hace *index lookup* por `idx_mov_material` / `idx_otros_mov_material`,
+  **0,07 ms** y **0,08 ms**. Mismo superviviente.
+- *Sin verificar*: el umbral de 1 s contra la latencia real de Tailscale. Hay que mirar el
+  `app.log` de producción después del deploy.
+
 **Queda abierto, decisión del usuario (mismo criterio que #10):** `EquipoService.obtenerTodos`,
 `EquipoOtrosService.obtenerTodos` y `EquipoOtrosDAO.obtenerTodos` quedaron sin llamador en
 `src/main` al borrar Estado de Procesos. Los dos services sólo los usan sus tests unitarios y

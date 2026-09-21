@@ -1,17 +1,26 @@
 package com.example.perf;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.core.FileAppender;
 import com.example.infrastructure.db.ConexionesSupervisadas;
 import com.example.infrastructure.db.ConnectionPool;
+import com.example.infrastructure.db.TareaCanceladaException;
 import com.example.infrastructure.db.TokenTarea;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -133,6 +142,128 @@ class CancelacionContraMySQL {
         } finally {
             ConnectionPool.setDataSourceForTesting(null);
         }
+    }
+
+    /**
+     * El supuesto que justifica que {@code ConexionesSupervisadas} revise la marca antes de cada
+     * {@code execute*}: Connector/J <b>ignora</b> {@code cancel()} sobre una sentencia preparada que
+     * todavía no se está ejecutando. Si algún día el driver empezara a aplicarlo en la ejecución
+     * siguiente, la primera mitad de este test falla y la revisión pasa a ser redundante (inocua).
+     */
+    @Test
+    void cancelarEntrePrepareYExecute_elDriverNoLaFrena_laMarcaSi() throws Exception {
+        TokenTarea token = TokenTarea.nuevo("refresco-ver-equipos");
+        try (HikariDataSource pool = poolLocal()) {
+            ConnectionPool.setDataSourceForTesting(pool);
+            TokenTarea.asociarAlHiloActual(token);
+            try (Connection conn = ConnectionPool.getConnection()) {
+
+                // 1) Sin marca: el cancel() llega antes del execute y el driver no hace nada.
+                try (PreparedStatement ps = conn.prepareStatement("SELECT SLEEP(2)")) {
+                    ConexionesSupervisadas.cancelarDe(token);
+                    long inicio = System.nanoTime();
+                    try (ResultSet rs = ps.executeQuery()) {
+                        assertTrue(rs.next());
+                        long ms = (System.nanoTime() - inicio) / 1_000_000;
+                        log.info("Sin marca: SLEEP(2) devolvió {} en {} ms", rs.getInt(1), ms);
+                        assertEquals(0, rs.getInt(1), "SLEEP devuelve 1 si lo interrumpieron");
+                        assertTrue(ms >= 1_900, "el driver aplicó el cancel() previo: la revisión en execute* sobra");
+                    }
+                }
+
+                // 2) Con la marca: la misma situación no llega al servidor.
+                try (PreparedStatement ps = conn.prepareStatement("SELECT SLEEP(2)")) {
+                    token.marcarCancelado();
+                    ConexionesSupervisadas.cancelarDe(token);
+                    long inicio = System.nanoTime();
+                    assertThrows(TareaCanceladaException.class, ps::executeQuery);
+                    long ms = (System.nanoTime() - inicio) / 1_000_000;
+                    log.info("Con marca: rechazada en {} ms", ms);
+                    assertTrue(ms < 500, "la rechazó el servidor, no la marca");
+                }
+            }
+        } finally {
+            TokenTarea.desasociarDelHiloActual();
+            ConexionesSupervisadas.olvidar(token);
+            ConnectionPool.setDataSourceForTesting(null);
+        }
+    }
+
+    /**
+     * Punta a punta con la configuración real de {@code logback.xml}: la
+     * {@code MySQLStatementCancelledException} de un {@code KILL QUERY}, logueada como la loguean
+     * los DAOs, no llega a {@code error.log}; el error de una tarea que nadie canceló, sí.
+     */
+    @Test
+    void killQuery_deTareaCancelada_noLlegaAErrorLog() throws Exception {
+        LoggerContext contexto = (LoggerContext) LoggerFactory.getILoggerFactory();
+        FileAppender<?> errorFile = (FileAppender<?>) contexto
+            .getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME).getAppender("ERROR_FILE");
+        assertTrue(errorFile != null, "no se cargó logback.xml: el test no estaría probando la config real");
+        Path archivo = Path.of(errorFile.getFile());
+
+        String marcaCancelada = "aptium-cancelada-" + UUID.randomUUID();
+        String marcaViva      = "aptium-viva-" + UUID.randomUUID();
+        TokenTarea token = TokenTarea.nuevo("refresco-historial-lavadero");
+        CountDownLatch lanzada = new CountDownLatch(1);
+        AtomicReference<SQLException> loQueLevanto = new AtomicReference<>();
+
+        try (HikariDataSource pool = poolLocal();
+             Connection observador = DriverManager.getConnection(urlLocal(), env("DB_USER", "root"), env("DB_PASS", "root"))) {
+            ConnectionPool.setDataSourceForTesting(pool);
+
+            Thread tarea = new Thread(() -> {
+                TokenTarea.asociarAlHiloActual(token);
+                try (Connection conn = ConnectionPool.getConnection();
+                     Statement sentencia = conn.createStatement()) {
+                    lanzada.countDown();
+                    sentencia.executeQuery("SELECT SLEEP(" + SEGUNDOS_DE_CONSULTA + ") /* " + marcaCancelada + " */");
+                } catch (SQLException e) {
+                    loQueLevanto.set(e);
+                    log.error("DAO simulado {}", marcaCancelada, e);   // lo que hacen los ~120 catch
+                } finally {
+                    TokenTarea.desasociarDelHiloActual();
+                    ConexionesSupervisadas.olvidar(token);
+                }
+            }, "tarea-cancelada");
+            tarea.start();
+            assertTrue(lanzada.await(ESPERA_MAXIMA_MS, TimeUnit.MILLISECONDS));
+            assertTrue(esperarA(observador, marcaCancelada, true), "la consulta nunca apareció en el PROCESSLIST");
+
+            token.marcarCancelado();                      // lo mismo que TareaUI.Handle.cancelar()
+            ConexionesSupervisadas.cancelarDe(token);
+            tarea.join(ESPERA_MAXIMA_MS);
+
+            // Contraprueba: el mismo log.error desde una tarea que nadie canceló sí tiene que llegar.
+            Thread viva = new Thread(() -> {
+                TokenTarea.asociarAlHiloActual(TokenTarea.nuevo("refresco-operativo"));
+                log.error("DAO simulado {}", marcaViva, new SQLException("error genuino"));
+                TokenTarea.desasociarDelHiloActual();
+            }, "tarea-viva");
+            viva.start();
+            viva.join(ESPERA_MAXIMA_MS);
+        } finally {
+            ConnectionPool.setDataSourceForTesting(null);
+        }
+
+        log.info("La tarea cancelada levantó {}", String.valueOf(loQueLevanto.get()));
+        assertTrue(loQueLevanto.get() != null
+            && loQueLevanto.get().getClass().getSimpleName().equals("MySQLStatementCancelledException"),
+            "tiene que ser la excepción del KILL, no otra: " + loQueLevanto.get());
+        String contenido = Files.readString(archivo, StandardCharsets.UTF_8);
+        assertTrue(contenido.contains(marcaViva), "la contraprueba no llegó a " + archivo + ": el test no discrimina");
+        assertFalse(contenido.contains(marcaCancelada), "el KILL de una tarea cancelada llegó a error.log");
+    }
+
+    private static String urlLocal() {
+        String host = env("DB_HOST", "localhost");
+        exigirHostLocal(host);
+        return "jdbc:mysql://" + host + ":" + env("DB_PORT", "3306") + "/" + env("DB_NAME", "sistema_empresa")
+            + "?serverTimezone=UTC&connectionTimeZone=LOCAL&sslMode=REQUIRED";
+    }
+
+    private static HikariDataSource poolLocal() {
+        return poolDe(urlLocal(), env("DB_USER", "root"), env("DB_PASS", "root"));
     }
 
     /** Espera hasta {@link #ESPERA_MAXIMA_MS} a que la consulta marcada esté (o deje de estar). */
