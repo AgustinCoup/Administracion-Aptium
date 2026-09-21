@@ -149,6 +149,9 @@ Paso 2 (modelo: InsumoCatalogo, ConfiguracionCiclo, CicloLavadero)
 
 ## Paso 1 — `V24`: catálogo de insumos, tabla puente, migración de datos y los tres `DROP`
 
+> ⚠️ **Mutado el 2026-09-21** — ver "Mutaciones aplicadas". Los tres `DROP` **no** van en la V24
+> sino en una **V25** que escribe el Paso 3. La V24 que se commiteó sólo crea y copia.
+
 ### Contexto (autocontenido)
 
 Hay que crear el catálogo de insumos y la tabla que los liga a un ciclo, mudar lo que hoy vive en
@@ -379,6 +382,15 @@ insumos:
 | `obtenerTodosLosCiclos()` | Ver Ciclos (snapshot completo, pagina en memoria) | todos |
 
 ### Tareas
+
+0. **`V25__drop_booleanos_y_litros_totales_ciclo.sql`** (heredado del Paso 1, ver "Mutaciones
+   aplicadas"): los tres `ALTER TABLE ciclos_lavadero DROP COLUMN` (`suavizante`, `potenciador`,
+   `litros_totales`), separados y sin `AFTER`, en el **mismo commit** que saca esas columnas del SQL
+   de `CicloLavaderoDAO` y de `SembradorRendimiento`. Encabezado: si falla *después* de algún
+   `DROP`, restaurar del backup — los booleanos ya no están y no hay de dónde recalcularlos.
+   Extender `MigracionV24Test` con la aserción que el Paso 1 no pudo hacer: las tres columnas ya
+   no existen (`INFORMATION_SCHEMA.COLUMNS`, no atrapar el `SQLException`), y subir
+   `DatabaseInitializerTest.sanityMaximoLocal` a 25.
 
 1. **`lavadero/dao/CatalogoInsumosDAO.java`** — nuevo, misma forma que `CatalogoJabonesDAO`:
    ```java
@@ -1046,6 +1058,7 @@ Si al ejecutar aparece algo que el plan no previó:
    columna `orden` en `insumos_ciclo_lavadero` — o sea tocar el **Paso 1**, que para entonces ya
    está commiteado, y agregar otra migración sobre una tabla recién creada.
    *Supuesto del plan: no importa.* **Confirmarlo antes de ejecutar el Paso 1.**
+   ✅ **Respondida el 2026-09-21: no importa.** Sin columna `orden`.
 
 2. **¿Un insumo puede llevar una cantidad alguna vez?** El pedido dice explícitamente "cada fila es
    SÓLO el insumo, sin ml". El plan lo toma literal y la tabla puente no tiene columna de cantidad.
@@ -1058,3 +1071,28 @@ Si al ejecutar aparece algo que el plan no previó:
    (`CicloFilterStrategy` + un campo de texto, como el filtro de elemento del Historial), pero no
    estaba pedido.
    *Supuesto del plan: no hace falta.*
+
+---
+
+## Mutaciones aplicadas
+
+### 2026-09-21 — Paso 1: los `DROP` se mudan a una V25 del Paso 3
+
+**Qué:** la V24 crea `catalogo_insumos` e `insumos_ciclo_lavadero` y copia los booleanos, y nada
+más. Los tres `DROP COLUMN` pasan a `V25`, tarea 0 del Paso 3.
+
+**Por qué:** el criterio de salida del Paso 1 ("`mvn test` en verde con la V24 aplicada") era
+incumplible con los `DROP` adentro: `CicloLavaderoDAO` todavía lee y escribe `suavizante`,
+`potenciador` y `litros_totales`, y eso recién cambia en el Paso 3. La V24 entera habría dejado la
+suite roja durante dos commits.
+
+**Qué no cambia:** la regla irreversible ("migrar antes de dropear") se cumple igual y de forma más
+fuerte — Flyway aplica por orden de versión, así que la V25 no puede correr sin la V24. En
+producción las dos corren en la misma pasada, sin escrituras de la app en el medio. Lo que se
+relaja es la decisión de diseño "en la misma migración", que era un medio y no el fin.
+
+**Efecto colateral:** la V24 ya no tiene nada irrecuperable. El "restaurar del backup si falló
+después de los `DROP`" de su encabezado se muda al de la V25.
+
+**Tocado fuera de lo previsto:** `DatabaseInitializerTest.sanityMaximoLocal` fija la última versión
+(23 → 24). Cada migración nueva lo mueve.
