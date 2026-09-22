@@ -124,7 +124,7 @@ mvn test -Dtest=NombreDeClase
 ## Grafo de dependencias
 
 ```
-Paso 1 (V25: activo, jabon_por_tipo_lavado, drop capacidad)
+Paso 1 (V26: activo, jabon_por_tipo_lavado)
    │
    ├──► Paso 2 (lavarropas: modelo, DAO/ABM, guarda en lanzarTanda)  ──► Paso 3 (grilla dinámica)
    │
@@ -144,8 +144,8 @@ Paso 1 (V25: activo, jabon_por_tipo_lavado, drop capacidad)
 
 | Paso | Modelo sugerido | Archivos que toca |
 |---|---|---|
-| 1 | **Opus**, alto | `db/migration/V25__*.sql`, test de migración |
-| 2 | **Opus**, alto | `db/migration/V26__*.sql`, `lavadero/model/Lavarropas`, `LavarropasDAO`, `LavarropasService`, `CicloLavaderoDAO`, `ConstructorVistaCiclos` (sólo el `new LavarropasItem`), `common/exception/`, tests |
+| 1 | **Opus**, alto | `db/migration/V26__*.sql`, test de migración, `DatabaseInitializerTest` (el pin de versión máxima) |
+| 2 | **Opus**, alto | `db/migration/V27__*.sql`, `lavadero/model/Lavarropas`, `LavarropasDAO`, `LavarropasService`, `CicloLavaderoDAO`, `ConstructorVistaCiclos` (sólo el `new LavarropasItem`), `common/exception/`, tests |
 | 3 | **Opus**, alto | `PantallaCiclos`, `CiclosController`, `ConstructorVistaCiclos`, `LavarropasItem`, `Constantes`, tests |
 | 4 | Sonnet | `lavadero/dao/Catalogo*DAO`, `lavadero/service/`, `ClasificacionLavadero*`, tests |
 | 5 | Sonnet | `catalogo/dao/`, `catalogo/service/`, `EquipoOtrosDAO`, tests |
@@ -163,7 +163,14 @@ Paso 1 (V25: activo, jabon_por_tipo_lavado, drop capacidad)
 
 ---
 
-## Paso 1 — `V25`: la columna `activo`, los defaults de jabón y el `DROP` de la capacidad
+## Paso 1 — `V26`: la columna `activo`, los defaults de jabón y el `DROP` de la capacidad
+
+> ⚠️ **Corrección de numeración (aplicada al ejecutar el paso, 2026-09-22).** El plan escribió
+> `V25`/`V26`, pero el plan A terminó partiéndose en **V24 + V25**, así que la V25 ya existe
+> (`V25__drop_booleanos_y_litros_totales_ciclo.sql`) y una migración ya escrita no se toca. Todo
+> el plan corre un número: **este paso es la `V26`** (`V26__ajustes_catalogos_y_lavarropas.sql`,
+> test `MigracionV26Test`) y **el `DROP COLUMN capacidad_litros` del Paso 2 es la `V27`**. El
+> texto de abajo conserva la redacción original; leer `V25`→`V26` y `V26`→`V27`.
 
 ### Contexto (autocontenido)
 
@@ -236,11 +243,12 @@ mvn test
 
 ### Criterio de salida
 
-- [ ] `mvn test` en verde con la V25 aplicada
-- [ ] `catalogo_descripciones` no fue tocada
-- [ ] **La V25 NO dropea `capacidad_litros`** — eso es la V26 del Paso 2
-- [ ] El test cubre el caso de un seed ausente sin que la migración falle
-- [ ] Commit: `feat: V25 baja logica de catalogos, ABM de lavarropas y jabon por defecto`
+- [x] `mvn test` en verde con la V26 aplicada
+- [x] `catalogo_descripciones` no fue tocada
+- [x] **La V26 NO dropea `capacidad_litros`** — eso es la V27 del Paso 2
+- [x] El test cubre el caso de un seed ausente sin que la migración falle
+- [x] `DatabaseInitializerTest.sanityMaximoLocal` movido a 26 (el pin se mueve con cada migración)
+- [x] Commit: `feat: V26 baja logica de catalogos, ABM de lavarropas y jabon por defecto`
 
 ---
 
@@ -337,9 +345,10 @@ por baja sigue aplicando sin cambios a los que no tienen ciclo abierto.
 
 ### Tareas
 
-0. **`src/main/resources/db/migration/V26__lavarropas_sin_capacidad.sql`** — una sola línea:
+0. **`src/main/resources/db/migration/V27__lavarropas_sin_capacidad.sql`** — una sola línea
+   (era la "V26" antes de la corrección de numeración del Paso 1):
    ```sql
-   -- Se dropea acá y no en la V25 porque es este paso el que deja de leerla: LavarropasDAO,
+   -- Se dropea acá y no en la V26 porque es este paso el que deja de leerla: LavarropasDAO,
    -- Lavarropas, LavarropasItem, ConstructorVistaCiclos.mapearLavarropas y LavarropasTableModel
    -- (que se borra). Dropearla un paso antes deja la suite en rojo sin que haya nada que
    -- arreglar en ese paso — y peor, el fallo es silencioso: obtenerTodos() se come el
@@ -468,7 +477,8 @@ mvn -q compile      # PantallaCiclos y ConstructorVistaCiclos todavía no compil
 - [ ] Alta duplicada distingue "ya existe" de "ya existe pero está de baja"
 - [ ] `darDeBaja` rutea la contención de lock por `esContencionDeLock` antes de `DatabaseException`
 - [ ] `obtenerDibujables()` incluye los inactivos **con ciclo abierto**, y hay un test que lo fija
-- [ ] La V26 dropea `capacidad_litros` y en el mismo paso deja de leerse en los cuatro lugares
+- [ ] La V27 dropea `capacidad_litros` y en el mismo paso deja de leerse en los cuatro lugares
+- [ ] `DatabaseInitializerTest.sanityMaximoLocal` movido a 27
 - [ ] `LavarropasDAO` ya no devuelve lista vacía ante un fallo de SQL
 - [ ] `CicloLavaderoService` ya no valida contra `CANTIDAD_LAVARROPAS`
 - [ ] Commit: `feat: ABM de lavarropas con guarda en el lanzamiento de tandas`
@@ -635,7 +645,7 @@ Smoke manual (**sin** `-Daptium.edt.strict=true`):
 
 - [ ] Los 5 puntos del smoke pasan, el 5 en particular
 - [ ] `Constantes.Lavadero.CANTIDAD_LAVARROPAS` ya no existe
-- [ ] `LavarropasTableModel` borrado; `grep -rn "capacidadLitros\|capacidad_litros"` sólo devuelve V10 y V26
+- [ ] `LavarropasTableModel` borrado; `grep -rn "capacidadLitros\|capacidad_litros"` sólo devuelve V10 y V27
 - [ ] La regla "el staging se descarta sólo ante `SaldoConsumidoException`" quedó intacta
 - [ ] Commit: `feat: la grilla de ciclos se arma desde la base y se reconstruye`
 
@@ -990,7 +1000,7 @@ Smoke manual:
 
 > Depende de los Pasos 1, 3 y 4. **Se ejecuta ANTES del Paso 6**, aunque tenga número mayor: el
 > Paso 6 necesita `JabonPorTipoLavadoService` para cablear los combos de "jabón por defecto", y este
-> paso no necesita nada de Ajustes (los defaults iniciales ya los sembró la V25). La dependencia es
+> paso no necesita nada de Ajustes (los defaults iniciales ya los sembró la V26). La dependencia es
 > unidireccional 6 → 7; los números quedan como están y el orden lo manda este grafo, como en el
 > resto de los planes del repo.
 
@@ -1319,7 +1329,7 @@ Smoke manual:
 | Engordar `AjustesController` con los cuatro catálogos | El alcance de un controller se ve en su firma. Un constructor de ocho services es el cajón que la regla existe para evitar. |
 | Cargar los cinco catálogos al entrar a Ajustes | Casi siempre no se miran. Cada pestaña carga al seleccionarse. |
 | Crear un grupo de refresco para Ajustes | Todo lo que cambia lo consumen pantallas que **leen al entrar**, y no se puede estar en dos pantallas a la vez. |
-| Que `MigracionV25Test` toque `ConnectionPool.setDataSourceForTesting` | Pisa el `DataSource` global de `AbstractDAOTest` y el resto de la suite lee la base equivocada. |
+| Que `MigracionV26Test` toque `ConnectionPool.setDataSourceForTesting` | Pisa el `DataSource` global de `AbstractDAOTest` y el resto de la suite lee la base equivocada. |
 
 ---
 
@@ -1465,7 +1475,7 @@ Un commit por paso.
 
 > ⚠️ **El Paso 7 va antes que el Paso 6**, aunque tenga número mayor. La dependencia es
 > unidireccional 6 → 7: el 6 necesita `JabonPorTipoLavadoService` para cablear los combos de "jabón
-> por defecto", y el 7 no necesita nada de Ajustes (los defaults iniciales los sembró la V25).
+> por defecto", y el 7 no necesita nada de Ajustes (los defaults iniciales los sembró la V26).
 
 **Opus 5 · effort alto · sin fast mode**
 

@@ -96,10 +96,15 @@ class DatabaseInitializerTest extends AbstractDAOTest {
         assertDoesNotThrow(() -> DatabaseInitializer.verificarEsquemaNoAdelantado(flyway));
     }
 
+    /**
+     * Pin de la máxima migración que trae el build. <b>Se mueve con cada migración nueva</b>: es
+     * lo que garantiza que las dos comparaciones de arriba se están haciendo contra el historial
+     * real de H2 y no contra uno que se quedó atrás.
+     */
     @Test
-    @DisplayName("el historial de H2 llega exactamente hasta V25")
+    @DisplayName("el historial de H2 llega exactamente hasta V26")
     void sanityMaximoLocal() {
-        assertEquals(MigrationVersion.fromVersion("25"),
+        assertEquals(MigrationVersion.fromVersion("26"),
             flywayDeTest().info().current().getVersion());
     }
 
