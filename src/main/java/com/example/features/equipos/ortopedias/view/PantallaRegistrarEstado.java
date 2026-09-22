@@ -14,6 +14,7 @@ import com.example.ui.dialogs.CantidadDialogHelper;
 import com.example.ui.common.Estilos;
 import com.example.features.equipos.ortopedias.view.helpers.PanelEquipoMaterial;
 import com.example.ui.common.PanelHeader;
+import com.example.ui.common.WrapLayout;
 
 /**
  * Pantalla para registrar cambios de estado en materiales.
@@ -66,7 +67,11 @@ public class PantallaRegistrarEstado extends JPanel {
         panelInfo.add(lblCambiosPendientes);
         panelPrincipal.add(panelInfo, BorderLayout.WEST);
 
-        JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+        // WrapLayout y no FlowLayout: con btnAvanzar visible los cuatro botones piden 935 px, y a
+        // 1280×720 el CENTER queda con menos que eso una vez que WEST y EAST toman lo suyo. Con
+        // FlowLayout, "Confirmar y Guardar" se envolvía a una fila que el SOUTH no dibuja — y se
+        // perdía exactamente cuando hace falta, porque sólo se habilita si hay cambios pendientes.
+        JPanel panelBotones = WrapLayout.panel(FlowLayout.CENTER, 10, 5);
 
         btnGestionarLotes = new JButton("Gestionar Lotes");
         btnGestionarLotes.setFont(Estilos.Fuentes.BOTON);

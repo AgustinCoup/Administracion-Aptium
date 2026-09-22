@@ -10,6 +10,7 @@ import com.example.ui.common.Estilos;
 import com.example.ui.common.LabelFactory;
 import com.example.ui.common.PanelHeader;
 import com.example.ui.common.TableStyler;
+import com.example.ui.common.WrapLayout;
 import com.example.ui.common.dnd.TableSelectionSupport;
 
 import javax.swing.*;
@@ -113,7 +114,10 @@ public class PantallaSalidasLavadero extends JPanel {
         JLabel ayuda = new JLabel(Constantes.Textos.AYUDA_SALIDA_ENTERA);
         ayuda.setFont(Estilos.Fuentes.LABEL);
 
-        JPanel botones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        // WrapLayout y no FlowLayout: los tres botones piden 624 px y a 1280×720 —el mínimo de
+        // PantallaPrincipal— este panel recibe 526, así que "Ingresar al CDE" se envolvía a una
+        // segunda fila que el SOUTH no dibujaba. Ver el javadoc de WrapLayout.
+        JPanel botones = WrapLayout.panel(FlowLayout.RIGHT, 10, 5);
         botones.add(btnVolverALavado);
         botones.add(btnSaleDelFlujo);
         botones.add(btnIngresarACde);

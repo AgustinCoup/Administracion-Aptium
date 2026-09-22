@@ -12,6 +12,7 @@ import com.example.ui.common.PanelHeader;
 import com.example.ui.common.PanelPaginacion;
 import com.example.ui.common.RestriccionesCampo;
 import com.example.ui.common.TableStyler;
+import com.example.ui.common.WrapLayout;
 import com.toedter.calendar.JDateChooser;
 
 import javax.swing.*;
@@ -165,7 +166,10 @@ public class PantallaHistorialLavadero extends JPanel {
         btnLimpiar.setFont(Estilos.Fuentes.INPUT);
         btnLimpiar.addActionListener(e -> limpiarFiltros());
 
-        JPanel fila = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        // WrapLayout y no FlowLayout: son trece componentes en una fila, y a 1280×720 no entran.
+        // Con FlowLayout, "Limpiar filtros" se envolvía a una segunda fila que el panel —de
+        // altura preferida, en un BorderLayout.SOUTH— no dibujaba. Ver el javadoc de WrapLayout.
+        JPanel fila = WrapLayout.panel(FlowLayout.LEFT, 6, 4);
         fila.add(lblCliente);    fila.add(txtCliente);
         fila.add(lblEstado);     fila.add(cmbEstado);
         fila.add(lblDesde);      fila.add(dateDesde);
