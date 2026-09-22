@@ -286,6 +286,27 @@ public final class Constantes {
         public static final String CONFLICTO_LAVARROPAS_OCUPADO =
             "Otro usuario ya lanzó un ciclo en alguno de esos lavarropas mientras armabas la tanda.\n"
                 + "La tanda no se lanzó. La pantalla se actualizó: repartí la ropa en los que quedaron libres.";
+        /**
+         * El lavarropas se retiró del lavadero mientras se armaba la tanda. Lleva el número
+         * ({@code %d}) porque con varias cards cargadas "un lavarropas" no ubica cuál.
+         *
+         * <p>No se reusa {@link #CONFLICTO_LAVARROPAS_OCUPADO}: "otro usuario lanzó un ciclo ahí"
+         * se resuelve esperando, y esto no se resuelve nunca. Ver
+         * {@code LavarropasDeBajaException}.</p>
+         */
+        public static final String CONFLICTO_LAVARROPAS_DE_BAJA =
+            "El lavarropas #%d fue dado de baja mientras armabas la tanda.\n"
+                + "La tanda no se lanzó y la ropa sigue disponible: repartila en otro lavarropas.";
+        /**
+         * Aviso de la relectura, no de un choque: el operador no apretó nada. Hermano de
+         * {@link #STAGING_DESCARTADO_POR_OCUPACION}, que <b>no</b> se puede reusar acá porque
+         * afirma que otro usuario lanzó un ciclo, y eso sería falso.
+         */
+        public static final String STAGING_DESCARTADO_POR_BAJA =
+            "Se dieron de baja lavarropas que tenías cargados, así que se vació lo que habías "
+                + "puesto en: %s.\n"
+                + "Esa ropa volvió a la lista de disponibles. Si era un equipo repartido entre "
+                + "varios lavarropas, se deshizo el reparto entero.";
         public static final String CONFLICTO_CICLO_FINALIZADO =
             "Otro usuario ya finalizó este ciclo mientras trabajabas.\n"
                 + "La pantalla se actualizó: la ropa que lavó ya está disponible en Salidas.";
@@ -304,6 +325,30 @@ public final class Constantes {
         public static final String CONFLICTO_CLIENTE =
             "Otro usuario modificó este cliente mientras trabajabas.\n"
                 + "La operación no se aplicó. La pantalla se actualizó: revisá los datos y volvé a intentarlo.";
+
+        // ── ABM de lavarropas (Ajustes) ──────────────────────────────────────
+        // Los tres conflictos de acá son de la MISMA columna `activo` que mira la guarda del
+        // lanzamiento, pero se leen en otra pantalla y en otro momento, así que no comparten
+        // texto con CONFLICTO_LAVARROPAS_DE_BAJA: ése habla de "la tanda que estabas armando",
+        // que en Ajustes es una frase inventada.
+        public static final String CONFLICTO_LAVARROPAS_EN_USO =
+            "El lavarropas #%d tiene un ciclo sin finalizar, así que no se puede dar de baja.\n"
+                + "Finalizá ese ciclo desde la pantalla de Ciclos y volvé a intentarlo.";
+        public static final String CONFLICTO_LAVARROPAS_YA_DE_BAJA =
+            "Otro usuario ya dio de baja este lavarropas mientras mirabas la lista.\n"
+                + "La pantalla se actualizó: ya está como lo querías dejar.";
+        public static final String CONFLICTO_LAVARROPAS_YA_ACTIVO =
+            "Otro usuario ya reactivó este lavarropas mientras mirabas la lista.\n"
+                + "La pantalla se actualizó: ya está como lo querías dejar.";
+        // El alta rechazada no es un choque sino una regla: el número identifica a la máquina y
+        // su historia cuelga de él. Los dos casos van por separado a propósito — el segundo tiene
+        // una acción concreta que el primero no tiene.
+        public static final String LAVARROPAS_YA_EXISTE =
+            "El lavarropas #%d ya existe. Elegí otro número.";
+        public static final String LAVARROPAS_YA_EXISTE_DE_BAJA =
+            "El lavarropas #%d ya existe pero está dado de baja.\n"
+                + "Reactivalo desde esta misma pantalla en vez de crearlo de nuevo: así recupera "
+                + "su historia en vez de empezar de cero con el mismo número.";
 
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y

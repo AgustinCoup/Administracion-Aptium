@@ -142,7 +142,7 @@ public final class ConstructorVistaCiclos {
         List<LavarropasItem> items = new ArrayList<>();
         for (Lavarropas lavarropas : datos.lavarropas()) {
             CicloLavadero activo = datos.ciclosActivos().get(lavarropas.getNumero());
-            items.add(new LavarropasItem(lavarropas.getNumero(), lavarropas.getCapacidadLitros(),
+            items.add(new LavarropasItem(lavarropas.getNumero(),
                                          activo != null, activo != null ? activo.getId() : null));
         }
         return items;

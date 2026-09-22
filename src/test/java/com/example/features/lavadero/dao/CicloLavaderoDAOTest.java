@@ -3,6 +3,9 @@ package com.example.features.lavadero.dao;
 import com.example.AbstractDAOTest;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
+import com.example.common.exception.LavarropasDeBajaException;
+import com.example.common.exception.LavarropasOcupadoException;
+import com.example.common.exception.SaldoConsumidoException;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
@@ -13,6 +16,7 @@ import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.infrastructure.db.ConnectionPool;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -76,6 +80,9 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         ejecutarSQL("DELETE FROM bolsas_lavadero");
         ejecutarSQL("DELETE FROM ingresos_lavadero");
         ejecutarSQL("DELETE FROM clientes WHERE nombre LIKE 'TestCiclo%'");
+        // Los lavarropas son seed y no se borran, pero una baja de un test dejaría a los
+        // siguientes mirando otra realidad.
+        ejecutarSQL("UPDATE lavarropas SET activo = TRUE");
     }
 
     // ── lanzarTanda ──────────────────────────────────────────────────────────
@@ -613,6 +620,61 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
 
         assertEquals(1, contarFilas("ingresos_lavadero WHERE estado = 'LAVADO' AND id = " + ingresoId),
             "1 del equipo repartido + 9 regulares cubren las 10");
+    }
+
+    // ── guarda del lavarropas dado de baja ───────────────────────────────────
+
+    /**
+     * La verificación que realmente importa de la baja de un lavarropas vive <b>acá</b>, dentro de
+     * la transacción del lanzamiento, y no en la pantalla de Ajustes: el staging vive en la memoria
+     * de cada cliente, así que la baja no puede enterarse de lo que otra máquina tiene cargado.
+     */
+    @Test
+    @DisplayName("Lanzar tanda: un lavarropas dado de baja la rechaza y no deja nada escrito")
+    void lanzarTanda_sobreLavarropasDeBaja_noEscribeNada() throws SQLException {
+        ejecutarSQL("UPDATE lavarropas SET activo = FALSE WHERE numero = 1");
+
+        assertThrows(LavarropasDeBajaException.class,
+            () -> lanzarCiclo(1, config(new BigDecimal("1.50"), insumo("Suavizante")), linea(3)));
+
+        assertEquals(0, contarFilas("ciclos_lavadero"), "es todo o nada: ni el ciclo");
+        assertEquals(0, contarFilas("elementos_ciclo_lavadero"), "ni sus elementos");
+        assertEquals(0, contarFilas("insumos_ciclo_lavadero"), "ni sus insumos");
+    }
+
+    /**
+     * El subtipo importa: es lo que le dice al controller que <b>no</b> descarte el staging. Esa
+     * regla es positiva —se descarta sólo ante {@code SaldoConsumidoException}— y acá la ropa sigue
+     * entera y disponible: lo único que se perdió es el destino.
+     */
+    @Test
+    @DisplayName("El rechazo por baja NO es el mismo tipo que el rechazo por lavarropas ocupado")
+    void lanzarTanda_sobreLavarropasDeBaja_noSaleComoOcupado() throws SQLException {
+        ejecutarSQL("UPDATE lavarropas SET activo = FALSE WHERE numero = 1");
+
+        Exception e = assertThrows(LavarropasDeBajaException.class,
+            () -> lanzarCiclo(1, config(new BigDecimal("1.50")), linea(3)));
+
+        assertFalse(e instanceof LavarropasOcupadoException,
+            "dos carteles distintos: 'esperá a que termine' y 'esa máquina se retiró'");
+        assertFalse(e instanceof SaldoConsumidoException,
+            "no es el choque que descarta el staging");
+        assertTrue(e.getMessage().contains("#1"), "el cartel tiene que decir cuál");
+    }
+
+    /**
+     * Una tanda es todo o nada: el lavarropas de baja está en el medio y tira la tanda entera,
+     * incluidos los ciclos de los lavarropas que sí estaban bien.
+     */
+    @Test
+    void lanzarTanda_conUnSoloLavarropasDeBaja_tiraLaTandaEntera() throws SQLException {
+        ejecutarSQL("UPDATE lavarropas SET activo = FALSE WHERE numero = 2");
+
+        assertThrows(LavarropasDeBajaException.class, () -> dao.lanzarTanda(List.of(
+            new LanzamientoCiclo(1, config(new BigDecimal("1.5")), List.of(linea(2))),
+            new LanzamientoCiclo(2, config(new BigDecimal("1.5")), List.of(linea(2))))));
+
+        assertEquals(0, contarFilas("ciclos_lavadero"));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

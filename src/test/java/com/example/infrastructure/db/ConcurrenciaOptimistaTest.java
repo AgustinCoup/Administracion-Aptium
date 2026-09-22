@@ -2,6 +2,8 @@ package com.example.infrastructure.db;
 
 import com.example.AbstractDAOTest;
 import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.common.exception.BusinessException;
+import com.example.common.exception.LavarropasDeBajaException;
 import com.example.common.exception.LavarropasOcupadoException;
 import com.example.common.exception.SaldoConsumidoException;
 import com.example.features.catalogo.dao.CatalogoDAO;
@@ -22,6 +24,7 @@ import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
+import com.example.features.lavadero.dao.LavarropasDAO;
 import com.example.features.lavadero.dao.SalidaLavaderoDAO;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoClasificacion;
@@ -94,6 +97,7 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
 
     private final ClasificacionLavaderoDAO clasificacionDAO = new ClasificacionLavaderoDAO();
     private final CicloLavaderoDAO         cicloDAO         = new CicloLavaderoDAO();
+    private final LavarropasDAO            lavarropasDAO    = new LavarropasDAO();
     private final SalidaLavaderoDAO        salidaDAO        = new SalidaLavaderoDAO();
 
     /** Para el caso del Paso 5: sólo necesita ver el conflicto propagar antes de auditar. */
@@ -130,6 +134,9 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
         ejecutarSQL("DELETE FROM equipos");   // CASCADE cubre equipo_materiales y material_movimientos
         ejecutarSQL("DELETE FROM catalogo_otros WHERE descripcion LIKE 'TestConc%' OR descripcion = 'Elementos'");
         ejecutarSQL("DELETE FROM clientes WHERE nombre LIKE 'TestConc%'");
+        // Los lavarropas son seed y no se borran, pero una baja de un test dejaría a los
+        // siguientes mirando otra realidad.
+        ejecutarSQL("UPDATE lavarropas SET activo = TRUE");
     }
 
     // ── Registrar Estado — ortopedias ─────────────────────────────────────────
@@ -297,6 +304,63 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
         assertEquals(1, escalar("SELECT COUNT(*) FROM ciclos_lavadero WHERE lavarropas_numero = 1"));
         assertEquals(3, escalar("SELECT SUM(cantidad) FROM elementos_ciclo_lavadero"),
             "la tanda de A no dejó nada: es todo o nada");
+    }
+
+    /**
+     * A arma la tanda con el lavarropas 1 libre; B lo da de baja y commitea; A lanza.
+     *
+     * <p>El chequeo vive dentro de la transacción de {@code lanzarTanda} y no en la pantalla de
+     * Ajustes, porque el staging vive en la memoria de cada cliente: la baja no puede enterarse de
+     * lo que otra máquina tiene cargado.</p>
+     *
+     * <p>El subtipo es {@code LavarropasDeBajaException} y no {@code LavarropasOcupadoException}
+     * —"otro usuario lanzó un ciclo ahí" se resuelve esperando, "esa máquina se retiró" no se
+     * resuelve nunca— ni {@code SaldoConsumidoException}, que es el único choque ante el cual el
+     * controller descarta el staging. Acá la ropa sigue entera y disponible.</p>
+     */
+    @Test
+    @DisplayName("Lanzar tanda: no se lanza en un lavarropas dado de baja mientras se armaba")
+    void lanzarTandaSobreLavarropasDadoDeBaja() {
+        int ingresoId = ingresoDeLavadero("TestConcBaja", "CLASIFICADO");
+        int lineaId = insertarClasificacion(ingresoId, catalogoElementoId(1), 10);
+
+        // B retira el lavarropas 1 del lavadero y commitea.
+        lavarropasDAO.darDeBaja(1);
+
+        // A lo tenía como disponible en su último refresco.
+        // El tipo exacto es parte de la aserción: SaldoConsumidoException —el único choque que
+        // descarta el staging— no es subtipo de éste, así que assertThrows lo excluye.
+        assertThrows(LavarropasDeBajaException.class,
+            () -> cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(
+                new LineaLanzamiento(lineaId, 4))))));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ciclos_lavadero"),
+            "la tanda de A no dejó ni un ciclo: es todo o nada");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM elementos_ciclo_lavadero"));
+        assertEquals("FALSE", texto("SELECT CASE WHEN activo THEN 'TRUE' ELSE 'FALSE' END "
+            + "FROM lavarropas WHERE numero = 1"),
+            "el estado final es exactamente el de B");
+    }
+
+    /**
+     * El otro lado de la misma competencia: B lanza el ciclo y A intenta retirar la máquina. Sale
+     * como {@code BusinessException} y no como conflicto porque no es que A haya llegado tarde a
+     * nada — ese ciclo tiene que poder finalizarse, y hasta que eso pase la baja no corresponde.
+     */
+    @Test
+    @DisplayName("Dar de baja: un lavarropas con un ciclo sin finalizar no se retira")
+    void darDeBajaLavarropasConCicloLanzadoPorOtro() {
+        int ingresoId = ingresoDeLavadero("TestConcBaja2", "CLASIFICADO");
+        int lineaId = insertarClasificacion(ingresoId, catalogoElementoId(1), 10);
+
+        cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(
+            new LineaLanzamiento(lineaId, 3)))));
+
+        assertThrows(BusinessException.class, () -> lavarropasDAO.darDeBaja(1));
+
+        assertEquals("TRUE", texto("SELECT CASE WHEN activo THEN 'TRUE' ELSE 'FALSE' END "
+            + "FROM lavarropas WHERE numero = 1"),
+            "la transacción se revierte entera: sigue activo y su ciclo se puede finalizar");
     }
 
     /**

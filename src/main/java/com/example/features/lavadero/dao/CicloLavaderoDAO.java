@@ -4,6 +4,7 @@ import com.example.common.constants.Constantes;
 import com.example.common.dao.ControlConcurrencia;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
+import com.example.common.exception.LavarropasDeBajaException;
 import com.example.common.exception.LavarropasOcupadoException;
 import com.example.common.exception.SaldoConsumidoException;
 import com.example.features.lavadero.dao.helpers.LineaSobregirada;
@@ -177,9 +178,52 @@ public class CicloLavaderoDAO {
      * —{@code lavarropas_numero} solo— el {@code FOR UPDATE} bloqueaba en exclusiva <b>todas</b>
      * las filas históricas de ese lavarropas para encontrar la única que puede estar abierta: la
      * guarda era correcta y el bloqueo, desproporcionado y creciente con la historia.</p>
+     *
+     * <p><b>Visibilidad de paquete a propósito:</b> {@code LavarropasDAO.darDeBaja} necesita
+     * exactamente esta guarda (un lavarropas con un ciclo abierto no se puede retirar) y comparte
+     * la constante en vez de copiarla, para que no puedan derivar. Si alguna vez cambia el
+     * predicado, cambia para las dos.</p>
      */
-    private static final String SQL_CICLO_ACTIVO_DE_LAVARROPAS =
+    static final String SQL_CICLO_ACTIVO_DE_LAVARROPAS =
         "SELECT id FROM ciclos_lavadero WHERE lavarropas_numero = ? AND fecha_fin IS NULL FOR UPDATE";
+
+    /**
+     * Estado del lavarropas, bloqueado en exclusiva antes de mirarlo.
+     *
+     * <p><b>El {@code FOR UPDATE} es lo único que ordena el lanzamiento contra la baja</b>, y ésa
+     * es la razón de que esta lectura vaya <b>primero de todo</b> en {@link #lanzarTanda} — antes
+     * que {@link #SQL_CICLO_ACTIVO_DE_LAVARROPAS}, que es el orden que invita a suponer al leer el
+     * código sin su javadoc.</p>
+     *
+     * <p>El motivo: el {@code FOR UPDATE} de la guarda de ciclos, sobre un lavarropas libre, no
+     * matchea ninguna fila, así que lo que toma es un <b>gap lock</b>, y dos gap locks entre sí
+     * son <b>compatibles</b> (lo dice su propio javadoc). O sea que <b>no ordena nada al
+     * tomarse</b>: {@code lanzarTanda} recién conflictúa sobre {@code ciclos_lavadero} en su
+     * {@code INSERT}, al final de la transacción. Con el bloqueo de {@code lavarropas} puesto
+     * después del de ciclos, dos operadores se entrelazan así sobre el mismo lavarropas:</p>
+     *
+     * <pre>
+     * T1 darDeBaja           T2 lanzarTanda
+     * 1. gap ciclos #5   →  ok
+     *                        2. gap ciclos #5   →  ok (gap vs gap: compatibles, pasa)
+     *                        3. X lavarropas #5 →  lo toma
+     * 4. UPDATE lavarropas #5 →  ESPERA el X de T2
+     *                        5. INSERT ciclos   →  insert-intention vs el gap de T1 → ESPERA a T1
+     * </pre>
+     *
+     * <p>Deadlock, y uno de los dos operadores se come un error técnico. Con el bloqueo
+     * <b>exclusivo</b> de {@code lavarropas} como primer paso de las dos operaciones, la que llega
+     * segunda espera ahí y nunca llega a tomar nada de {@code ciclos_lavadero}. El orden completo,
+     * idéntico en {@link #lanzarTanda} y en {@code LavarropasDAO.darDeBaja}, es
+     * <b>{@code lavarropas} → {@code ciclos_lavadero} → {@code elementos_clasificacion_lavadero}</b>.
+     * <b>H2 no delata nada de esto</b>: corre en {@code READ COMMITTED} y no toma gap locks, así
+     * que el orden hay que sostenerlo por razonamiento — ningún test lo va a defender.</p>
+     *
+     * <p>Sin el {@code FOR UPDATE}, además, una baja que commitea entre esta lectura y el
+     * {@code INSERT} dejaría arrancar un ciclo en una máquina ya retirada.</p>
+     */
+    static final String SQL_LAVARROPAS_ACTIVO =
+        "SELECT activo FROM lavarropas WHERE numero = ? FOR UPDATE";
 
     /**
      * Saldo todavía disponible de una línea de clasificación, releído dentro de la transacción
@@ -384,9 +428,20 @@ public class CicloLavaderoDAO {
      * {@link #detectarLineasSobregiradas()} sale a buscar a posteriori. Un solo saldo insuficiente
      * tira la tanda entera, por el mismo motivo que la hace atómica.</p>
      *
-     * <p>Lo mismo vale para el destino: ningún lavarropas de la tanda puede tener ya un ciclo sin
-     * finalizar (ver {@link #SQL_CICLO_ACTIVO_DE_LAVARROPAS}). Las dos guardas se toman antes de
-     * escribir nada y en orden fijo entre sus tablas.</p>
+     * <p>Lo mismo vale para el destino: ningún lavarropas de la tanda puede estar dado de baja
+     * (ver {@link #SQL_LAVARROPAS_ACTIVO}) ni tener ya un ciclo sin finalizar (ver
+     * {@link #SQL_CICLO_ACTIVO_DE_LAVARROPAS}). Las tres guardas se toman antes de escribir nada y
+     * en orden fijo entre sus tablas: <b>{@code lavarropas} → {@code ciclos_lavadero} →
+     * {@code elementos_clasificacion_lavadero}</b>. El {@code lavarropas} va primero porque es el
+     * único bloqueo <b>exclusivo</b> de los tres, y por lo tanto lo único que ordena esta
+     * operación respecto de {@code LavarropasDAO.darDeBaja}, que compite por las mismas filas: el
+     * de ciclos es un gap lock y no ordena nada al tomarse. El razonamiento completo, con el
+     * entrelazado que produce el orden inverso, está en el javadoc de
+     * {@link #SQL_LAVARROPAS_ACTIVO}.</p>
+     *
+     * <p>El chequeo del lavarropas de baja va <b>acá adentro</b> y no en la pantalla de Ajustes,
+     * porque el staging vive en la memoria de cada cliente: otra máquina puede tener ropa asignada
+     * a un lavarropas y la baja no se entera.</p>
      *
      * <p>Los insumos extra de cada ciclo se escriben <b>adentro</b> de la misma transacción, por
      * el mismo motivo que sus elementos: un ciclo lanzado con la mitad de su configuración es un
@@ -395,6 +450,7 @@ public class CicloLavaderoDAO {
     public void lanzarTanda(List<LanzamientoCiclo> tanda) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
+            exigirLavarropasActivos(conn, tanda);
             exigirLavarropasLibres(conn, tanda);
             exigirSaldoSuficiente(conn, tanda);
             Map<Integer, Integer> instancias = crearInstancias(conn, tanda);
@@ -520,6 +576,46 @@ public class CicloLavaderoDAO {
                     log.warn("Tanda rechazada: la línea de clasificación {} tiene saldo {} y la "
                         + "tanda pretende consumir {}", linea.getKey(), saldo, linea.getValue());
                     throw new SaldoConsumidoException(Constantes.Mensajes.CONFLICTO_TANDA);
+                }
+            }
+        }
+    }
+
+    /**
+     * Rechaza la tanda entera si alguno de sus lavarropas está dado de baja.
+     *
+     * <p><b>Es la primera guarda de {@link #lanzarTanda}, y el orden no es cosmético</b>: su
+     * {@code FOR UPDATE} sobre {@code lavarropas} es el único bloqueo exclusivo del lanzamiento y
+     * lo único que lo ordena respecto de {@code LavarropasDAO.darDeBaja}. Ver
+     * {@link #SQL_LAVARROPAS_ACTIVO}.</p>
+     *
+     * <p>Los números se recorren en orden ascendente por el mismo motivo que en
+     * {@link #exigirLavarropasLibres} y {@link #consumoPorLinea}: que dos tandas que comparten
+     * lavarropas no se los tomen cruzados.</p>
+     *
+     * <p>Sin fila significa que el lavarropas no existe, y también sale como
+     * {@link LavarropasDeBajaException}. Es teóricamente inalcanzable —no hay ningún {@code DELETE}
+     * sobre {@code lavarropas}, justamente porque la baja es lógica— pero el caso no puede quedar
+     * pasando en silencio: si alguna vez lo hubiera, esto sería un {@code INSERT} contra una FK
+     * inexistente saliendo como error técnico.</p>
+     */
+    private void exigirLavarropasActivos(Connection conn, List<LanzamientoCiclo> tanda) throws SQLException {
+        List<Integer> numeros = tanda.stream()
+            .map(LanzamientoCiclo::lavarropasNumero).distinct().sorted().toList();
+        try (PreparedStatement ps = conn.prepareStatement(SQL_LAVARROPAS_ACTIVO)) {
+            for (int numero : numeros) {
+                ps.setInt(1, numero);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        log.warn("Tanda rechazada: el lavarropas {} no existe", numero);
+                        throw new LavarropasDeBajaException(
+                            String.format(Constantes.Mensajes.CONFLICTO_LAVARROPAS_DE_BAJA, numero));
+                    }
+                    if (!rs.getBoolean("activo")) {
+                        log.warn("Tanda rechazada: el lavarropas {} está dado de baja", numero);
+                        throw new LavarropasDeBajaException(
+                            String.format(Constantes.Mensajes.CONFLICTO_LAVARROPAS_DE_BAJA, numero));
+                    }
                 }
             }
         }

@@ -52,10 +52,19 @@ class CicloLavaderoServiceTest {
         verifyNoInteractions(dao);
     }
 
+    /**
+     * El service ya <b>no</b> tiene techo, y eso es el contrato: desde que los lavarropas se dan
+     * de alta desde Ajustes, "cuántos hay" es un dato de la base y no una constante compilada.
+     * Validar el 14 acá haría imposible lanzar en un lavarropas recién creado.
+     *
+     * <p>La existencia y el estado del lavarropas los verifica la guarda transaccional de
+     * {@code CicloLavaderoDAO.exigirLavarropasActivos}, no este service: un {@code SELECT} previo
+     * acá sería una ventana TOCTOU con forma de validación.</p>
+     */
     @Test
-    void lanzarTanda_lavarropasNumeroMayorA13_lanzaValidation() {
-        assertThrows(ValidationException.class, () -> service.lanzarTanda(tandaDe(ciclo(14, configValida()))));
-        verifyNoInteractions(dao);
+    void lanzarTanda_lavarropasNumeroAlto_yaNoLoRechazaElService() {
+        service.lanzarTanda(tandaDe(ciclo(14, configValida())));
+        verify(dao).lanzarTanda(anyList());
     }
 
     @Test

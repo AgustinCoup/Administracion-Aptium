@@ -1,6 +1,5 @@
 package com.example.features.lavadero.service;
 
-import com.example.common.constants.Constantes;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.model.CicloLavadero;
@@ -50,8 +49,13 @@ public class CicloLavaderoService {
         int numero = ciclo.lavarropasNumero();
         String prefijo = "Lavarropas #" + numero + ": ";
 
-        v.addErrorIf(numero < 1 || numero > Constantes.Lavadero.CANTIDAD_LAVARROPAS,
-            "El número de lavarropas debe estar entre 1 y " + Constantes.Lavadero.CANTIDAD_LAVARROPAS + ".");
+        // Sólo el piso. El techo ya no existe como constante: los lavarropas se dan de alta, así
+        // que "cuántos hay" es un dato de la base. Y la EXISTENCIA y el ESTADO del lavarropas los
+        // verifica la guarda transaccional de CicloLavaderoDAO.exigirLavarropasActivos, no este
+        // service: cualquier chequeo previo acá sería una ventana TOCTOU con forma de validación
+        // —entre el SELECT y el INSERT otro operador da de baja la máquina— y encima abriría una
+        // conexión a la base desde una capa que no tiene JDBC.
+        v.addErrorIf(numero < 1, "El número de lavarropas debe ser mayor o igual a 1.");
 
         ConfiguracionCiclo config = ciclo.config();
         v.addErrorIf(config == null, prefijo + "debe configurar el ciclo.");

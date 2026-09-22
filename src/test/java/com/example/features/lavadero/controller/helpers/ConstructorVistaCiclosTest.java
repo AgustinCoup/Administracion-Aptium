@@ -55,7 +55,7 @@ class ConstructorVistaCiclosTest {
                                      List<ElementoCicloItem> disponibles,
                                      Map<Integer, List<ElementoCicloItem>> itemsActivos) {
         return new DatosCiclos(activos, disponibles,
-                List.of(new Lavarropas(1, 10), new Lavarropas(2, 20), new Lavarropas(3, 30)),
+                List.of(new Lavarropas(1, true), new Lavarropas(2, true), new Lavarropas(3, true)),
                 itemsActivos, List.of(), List.of());
     }
 
@@ -213,7 +213,6 @@ class ConstructorVistaCiclosTest {
 
         assertTrue(porNumero.get(2).isOcupado());
         assertEquals(77, porNumero.get(2).getCicloId());
-        assertEquals(20, porNumero.get(2).getCapacidadLitros());
         assertFalse(porNumero.get(1).isOcupado());
         assertNull(porNumero.get(1).getCicloId());
     }
