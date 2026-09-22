@@ -1,6 +1,8 @@
 package com.example.features.catalogo.service;
 
+import com.example.common.exception.ValidationException;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
+import com.example.features.catalogo.model.ItemCatalogo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,5 +48,26 @@ public class CatalogoOtrosService {
             log.error("Error al verificar descripción en catálogo: '{}'", descripcion, e);
             return false;
         }
+    }
+
+    /** Todo el catálogo, activo y de baja: para Ajustes. */
+    public List<ItemCatalogo> obtenerTodosConEstado() {
+        return dao.obtenerTodosConEstado();
+    }
+
+    public void darDeBaja(int id) {
+        exigirIdValido(id);
+        dao.darDeBaja(id);
+    }
+
+    public void reactivar(int id) {
+        exigirIdValido(id);
+        dao.reactivar(id);
+    }
+
+    private static void exigirIdValido(int id) {
+        ValidationException.builder()
+            .addErrorIf(id <= 0, "Debe indicar una descripción de catálogo válida.")
+            .throwIfHasErrors();
     }
 }

@@ -152,6 +152,28 @@ class EquipoCorreccionServiceTest {
         verifyNoInteractions(auditoriaDAO);
     }
 
+    /**
+     * Decisión del usuario para Paso 5: un equipo que ya tiene un material con un código dado de
+     * baja se guarda igual si esa corrección no lo toca. {@code modificarCantidadMaterial} sólo
+     * cambia la cantidad del material indicado por {@code materialId}, y nunca consulta
+     * {@code catalogoDAO} — no hay re-validación de vigencia de los materiales que el operador no
+     * tocó. El {@code verifyNoInteractions} es lo que fija que esto no es casualidad: si algún
+     * día se agregara una re-validación general, este test la atraparía.
+     */
+    @Test
+    void modificarCantidad_equipoConOtroMaterialDeBaja_seGuardaSinValidarLosNoTocados() {
+        when(equipoDAO.obtenerPorId("1")).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
+        when(materialDAO.obtenerCantidad(2)).thenReturn(3);
+        when(materialDAO.actualizarCantidad(1, 2, 5, 0)).thenReturn(true);
+        // catalogoDAO.obtenerDescripcionVigente(414) devolvería null si se llamara (código de
+        // baja real, V16) — la clave del test es que nunca se llega a invocar.
+
+        boolean resultado = service.modificarCantidadMaterial(1, 2, 5, 0, "corrección");
+
+        assertTrue(resultado);
+        verifyNoInteractions(catalogoDAO);
+    }
+
     // ── modificarCodigoMaterial — validaciones ────────────────────────────────
 
     @Test

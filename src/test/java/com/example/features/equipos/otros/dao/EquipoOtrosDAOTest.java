@@ -74,6 +74,43 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
     }
 
     /**
+     * El guardado completo (wrapper público, sin {@code TransactionalConnection}) tiene que
+     * revertirse entero cuando {@code CatalogoOtrosDAO.obtenerOCrear} rechaza una descripción
+     * dada de baja: ni el equipo ni el material pueden quedar escritos a medias.
+     *
+     * <p>{@code guardar(EquipoOtros)} sólo atrapa {@code SQLException}, así que el
+     * {@code BusinessException} de {@code obtenerOCrear} se propaga sin pasar por su
+     * {@code rollback(conn, e)} explícito. Lo que sostiene la atomicidad acá es que HikariCP
+     * revierte la transacción abierta (autoCommit=false, sin commit) al devolver la conexión al
+     * pool en el {@code close()} del bloque {@code finally}. Este test fija ese comportamiento.</p>
+     */
+    @Test
+    void guardar_conDescripcionDeBaja_propagaYNoDejaNadaEscrito() throws SQLException {
+        ejecutarSQL("INSERT INTO catalogo_otros (descripcion, activo) VALUES ('TestDescMat DeBaja', FALSE)");
+        long equiposAntes = contarFilas("equipo_otros");
+        long materialesAntes = contarFilas("equipo_otros_materiales");
+
+        EquipoOtros equipo = new EquipoOtros();
+        equipo.setNroCliente(1);
+        equipo.setTipoIngreso(TipoIngresoOtros.DETALLES);
+        equipo.agregarMaterial(new MaterialOtros("TestDescMat DeBaja", 2));
+
+        assertThrows(RuntimeException.class, () -> dao.guardar(equipo));
+
+        assertEquals(equiposAntes, contarFilas("equipo_otros"));
+        assertEquals(materialesAntes, contarFilas("equipo_otros_materiales"));
+    }
+
+    private long contarFilas(String tabla) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM " + tabla);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    /**
      * El {@code ORDER BY} de los listados dejó de llevar la clave de material —forzaba un filesort
      * del join entero y anulaba los índices de la V23—, así que el orden de los materiales dentro
      * de cada equipo pasó a resolverse en memoria, igual que en {@code EquipoDAO}. Sin eso quedaban

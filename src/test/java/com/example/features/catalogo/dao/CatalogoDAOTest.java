@@ -1,6 +1,9 @@
 package com.example.features.catalogo.dao;
 
 import com.example.AbstractDAOTest;
+import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.features.catalogo.model.ItemCatalogo;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -100,6 +103,68 @@ class CatalogoDAOTest extends AbstractDAOTest {
     @Test
     void obtenerVolumen_codigoInexistente_retornaNull() {
         assertNull(dao.obtenerVolumen(99999));
+    }
+
+    /**
+     * El 414 está de baja desde la V16 (fuera del listado oficial). Un material ya cargado con
+     * ese código sigue necesitando su volumen para armar un lote: obtenerVolumen es histórico y
+     * no filtra por vigente.
+     */
+    @Test
+    void obtenerVolumen_codigoDadoDeBaja_sigueDevolviendoElVolumen() {
+        assertNotNull(dao.obtenerVolumen(414));
+    }
+
+    // ── darDeBaja / reactivar ─────────────────────────────────────────────────
+
+    @Test
+    void darDeBaja_loSacaDeVigentes() {
+        dao.guardarDescripcion(9020, "TestBaja");
+
+        dao.darDeBaja(9020);
+
+        assertNull(dao.obtenerDescripcionVigente(9020));
+        assertNotNull(dao.obtenerDescripcion(9020), "sigue existiendo, sólo dejó de estar vigente");
+    }
+
+    @Test
+    @DisplayName("Segunda baja: el CAS no matchea y sale como conflicto")
+    void darDeBaja_dosVeces_laSegundaEsConflicto() {
+        dao.guardarDescripcion(9021, "TestBaja2");
+        dao.darDeBaja(9021);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.darDeBaja(9021));
+    }
+
+    @Test
+    void reactivar_unoDeBaja_loVuelveAVigentes() {
+        dao.guardarDescripcion(9022, "TestReactivar");
+        dao.darDeBaja(9022);
+
+        dao.reactivar(9022);
+
+        assertEquals("TestReactivar", dao.obtenerDescripcionVigente(9022));
+    }
+
+    @Test
+    void reactivar_unoYaVigente_esConflicto() {
+        dao.guardarDescripcion(9023, "TestYaVigente");
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.reactivar(9023));
+    }
+
+    // ── obtenerTodosConEstado ─────────────────────────────────────────────────
+
+    @Test
+    void obtenerTodosConEstado_traeVigentesYDeBaja() {
+        dao.guardarDescripcion(9024, "TestEstadoVigente");
+        dao.guardarDescripcion(9025, "TestEstadoDeBaja");
+        dao.darDeBaja(9025);
+
+        List<ItemCatalogo> items = dao.obtenerTodosConEstado();
+
+        assertTrue(items.stream().anyMatch(i -> i.codigo() == 9024 && i.vigente()));
+        assertTrue(items.stream().anyMatch(i -> i.codigo() == 9025 && !i.vigente()));
     }
 
     // ── obtenerTodasLasDescripciones ──────────────────────────────────────────

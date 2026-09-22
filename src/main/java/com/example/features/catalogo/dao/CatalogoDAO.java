@@ -1,7 +1,11 @@
 package com.example.features.catalogo.dao;
 
+import com.example.common.constants.Constantes;
+import com.example.common.dao.ControlConcurrencia;
 import com.example.common.dao.DAO;
+import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
+import com.example.features.catalogo.model.ItemCatalogo;
 import com.example.infrastructure.db.ConnectionPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -140,6 +144,69 @@ public class CatalogoDAO implements DAO<String, Integer> {
             throw new DatabaseException("Error al obtener catálogo de descripciones", e);
         }
         return catalogo;
+    }
+
+    /**
+     * Todo el catálogo con su estado de vigencia: es lo que muestra Ajustes.
+     *
+     * <p>No reemplaza a {@link #obtenerDescripcionVigente}: ésa es la consulta de carga (un solo
+     * código, filtrada) y ésta es la de administración (todos, sin filtrar, con el estado).</p>
+     */
+    public List<ItemCatalogo> obtenerTodosConEstado() {
+        String sql = "SELECT codigo, descripcion, vigente FROM catalogo_descripciones ORDER BY codigo";
+        List<ItemCatalogo> items = new ArrayList<>();
+
+        try (Connection conn = ConnectionPool.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                items.add(new ItemCatalogo(
+                    rs.getInt("codigo"), rs.getString("descripcion"), rs.getBoolean("vigente")));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al obtener el catálogo con estado de vigencia", e);
+        }
+        return items;
+    }
+
+    /**
+     * Da de baja un código del catálogo (columna {@code vigente}). CAS: 0 filas afectadas
+     * significa que otro operador ya lo dio de baja.
+     *
+     * <p>{@code equipo_materiales.codigo_catalogo} es {@code FK RESTRICT} (V1): un alta o
+     * corrección en vuelo sobre ese código puede sostener un lock que hace esperar a este
+     * {@code UPDATE}. Es un choque entre operadores, no un error técnico.</p>
+     */
+    public void darDeBaja(int codigo) {
+        actualizarVigencia(
+            "UPDATE catalogo_descripciones SET vigente = FALSE WHERE codigo = ? AND vigente = TRUE",
+            codigo, "dar de baja");
+    }
+
+    /**
+     * Reactiva un código dado de baja. CAS: 0 filas afectadas significa que otro operador ya lo
+     * reactivó.
+     */
+    public void reactivar(int codigo) {
+        actualizarVigencia(
+            "UPDATE catalogo_descripciones SET vigente = TRUE WHERE codigo = ? AND vigente = FALSE",
+            codigo, "reactivar");
+    }
+
+    private void actualizarVigencia(String sql, int codigo, String accion) {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, codigo);
+            ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_CATALOGO);
+        } catch (SQLException e) {
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("No se pudo {} el código de catálogo {} (contención de lock)", accion, codigo, e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_GENERICO);
+            }
+            log.error("Error al {} el código de catálogo {}", accion, codigo, e);
+            throw new DatabaseException("Error al " + accion + " el código de catálogo " + codigo, e);
+        }
     }
 
     /**

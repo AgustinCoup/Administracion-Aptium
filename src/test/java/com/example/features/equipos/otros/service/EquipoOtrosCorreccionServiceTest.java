@@ -299,6 +299,26 @@ class EquipoOtrosCorreccionServiceTest {
             () -> service.modificarCantidadMaterial(1, 5, 7, 0, "motivo"));
     }
 
+    /**
+     * Decisión del usuario para Paso 5: un equipo que ya tiene un material con una descripción
+     * dada de baja se guarda igual si esa corrección no lo toca. Este service ni siquiera
+     * depende de {@code CatalogoOtrosDAO} (sólo {@code EquipoOtrosDAO} y {@code AuditoriaDAO}),
+     * así que estructuralmente no puede re-validar la vigencia de materiales que el operador no
+     * tocó — la corrección de un material puntual nunca mira el catálogo de los demás.
+     */
+    @Test
+    void modificarCantidadMaterial_conCorrigeUnMaterial_noRevalidaCatalogoDeLosDemas() {
+        when(equipoOtrosDAO.obtenerPorId(1)).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));
+        when(equipoOtrosDAO.obtenerCantidadMaterial(5, 1)).thenReturn(3);
+        when(equipoOtrosDAO.actualizarCantidadMaterial(1, 5, 7, 0)).thenReturn(1);
+
+        boolean resultado = service.modificarCantidadMaterial(1, 5, 7, 0, "motivo");
+
+        assertTrue(resultado);
+        verify(auditoriaDAO).registrarCambio(1, 5, "MODIFICACION_CANTIDAD",
+            "cantidad", "3", "7", "motivo", "OTROS");
+    }
+
     @Test
     void eliminarMaterial_errorAlBuscarMateriales_propagaDatabaseException() {
         when(equipoOtrosDAO.obtenerPorId(1)).thenReturn(equipoConEstado(EstadoEquipo.NUEVO));

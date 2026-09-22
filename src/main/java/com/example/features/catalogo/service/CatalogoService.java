@@ -1,8 +1,11 @@
 package com.example.features.catalogo.service;
 
+import com.example.common.exception.ValidationException;
 import com.example.features.catalogo.dao.CatalogoDAO;
+import com.example.features.catalogo.model.ItemCatalogo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -108,6 +111,27 @@ public class CatalogoService {
             log.error("Error al obtener volúmenes del catálogo", e);
             return Map.of();
         }
+    }
+
+    /** Todo el catálogo con su estado de vigencia: para Ajustes. */
+    public List<ItemCatalogo> obtenerTodosConEstado() {
+        return catalogoDAO.obtenerTodosConEstado();
+    }
+
+    public void darDeBaja(int codigo) {
+        exigirCodigoValido(codigo);
+        catalogoDAO.darDeBaja(codigo);
+    }
+
+    public void reactivar(int codigo) {
+        exigirCodigoValido(codigo);
+        catalogoDAO.reactivar(codigo);
+    }
+
+    private static void exigirCodigoValido(int codigo) {
+        ValidationException.builder()
+            .addErrorIf(codigo <= 0, "Debe indicar un código de catálogo válido.")
+            .throwIfHasErrors();
     }
 
     /**
