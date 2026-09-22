@@ -515,12 +515,15 @@ public final class Constantes {
     }
 
     /**
-     * Constantes del lavadero (cantidad de lavarropas y su disposición en pantalla).
+     * Constantes del lavadero (disposición de la grilla en pantalla).
+     *
+     * <p>Ya no lleva {@code CANTIDAD_LAVARROPAS}: desde el ABM de lavarropas, cuántos hay es un
+     * dato de la tabla {@code lavarropas} y no un número compilado. La grilla se arma con lo que
+     * trae {@code obtenerDibujables()} y el rango lo valida la guarda transaccional, no una
+     * constante.</p>
      */
     public static final class Lavadero {
-        /** Cantidad de lavarropas del lavadero. Constante de negocio: valida el número de ciclo. */
-        public static final int CANTIDAD_LAVARROPAS = 13;
-        /** Cards de lavarropas por fila en la grilla de la pantalla Ciclos. */
+        /** Cards de lavarropas por fila en la grilla de la pantalla Ciclos. Es layout. */
         public static final int LAVARROPAS_POR_FILA = 3;
         /**
          * Nombre del cliente bajo el que se ingresan al CDE las salidas que no conservan su

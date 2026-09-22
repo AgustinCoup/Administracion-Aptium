@@ -139,8 +139,10 @@ class ConstructorVistaCiclosTest {
         assertEquals(1, vista.disponibles().size());
         assertEquals(0, vista.disponibles().get(0).getCantidadEnCiclo(),
             "la ropa vuelve a estar entera en disponibles, sin descontar");
-        assertEquals(List.of(1), vista.stagingDescartadoDe(),
+        assertEquals(List.of(1), vista.stagingDescartadoPorOcupacion(),
             "el descarte se reporta: el operador no puede enterarse por ausencia");
+        assertTrue(vista.stagingDescartadoPorBaja().isEmpty(),
+            "nadie dio de baja nada: el cartel de baja sería falso");
     }
 
     @Test
@@ -151,7 +153,7 @@ class ConstructorVistaCiclosTest {
                 datos(Map.of(1, ciclo(88, 1)), List.of(regular(7, "Sábana", 10)),
                       Map.of(1, List.of())), CARDS, staging);
 
-        assertTrue(vista.stagingDescartadoDe().isEmpty(),
+        assertTrue(vista.stagingDescartadoPorOcupacion().isEmpty(),
             "el lavarropas 1 se ocupó pero no tenía nada cargado: no hay nada que avisar");
         assertTrue(vista.hayPendientes());
     }
@@ -173,8 +175,104 @@ class ConstructorVistaCiclosTest {
         assertFalse(vista.hayPendientes(), "las tres fracciones se fueron, no sólo la del ocupado");
         assertTrue(card(vista, 2).items().isEmpty());
         assertTrue(card(vista, 3).items().isEmpty());
-        assertEquals(List.of(1, 2, 3), vista.stagingDescartadoDe(),
+        assertEquals(List.of(1, 2, 3), vista.stagingDescartadoPorOcupacion(),
             "el aviso nombra también las cards libres que se vaciaron de arrastre");
+    }
+
+    // ── Descarte por baja del lavarropas ─────────────────────────────────────
+
+    /**
+     * Un lavarropas que ya no está entre los que la pantalla dibuja lo dieron de baja: la tanda
+     * que lo incluyera la rechazaría {@code exigirLavarropasActivos}, así que ese staging sólo
+     * puede terminar en un choque. Se descarta y la ropa vuelve a disponibles, igual que con la
+     * ocupación — lo que cambia es el cartel.
+     */
+    @Test
+    void construir_lavarropasDadoDeBaja_descartaSuStagingYLoReportaEnSuPropiaLista() {
+        staging.agregarRegular(3, regular(7, "Sábana", 10), 4);
+
+        VistaCiclos vista = ConstructorVistaCiclos.construir(
+                datos(Map.of(), List.of(regular(7, "Sábana", 10)), Map.of()),
+                List.of(1, 2), staging);
+
+        assertFalse(vista.hayPendientes(), "el staging del lavarropas de baja se descartó");
+        assertEquals(1, vista.disponibles().size());
+        assertEquals(0, vista.disponibles().get(0).getCantidadEnCiclo(),
+            "la ropa vuelve a estar entera en disponibles, sin descontar");
+        assertEquals(List.of(3), vista.stagingDescartadoPorBaja());
+        assertTrue(vista.stagingDescartadoPorOcupacion().isEmpty(),
+            "nadie ocupó nada: reusar ese cartel diría que otro usuario lanzó un ciclo, y es falso");
+    }
+
+    @Test
+    void construir_lavarropasDadoDeBajaSinNadaCargado_noReportaNingunDescarte() {
+        staging.agregarRegular(1, regular(7, "Sábana", 10), 3);
+
+        VistaCiclos vista = ConstructorVistaCiclos.construir(
+                datos(Map.of(), List.of(regular(7, "Sábana", 10)), Map.of()),
+                List.of(1, 2), staging);
+
+        assertTrue(vista.stagingDescartadoPorBaja().isEmpty(),
+            "el 3 se dio de baja pero no tenía nada cargado: no hay nada que avisar");
+        assertTrue(vista.hayPendientes());
+    }
+
+    /** Misma regla que la ocupación: una fracción no se va sola, se deshace el reparto entero. */
+    @Test
+    void construir_fraccionEnUnLavarropasDadoDeBaja_deshaceLaSubdivisionEntera() {
+        ElementoCicloItem origen = equipo(9, "Equipo A", 1);
+        staging.agregarFraccionEquipo(1, fraccion(origen, 55));
+        staging.agregarFraccionEquipo(2, fraccion(origen, 55));
+        staging.agregarFraccionEquipo(3, fraccion(origen, 55));
+
+        VistaCiclos vista = ConstructorVistaCiclos.construir(
+                datos(Map.of(), List.of(origen), Map.of()), List.of(1, 2), staging);
+
+        assertFalse(vista.hayPendientes(), "las tres fracciones se fueron, no sólo la del de baja");
+        assertTrue(card(vista, 1).items().isEmpty());
+        assertTrue(card(vista, 2).items().isEmpty());
+        assertEquals(List.of(1, 2, 3), vista.stagingDescartadoPorBaja(),
+            "el aviso nombra también las cards que siguen dibujadas y se vaciaron de arrastre");
+    }
+
+    /**
+     * Los dos motivos a la vez: cada lista lleva lo suyo y no se mezclan. Si compartieran campo
+     * habría que elegir un cartel, y cualquiera de los dos mentiría sobre la mitad de los
+     * lavarropas que nombra.
+     */
+    @Test
+    void construir_ocupacionYBajaALaVez_cadaListaLlevaLoSuyo() {
+        staging.agregarRegular(1, regular(7, "Sábana", 10), 2);
+        staging.agregarRegular(3, regular(8, "Toalla", 10), 2);
+
+        VistaCiclos vista = ConstructorVistaCiclos.construir(
+                datos(Map.of(1, ciclo(88, 1)),
+                      List.of(regular(7, "Sábana", 10), regular(8, "Toalla", 10)),
+                      Map.of(1, List.of())),
+                List.of(1, 2), staging);
+
+        assertEquals(List.of(1), vista.stagingDescartadoPorOcupacion());
+        assertEquals(List.of(3), vista.stagingDescartadoPorBaja());
+        assertFalse(vista.hayPendientes());
+    }
+
+    /**
+     * Un lavarropas inactivo con un ciclo sin finalizar <b>sí</b> entra en los dibujables (lo trae
+     * {@code obtenerDibujables()}), justamente para que tenga card y con ella el botón Finalizar.
+     * Acá se fija que la vista lo trata como cualquier otro ocupado y no como una baja.
+     */
+    @Test
+    void construir_inactivoConCicloAbierto_tieneCardActivaYNoCuentaComoBaja() {
+        VistaCiclos vista = ConstructorVistaCiclos.construir(
+                new DatosCiclos(Map.of(3, ciclo(12, 3)), List.of(),
+                        List.of(new Lavarropas(1, true), new Lavarropas(2, true),
+                                new Lavarropas(3, false)),
+                        Map.of(3, List.of()), List.of(), List.of()),
+                CARDS, staging);
+
+        assertTrue(card(vista, 3).esActivo());
+        assertEquals(12, card(vista, 3).cicloActivoId());
+        assertTrue(vista.stagingDescartadoPorBaja().isEmpty());
     }
 
     // ── Disponibles ──────────────────────────────────────────────────────────

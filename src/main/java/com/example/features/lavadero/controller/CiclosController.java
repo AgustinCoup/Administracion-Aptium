@@ -2,6 +2,7 @@ package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
 import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.common.exception.LavarropasDeBajaException;
 import com.example.common.exception.LavarropasOcupadoException;
 import com.example.common.exception.SaldoConsumidoException;
 import com.example.common.exception.ValidationException;
@@ -15,6 +16,7 @@ import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.LanzamientoCiclo;
+import com.example.features.lavadero.model.Lavarropas;
 import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.service.CatalogoInsumosService;
@@ -68,7 +70,13 @@ public class CiclosController {
     private final LavarropasService     lavarropasService;
     private final CatalogoJabonesService catalogoJabonesService;
     private final CatalogoInsumosService catalogoInsumosService;
-    private final Map<Integer, LavarropasCard> cards;
+
+    /**
+     * Las cards que la pantalla tiene dibujadas ahora. <b>No es final</b>: la grilla se arma con
+     * los lavarropas que trae la base, así que un alta o una baja en Ajustes la reconstruye y este
+     * mapa pasa a ser otro (ver {@link #pintar}).
+     */
+    private Map<Integer, LavarropasCard> cards;
 
     private final StagingCiclos staging = new StagingCiclos();
     private final AtomicInteger nextInstanciaId = new AtomicInteger(1);
@@ -154,24 +162,20 @@ public class CiclosController {
         this.lavarropasService      = lavarropasService;
         this.catalogoJabonesService = catalogoJabonesService;
         this.catalogoInsumosService = catalogoInsumosService;
+        // Arranca vacío: la grilla nace sin cards y la puebla el primer pintar() con lo que
+        // trae la base.
         this.cards    = pantalla.getAllCards();
         // Sin I/O en el constructor: la pantalla no está visible al arrancar y
         // abrirPantalla() carga todo cuando el operador entra (patrón de la Fase 2).
         inicializarEventos();
     }
 
+    /**
+     * Lo que se cablea una sola vez: los botones globales, los guards y el
+     * {@code ComponentListener}. Lo de cada card va en {@link #cablearCards()}, que se vuelve a
+     * correr cada vez que la grilla se reconstruye.
+     */
     private void inicializarEventos() {
-        for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
-            int num = entry.getKey();
-            LavarropasCard card = entry.getValue();
-            configurarDnDCard(num, card);
-            card.setOnAccion(() -> {
-                if (card.estaActivo()) finalizarCiclo(num);
-                else lanzarCiclo(num);
-            });
-            card.setOnConfiguracionChanged(() -> card.actualizarBtnAccion());
-        }
-
         pantalla.getBtnLanzarTodos().addActionListener(e -> lanzarTodos());
         pantalla.getBtnFinalizarTodos().addActionListener(e -> finalizarTodos());
         pantalla.getBtnDescartarTodos().addActionListener(e -> {
@@ -211,6 +215,33 @@ public class CiclosController {
                 cards.values().forEach(LavarropasCard::colapsarSiPuede);
             }
         });
+    }
+
+    /**
+     * Cablea los eventos de cada card del mapa actual.
+     *
+     * <p>Se vuelve a correr entero después de cada reconstrucción de la grilla, sobre
+     * <b>todas</b> las cards y no sólo sobre las nuevas. Todos estos cableados son <i>setters</i>
+     * ({@code setOnAccion}, {@code setOnConfiguracionChanged}, {@code setTransferHandler}), así
+     * que volver a aplicarlos es idempotente. Cablear sólo las nuevas obligaría a llevar un
+     * registro de cuáles ya se cablearon, y ese registro se puede desincronizar — una card sin
+     * cablear es una card cuyo botón no hace nada.</p>
+     */
+    private void cablearCards() {
+        for (Map.Entry<Integer, LavarropasCard> entry : cards.entrySet()) {
+            int num = entry.getKey();
+            LavarropasCard card = entry.getValue();
+            card.setOnAccion(() -> {
+                if (card.estaActivo()) finalizarCiclo(num);
+                else lanzarCiclo(num);
+            });
+            card.setOnConfiguracionChanged(() -> card.actualizarBtnAccion());
+        }
+    }
+
+    /** Ídem para el arrastre: un {@code setTransferHandler} por card, idempotente. */
+    private void configurarDnDCards() {
+        cards.forEach(this::configurarDnDCard);
     }
 
     /**
@@ -288,27 +319,47 @@ public class CiclosController {
         return new DatosCiclos(
             activos,
             cicloLavaderoService.obtenerElementosDisponiblesParaCiclo(),
-            lavarropasService.obtenerTodos(),
+            // obtenerDibujables(), no obtenerTodos(): los activos MÁS los de baja que todavía
+            // tienen un ciclo sin finalizar, que necesitan card para poder finalizarlo.
+            lavarropasService.obtenerDibujables(),
             itemsActivos,
             conJabones ? catalogoJabonesService.obtenerTodos() : List.of(),
             conInsumos ? catalogoInsumosService.obtenerTodos() : List.of()
         );
     }
 
+    /**
+     * Vuelca una lectura sobre la pantalla. <b>El orden de los tres primeros bloques no es
+     * cosmético</b>, y cada uno tiene su motivo:
+     *
+     * <ol>
+     *   <li><b>El descarte de staging va antes de reconstruir la grilla.</b> Lo hace
+     *       {@code ConstructorVistaCiclos.construir}, que necesita ver las cards de baja para
+     *       devolver su ropa a disponibles. Reconstruyendo primero, la card desaparece y el
+     *       staging queda huérfano: la ropa no vuelve a Disponibles y nadie se entera.</li>
+     *   <li><b>La grilla se reconstruye sólo si el conjunto de números cambió</b>, y la
+     *       comparación es por conjunto y no por lista: {@code cards} es un {@code LinkedHashMap}
+     *       y basta un orden distinto para que una comparación por lista dé "cambió" en cada F5,
+     *       reconstruyendo la grilla y re-creando los {@code TransferHandler} cada vez.</li>
+     *   <li><b>Los catálogos se aplican después del re-cableado</b>, sobre el mapa ya
+     *       reconstruido. Ver {@link #aplicarCatalogos}.</li>
+     * </ol>
+     */
     private void pintar(DatosCiclos datos) {
-        if (!datos.jabones().isEmpty()) {
-            cards.values().forEach(card -> card.setJabones(datos.jabones()));
-            jabonesCargados = true;
-        }
-        // setInsumos repuebla sólo el combo: los insumos que el operador ya eligió son
-        // configuración y siguen ahí (recargar() / F5 no pisa lo que se está tipeando).
-        if (!datos.insumos().isEmpty()) {
-            cards.values().forEach(card -> card.setInsumos(datos.insumos()));
-            insumosCargados = true;
-        }
-
         ciclosActivos = datos.ciclosActivos();
-        VistaCiclos vista = ConstructorVistaCiclos.construir(datos, cards.keySet(), staging);
+        List<Integer> numeros = datos.lavarropas().stream()
+            .map(Lavarropas::getNumero).sorted().toList();
+
+        VistaCiclos vista = ConstructorVistaCiclos.construir(datos, numeros, staging);
+
+        if (!new TreeSet<>(numeros).equals(new TreeSet<>(cards.keySet()))) {
+            pantalla.reconstruirGrilla(numeros);
+            cards = pantalla.getAllCards();
+            cablearCards();
+            configurarDnDCards();
+        }
+        aplicarCatalogos(datos);
+
         elementosDisponibles = vista.disponibles();
         lavarropasItems      = vista.lavarropas();
 
@@ -329,12 +380,43 @@ public class CiclosController {
         // misma tanda se podría mandar dos veces. Los reenciende el `despues` de esa escritura.
         if (escrituraEnVuelo) deshabilitarAcciones();
         pantalla.marcarActualizado();
-        avisarStagingDescartado(vista.stagingDescartadoDe());
+        avisarStagingDescartado(vista.stagingDescartadoPorOcupacion(),
+                                vista.stagingDescartadoPorBaja());
     }
 
     /**
-     * El único caso en que esta pantalla pierde staging sin que el operador lo haya pedido: otro
-     * operador ocupó un lavarropas que él tenía cargado.
+     * Vuelca los catálogos sobre <b>todas</b> las cards del mapa actual.
+     *
+     * <p>Va al final de la reconstrucción de la grilla y no al principio de {@link #pintar}, que
+     * es donde estaba: una card creada en ese mismo {@code pintar} se perdería el
+     * {@code setJabones} y nacería con el combo de jabón <b>vacío</b> —imposible de configurar y
+     * de lanzar— hasta el refresco siguiente. Que los tres {@code set*} vivan en un solo lugar es
+     * lo que impide que el próximo que se agregue herede el mismo problema.</p>
+     *
+     * <p>Los catálogos no cambian en runtime, así que se leen una sola vez: las listas llegan
+     * vacías cuando esta carga no las pidió, y en ese caso no hay nada que aplicar. {@code
+     * setInsumos} repuebla sólo el combo: los insumos que el operador ya eligió son configuración
+     * y siguen ahí (recargar() / F5 no pisa lo que se está tipeando).</p>
+     */
+    private void aplicarCatalogos(DatosCiclos datos) {
+        if (!datos.jabones().isEmpty()) {
+            cards.values().forEach(card -> card.setJabones(datos.jabones()));
+            jabonesCargados = true;
+        }
+        if (!datos.insumos().isEmpty()) {
+            cards.values().forEach(card -> card.setInsumos(datos.insumos()));
+            insumosCargados = true;
+        }
+    }
+
+    /**
+     * Los dos casos en que esta pantalla pierde staging sin que el operador lo haya pedido: otro
+     * operador ocupó un lavarropas que él tenía cargado, o lo dieron de baja.
+     *
+     * <p><b>Son dos carteles y no uno.</b> {@code STAGING_DESCARTADO_POR_OCUPACION} afirma que
+     * otro usuario lanzó un ciclo ahí, y decir eso de una baja sería falso; un cartel que miente
+     * entrena al operador a apretar "Sí" sin leer y desactiva también los avisos verdaderos. Si
+     * hubo de los dos tipos salen los dos, cada uno con sus lavarropas.</p>
      *
      * <p><b>El modal se difiere y no se abre dentro de {@code pintar}.</b> Un modal arranca un
      * bucle de eventos anidado, así que abrirlo a mitad del repintado deja la pantalla a medio
@@ -342,14 +424,22 @@ public class CiclosController {
      * abierto. Difiriéndolo, {@code pintar} termina —staging consistente, tablas al día— y el
      * cartel aparece sobre la pantalla ya corregida, con la ropa de vuelta en disponibles.</p>
      */
-    private void avisarStagingDescartado(List<Integer> lavarropas) {
+    private void avisarStagingDescartado(List<Integer> porOcupacion, List<Integer> porBaja) {
         Set<Integer> yaAvisados = lavarropasYaAvisados;
         lavarropasYaAvisados = Set.of();                 // se consume acá, haya descarte o no
+        // `yaAvisados` se aplica sólo a la ocupación: lo que ya nombró el cartel del choque son
+        // los lavarropas de la tanda que se intentó lanzar. Un descarte por baja detectado en esa
+        // misma relectura no lo dijo nadie.
+        avisar(porOcupacion, yaAvisados, Constantes.Mensajes.STAGING_DESCARTADO_POR_OCUPACION);
+        avisar(porBaja, Set.of(), Constantes.Mensajes.STAGING_DESCARTADO_POR_BAJA);
+    }
+
+    private void avisar(List<Integer> lavarropas, Set<Integer> yaAvisados, String plantilla) {
         if (lavarropas.isEmpty()) return;
         if (yaAvisados.containsAll(lavarropas)) return;  // el cartel del choque ya los nombró
         String lista = lavarropas.stream().map(n -> "#" + n).collect(Collectors.joining(", "));
         SwingUtilities.invokeLater(() -> pantalla.mostrarAdvertencia(
-            String.format(Constantes.Mensajes.STAGING_DESCARTADO_POR_OCUPACION, lista)));
+            String.format(plantilla, lista)));
     }
 
     // ── DnD ───────────────────────────────────────────────────────────────────
@@ -618,11 +708,24 @@ public class CiclosController {
                 // tanda; el aviso del descarte que trae la relectura sería el mismo modal por
                 // segunda vez. Si el descarte se sale de este conjunto —una fracción que vacía
                 // cards libres— el aviso igual sale, porque eso el cartel del choque no lo dice.
-                if (choque instanceof LavarropasOcupadoException) {
+                if (nombraLosLavarropasDeLaTanda(choque)) {
                     lavarropasYaAvisados = tanda.stream()
                         .map(LanzamientoCiclo::lavarropasNumero).collect(Collectors.toSet());
                 }
             });
+    }
+
+    /**
+     * Los choques cuyo cartel ya nombró los lavarropas de la tanda: el aviso del descarte que
+     * trae la relectura sería el mismo modal por segunda vez.
+     *
+     * <p>No confundir con la regla del <b>descarte</b> del staging, que es otra cosa y sigue
+     * siendo {@code instanceof SaldoConsumidoException} y nada más. Acá sólo se decide si el
+     * aviso se saltea; allá, si se tira el trabajo del operador.</p>
+     */
+    private static boolean nombraLosLavarropasDeLaTanda(ConflictoConcurrenciaException choque) {
+        return choque instanceof LavarropasOcupadoException
+            || choque instanceof LavarropasDeBajaException;
     }
 
     /**

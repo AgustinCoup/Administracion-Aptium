@@ -17,7 +17,12 @@ import java.util.Map;
  *
  * @param ciclosActivos             lavarropas ocupado → su ciclo en curso
  * @param disponibles               elementos clasificados que todavía se pueden repartir
- * @param lavarropas                todos los lavarropas configurados
+ * @param lavarropas                los lavarropas que la pantalla dibuja: los activos <b>más</b>
+ *                                  los inactivos que todavía tienen un ciclo sin finalizar, que
+ *                                  necesitan card para poder finalizarlo. <b>No</b> es "los
+ *                                  activos": un ciclo abierto sin card se queda sin botón
+ *                                  Finalizar, nunca cierra, y su ropa desaparece de Disponibles
+ *                                  <i>y</i> de Salidas (ver {@code LavarropasDAO.obtenerDibujables})
  * @param itemsPorLavarropasActivo  lavarropas ocupado → lo que hay adentro de su ciclo
  * @param jabones                   catálogo de jabones, o lista vacía si esta carga no lo
  *                                  pidió porque ya estaba en memoria (no cambia en runtime)

@@ -24,7 +24,16 @@ public class PantallaCiclos extends JPanel {
     private final ElementoDisponibleTableModel modeloDisponibles = new ElementoDisponibleTableModel();
     private final JTable tablaDisponibles;
 
-    private final Map<Integer, LavarropasCard> cards = new LinkedHashMap<>();
+    /**
+     * Número de lavarropas → su card, en el orden en que se dibujan. El orden de inserción es
+     * parte del contrato de {@link #getAllCards()}: {@link #reconstruirGrilla} lo repuebla desde
+     * cero, ascendente, en vez de agregarle los nuevos al final.
+     */
+    private Map<Integer, LavarropasCard> cards = new LinkedHashMap<>();
+
+    /** Contenedor de las columnas de cards. Se vacía y se rehace en cada reconstrucción. */
+    private final JPanel panelCards =
+        new JPanel(new GridLayout(1, Constantes.Lavadero.LAVARROPAS_POR_FILA, 8, 0));
 
     private final JButton btnLanzarTodos    = new JButton(Constantes.Botones.LANZAR_TODOS);
     private final JButton btnFinalizarTodos = new JButton(Constantes.Botones.FINALIZAR_TODOS);
@@ -48,7 +57,9 @@ public class PantallaCiclos extends JPanel {
             BorderLayout.NORTH);
         panelTop.add(scroll(tablaDisponibles), BorderLayout.CENTER);
 
-        JPanel panelCards = construirGrillaDeCards();
+        // La grilla nace vacía: qué lavarropas hay es un dato de la base, y llega con el
+        // primer pintado vía reconstruirGrilla(). Ninguna card se crea en el constructor.
+        panelCards.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
             panelTop,
@@ -71,19 +82,31 @@ public class PantallaCiclos extends JPanel {
     }
 
     /**
-     * Grilla de cards de lavarropas, en {@code LAVARROPAS_POR_FILA} columnas independientes
-     * ("masonry"): cada columna es su propio {@code BoxLayout} vertical, así que expandir una
-     * card sólo empuja hacia abajo a las demás cards de su misma columna, sin dejar hueco en
-     * las columnas vecinas (a diferencia de un grid de filas compartidas, donde una card alta
-     * infla toda la fila).
+     * Rehace la grilla de cards para los lavarropas de {@code numeros}, en
+     * {@code LAVARROPAS_POR_FILA} columnas independientes ("masonry"): cada columna es su propio
+     * {@code BoxLayout} vertical, así que expandir una card sólo empuja hacia abajo a las demás
+     * cards de su misma columna, sin dejar hueco en las columnas vecinas (a diferencia de un grid
+     * de filas compartidas, donde una card alta infla toda la fila).
+     *
+     * <p><b>Reusa la card de cada número que ya existía</b>: sólo crea las nuevas y descarta las
+     * que se fueron. Recrearlas todas sería más corto y borraría la configuración que el operador
+     * está tipeando en cards que no cambiaron — dar de baja el #13 no puede vaciarle el tipo de
+     * lavado a medio cargar del #1. Es el mismo invariante que hace que {@code recargar()} no
+     * llame a {@code resetConfiguracion()}, entrando por otra puerta.</p>
+     *
+     * <p>El mapa se <b>repuebla desde cero</b> en el orden de {@code numeros}, en vez de hacerle
+     * {@code put} de los nuevos al final del mapa viejo: es un {@code LinkedHashMap} y su orden de
+     * inserción es lo que ve {@code getAllCards()}. Un mapa desordenado dibujaría las columnas
+     * fuera de orden y haría fallar cualquier comparación por lista contra los números leídos.</p>
+     *
+     * <p>Quien la llama tiene que volver a cablear las cards ({@code setOnAccion}, DnD, catálogos):
+     * el mapa que devuelve {@code getAllCards()} es otro. Todos esos cableados son <i>setters</i>,
+     * así que correrlos sobre el mapa entero es idempotente.</p>
      */
-    private JPanel construirGrillaDeCards() {
+    public void reconstruirGrilla(List<Integer> numeros) {
         final int porFila = Constantes.Lavadero.LAVARROPAS_POR_FILA;
-        final int total   = Constantes.Lavadero.CANTIDAD_LAVARROPAS;
 
-        JPanel panelCards = new JPanel(new GridLayout(1, porFila, 8, 0));
-        panelCards.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-
+        panelCards.removeAll();
         JPanel[] columnas = new JPanel[porFila];
         for (int c = 0; c < porFila; c++) {
             columnas[c] = new JPanel();
@@ -91,11 +114,17 @@ public class PantallaCiclos extends JPanel {
             panelCards.add(columnas[c]);
         }
 
-        for (int i = 1; i <= total; i++) {
-            JPanel columna = columnas[(i - 1) % porFila];
-            LavarropasCard card = new LavarropasCard(i);
-            card.setAlignmentX(Component.LEFT_ALIGNMENT);
-            cards.put(i, card);
+        Map<Integer, LavarropasCard> anteriores = cards;
+        Map<Integer, LavarropasCard> nuevas = new LinkedHashMap<>();
+        int posicion = 0;
+        for (int numero : numeros) {
+            LavarropasCard card = anteriores.get(numero);
+            if (card == null) {
+                card = new LavarropasCard(numero);
+                card.setAlignmentX(Component.LEFT_ALIGNMENT);
+            }
+            nuevas.put(numero, card);
+            JPanel columna = columnas[posicion++ % porFila];
             if (columna.getComponentCount() > 0) {
                 columna.add(Box.createVerticalStrut(8));
             }
@@ -104,7 +133,10 @@ public class PantallaCiclos extends JPanel {
         for (JPanel columna : columnas) {
             columna.add(Box.createVerticalGlue());
         }
-        return panelCards;
+        cards = nuevas;
+
+        panelCards.revalidate();
+        panelCards.repaint();
     }
 
     private JTable buildTable(javax.swing.table.AbstractTableModel model, int... centeredCols) {
