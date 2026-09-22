@@ -22,6 +22,9 @@ import com.example.features.lavadero.model.IngresoHistorial;
 import com.example.features.lavadero.service.HistorialLavaderoService;
 import com.example.common.paginacion.Pagina;
 import com.example.features.ajustes.controller.AjustesController;
+import com.example.features.ajustes.controller.CatalogosAjustesController;
+import com.example.features.ajustes.controller.JabonesInsumosAjustesController;
+import com.example.features.ajustes.controller.LavarropasAjustesController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
 import com.example.ui.events.OnEquipoGuardadoListener;
@@ -238,6 +241,28 @@ public class UiCoordinator {
             vista.getPantallaAjustes(), context.getClienteService(), context.getActualizacionService());
         ajustesController.setOnMutacion(operativo);
         ajustesController.chequearActualizacionesAlIniciar();
+
+        // Ninguna de las tres pestañas nuevas crea un grupo de refresco propio: lo que cambian
+        // lo consumen pantallas que leen al entrar (Ciclos, Clasificación, los autocompletados),
+        // y no se puede estar en Ajustes y en esas pantallas a la vez.
+        new CatalogosAjustesController(
+            vista.getPantallaAjustes(),
+            vista.getPantallaAjustes().getPanelCatalogoLavadero(),
+            vista.getPantallaAjustes().getPanelCatalogoOrtopedias(),
+            vista.getPantallaAjustes().getPanelCatalogoOtros(),
+            context.getClasificacionLavaderoService(),
+            context.getCatalogoService(),
+            context.getCatalogoOtrosService(),
+            operativo);
+
+        new LavarropasAjustesController(
+            vista.getPantallaAjustes(), vista.getPantallaAjustes().getPanelLavarropas(),
+            context.getLavarropasService(), operativo);
+
+        new JabonesInsumosAjustesController(
+            vista.getPantallaAjustes(), vista.getPantallaAjustes().getPanelJabonesInsumos(),
+            context.getCatalogoJabonesService(), context.getCatalogoInsumosService(),
+            context.getJabonPorTipoLavadoService(), operativo);
 
         // Primer pintado: los controllers ya no leen en su constructor, así que la
         // UI aparece vacía y se puebla cuando llega esta primera lectura. Solo el
