@@ -47,9 +47,10 @@ public class PanelInsumosCard extends JPanel {
     }
 
     /**
-     * Repuebla sólo el combo: no toca las filas ya elegidas. Es la misma trampa que
-     * {@code LavarropasCard.setJabones} documenta para el jabón, y se vuelve crítica en cuanto el
-     * plan de Ajustes recargue el catálogo en cada apertura de pantalla.
+     * Repuebla sólo el combo: no toca las filas ya elegidas. Es la misma regla que
+     * {@code LavarropasCard.setJabones} aplica al jabón, y desde que los catálogos se releen en
+     * <b>cada</b> carga de Ciclos —para que un cambio en Ajustes se vea al volver— ya no es una
+     * precaución: sin ella, cada F5 vaciaría la lista de insumos de una card a medio configurar.
      */
     public void setCatalogo(List<InsumoCatalogo> catalogo) {
         this.catalogo = catalogo == null ? List.of() : List.copyOf(catalogo);

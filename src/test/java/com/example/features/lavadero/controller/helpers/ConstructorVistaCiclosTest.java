@@ -56,7 +56,7 @@ class ConstructorVistaCiclosTest {
                                      Map<Integer, List<ElementoCicloItem>> itemsActivos) {
         return new DatosCiclos(activos, disponibles,
                 List.of(new Lavarropas(1, true), new Lavarropas(2, true), new Lavarropas(3, true)),
-                itemsActivos, List.of(), List.of());
+                itemsActivos, List.of(), List.of(), Map.of());
     }
 
     private static VistaCard card(VistaCiclos vista, int numero) {
@@ -267,7 +267,7 @@ class ConstructorVistaCiclosTest {
                 new DatosCiclos(Map.of(3, ciclo(12, 3)), List.of(),
                         List.of(new Lavarropas(1, true), new Lavarropas(2, true),
                                 new Lavarropas(3, false)),
-                        Map.of(3, List.of()), List.of(), List.of()),
+                        Map.of(3, List.of()), List.of(), List.of(), Map.of()),
                 CARDS, staging);
 
         assertTrue(card(vista, 3).esActivo());

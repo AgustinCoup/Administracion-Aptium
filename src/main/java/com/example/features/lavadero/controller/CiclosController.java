@@ -10,6 +10,7 @@ import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos;
 import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos.VistaCard;
 import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos.VistaCiclos;
 import com.example.features.lavadero.controller.helpers.DatosCiclos;
+import com.example.features.lavadero.controller.helpers.SelectorJabonAutomatico;
 import com.example.features.lavadero.controller.helpers.StagingCiclos;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
@@ -22,6 +23,7 @@ import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.service.CatalogoInsumosService;
 import com.example.features.lavadero.service.CatalogoJabonesService;
 import com.example.features.lavadero.service.CicloLavaderoService;
+import com.example.features.lavadero.service.JabonPorTipoLavadoService;
 import com.example.features.lavadero.service.LavarropasService;
 import com.example.features.lavadero.view.DistribucionUnidadesDialog;
 import com.example.features.lavadero.view.EquipoSubdivisionDialog;
@@ -70,6 +72,7 @@ public class CiclosController {
     private final LavarropasService     lavarropasService;
     private final CatalogoJabonesService catalogoJabonesService;
     private final CatalogoInsumosService catalogoInsumosService;
+    private final JabonPorTipoLavadoService jabonPorTipoLavadoService;
 
     /**
      * Las cards que la pantalla tiene dibujadas ahora. <b>No es final</b>: la grilla se arma con
@@ -92,11 +95,12 @@ public class CiclosController {
      */
     private Integer lavarropasArrastre = null;
 
-    /** El catálogo de jabones no cambia en runtime: se lee una sola vez, al abrir la pantalla. */
-    private boolean jabonesCargados = false;
-
-    /** Ídem para el catálogo de insumos extra. */
-    private boolean insumosCargados = false;
+    /**
+     * Jabón por defecto de cada tipo de lavado, tal como vino de la última lectura. Estado de
+     * controller: sólo se toca en el EDT, y lo consume {@link SelectorJabonAutomatico} desde el
+     * callback de la card.
+     */
+    private Map<TipoLavado, JabonCatalogo> defaultsJabon = Map.of();
 
     /**
      * Carga en vuelo, para descartar su resultado si se dispara otra. Dos refrescos rápidos
@@ -156,12 +160,14 @@ public class CiclosController {
     public CiclosController(PantallaCiclos pantalla, CicloLavaderoService cicloLavaderoService,
                              LavarropasService lavarropasService,
                              CatalogoJabonesService catalogoJabonesService,
-                             CatalogoInsumosService catalogoInsumosService) {
+                             CatalogoInsumosService catalogoInsumosService,
+                             JabonPorTipoLavadoService jabonPorTipoLavadoService) {
         this.pantalla = pantalla;
         this.cicloLavaderoService   = cicloLavaderoService;
         this.lavarropasService      = lavarropasService;
         this.catalogoJabonesService = catalogoJabonesService;
         this.catalogoInsumosService = catalogoInsumosService;
+        this.jabonPorTipoLavadoService = jabonPorTipoLavadoService;
         // Arranca vacío: la grilla nace sin cards y la puebla el primer pintar() con lo que
         // trae la base.
         this.cards    = pantalla.getAllCards();
@@ -236,6 +242,13 @@ public class CiclosController {
                 else lanzarCiclo(num);
             });
             card.setOnConfiguracionChanged(() -> card.actualizarBtnAccion());
+            // Carga automática del jabón. Toda la decisión está en el selector; acá sólo se le
+            // pasa lo que la card muestra ahora y se aplica lo que devuelva. `defaultsJabon` se
+            // lee en el momento del evento, no al cablear: el mapa se reemplaza en cada pintar.
+            card.setOnTipoLavadoChanged(() ->
+                SelectorJabonAutomatico.alCambiarTipo(
+                        card.getTipoLavado(), card.getJabon(), card.getOrigenJabon(), defaultsJabon)
+                    .ifPresent(card::setJabonAutomatico));
         }
     }
 
@@ -264,9 +277,10 @@ public class CiclosController {
 
     /**
      * Único camino de lectura de la pantalla: ciclos activos, disponibles, lavarropas, los
-     * elementos de cada ciclo en curso y —la primera vez— el catálogo de jabones salen de
-     * una sola tarea de fondo. El armado de la vista queda entero en el hilo de la interfaz
-     * porque necesita el staging (ver {@link ConstructorVistaCiclos}).
+     * elementos de cada ciclo en curso y los tres catálogos (jabones, insumos y los defaults de
+     * jabón por tipo de lavado) salen de una sola tarea de fondo. El armado de la vista queda
+     * entero en el hilo de la interfaz porque necesita el staging (ver
+     * {@link ConstructorVistaCiclos}).
      *
      * <p><b>Es lo que dispara el botón "Actualizar" / F5</b>, no {@link #abrirPantalla()}:
      * {@code recargar()} respeta la config que el operador está tipeando en las cards libres,
@@ -275,13 +289,9 @@ public class CiclosController {
      */
     public void recargar() {
         cancelarCargaEnCurso();
-        // La decisión de traer los catálogos se toma acá, en el EDT: si esta carga se cancela,
-        // los flags siguen en false y la siguiente los vuelve a pedir.
-        boolean conJabones = !jabonesCargados;
-        boolean conInsumos = !insumosCargados;
         cargaEnCurso = TareaUI.<DatosCiclos>nueva()
             .nombre("carga-ciclos-lavadero")
-            .leer(() -> leerDatos(conJabones, conInsumos))
+            .leer(this::leerDatos)
             .pintar(this::pintar)
             .siFalla(e -> {
                 pantalla.mostrarError(Constantes.Mensajes.ERROR_CARGAR_DATOS);
@@ -306,8 +316,17 @@ public class CiclosController {
         if (cargaEnCurso != null) cargaEnCurso.cancelar();
     }
 
-    /** Fuera del hilo de la interfaz. No toca ningún campo del controller. */
-    private DatosCiclos leerDatos(boolean conJabones, boolean conInsumos) {
+    /**
+     * Fuera del hilo de la interfaz. No toca ningún campo del controller.
+     *
+     * <p>Los tres catálogos —jabones, insumos y los defaults de jabón— se leen <b>en cada
+     * lectura</b>, no una sola vez por sesión: se editan desde Ajustes, y cachearlos dejaba a
+     * Ciclos mostrando un catálogo viejo hasta reiniciar la app. Releerlos siempre se puede
+     * porque {@code setJabones} y {@code setInsumos} ya no destruyen lo que el operador eligió.
+     * Son tres consultas chicas y van <b>secuenciales</b>, como el resto de este método: ninguna
+     * operación mantiene dos conexiones abiertas a la vez.</p>
+     */
+    private DatosCiclos leerDatos() {
         Map<Integer, CicloLavadero> activos = cicloLavaderoService.obtenerCiclosActivosPorLavarropas();
 
         Map<Integer, List<ElementoCicloItem>> itemsActivos = new HashMap<>();
@@ -323,8 +342,9 @@ public class CiclosController {
             // tienen un ciclo sin finalizar, que necesitan card para poder finalizarlo.
             lavarropasService.obtenerDibujables(),
             itemsActivos,
-            conJabones ? catalogoJabonesService.obtenerActivos() : List.of(),
-            conInsumos ? catalogoInsumosService.obtenerActivos() : List.of()
+            catalogoJabonesService.obtenerActivos(),
+            catalogoInsumosService.obtenerActivos(),
+            jabonPorTipoLavadoService.obtenerDefaults()
         );
     }
 
@@ -393,20 +413,23 @@ public class CiclosController {
      * de lanzar— hasta el refresco siguiente. Que los tres {@code set*} vivan en un solo lugar es
      * lo que impide que el próximo que se agregue herede el mismo problema.</p>
      *
-     * <p>Los catálogos no cambian en runtime, así que se leen una sola vez: las listas llegan
-     * vacías cuando esta carga no las pidió, y en ese caso no hay nada que aplicar. {@code
-     * setInsumos} repuebla sólo el combo: los insumos que el operador ya eligió son configuración
-     * y siguen ahí (recargar() / F5 no pisa lo que se está tipeando).</p>
+     * <p>Los tres se aplican en <b>cada</b> pintado, sin caché: se editan desde Ajustes, y es
+     * justamente volver a Ciclos lo que tiene que mostrar el cambio. Ninguno de los dos
+     * {@code set*} pisa lo que el operador eligió — {@code setJabones} conserva la selección si
+     * ese jabón sigue en el catálogo y {@code setInsumos} repuebla sólo el combo—, que es lo que
+     * hace que esto se pueda correr en cada F5.</p>
+     *
+     * <p>Con el caché puesto, dejar este bloque antes del re-cableado fallaba sólo la primera vez
+     * (la card nueva nacía con el combo vacío). Sin caché, el mismo error sería <b>intermitente</b>:
+     * falla el pintado que crea la card y anda el siguiente. Por eso el orden está fijado en
+     * {@link #pintar} y los tres {@code set*} viven acá y no desperdigados.</p>
      */
     private void aplicarCatalogos(DatosCiclos datos) {
-        if (!datos.jabones().isEmpty()) {
-            cards.values().forEach(card -> card.setJabones(datos.jabones()));
-            jabonesCargados = true;
-        }
-        if (!datos.insumos().isEmpty()) {
-            cards.values().forEach(card -> card.setInsumos(datos.insumos()));
-            insumosCargados = true;
-        }
+        defaultsJabon = datos.defaultsJabon();
+        cards.values().forEach(card -> {
+            card.setJabones(datos.jabones());
+            card.setInsumos(datos.insumos());
+        });
     }
 
     /**

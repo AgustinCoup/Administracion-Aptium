@@ -5,6 +5,7 @@ import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.Lavarropas;
+import com.example.features.lavadero.model.TipoLavado;
 
 import java.util.List;
 import java.util.Map;
@@ -24,18 +25,24 @@ import java.util.Map;
  *                                  Finalizar, nunca cierra, y su ropa desaparece de Disponibles
  *                                  <i>y</i> de Salidas (ver {@code LavarropasDAO.obtenerDibujables})
  * @param itemsPorLavarropasActivo  lavarropas ocupado → lo que hay adentro de su ciclo
- * @param jabones                   catálogo de jabones, o lista vacía si esta carga no lo
- *                                  pidió porque ya estaba en memoria (no cambia en runtime)
- * @param insumos                   catálogo de insumos extra, o lista vacía si esta carga no lo
- *                                  pidió porque ya estaba en memoria (no cambia en runtime).
- *                                  Es el <b>catálogo</b> que alimenta el combo de cada card, no
- *                                  los insumos elegidos: ésos son configuración de card y viven
- *                                  sólo en el hilo de la interfaz
+ * @param jabones                   catálogo de jabones <b>activos</b>, para el combo de cada card.
+ *                                  Se relee en cada carga: los catálogos se editan desde Ajustes,
+ *                                  y leerlos una sola vez por sesión dejaba a Ciclos mostrando uno
+ *                                  viejo hasta reiniciar la app
+ * @param insumos                   catálogo de insumos extra activos, ídem. Es el <b>catálogo</b>
+ *                                  que alimenta el combo de cada card, no los insumos elegidos:
+ *                                  ésos son configuración de card y viven sólo en el hilo de la
+ *                                  interfaz
+ * @param defaultsJabon             jabón por defecto de cada tipo de lavado, para la carga
+ *                                  automática. Un tipo sin default no está en el mapa, y el jabón
+ *                                  que sí está <b>puede venir dado de baja</b>: qué hacer con eso
+ *                                  lo decide {@link SelectorJabonAutomatico}, no la consulta
  */
 public record DatosCiclos(Map<Integer, CicloLavadero> ciclosActivos,
                           List<ElementoCicloItem> disponibles,
                           List<Lavarropas> lavarropas,
                           Map<Integer, List<ElementoCicloItem>> itemsPorLavarropasActivo,
                           List<JabonCatalogo> jabones,
-                          List<InsumoCatalogo> insumos) {
+                          List<InsumoCatalogo> insumos,
+                          Map<TipoLavado, JabonCatalogo> defaultsJabon) {
 }

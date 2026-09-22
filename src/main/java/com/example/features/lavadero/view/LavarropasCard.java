@@ -3,6 +3,7 @@ package com.example.features.lavadero.view;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
+import com.example.features.lavadero.model.OrigenJabon;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lavadero.view.helpers.LavarropasCardTableModel;
 import com.example.features.lavadero.view.helpers.PanelInsumosCard;
@@ -51,8 +52,28 @@ public class LavarropasCard extends JPanel {
     private Integer cicloActivo = null;
     private boolean collapsed   = false;
 
+    /**
+     * Quién puso el jabón que muestra el combo. Arranca en {@link OrigenJabon#AUTO} <b>con el
+     * combo vacío</b>, para que la primera elección de tipo de lavado lo complete sola.
+     */
+    private OrigenJabon origenJabon = OrigenJabon.AUTO;
+
+    /**
+     * Estamos tocando el combo de jabón desde el código, no el operador.
+     *
+     * <p>Hace falta porque {@code setSelectedItem} dispara <b>el mismo</b> {@code ActionListener}
+     * que un click, y los dos no significan lo mismo: sin este flag, el jabón que puso la carga
+     * automática se marcaría {@link OrigenJabon#MANUAL} él solo y a partir de ahí el tipo de lavado
+     * dejaría de arrastrarlo — el operador vería que "a veces anda". Lo mismo vale para el
+     * {@code removeAllItems} + {@code addItem} de {@link #setJabones}, que también avisa.</p>
+     *
+     * <p>Es el patrón {@code silenciandoCallback} de {@code PantallaHistorialLavadero}.</p>
+     */
+    private boolean aplicandoCambioProgramatico = false;
+
     private Runnable onAccion;
     private Runnable onConfiguracionChanged;
+    private Runnable onTipoLavadoChanged;
 
     public LavarropasCard(int numero) {
         this.numero    = numero;
@@ -127,10 +148,19 @@ public class LavarropasCard extends JPanel {
         }
         RestriccionesCampo.soloNumerosDecimales(txtLitrosJabon);
 
-        // Obligatorios y sin default: arrancan vacíos para forzar una elección explícita.
+        // El tipo de lavado arranca vacío: es una elección explícita del operador, y además es lo
+        // que dispara la carga automática del jabón.
         cmbTipoLavado.setSelectedItem(null);
-        cmbTipoLavado.addActionListener(e -> notificarConfiguracionChanged());
-        cmbJabon.addActionListener(e -> notificarConfiguracionChanged());
+        cmbTipoLavado.addActionListener(e -> {
+            notificarConfiguracionChanged();
+            notificarTipoLavadoChanged();
+        });
+        // Un cambio del combo de jabón cuenta como elección a mano SALVO que lo esté haciendo el
+        // código (carga automática, pegado, repoblado del catálogo): ver aplicandoCambioProgramatico.
+        cmbJabon.addActionListener(e -> {
+            if (!aplicandoCambioProgramatico) origenJabon = OrigenJabon.MANUAL;
+            notificarConfiguracionChanged();
+        });
         panelInsumos.setOnCambio(this::notificarConfiguracionChanged);
 
         config.add(rowPanel("Tipo:", cmbTipoLavado));
@@ -151,6 +181,33 @@ public class LavarropasCard extends JPanel {
     /** Un solo canal para todos los campos de la config: tipo, jabón, mL de jabón e insumos extra. */
     private void notificarConfiguracionChanged() {
         if (onConfiguracionChanged != null) SwingUtilities.invokeLater(onConfiguracionChanged);
+    }
+
+    /**
+     * Canal <b>aparte</b> del de configuración, y no un caso particular de aquél: el controller lo
+     * usa para correr {@code SelectorJabonAutomatico}, que escribe en el combo de jabón. Va
+     * sincrónico —sin {@code invokeLater}— para que el jabón quede puesto antes de que
+     * {@code actualizarBtnAccion()} lo mire: diferido, el botón "Lanzar" se encendería un evento
+     * más tarde y la card se vería a medio completar.
+     */
+    private void notificarTipoLavadoChanged() {
+        if (onTipoLavadoChanged != null) onTipoLavadoChanged.run();
+    }
+
+    /**
+     * Corre {@code accion} sin que el combo de jabón lo cuente como elección del operador.
+     *
+     * <p>Reentrante a propósito (guarda y restaura el valor previo): {@link #resetConfiguracion()}
+     * ya corre adentro de este flag y podría terminar llamando a algo que lo vuelva a pedir.</p>
+     */
+    private void programaticamente(Runnable accion) {
+        boolean previo = aplicandoCambioProgramatico;
+        aplicandoCambioProgramatico = true;
+        try {
+            accion.run();
+        } finally {
+            aplicandoCambioProgramatico = previo;
+        }
     }
 
     private static JPanel rowPanel(String labelText, JComponent field) {
@@ -240,12 +297,19 @@ public class LavarropasCard extends JPanel {
      * Deja la configuración (tipo de lavado, jabón, mililitros de jabón e insumos extra) en su
      * estado inicial. Se llama al abrir la pantalla, no en cada refresco: pisar esto durante un
      * lanzamiento borraría lo que el operador está tipeando en otra card.
+     *
+     * <p>Vuelve también a {@link OrigenJabon#AUTO}: una card reseteada no tiene ninguna elección a
+     * mano que respetar, y dejarla en {@code MANUAL} con el combo vacío la volvería inmune a la
+     * carga automática para siempre.</p>
      */
     public void resetConfiguracion() {
-        cmbTipoLavado.setSelectedItem(null);
-        cmbJabon.setSelectedItem(null);
-        txtLitrosJabon.setText("");
-        panelInsumos.limpiar();
+        programaticamente(() -> {
+            cmbTipoLavado.setSelectedItem(null);
+            cmbJabon.setSelectedItem(null);
+            txtLitrosJabon.setText("");
+            panelInsumos.limpiar();
+        });
+        origenJabon = OrigenJabon.AUTO;
         actualizarBtnAccion();
     }
 
@@ -268,15 +332,81 @@ public class LavarropasCard extends JPanel {
 
     public JabonCatalogo getJabon()  { return (JabonCatalogo) cmbJabon.getSelectedItem(); }
 
+    /** Quién puso el jabón que muestra el combo. Lo lee {@code SelectorJabonAutomatico}. */
+    public OrigenJabon getOrigenJabon() { return origenJabon; }
+
     /**
-     * Deja el combo sin selección después de llenarlo: {@code addItem} autoselecciona el primer
-     * ítem, y el jabón es una elección explícita del operador como el tipo de lavado, no un
-     * default que se lleva puesto sin mirar.
+     * Repuebla el catálogo del combo de jabón <b>conservando lo que ya estaba elegido</b>, si ese
+     * jabón sigue estando en la lista nueva; si no está, limpia la selección y vuelve a
+     * {@link OrigenJabon#AUTO}.
+     *
+     * <p>Antes dejaba el combo sin selección siempre, porque el jabón era "una elección explícita
+     * del operador, no un default que se lleva puesto sin mirar". Con el jabón automático eso
+     * dejó de ser cierto —ahora sí hay un default por tipo de lavado— y además los catálogos
+     * pasaron a releerse en <b>cada</b> lectura de la pantalla (es lo que hace que un cambio en
+     * Ajustes se vea al volver a Ciclos): vaciando la selección, cada F5 le borraría el jabón a
+     * una card a medio configurar, que es el mismo invariante que {@code recargar()} protege para
+     * el resto de la config.</p>
+     *
+     * <p><b>La comparación es por {@link JabonCatalogo#getId()}, nunca por referencia.</b> Dos
+     * lecturas del catálogo devuelven objetos distintos para el mismo jabón y {@code JabonCatalogo}
+     * no tiene {@code equals}, así que buscar el elegido con {@code contains} daría siempre "no
+     * está" y el efecto sería el de vaciar el combo en cada refresco.</p>
      */
     public void setJabones(java.util.List<JabonCatalogo> jabones) {
-        cmbJabon.removeAllItems();
-        for (JabonCatalogo j : jabones) cmbJabon.addItem(j);
-        cmbJabon.setSelectedItem(null);
+        JabonCatalogo elegido = getJabon();
+        programaticamente(() -> {
+            cmbJabon.removeAllItems();
+            for (JabonCatalogo j : jabones) cmbJabon.addItem(j);
+            JabonCatalogo reencontrado = buscarEnCombo(elegido);
+            cmbJabon.setSelectedItem(reencontrado);
+            if (reencontrado == null) origenJabon = OrigenJabon.AUTO;
+        });
+    }
+
+    /**
+     * Carga el jabón que decidió la regla automática. Deja el origen en {@link OrigenJabon#AUTO},
+     * así que un cambio posterior de tipo de lavado lo vuelve a reemplazar.
+     */
+    public void setJabonAutomatico(JabonCatalogo jabon) {
+        seleccionarJabon(jabon, OrigenJabon.AUTO);
+    }
+
+    /**
+     * Carga un jabón como si lo hubiera elegido el operador: lo usa el pegado de configuración.
+     * Deja el origen en {@link OrigenJabon#MANUAL}, o sea que el tipo de lavado ya no lo pisa —
+     * pegar es una elección a mano, y la regla es que ésa siempre pesa más.
+     */
+    public void setJabonManual(JabonCatalogo jabon) {
+        seleccionarJabon(jabon, OrigenJabon.MANUAL);
+    }
+
+    /**
+     * <p><b>Hay que resolver la instancia del combo por id, no pasarle la que llega.</b> Un
+     * {@code JComboBox} no editable <b>rechaza en silencio</b> un {@code setSelectedItem} con un
+     * objeto que no sea {@code equals} a alguno de sus ítems, y {@code JabonCatalogo} compara por
+     * referencia: el jabón que viene del mapa de defaults es otro objeto que el del catálogo del
+     * combo, así que pasárselo tal cual no seleccionaría nada — y sin un solo error.</p>
+     *
+     * <p>Si el jabón no está en el catálogo del combo no se toca nada, que es lo mismo que hace la
+     * regla cuando no hay default: el combo sólo ofrece jabones activos, y forzar uno que no
+     * ofrece dejaría la card mostrando algo que el operador no puede volver a elegir.</p>
+     */
+    private void seleccionarJabon(JabonCatalogo jabon, OrigenJabon origen) {
+        JabonCatalogo enElCombo = buscarEnCombo(jabon);
+        if (enElCombo == null) return;
+        programaticamente(() -> cmbJabon.setSelectedItem(enElCombo));
+        origenJabon = origen;
+    }
+
+    /** El ítem del combo con el mismo id, o {@code null}. Ver {@link #seleccionarJabon}. */
+    private JabonCatalogo buscarEnCombo(JabonCatalogo jabon) {
+        if (jabon == null) return null;
+        for (int i = 0; i < cmbJabon.getItemCount(); i++) {
+            JabonCatalogo item = cmbJabon.getItemAt(i);
+            if (item != null && item.getId() == jabon.getId()) return item;
+        }
+        return null;
     }
 
     public BigDecimal getLitrosJabon() {
@@ -290,11 +420,10 @@ public class LavarropasCard extends JPanel {
 
     /**
      * Repuebla el catálogo del combo de insumos, pero <b>no</b> borra los que el operador ya
-     * eligió — al revés que {@link #setJabones}, que sí deja el combo sin selección. La
-     * diferencia es a propósito: el jabón es un combo de elección única y repoblarlo no pierde
-     * nada, mientras que los insumos son una lista que el operador arma con varios clics, y
-     * pisarla en cada refresco sería el mismo bug que {@code recargar()} evita para el resto de
-     * la config.
+     * eligió — la misma regla que {@link #setJabones}, por el mismo motivo: los dos catálogos se
+     * releen en cada carga de la pantalla (se editan desde Ajustes), así que pisar lo elegido
+     * sería borrarle el trabajo al operador en cada F5, el mismo bug que {@code recargar()} evita
+     * para el resto de la config.
      */
     public void setInsumos(java.util.List<InsumoCatalogo> catalogo) {
         panelInsumos.setCatalogo(catalogo);
@@ -317,6 +446,14 @@ public class LavarropasCard extends JPanel {
 
     public void setOnAccion(Runnable r)               { this.onAccion = r; }
     public void setOnConfiguracionChanged(Runnable r) { this.onConfiguracionChanged = r; }
+
+    /**
+     * Canal aparte del de configuración: avisa <b>sólo</b> cuando cambió el tipo de lavado, que es
+     * lo único que dispara la carga automática del jabón. Meterlo dentro de
+     * {@code onConfiguracionChanged} obligaría a ese callback a recordar el tipo anterior para
+     * saber si tiene que correr la regla, y correrla de más pisaría el jabón al tipear los mL.
+     */
+    public void setOnTipoLavadoChanged(Runnable r)    { this.onTipoLavadoChanged = r; }
 
     /**
      * Apaga el botón de acción mientras hay una escritura en vuelo, para que un segundo
