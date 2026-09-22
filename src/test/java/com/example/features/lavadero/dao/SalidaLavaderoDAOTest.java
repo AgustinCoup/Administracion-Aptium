@@ -118,6 +118,20 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         assertFalse(item.esInstanciaDeEquipo());
     }
 
+    /** El join a catalogo_elementos_lavadero es histórico: no filtra por activo. */
+    @Test
+    void elementoDadoDeBaja_sigueApareciendoComoPendienteDeListo() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 5));
+        ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = FALSE WHERE nombre = '" + nombreA + "'");
+        try {
+            List<ElementoLavadoPendiente> pendientes = dao.obtenerLavadosPendientesDeListo();
+
+            assertTrue(pendientes.stream().anyMatch(p -> nombreA.equals(p.elementoNombre())));
+        } finally {
+            ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = TRUE WHERE nombre = '" + nombreA + "'");
+        }
+    }
+
     @Test
     void unElementoRepartidoEnDosCiclos_apareceComoDosFilasConSaldosIndependientes() throws SQLException {
         lanzarYFinalizar(1, movimiento(clasifA, 4));

@@ -27,8 +27,30 @@ public class ClasificacionLavaderoService {
         this.catalogoDAO      = catalogoDAO;
     }
 
+    /** Para el combo de Clasificación: sólo los elementos que el operador puede elegir. */
     public List<ElementoCatalogo> obtenerCatalogo() {
+        return catalogoDAO.findActivos();
+    }
+
+    /** Todos, activos y de baja: para Ajustes. */
+    public List<ElementoCatalogo> obtenerCatalogoCompleto() {
         return catalogoDAO.findAll();
+    }
+
+    public void darDeBajaElemento(int id) {
+        exigirIdValido(id);
+        catalogoDAO.darDeBaja(id);
+    }
+
+    public void reactivarElemento(int id) {
+        exigirIdValido(id);
+        catalogoDAO.reactivar(id);
+    }
+
+    private static void exigirIdValido(int id) {
+        ValidationException.builder()
+            .addErrorIf(id <= 0, "Debe indicar un elemento de catálogo válido.")
+            .throwIfHasErrors();
     }
 
     /**

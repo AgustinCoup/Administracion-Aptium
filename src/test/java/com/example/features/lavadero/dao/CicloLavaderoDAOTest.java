@@ -253,6 +253,41 @@ class CicloLavaderoDAOTest extends AbstractDAOTest {
         }
     }
 
+    /**
+     * El join a catalogo_jabones es histórico: un jabón dado de baja sigue apareciendo, con su
+     * nombre, en los ciclos que lo usaron.
+     */
+    @Test
+    void jabonDadoDeBaja_sigueApareciendoEnLosCiclosActivos() throws SQLException {
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(1));
+        ejecutarSQL("UPDATE catalogo_jabones SET activo = FALSE WHERE id = " + jabon.getId());
+        try {
+            CicloLavadero ciclo = dao.obtenerCiclosActivosPorLavarropas().get(1);
+
+            assertEquals(jabon.getId(), ciclo.getJabon().getId());
+            assertEquals(jabon.getNombre(), ciclo.getJabon().getNombre());
+        } finally {
+            ejecutarSQL("UPDATE catalogo_jabones SET activo = TRUE WHERE id = " + jabon.getId());
+        }
+    }
+
+    /**
+     * El join a catalogo_elementos_lavadero es histórico: un elemento dado de baja sigue
+     * apareciendo, con su nombre, en los ciclos que lo llevaron.
+     */
+    @Test
+    void elementoDadoDeBaja_sigueApareciendoEnElementosDeCiclo() throws SQLException {
+        lanzarCiclo(1, config(new BigDecimal("1.5")), linea(1));
+        ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = FALSE WHERE id = " + elementoCatalogoId);
+        try {
+            List<ElementoCicloItem> items = dao.obtenerElementosDeCiclo(lastInsertIdDeCiclos());
+
+            assertFalse(items.isEmpty());
+        } finally {
+            ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = TRUE WHERE id = " + elementoCatalogoId);
+        }
+    }
+
     // ── tipo de lavado ───────────────────────────────────────────────────────
     // Los tres caminos de lectura tienen su propio SELECT: si uno se olvida de la columna,
     // sólo lo detecta un round-trip por cada uno.

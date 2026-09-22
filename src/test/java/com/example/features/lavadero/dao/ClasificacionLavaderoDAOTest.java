@@ -11,6 +11,7 @@ import com.example.features.lavadero.model.IngresoLavadero;
 import com.example.features.lavadero.model.IngresoLavaderoResumen;
 import com.example.infrastructure.db.ConnectionPool;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -79,6 +80,47 @@ class ClasificacionLavaderoDAOTest extends AbstractDAOTest {
         assertThrows(ConflictoConcurrenciaException.class,
             () -> clasificacionDAO.guardar(999999, elementos));
         assertEquals(0, contarFilas("elementos_clasificacion_lavadero"));
+    }
+
+    // ── guarda de elementos activos ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("Un elemento dado de baja entre que se pintó el combo y se guardó se rechaza")
+    void guardar_conElementoDadoDeBaja_lanzaYNoInsertaNada() throws SQLException {
+        int elementoId = elementoId(1);
+        ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = FALSE WHERE id = " + elementoId);
+        try {
+            List<ElementoClasificacion> elementos = List.of(new ElementoClasificacion(elementoId, 2));
+
+            BusinessException e = assertThrows(BusinessException.class,
+                () -> clasificacionDAO.guardar(ingresoId, elementos));
+
+            assertTrue(e.getMessage().contains("dado de baja"));
+            assertEquals(0, contarFilas("elementos_clasificacion_lavadero"));
+            assertEquals("PENDIENTE", estadoDelIngreso(ingresoId),
+                "la transacción se revierte entera: el ingreso no queda marcado CLASIFICADO");
+        } finally {
+            ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = TRUE WHERE id = " + elementoId);
+        }
+    }
+
+    @Test
+    @DisplayName("Con varios elementos, uno de baja rechaza todo el guardado, no sólo esa línea")
+    void guardar_variosElementosUnoDeBaja_noInsertaNingunaLinea() throws SQLException {
+        int elementoBueno = elementoId(1);
+        int elementoDeBaja = elementoId(2);
+        ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = FALSE WHERE id = " + elementoDeBaja);
+        try {
+            List<ElementoClasificacion> elementos = List.of(
+                new ElementoClasificacion(elementoBueno, 3),
+                new ElementoClasificacion(elementoDeBaja, 1));
+
+            assertThrows(BusinessException.class, () -> clasificacionDAO.guardar(ingresoId, elementos));
+
+            assertEquals(0, contarFilas("elementos_clasificacion_lavadero"));
+        } finally {
+            ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = TRUE WHERE id = " + elementoDeBaja);
+        }
     }
 
     // ── guarda de concurrencia ────────────────────────────────────────────────

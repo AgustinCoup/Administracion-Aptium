@@ -137,6 +137,20 @@ class HistorialLavaderoDAOTest extends AbstractDAOTest {
         assertEquals(0, new BigDecimal("12.50").compareTo(fila.pesoTotalKg()));
     }
 
+    /** El join a catalogo_elementos_lavadero es histórico: no filtra por activo. */
+    @Test
+    void elementoDadoDeBaja_sigueApareciendoEnElHistorial() throws SQLException {
+        lanzarYFinalizar(1, new LineaLanzamiento(clasifA, 4));
+        ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = FALSE WHERE nombre = '" + nombreA + "'");
+        try {
+            IngresoHistorial fila = historialDe(ingresoId);
+
+            assertTrue(fila.elementos().contains(nombreA));
+        } finally {
+            ejecutarSQL("UPDATE catalogo_elementos_lavadero SET activo = TRUE WHERE nombre = '" + nombreA + "'");
+        }
+    }
+
     @Test
     void resumen_traeTambienLosIngresosFinalizados() throws SQLException {
         ejecutarSQL("UPDATE ingresos_lavadero SET estado = 'FINALIZADO' WHERE id = " + ingresoId);

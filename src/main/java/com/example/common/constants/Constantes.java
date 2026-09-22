@@ -350,6 +350,36 @@ public final class Constantes {
                 + "Reactivalo desde esta misma pantalla en vez de crearlo de nuevo: así recupera "
                 + "su historia en vez de empezar de cero con el mismo número.";
 
+        // ── Baja lógica de catálogos (Lavadero, Ortopedias, Otros) ───────────
+        // Un único mensaje de conflicto para las tres ABM de Lavadero (elementos, jabones,
+        // insumos) y para las de Ortopedias/Otros: la baja/reactivación de un ítem de catálogo
+        // es la misma forma de choque en todos los casos, y esa pantalla no tiene el matiz de
+        // "la tanda que estabas armando" que sí tiene CONFLICTO_LAVARROPAS_DE_BAJA.
+        public static final String CONFLICTO_CATALOGO =
+            "Otro usuario ya cambió el estado de este elemento del catálogo mientras lo mirabas.\n"
+                + "La pantalla se actualizó: ya está como lo querías dejar.";
+        // El alta rechazada por nombre/descripción duplicada, con los dos mismos dos carteles que
+        // LAVARROPAS_YA_EXISTE / LAVARROPAS_YA_EXISTE_DE_BAJA y por la misma razón: reactivar un
+        // ítem existente recupera su historia, así que el segundo caso tiene una acción concreta
+        // que el primero no tiene. Compartido por las tres ABM de catálogo de Lavadero.
+        public static final String CATALOGO_ITEM_YA_EXISTE =
+            "\"%s\" ya existe en el catálogo. Elegí otro nombre.";
+        public static final String CATALOGO_ITEM_YA_EXISTE_DE_BAJA =
+            "\"%s\" ya existe en el catálogo pero está dado de baja.\n"
+                + "Reactivalo desde Ajustes en vez de crearlo de nuevo.";
+        // Rechazo dentro de la transacción de ClasificacionLavaderoDAO.guardar: el combo sólo
+        // ofrece elementos activos, pero la baja pudo ocurrir entre que la pantalla se pintó y
+        // que el operador guardó.
+        public static final String ELEMENTO_DE_BAJA =
+            "El elemento \"%s\" fue dado de baja del catálogo y no se puede clasificar.\n"
+                + "Actualizá la pantalla y elegí otro, o reactivalo desde Ajustes.";
+        // Rechazo dentro de CatalogoOtrosDAO.obtenerOCrear: el autocompletado de "Otros" no
+        // ofrece las descripciones de baja, pero la carga es texto libre y la baja pudo ocurrir
+        // entre que se tipeó y que se guardó.
+        public static final String MATERIAL_OTROS_DE_BAJA =
+            "«%s» está dado de baja y no se puede cargar. Elegí otra descripción o reactivalo "
+                + "desde Ajustes.";
+
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y
         // dice QUÉ HACER, no qué falló: su build quedó atrás de la base compartida.

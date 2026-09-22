@@ -323,8 +323,8 @@ public class CiclosController {
             // tienen un ciclo sin finalizar, que necesitan card para poder finalizarlo.
             lavarropasService.obtenerDibujables(),
             itemsActivos,
-            conJabones ? catalogoJabonesService.obtenerTodos() : List.of(),
-            conInsumos ? catalogoInsumosService.obtenerTodos() : List.of()
+            conJabones ? catalogoJabonesService.obtenerActivos() : List.of(),
+            conInsumos ? catalogoInsumosService.obtenerActivos() : List.of()
         );
     }
 

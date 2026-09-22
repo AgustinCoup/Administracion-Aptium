@@ -2,6 +2,7 @@ package com.example.features.lavadero.dao;
 
 import com.example.common.constants.Constantes;
 import com.example.common.dao.ControlConcurrencia;
+import com.example.common.exception.BusinessException;
 import com.example.common.exception.DatabaseException;
 import com.example.features.lavadero.model.ElementoClasificacion;
 import com.example.features.lavadero.model.EstadoIngresoLavadero;
@@ -9,6 +10,7 @@ import com.example.infrastructure.db.TransactionalConnection;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -37,20 +39,33 @@ public class ClasificacionLavaderoDAO {
         + "WHERE id = ? AND estado = '" + EstadoIngresoLavadero.PENDIENTE + "'";
 
     /**
+     * Estado de cada elemento en el momento de guardar, dentro de la misma transacción. El combo
+     * de la pantalla sólo ofrece elementos activos, pero una baja puede ocurrir entre que la
+     * pantalla pintó y que el operador guardó — es la única ventana que este chequeo cierra.
+     */
+    private static final String SQL_ELEMENTO_ESTADO =
+        "SELECT nombre, activo FROM catalogo_elementos_lavadero WHERE id = ?";
+
+    /**
      * Persiste la clasificación entera en una sola transacción.
      *
      * <p>El cambio de estado va <b>antes</b> del batch de inserts a propósito: si el ingreso ya
      * no está {@code PENDIENTE} no hay nada que insertar, y hacerlo al revés dejaría las líneas
-     * escritas para tener que volverlas atrás.</p>
+     * escritas para tener que volverlas atrás. La verificación de elementos activos va después,
+     * también antes del batch: es la última guarda antes de escribir, y si rechaza no queda
+     * ninguna línea insertada — la transacción entera se revierte sola al no commitear.</p>
      *
      * @throws com.example.common.exception.ConflictoConcurrenciaException si el ingreso ya no
      *         está {@code PENDIENTE}; no queda ninguna línea insertada
+     * @throws BusinessException si algún elemento fue dado de baja del catálogo; no queda
+     *         ninguna línea insertada
      * @throws DatabaseException si falla el SQL
      */
     public void guardar(int ingresoId, List<ElementoClasificacion> elementos) {
         try (TransactionalConnection tx = TransactionalConnection.begin()) {
             Connection conn = tx.get();
             marcarClasificado(conn, ingresoId);
+            verificarElementosActivos(conn, elementos);
             insertarElementos(conn, ingresoId, elementos);
             tx.commit();
         } catch (SQLException e) {
@@ -63,6 +78,25 @@ public class ClasificacionLavaderoDAO {
             ps.setInt(1, ingresoId);
             ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(),
                 Constantes.Mensajes.CONFLICTO_CLASIFICACION);
+        }
+    }
+
+    private void verificarElementosActivos(Connection conn, List<ElementoClasificacion> elementos)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_ELEMENTO_ESTADO)) {
+            for (ElementoClasificacion e : elementos) {
+                ps.setInt(1, e.getElementoId());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        throw new BusinessException(String.format(
+                            Constantes.Mensajes.ELEMENTO_DE_BAJA, "elemento #" + e.getElementoId()));
+                    }
+                    if (!rs.getBoolean("activo")) {
+                        throw new BusinessException(String.format(
+                            Constantes.Mensajes.ELEMENTO_DE_BAJA, rs.getString("nombre")));
+                    }
+                }
+            }
         }
     }
 

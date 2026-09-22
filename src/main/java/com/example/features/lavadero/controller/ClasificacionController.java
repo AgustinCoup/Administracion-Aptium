@@ -1,6 +1,7 @@
 package com.example.features.lavadero.controller;
 
 import com.example.common.constants.Constantes;
+import com.example.common.exception.BusinessException;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.ValidationException;
 import com.example.features.lavadero.model.ElementoCatalogo;
@@ -151,6 +152,14 @@ public class ClasificacionController {
         if (causa instanceof ConflictoConcurrenciaException) {
             panel.mostrarError(causa.getMessage());
             cargarIngresosSinClasificar();
+            return;
+        }
+        // Alta de catálogo duplicada (agregarElementoCatalogo) o un elemento dado de baja entre
+        // que se pintó el combo y se guardó (guardar): las dos llegan como BusinessException, con
+        // un mensaje propio que ERROR_GUARDAR_DATOS taparía. No es un ConflictoConcurrenciaException
+        // porque no hubo una escritura pisada: es una regla de negocio que impide la operación.
+        if (causa instanceof BusinessException) {
+            panel.mostrarError(causa.getMessage());
             return;
         }
         panel.mostrarError(Constantes.Mensajes.ERROR_GUARDAR_DATOS);

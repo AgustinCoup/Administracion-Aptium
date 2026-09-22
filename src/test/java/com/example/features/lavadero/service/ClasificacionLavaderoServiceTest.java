@@ -135,11 +135,46 @@ class ClasificacionLavaderoServiceTest {
     // ── obtenerCatalogo ───────────────────────────────────────────────────────
 
     @Test
-    void obtenerCatalogo_delegaACatalogoDAO() {
+    void obtenerCatalogo_delegaAFindActivos() {
         List<ElementoCatalogo> catalogo = List.of(new ElementoCatalogo(1, "Batas"));
-        when(catalogoDAO.findAll()).thenReturn(catalogo);
+        when(catalogoDAO.findActivos()).thenReturn(catalogo);
 
         assertEquals(catalogo, service.obtenerCatalogo());
+        verify(catalogoDAO).findActivos();
+    }
+
+    @Test
+    void obtenerCatalogoCompleto_delegaAFindAll() {
+        List<ElementoCatalogo> catalogo = List.of(new ElementoCatalogo(1, "Batas", false));
+        when(catalogoDAO.findAll()).thenReturn(catalogo);
+
+        assertEquals(catalogo, service.obtenerCatalogoCompleto());
         verify(catalogoDAO).findAll();
+    }
+
+    // ── darDeBajaElemento / reactivarElemento ─────────────────────────────────
+
+    @Test
+    void darDeBajaElemento_idInvalido_lanzaValidationExceptionYNoLlegaAlDAO() {
+        assertThrows(ValidationException.class, () -> service.darDeBajaElemento(0));
+        verifyNoInteractions(catalogoDAO);
+    }
+
+    @Test
+    void darDeBajaElemento_valido_delegaAlDAO() {
+        service.darDeBajaElemento(3);
+        verify(catalogoDAO).darDeBaja(3);
+    }
+
+    @Test
+    void reactivarElemento_idInvalido_lanzaValidationExceptionYNoLlegaAlDAO() {
+        assertThrows(ValidationException.class, () -> service.reactivarElemento(-1));
+        verifyNoInteractions(catalogoDAO);
+    }
+
+    @Test
+    void reactivarElemento_valido_delegaAlDAO() {
+        service.reactivarElemento(3);
+        verify(catalogoDAO).reactivar(3);
     }
 }
