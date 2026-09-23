@@ -505,11 +505,14 @@ public class CiclosController {
     private void avisarStagingDescartado(List<Integer> porOcupacion, List<Integer> porBaja) {
         Set<Integer> yaAvisados = lavarropasYaAvisados;
         lavarropasYaAvisados = Set.of();                 // se consume acá, haya descarte o no
-        // `yaAvisados` se aplica sólo a la ocupación: lo que ya nombró el cartel del choque son
-        // los lavarropas de la tanda que se intentó lanzar. Un descarte por baja detectado en esa
-        // misma relectura no lo dijo nadie.
+        // `yaAvisados` se aplica a los dos: `nombraLosLavarropasDeLaTanda` lo llena tanto para
+        // LavarropasOcupadoException como para LavarropasDeBajaException, así que el cartel del
+        // choque de una tanda rechazada por baja también nombró esos lavarropas. Si acá sólo se
+        // aplicara a la ocupación, un choque por baja mostraría el cartel del error y después,
+        // en el mismo repintado, el de STAGING_DESCARTADO_POR_BAJA para los mismos lavarropas —
+        // el modal duplicado que este conjunto existe para evitar.
         avisar(porOcupacion, yaAvisados, Constantes.Mensajes.STAGING_DESCARTADO_POR_OCUPACION);
-        avisar(porBaja, Set.of(), Constantes.Mensajes.STAGING_DESCARTADO_POR_BAJA);
+        avisar(porBaja, yaAvisados, Constantes.Mensajes.STAGING_DESCARTADO_POR_BAJA);
     }
 
     private void avisar(List<Integer> lavarropas, Set<Integer> yaAvisados, String plantilla) {

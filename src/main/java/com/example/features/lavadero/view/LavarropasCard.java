@@ -501,9 +501,26 @@ public class LavarropasCard extends JPanel {
      */
     public void pegarConfiguracion(ConfiguracionCopiada c) {
         cmbTipoLavado.setSelectedItem(c.tipo());
-        setJabonManual(c.jabon());
+        pegarJabon(c.jabon());
         txtLitrosJabon.setText(c.litrosJabon() == null ? "" : c.litrosJabon().toString());
         panelInsumos.setSeleccionados(c.insumos());
+    }
+
+    /**
+     * Variante de {@link #setJabonManual} para el pegado: si {@code jabon} es {@code null} —la
+     * card copiada no tenía uno elegido, o {@code DepuradorPegado} lo quitó por estar de baja—
+     * <b>limpia</b> el combo en vez de no tocar nada.
+     *
+     * <p>{@code setJabonManual(null)} no sirve acá: es un no-op a propósito, pensado para la carga
+     * automática ("sin default configurado, no se toca nada"). Pegar es distinto — "se copia lo
+     * que hay, no lo que debería haber" — así que un origen sin jabón tiene que <b>vaciar</b> el
+     * destino, no dejarle el que ya tenía. El origen queda en {@link OrigenJabon#MANUAL} en los
+     * dos casos: pegar siempre cuenta como una elección a mano, tenga o no jabón.</p>
+     */
+    private void pegarJabon(JabonCatalogo jabon) {
+        JabonCatalogo enElCombo = buscarEnCombo(jabon);
+        programaticamente(() -> cmbJabon.setSelectedItem(enElCombo));
+        origenJabon = OrigenJabon.MANUAL;
     }
 
     /**

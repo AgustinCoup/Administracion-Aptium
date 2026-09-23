@@ -360,6 +360,25 @@ class LavarropasCardTest {
         assertFalse(destino.tieneItems());
     }
 
+    /**
+     * "Se copia lo que hay, no lo que debería haber": si la card de origen no tenía jabón (o
+     * {@code DepuradorPegado} se lo quitó por estar de baja), el destino tiene que quedar sin
+     * jabón, no conservar el que ya tenía elegido.
+     */
+    @Test
+    void pegarUnJabonNuloLimpiaElJabonQueYaEstabaElegidoEnElDestino() {
+        LavarropasCard destino = new LavarropasCard(5);
+        destino.setJabones(List.of(SKIP, LIDER));
+        destino.pegarConfiguracion(
+            new ConfiguracionCopiada(TipoLavado.SUCIO, LIDER, null, List.of()));
+        assertEquals(LIDER, destino.getJabon());
+
+        destino.pegarConfiguracion(new ConfiguracionCopiada(TipoLavado.SUCIO, null, null, List.of()));
+
+        assertNull(destino.getJabon());
+        assertEquals(OrigenJabon.MANUAL, destino.getOrigenJabon());
+    }
+
     @Test
     void pegarUnaConfigConLitrosJabonNuloDejaElCampoVacio() {
         LavarropasCard destino = new LavarropasCard(5);

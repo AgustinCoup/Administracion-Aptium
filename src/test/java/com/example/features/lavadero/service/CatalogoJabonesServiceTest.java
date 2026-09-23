@@ -1,8 +1,8 @@
 package com.example.features.lavadero.service;
 
 import com.example.common.exception.ValidationException;
-import com.example.features.lavadero.dao.CatalogoInsumosDAO;
-import com.example.features.lavadero.model.InsumoCatalogo;
+import com.example.features.lavadero.dao.CatalogoJabonesDAO;
+import com.example.features.lavadero.model.JabonCatalogo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,44 +18,44 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class CatalogoInsumosServiceTest {
+class CatalogoJabonesServiceTest {
 
     @Mock
-    private CatalogoInsumosDAO dao;
+    private CatalogoJabonesDAO dao;
 
-    private CatalogoInsumosService service;
+    private CatalogoJabonesService service;
 
     @BeforeEach
     void setUp() {
-        service = new CatalogoInsumosService(dao);
+        service = new CatalogoJabonesService(dao);
     }
 
     @Test
     void constructor_daoNull_lanzaIllegalArgument() {
-        assertThrows(IllegalArgumentException.class, () -> new CatalogoInsumosService(null));
-    }
-
-    @Test
-    void obtenerTodos_delegaADAO() {
-        List<InsumoCatalogo> insumos = List.of(new InsumoCatalogo(1, "Suavizante", true));
-        when(dao.findAll()).thenReturn(insumos);
-
-        assertSame(insumos, service.obtenerTodos());
+        assertThrows(IllegalArgumentException.class, () -> new CatalogoJabonesService(null));
     }
 
     @Test
     void obtenerActivos_delegaADAO() {
-        List<InsumoCatalogo> insumos = List.of(new InsumoCatalogo(1, "Suavizante", true));
-        when(dao.findActivos()).thenReturn(insumos);
+        List<JabonCatalogo> jabones = List.of(new JabonCatalogo(1, "Skip"));
+        when(dao.findActivos()).thenReturn(jabones);
 
-        assertSame(insumos, service.obtenerActivos());
+        assertSame(jabones, service.obtenerActivos());
+    }
+
+    @Test
+    void obtenerTodos_delegaADAO() {
+        List<JabonCatalogo> jabones = List.of(new JabonCatalogo(1, "Skip", false));
+        when(dao.findAll()).thenReturn(jabones);
+
+        assertSame(jabones, service.obtenerTodos());
     }
 
     @Test
     void agregar_nombreValido_delegaADAOConElNombreRecortado() {
-        service.agregar("  Potenciador  ");
+        service.agregar("  Lider  ");
 
-        verify(dao).agregar("Potenciador");
+        verify(dao).agregar("Lider");
     }
 
     @Test
