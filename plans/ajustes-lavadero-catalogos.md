@@ -1,5 +1,23 @@
 # Plan B — Ajustes de Lavadero: bajas de catálogo, ABM de lavarropas, jabón automático y copiar/pegar
 
+## ✅ CERRADO (2026-09-22)
+
+| Paso | Commit |
+|---|---|
+| 1 — V26 | `926cf66` |
+| 2 — ABM de lavarropas | `f3bcedb` |
+| 3 — Grilla de Ciclos desde la base | `9b287c4` |
+| 4 — Baja lógica de catálogos de Lavadero | `009d2dd` |
+| 5 — Baja lógica de Ortopedias y Otros | `f2d1a08` |
+| 6 — Pestañas de Ajustes | `6c61b30` |
+| 7 — Jabón automático AUTO/MANUAL | `31eaf90` |
+| 8 — Copiar y pegar configuración | `c7dba3b` |
+| 9 — Revisión, cobertura, docs y cierre | `d4fc4d2` (fix: dos hallazgos de `/code-review high` + cobertura de services) + este commit de cierre |
+
+`mvn verify` en verde (1503 tests), `/code-review high` corrido sobre el diff completo del plan
+(`dcd2e73..HEAD`) con dos hallazgos CONFIRMED aplicados — ver `d4fc4d2`. `CLAUDE.md`,
+`hallazgos-arquitectura-pendientes.md` (#9c, #10) y la memoria del proyecto actualizados.
+
 **Objetivo:** un menú de configuración en **Ajustes** que permita (a) **dar de baja y reactivar**
 elementos de catálogo de Lavadero, Ortopedias y Otros, (b) **agregar, dar de baja y reactivar
 lavarropas**, y (c) **agregar jabones e insumos extra** y elegir el **jabón por defecto de cada tipo
@@ -1289,11 +1307,14 @@ Smoke manual:
 
 ### Criterio de salida
 
-- [ ] `mvn verify` en verde, cobertura ≥ 80 % en las clases planas nuevas
-- [ ] Las seis secciones de `CLAUDE.md` actualizadas
-- [ ] `hallazgos-arquitectura-pendientes.md` refleja el estado nuevo de #9c y #10
-- [ ] Memoria e índice actualizados
-- [ ] Commit: `docs: ajustes de lavadero, catalogos y jabon automatico`
+- [x] `mvn verify` en verde (1503 tests), cobertura ≥ 80 % en las clases planas nuevas
+      (`DepuradorPegado` 100 %, `ConfiguracionCopiada` 91 %, `SelectorJabonAutomatico` 93 %,
+      `ConstructorVistaCiclos` 100 %) y en los services nuevos (`CatalogoJabonesService`,
+      `CatalogoInsumosService`, `JabonPorTipoLavadoService`, `LavarropasService`: 100 %)
+- [x] Las seis secciones de `CLAUDE.md` actualizadas
+- [x] `hallazgos-arquitectura-pendientes.md` refleja el estado nuevo de #9c y #10
+- [x] Memoria e índice actualizados
+- [x] Commit: `docs: ajustes de lavadero, catalogos y jabon automatico`
 
 ---
 

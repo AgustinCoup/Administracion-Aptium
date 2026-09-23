@@ -331,12 +331,25 @@ optimista: no hay ningún dato leído por el operador que se esté pisando. Se a
 técnica — reintento sobre la violación de UNIQUE, o una tabla de secuencias — y merece su propia
 decisión.
 
-### (c) Los ABM quedaron fuera  (BAJO)
+### (c) Los ABM quedaron fuera  (BAJO)  **resuelto parcialmente (2026-09-22, rama `PrimeraRevisionLavadero`)**
 
-Catálogo, clientes, instituciones, profesionales y ajustes escriben sin guarda. Es lo acordado: son
+Catálogo, clientes, instituciones, profesionales y ajustes escriben sin guarda. Era lo acordado: son
 pantallas de mantenimiento, con un solo operador editándolas en la práctica, y meterles guardas
-tendría más costo de UX (carteles de conflicto en lugares donde nadie choca) que beneficio. Si algún
-día dos personas mantienen catálogos a la vez, el mecanismo ya está armado y es agregar el `WHERE`.
+tendría más costo de UX (carteles de conflicto en lugares donde nadie choca) que beneficio.
+
+**Lo que cambió:** el plan [`ajustes-lavadero-catalogos.md`](ajustes-lavadero-catalogos.md) (Pasos 1
+a 9) le dio ruta de UI **y** guarda a los cuatro catálogos que antes no tenían ninguna de las dos —
+elementos, jabones e insumos de Lavadero (baja lógica nueva, `V26`) y descripciones de Ortopedias
+(la `vigente` de `V16`, que ya existía pero sin pantalla que la prendiera/apagara) — más un ABM
+nuevo de lavarropas. Las tres bajas de catálogo de Lavadero y la de lavarropas usan
+`ControlConcurrencia.exigirFilaAfectada`/CAS igual que el resto de las guardas del repo; ver
+"Lavadero — catálogos, lavarropas y jabón automático" en `CLAUDE.md`.
+
+**Lo que sigue afuera** (sin ruta de UI, no sólo sin guarda): la **edición** de descripciones y
+volúmenes de Ortopedias (`CatalogoDAO.guardarDescripcion`, ver `#10` — sigue sin llamador), y los
+ABM de instituciones, profesionales, clientes (alta/edición, más allá de eliminar/fusionar) y el
+resto de Ajustes. Si algún día dos personas mantienen esos catálogos a la vez, el mecanismo ya está
+armado y es agregar el `WHERE`.
 
 ---
 
@@ -353,7 +366,11 @@ viva `PantallaVerCDEv1` en el punto 4 del plan de sesiones de abajo.
   lost update. Pero es **inalcanzable, no inofensivo**: sólo lo llama `CatalogoService.guardarDescripcion`,
   que a su vez no tiene llamador de UI. Si algún día se cablea una pantalla de edición de catálogo,
   revisar esto primero — es la única entrada de esta lista que necesitaría guarda el día que deje
-  de estar muerta.
+  de estar muerta. **Sigue muerta tras `ajustes-lavadero-catalogos.md` (verificado 2026-09-22):**
+  ese plan agregó la pantalla de baja/reactivación de Ortopedias (`PanelCatalogoOrtopedias`), que
+  a propósito **no tiene botón Agregar/Editar** — su propio comentario señala este método como el
+  candidato natural del día que se agregue, y ese día será quien lo active el que tenga que sumarle
+  guarda.
 - **`CatalogoDAO.eliminar`, `guardar`, `actualizar`** — cero llamadores; `guardar` y `actualizar`
   son stubs que devuelven `false`.
 - **`CatalogoOtrosDAO`** — no tiene `update` ni `delete`: sólo lookup + `obtenerOCrear`

@@ -275,6 +275,61 @@ las tres columnas se borraron.
 - **El `JOIN` a `catalogo_insumos` no filtra por `activo`:** es un join histórico, un insumo dado de
   baja tiene que seguir mostrando su nombre en los ciclos viejos.
 
+## Lavadero — catálogos, lavarropas y jabón automático
+
+Los tres catálogos propios de Lavadero (`catalogo_elementos_lavadero`, `catalogo_jabones`,
+`catalogo_insumos`) y `lavarropas` tienen **baja lógica** (columna `activo`, `V26`), reactivable
+desde Ajustes. Nada se borra.
+
+**Regla, no lista de archivos: CARGA filtra, HISTÓRICO no filtra.** Las consultas de **carga** —lo
+que alimenta un combo, una lista o un autocompletado donde el operador *elige* algo nuevo— filtran
+por `activo = TRUE`. Los **joins históricos** (Ver Ciclos, Historial, Salidas, Lotes, Ver Equipos)
+**no filtran nunca**: un elemento dado de baja tiene que seguir mostrando su nombre en los registros
+viejos. Una fila que aparece sin nombre, o que desaparece de un historial, **no se parece a un error
+y nadie la reporta**. `SQL_DISPONIBLES` es histórico y no de carga a propósito, aunque alimente una
+tabla de la pantalla de Ciclos: es ropa **ya clasificada** esperando un ciclo, y esconderla dejaría
+ropa física imposible de procesar.
+
+**`catalogo_descripciones` (Ortopedias) no entró en la `V26`: ya tenía `vigente` desde `V16`**,
+respetada por Ingreso y por las diez rutas de Correcciones. La columna se llama `activo` en las
+tablas nuevas y `vigente` en la vieja, **a propósito**: renombrar obligaría a una migración sobre una
+tabla histórica y a tocar diez consultas y el javadoc de `V16`, para cero cambio de comportamiento.
+La inconsistencia se documenta acá para que nadie la "unifique".
+
+**ABM de lavarropas** (`LavarropasDAO`/`LavarropasService`, pestaña Ajustes): el alta lleva **el
+número que elige el operador** — se rechaza si ya existe, **incluso de baja**, porque un lavarropas
+nuevo que reemplaza a uno retirado necesita estadísticas aisladas del anterior; reactivar, en
+cambio, **recupera la historia** de la misma máquina. La baja se rechaza si el lavarropas tiene un
+ciclo en curso (no hay forma de saber si tiene ropa cargada por otro cliente en ese momento, así que
+la guarda real mira el ciclo, no el staging — ver "Concurrencia" más abajo). Sin
+`capacidad_litros` (`V27`): no se mostraba en ninguna pantalla.
+
+**La grilla de Ciclos se arma desde la base, no desde una constante.**
+`Constantes.Lavadero.CANTIDAD_LAVARROPAS` ya no existe: la cantidad de cards sale de
+`LavarropasDAO.obtenerDibujables()` — los lavarropas **activos, más los inactivos que todavía tienen
+un ciclo sin finalizar** (si esos quedaran sin card, ese ciclo se queda sin botón Finalizar y su
+ropa desaparece de Disponibles y de Salidas). `PantallaCiclos.reconstruirGrilla` **reusa** las
+`LavarropasCard` que sobreviven a un alta o una baja, y sólo crea o descarta las que cambiaron: así
+no se pierde la configuración que el operador está tipeando en las cards que no cambiaron, el mismo
+invariante que protege `recargar()`.
+
+**Jabón por defecto por tipo de lavado (`jabon_por_tipo_lavado`, `V26`), con origen AUTO/MANUAL.**
+`SelectorJabonAutomatico` carga el jabón configurado en Ajustes al elegir el tipo de lavado, pero
+**una elección a mano siempre pesa más que la automática**: `LavarropasCard` recuerda quién puso el
+jabón (`OrigenJabon`) y sólo lo reemplaza si sigue en `AUTO`. Sin default configurado, o con el
+default dado de baja, no se toca nada.
+
+**Copiar y pegar configuración entre cards.** `LavarropasCard.copiarConfiguracion()` /
+`pegarConfiguracion()` mueven tipo, jabón, mL e insumos — nunca los elementos cargados, que son
+staging y no configuración. `pegarConfiguracion` pega primero el **tipo** (que puede disparar la
+carga automática del jabón) y **recién después** el jabón, para que la elección pegada pise al
+automático y no al revés. Pegar **siempre** cuenta como una elección a mano (`MANUAL`), incluso si
+el jabón copiado era `null`: ahí limpia el combo del destino en vez de dejar el que ya tenía elegido
+— "se copia lo que hay, no lo que debería haber". Los insumos se **reemplazan** enteros, no se
+suman. El filtrado contra catálogos dados de baja entre que se copió y que se pegó vive en
+`DepuradorPegado` (`controller/helpers/`) y no en la card: el controller es quien conoce los
+catálogos vigentes de la última lectura, la card no.
+
 ## Lavadero — Historial
 
 Pantalla de **consulta de sólo lectura** (botón "Historial" del menú de Lavadero, hoy grilla 2×3).
@@ -467,13 +522,15 @@ ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Mensajes.CONFLICTO_MA
 - **Excepción:** `ConflictoConcurrenciaException extends BusinessException` (`common/exception/`).
   Es subclase a propósito: los controllers ya rutean `BusinessException` como aviso al usuario, así
   que el conflicto llega bien sin tocar un `catch`; quien lo quiera distinguir usa `instanceof`.
-  Hay dos subtipos, los dos del lanzamiento de tandas: `SaldoConsumidoException` y
-  `LavarropasOcupadoException`. **La regla que codifican es positiva y hay que dejarla así:**
-  *el staging de la tanda se descarta **sólo** ante `SaldoConsumidoException`*, que es el único
-  choque que invalida el trabajo en curso (parte de esa ropa ya se la llevó otro y el operador no
-  sabe qué parte). Escrita al revés —"descartar salvo ante X"— cualquier choque nuevo del
-  lanzamiento hereda por omisión un descarte que no le corresponde: hoy el lavarropas ocupado y el
-  rollback por deadlock de `lanzarTanda`, donde la ropa sigue disponible y no quedó nada escrito.
+  Hay tres subtipos, los tres del lanzamiento de tandas: `SaldoConsumidoException`,
+  `LavarropasOcupadoException` y `LavarropasDeBajaException` (ésta última, del `ABM` de lavarropas
+  contra un lavarropas que se dio de baja mientras se armaba la tanda). **La regla que codifican es
+  positiva y hay que dejarla así:** *el staging de la tanda se descarta **sólo** ante
+  `SaldoConsumidoException`*, que es el único choque que invalida el trabajo en curso (parte de esa
+  ropa ya se la llevó otro y el operador no sabe qué parte). Escrita al revés —"descartar salvo ante
+  X"— cualquier choque nuevo del lanzamiento hereda por omisión un descarte que no le corresponde:
+  hoy el lavarropas ocupado, la baja, y el rollback por deadlock de `lanzarTanda`, donde la ropa
+  sigue disponible y no quedó nada escrito.
 - **Mensajes:** `Constantes.Mensajes.CONFLICTO_*`. Van al operador y dicen **qué cambió y qué
   hacer**, no qué falló.
 - **La relectura que alimenta la guarda va `FOR UPDATE`.** Comparar contra un `SELECT` común no
@@ -538,18 +595,33 @@ Compara **máximos**, no continuidad: una migración atrasada que se aplica desp
 `outOfOrder(true)` que existe porque dos ramas se pisaron los números) no es una base adelantada.
 
 **Dónde hay guarda hoy:** Registrar Estado (ortopedias y otros), Lanzar Lote, Clasificación de
-Lavadero, Lanzar Tanda (saldo de las líneas **y** lavarropas libre), Finalizar Ciclo, Salidas +
-derivación al CDE, las diez rutas de Correcciones (ortopedias y otros), fusionar clientes y eliminar
-cliente.
+Lavadero, Lanzar Tanda (saldo de las líneas, lavarropas libre **y lavarropas activo**), Finalizar
+Ciclo, Salidas + derivación al CDE, las diez rutas de Correcciones (ortopedias y otros), fusionar
+clientes, eliminar cliente, el **ABM de lavarropas** (alta, baja con `FOR UPDATE` sobre el ciclo
+activo, reactivación) y las **bajas/reactivaciones de los cuatro catálogos** (elementos, jabones e
+insumos de Lavadero; descripciones de Ortopedias vía `vigente`).
 
-**Tres guardas del lavadero que no son CAS sobre una columna, sino `SELECT … FOR UPDATE` previo:**
+**Cuatro guardas del lavadero que no son CAS sobre una columna, sino `SELECT … FOR UPDATE` previo:**
 `CicloLavaderoDAO.SQL_BLOQUEAR_LINEA` (saldo de la línea de clasificación),
 `SQL_CICLO_ACTIVO_DE_LAVARROPAS` (un lavarropas no puede tener dos ciclos sin finalizar — de los dos
-la pantalla sólo puede mostrar uno, así que el otro queda invisible e imposible de finalizar) y los
-dos de `SalidaLavaderoDAO.bloquearAfectados` (saldo de la tanda y de la instancia antes de marcar
-Listo). Los tres siguen la misma regla y por el mismo motivo: **se toman todos los bloqueos antes de
-la primera lectura no bloqueante**, porque bajo el `REPEATABLE READ` de MySQL la vista de lectura se
-fija ahí y un bloqueo tomado después leería un saldo anterior a sí mismo. H2 no lo delata.
+la pantalla sólo puede mostrar uno, así que el otro queda invisible e imposible de finalizar),
+`SQL_LAVARROPAS_ACTIVO` (un lavarropas no puede lanzar un ciclo si lo dieron de baja mientras se
+armaba la tanda) y los dos de `SalidaLavaderoDAO.bloquearAfectados` (saldo de la tanda y de la
+instancia antes de marcar Listo). Todas siguen la misma regla y por el mismo motivo: **se toman
+todos los bloqueos antes de la primera lectura no bloqueante**, porque bajo el `REPEATABLE READ` de
+MySQL la vista de lectura se fija ahí y un bloqueo tomado después leería un saldo anterior a sí
+mismo. H2 no lo delata.
+
+**El orden de bloqueo entre `lanzarTanda` y `darDeBaja` de un lavarropas es `lavarropas` →
+`ciclos_lavadero`, en las dos, y no es opcional.** La trampa es que el `FOR UPDATE` de
+`SQL_CICLO_ACTIVO_DE_LAVARROPAS` sobre un lavarropas libre no matchea ninguna fila: lo que toma ahí
+es un **gap lock**, y dos gap locks entre sí son **compatibles**, así que no ordena nada al tomarse
+— `lanzarTanda` recién conflictúa sobre `ciclos_lavadero` en su `INSERT`, al final. Lo único que
+serializa las dos operaciones entre sí es el bloqueo **exclusivo** que las dos toman primero sobre la
+fila de `lavarropas`. Invertir el orden en una de las dos —tomar el de `ciclos_lavadero` antes que
+el de `lavarropas`— da un deadlock cruzado que **H2 no delata** (no toma gap locks). Detalle
+completo, con el diagrama del entrelazado, en el javadoc de `CicloLavaderoDAO.lanzarTanda` y de
+`LavarropasDAO.darDeBaja`.
 
 **`ciclos_lavadero.fecha_fin` lleva su propio CAS** (`AND fecha_fin IS NULL` en
 `SQL_MARCAR_FINALIZADO`): es el único dato que dice "esto está lavado" —lo leen Salidas y todo el
@@ -563,9 +635,12 @@ operaciones válidas con un cartel de conflicto falso. Lo que se cuenta va con `
 `MaterialDAO.eliminarMaterialesPorCodigo`); el batch queda para las escrituras cuyas filas a nadie
 le importan.
 
-**Qué quedó afuera:** el resto de los ABM (catálogo,
-instituciones, profesionales, y el resto de Ajustes) — sin ruta alcanzable desde la UI, no sin
-superficie de escritura; anotado en `plans/hallazgos-arquitectura-pendientes.md`. `obtenerSiguienteSecuencia`
+**Qué quedó afuera:** los ABM de catálogo **ya no están afuera** — Lavadero (elementos, jabones,
+insumos), Ortopedias y Otros tienen baja lógica con ruta de UI en Ajustes y guarda de concurrencia
+(ver "Lavadero — catálogos, lavarropas y jabón automático" arriba). Lo que sigue sin ruta alcanzable
+desde la UI es la **edición** de descripciones y volúmenes de Ortopedias
+(`CatalogoDAO.guardarDescripcion`, todavía sin llamador) y los ABM de instituciones, profesionales y
+el resto de Ajustes; anotado en `plans/hallazgos-arquitectura-pendientes.md`. `obtenerSiguienteSecuencia`
 de `LoteDAO` no es un caso de esta regla: no hay dato leído por el operador que se esté pisando,
 es asignación de identidad, y se resuelve con reintento sobre la violación de `UNIQUE`
 (`LoteDAO.lanzarLote`, ver su javadoc).
@@ -581,7 +656,7 @@ lo es: un test de deadlock pasaría en H2 y mentiría sobre producción.
 
 ## Tests
 
-JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1347 tests en `src/test/java`,
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1503 tests en `src/test/java`,
 reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
 DAO/Service/Controller/helper relevante).
 
