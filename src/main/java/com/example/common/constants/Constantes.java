@@ -380,6 +380,14 @@ public final class Constantes {
             "«%s» está dado de baja y no se puede cargar. Elegí otra descripción o reactivalo "
                 + "desde Ajustes.";
 
+        // ── Copiar y pegar configuración entre cards de Ciclos ───────────────
+        // No es un choque de concurrencia: el jabón o el insumo pegado quedó de baja entre que
+        // se copió y que se pegó (o ya lo estaba). Se pega todo lo demás y se avisa lo que falta
+        // completar a mano.
+        public static final String PEGADO_OMITIO_INACTIVOS =
+            "No se pegaron estos ítems porque fueron dados de baja: %s.\n"
+                + "Completá la configuración a mano.";
+
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y
         // dice QUÉ HACER, no qué falló: su build quedó atrás de la base compartida.
@@ -468,6 +476,8 @@ public final class Constantes {
         public static final String LANZAR_TODOS     = "Lanzar Todo";
         public static final String FINALIZAR_TODOS  = "Finalizar Todo";
         public static final String DESCARTAR_TODOS  = "Descartar";
+        public static final String COPIAR           = "Copiar";
+        public static final String PEGAR            = "Pegar";
         public static final String AJUSTES               = "Ajustes";
         public static final String BUSCAR_ACTUALIZACIONES = "Buscar actualizaciones";
         public static final String SALIDAS          = "Salidas";

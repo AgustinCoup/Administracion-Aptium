@@ -1,5 +1,7 @@
 package com.example.features.lavadero.view;
 
+import com.example.common.constants.Constantes;
+import com.example.features.lavadero.model.ConfiguracionCopiada;
 import com.example.features.lavadero.model.ElementoCicloItem;
 import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
@@ -41,6 +43,8 @@ public class LavarropasCard extends JPanel {
     private final JComboBox<JabonCatalogo> cmbJabon         = new JComboBox<>();
     private final JTextField              txtLitrosJabon   = new JTextField(4);
     private final PanelInsumosCard        panelInsumos     = new PanelInsumosCard();
+    private final JButton              btnCopiar        = new JButton(Constantes.Botones.COPIAR);
+    private final JButton              btnPegar         = new JButton(Constantes.Botones.PEGAR);
     private final JButton              btnAccion        = new JButton("Lanzar");
     private final JPanel               panelConfig;
 
@@ -74,6 +78,8 @@ public class LavarropasCard extends JPanel {
     private Runnable onAccion;
     private Runnable onConfiguracionChanged;
     private Runnable onTipoLavadoChanged;
+    private Runnable onCopiar;
+    private Runnable onPegar;
 
     public LavarropasCard(int numero) {
         this.numero    = numero;
@@ -167,6 +173,18 @@ public class LavarropasCard extends JPanel {
         config.add(rowPanel("Jabón:", cmbJabon));
         config.add(rowPanel("mL Jabón:", txtLitrosJabon));
         config.add(panelInsumos);
+
+        // Adentro de panelConfig a propósito: setModoActivo lo oculta entero, así que "una card
+        // ocupada no se copia ni se pega" sale gratis, sin una condición acá ni en el controller.
+        btnCopiar.setFont(FONT_CONFIG);
+        btnPegar.setFont(FONT_CONFIG);
+        btnCopiar.addActionListener(e -> { if (onCopiar != null) onCopiar.run(); });
+        btnPegar.setEnabled(false);
+        btnPegar.addActionListener(e -> { if (onPegar != null) onPegar.run(); });
+        JPanel filaBotonesCopiarPegar = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 1));
+        filaBotonesCopiarPegar.add(btnCopiar);
+        filaBotonesCopiarPegar.add(btnPegar);
+        config.add(filaBotonesCopiarPegar);
 
         DocumentListener notificador = new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e)  { notificarConfiguracionChanged(); }
@@ -454,6 +472,39 @@ public class LavarropasCard extends JPanel {
      * saber si tiene que correr la regla, y correrla de más pisaría el jabón al tipear los mL.
      */
     public void setOnTipoLavadoChanged(Runnable r)    { this.onTipoLavadoChanged = r; }
+
+    public void setOnCopiar(Runnable r) { this.onCopiar = r; }
+    public void setOnPegar(Runnable r)  { this.onPegar = r; }
+
+    /** Enciende o apaga "Pegar". Lo maneja el controller: sabe si hay algo en el portapapeles. */
+    public void setPegarHabilitado(boolean habilitado) { btnPegar.setEnabled(habilitado); }
+
+    // ── Copiar y pegar configuración ────────────────────────────────────────
+
+    /** No incluye los elementos cargados — eso es staging, no configuración de card. */
+    public ConfiguracionCopiada copiarConfiguracion() {
+        return new ConfiguracionCopiada(
+            getTipoLavado(), getJabon(), getLitrosJabon(), getInsumosSeleccionados());
+    }
+
+    /**
+     * Pega una configuración copiada de otra card, en este orden: el <b>tipo</b> (que puede
+     * disparar la carga automática del jabón, vía {@code onTipoLavadoChanged}), el <b>jabón</b>
+     * con {@link #setJabonManual}, que pisa lo que el automático acaba de poner y deja el origen
+     * en {@link OrigenJabon#MANUAL}, los <b>mL</b> y por último los <b>insumos</b>, que
+     * reemplazan la lista elegida y no se suman a ella.
+     *
+     * <p><b>El orden entre tipo y jabón no es cosmético.</b> Al revés —jabón primero, tipo
+     * después— el automático que dispara el cambio de tipo pisaría el jabón recién pegado.</p>
+     *
+     * <p>No toca los elementos cargados ni el estado de la tabla.</p>
+     */
+    public void pegarConfiguracion(ConfiguracionCopiada c) {
+        cmbTipoLavado.setSelectedItem(c.tipo());
+        setJabonManual(c.jabon());
+        txtLitrosJabon.setText(c.litrosJabon() == null ? "" : c.litrosJabon().toString());
+        panelInsumos.setSeleccionados(c.insumos());
+    }
 
     /**
      * Apaga el botón de acción mientras hay una escritura en vuelo, para que un segundo

@@ -1,5 +1,6 @@
 package com.example.features.lavadero.view;
 
+import com.example.features.lavadero.model.ConfiguracionCopiada;
 import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.OrigenJabon;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.swing.*;
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -275,6 +277,98 @@ class LavarropasCardTest {
 
         assertTrue(card.tieneConfiguracionCompleta());
         assertTrue(card.getInsumosSeleccionados().isEmpty());
+    }
+
+    // ── Copiar y pegar ───────────────────────────────────────────────────────
+
+    @Test
+    void copiarConfiguracionNoIncluyeLosElementosCargados() throws Exception {
+        LavarropasCard card = new LavarropasCard(1);
+        card.setJabones(List.of(SKIP));
+        card.setInsumos(List.of(SUAVIZANTE));
+        field(card, "cmbTipoLavado", JComboBox.class).setSelectedItem(TipoLavado.SUCIO);
+        field(card, "cmbJabon", JComboBox.class).setSelectedItem(SKIP);
+        field(card, "txtLitrosJabon", JTextField.class).setText("500");
+        agregarInsumo(card, SUAVIZANTE);
+
+        ConfiguracionCopiada copiada = card.copiarConfiguracion();
+
+        assertEquals(TipoLavado.SUCIO, copiada.tipo());
+        assertEquals(SKIP, copiada.jabon());
+        assertEquals(new BigDecimal("500"), copiada.litrosJabon());
+        assertEquals(List.of(SUAVIZANTE), copiada.insumos());
+    }
+
+    @Test
+    void pegarConfiguracionDejaLosCuatroCampos() {
+        LavarropasCard origen = new LavarropasCard(1);
+        origen.setJabones(List.of(SKIP, LIDER));
+        origen.setInsumos(List.of(SUAVIZANTE, POTENCIADOR));
+        ConfiguracionCopiada copiada = new ConfiguracionCopiada(
+            TipoLavado.LIMPIO, LIDER, new BigDecimal("300"), List.of(SUAVIZANTE));
+
+        LavarropasCard destino = new LavarropasCard(5);
+        destino.setJabones(List.of(SKIP, LIDER));
+        destino.setInsumos(List.of(SUAVIZANTE, POTENCIADOR));
+
+        destino.pegarConfiguracion(copiada);
+
+        assertEquals(TipoLavado.LIMPIO, destino.getTipoLavado());
+        assertEquals(LIDER, destino.getJabon());
+        assertEquals(new BigDecimal("300"), destino.getLitrosJabon());
+        assertEquals(List.of(SUAVIZANTE), destino.getInsumosSeleccionados());
+    }
+
+    /** El jabón pegado queda como si el operador lo hubiera elegido a mano. */
+    @Test
+    void elJabonPegadoQuedaManual() {
+        LavarropasCard destino = new LavarropasCard(5);
+        destino.setJabones(List.of(SKIP, LIDER));
+
+        destino.pegarConfiguracion(
+            new ConfiguracionCopiada(TipoLavado.SUCIO, SKIP, null, List.of()));
+
+        assertEquals(OrigenJabon.MANUAL, destino.getOrigenJabon());
+    }
+
+    /**
+     * El test que fija la razón de ser del orden tipo-antes-que-jabón: si el jabón pegado quedara
+     * {@code AUTO}, cambiar el tipo después lo volvería a pisar. Quedando {@code MANUAL}, no.
+     */
+    @Test
+    void cambiarElTipoDespuesDePegarNoPisaElJabonPegado() throws Exception {
+        LavarropasCard destino = new LavarropasCard(5);
+        destino.setJabones(List.of(SKIP, LIDER));
+        destino.pegarConfiguracion(
+            new ConfiguracionCopiada(TipoLavado.SUCIO, SKIP, new BigDecimal("100"), List.of()));
+
+        field(destino, "cmbTipoLavado", JComboBox.class).setSelectedItem(TipoLavado.LIMPIO);
+
+        assertEquals(SKIP, destino.getJabon(),
+            "una elección a mano (pegar cuenta como tal) siempre pesa más que la automática");
+    }
+
+    @Test
+    void pegarNoTocaLosItemsDeLaTabla() {
+        LavarropasCard destino = new LavarropasCard(5);
+        destino.setJabones(List.of(SKIP));
+        destino.setItems(List.of(), java.util.Map.of());
+
+        destino.pegarConfiguracion(
+            new ConfiguracionCopiada(TipoLavado.SUCIO, SKIP, new BigDecimal("100"), List.of()));
+
+        assertFalse(destino.tieneItems());
+    }
+
+    @Test
+    void pegarUnaConfigConLitrosJabonNuloDejaElCampoVacio() {
+        LavarropasCard destino = new LavarropasCard(5);
+        destino.setJabones(List.of(SKIP));
+
+        destino.pegarConfiguracion(
+            new ConfiguracionCopiada(TipoLavado.SUCIO, SKIP, null, List.of()));
+
+        assertNull(destino.getLitrosJabon());
     }
 
     /**

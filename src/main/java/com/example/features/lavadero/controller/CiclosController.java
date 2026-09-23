@@ -10,11 +10,14 @@ import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos;
 import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos.VistaCard;
 import com.example.features.lavadero.controller.helpers.ConstructorVistaCiclos.VistaCiclos;
 import com.example.features.lavadero.controller.helpers.DatosCiclos;
+import com.example.features.lavadero.controller.helpers.DepuradorPegado;
 import com.example.features.lavadero.controller.helpers.SelectorJabonAutomatico;
 import com.example.features.lavadero.controller.helpers.StagingCiclos;
 import com.example.features.lavadero.model.CicloLavadero;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
+import com.example.features.lavadero.model.ConfiguracionCopiada;
 import com.example.features.lavadero.model.ElementoCicloItem;
+import com.example.features.lavadero.model.InsumoCatalogo;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.LanzamientoCiclo;
 import com.example.features.lavadero.model.Lavarropas;
@@ -101,6 +104,23 @@ public class CiclosController {
      * callback de la card.
      */
     private Map<TipoLavado, JabonCatalogo> defaultsJabon = Map.of();
+
+    /**
+     * Los catálogos de jabones e insumos <b>activos</b> tal como vinieron de la última lectura.
+     * Estado de controller, sólo EDT: los necesita {@link #pegarEn} para depurar lo que se pega
+     * (la card no conoce los catálogos vigentes, sólo el controller que acaba de leerlos).
+     */
+    private List<JabonCatalogo> catalogoJabones = List.of();
+    private List<InsumoCatalogo> catalogoInsumos = List.of();
+
+    /**
+     * Última configuración copiada de una card, o {@code null} si no se copió nada todavía.
+     * Estado de controller y no de card a propósito: así sobrevive a una reconstrucción de la
+     * grilla (Paso 3), que descarta y recrea instancias de {@link LavarropasCard}. Sólo se toca
+     * en el EDT, y es inmutable —{@link ConfiguracionCopiada} es un {@code record}— así que
+     * copiarlo no comparte estado mutable con la card de origen.
+     */
+    private ConfiguracionCopiada portapapeles = null;
 
     /**
      * Carga en vuelo, para descartar su resultado si se dispara otra. Dos refrescos rápidos
@@ -249,7 +269,39 @@ public class CiclosController {
                 SelectorJabonAutomatico.alCambiarTipo(
                         card.getTipoLavado(), card.getJabon(), card.getOrigenJabon(), defaultsJabon)
                     .ifPresent(card::setJabonAutomatico));
+            card.setOnCopiar(() -> {
+                portapapeles = card.copiarConfiguracion();
+                actualizarBotonesPegar();
+            });
+            card.setOnPegar(() -> pegarEn(card));
         }
+    }
+
+    /**
+     * Enciende "Pegar" en todas las cards si hay algo copiado, lo apaga si no. Se llama al
+     * copiar y al final de cada {@link #pintar}: cubre también la reconstrucción de la grilla,
+     * porque las cards que nacen ahí arrancan con el botón apagado (ver {@code LavarropasCard}).
+     */
+    private void actualizarBotonesPegar() {
+        boolean habilitado = portapapeles != null;
+        cards.values().forEach(card -> card.setPegarHabilitado(habilitado));
+    }
+
+    /**
+     * Pega el portapapeles en {@code card}, después de depurarlo contra los catálogos vigentes
+     * de la última lectura. El filtrado vive en {@link DepuradorPegado} y no acá ni en la card:
+     * es lógica de negocio sin Swing, testeable en aislamiento.
+     */
+    private void pegarEn(LavarropasCard card) {
+        if (portapapeles == null) return;
+        DepuradorPegado.Resultado resultado =
+            DepuradorPegado.depurar(portapapeles, catalogoJabones, catalogoInsumos);
+        if (!resultado.omitidos().isEmpty()) {
+            pantalla.mostrarAdvertencia(String.format(Constantes.Mensajes.PEGADO_OMITIO_INACTIVOS,
+                String.join(", ", resultado.omitidos())));
+        }
+        card.pegarConfiguracion(resultado.depurada());
+        card.actualizarBtnAccion();
     }
 
     /** Ídem para el arrastre: un {@code setTransferHandler} por card, idempotente. */
@@ -399,6 +451,7 @@ public class CiclosController {
         // durante el guardado volvería a encender "Lanzar todos" con el staging intacto y la
         // misma tanda se podría mandar dos veces. Los reenciende el `despues` de esa escritura.
         if (escrituraEnVuelo) deshabilitarAcciones();
+        actualizarBotonesPegar();
         pantalla.marcarActualizado();
         avisarStagingDescartado(vista.stagingDescartadoPorOcupacion(),
                                 vista.stagingDescartadoPorBaja());
@@ -426,6 +479,8 @@ public class CiclosController {
      */
     private void aplicarCatalogos(DatosCiclos datos) {
         defaultsJabon = datos.defaultsJabon();
+        catalogoJabones = datos.jabones();
+        catalogoInsumos = datos.insumos();
         cards.values().forEach(card -> {
             card.setJabones(datos.jabones());
             card.setInsumos(datos.insumos());

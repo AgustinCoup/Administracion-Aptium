@@ -62,6 +62,21 @@ public class PanelInsumosCard extends JPanel {
         return List.copyOf(seleccionados);
     }
 
+    /**
+     * Reemplaza la lista de insumos elegidos directamente, sin pasar por el combo. Lo usa el
+     * pegado de configuración entre cards: la lista pegada <b>reemplaza</b> a la anterior, no se
+     * suma a ella.
+     */
+    public void setSeleccionados(List<InsumoCatalogo> insumos) {
+        seleccionados.clear();
+        if (insumos != null) seleccionados.addAll(insumos);
+        actualizarFilas();
+        actualizarCombo();
+        revalidate();
+        repaint();
+        notificarCambio();
+    }
+
     /** Vacía las filas elegidas. El catálogo del combo no cambia. */
     public void limpiar() {
         seleccionados.clear();
