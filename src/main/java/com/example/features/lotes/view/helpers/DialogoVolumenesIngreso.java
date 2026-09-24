@@ -1,5 +1,6 @@
 package com.example.features.lotes.view.helpers;
 
+import com.example.common.constants.Constantes;
 import com.example.features.lotes.controller.helpers.IngresoPendienteInfo;
 
 import javax.swing.*;
@@ -41,6 +42,8 @@ public final class DialogoVolumenesIngreso {
 
     /**
      * @param parent            componente padre para el modal
+     * @param idNegocioPrevisto id de negocio que tendría el lote; informativo, ver
+     *                          {@code LoteDAO.preverIdNegocio}
      * @param ingresos          filas (cliente, ingreso, cantidad) a completar
      * @param resumenMateriales líneas "descripcion (xN)" de todos los materiales del lote
      * @param volumenOrtopedias volumen calculado de los materiales de ortopedia
@@ -48,6 +51,7 @@ public final class DialogoVolumenesIngreso {
      * @return litros por ingreso + volumen final, o vacío si el usuario cancela
      */
     public static Optional<ResultadoLanzamiento> mostrar(Component parent,
+                                                         String idNegocioPrevisto,
                                                          List<IngresoPendienteInfo> ingresos,
                                                          List<String> resumenMateriales,
                                                          int volumenOrtopedias,
@@ -79,7 +83,7 @@ public final class DialogoVolumenesIngreso {
             lblAdvertencia.setText(sincronizador.textoAdvertencia());
         };
 
-        JPanel contenido = construirPanel(ingresos, resumenMateriales, spinnersPorIngreso,
+        JPanel contenido = construirPanel(idNegocioPrevisto, ingresos, resumenMateriales, spinnersPorIngreso,
                 spVolumenFinal, lblCalculado, lblAdvertencia);
 
         for (JSpinner sp : spinnersPorIngreso.values()) sp.addChangeListener(e -> recalcular.run());
@@ -111,7 +115,8 @@ public final class DialogoVolumenesIngreso {
 
     // ── Construcción del panel ───────────────────────────────────────────────
 
-    private static JPanel construirPanel(List<IngresoPendienteInfo> ingresos,
+    private static JPanel construirPanel(String idNegocioPrevisto,
+                                         List<IngresoPendienteInfo> ingresos,
                                          List<String> resumenMateriales,
                                          Map<Integer, JSpinner> spinnersPorIngreso,
                                          JSpinner spVolumenFinal,
@@ -119,7 +124,8 @@ public final class DialogoVolumenesIngreso {
                                          JLabel lblAdvertencia) {
         JPanel panel = new JPanel(new BorderLayout(0, 10));
 
-        StringBuilder resumen = new StringBuilder("Se lanzará el lote con los siguientes materiales:\n\n");
+        StringBuilder resumen = new StringBuilder(
+                String.format(Constantes.Mensajes.ENCABEZADO_LANZAR_LOTE, idNegocioPrevisto)).append("\n\n");
         for (String linea : resumenMateriales) resumen.append("• ").append(linea).append("\n");
         JTextArea areaResumen = new JTextArea(resumen.toString());
         areaResumen.setEditable(false);

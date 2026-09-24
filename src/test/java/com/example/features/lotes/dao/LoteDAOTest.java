@@ -111,6 +111,30 @@ class LoteDAOTest extends AbstractDAOTest {
         assertTrue(idNegocio.startsWith(String.valueOf(LocalDate.now().getYear())));
     }
 
+    // ── preverIdNegocio ───────────────────────────────────────────────────────
+
+    @Test
+    void preverIdNegocio_coincideConElQueAsignaElLanzamientoSiguiente() {
+        String previsto = dao.preverIdNegocio();
+
+        Lote lote = dao.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
+
+        assertEquals(previsto, lote.getIdNegocio());
+    }
+
+    @Test
+    void preverIdNegocio_noReservaNada_despuesDeUnLanzamientoAvanza() {
+        String antes = dao.preverIdNegocio();
+        assertEquals(antes, dao.preverIdNegocio(), "Prever dos veces no consume secuencia");
+
+        Lote lote = dao.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
+
+        assertEquals(LocalDate.now().getYear() + String.valueOf(lote.getSecuencia() + 1),
+            dao.preverIdNegocio());
+    }
+
     // ── lanzarLote — ortopedia, cantidad parcial (split) ─────────────────────
 
     @Test

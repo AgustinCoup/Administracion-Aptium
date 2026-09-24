@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 
 public class LotesController {
 
@@ -449,15 +450,46 @@ public class LotesController {
         pendientesPorAutoclave.put(autoclaveNombre, new ArrayList<>(estado.getPendientes()));
     }
 
+    /**
+     * Primer paso del lanzamiento: lee el id de negocio previsto —I/O, fuera del hilo de UI— y
+     * recién con él abre la confirmación ({@link #confirmarYLanzar}).
+     *
+     * <p>La confirmación se abre con {@code invokeLater} y no directo en {@code pintar}: el
+     * {@code despues} de esta tarea corre <i>después</i> de {@code pintar} y rehabilita los
+     * botones. Con el diálogo abierto adentro de {@code pintar}, ese {@code despues} llegaría
+     * cuando el lanzamiento ya está en vuelo y dejaría "Lanzar" encendido para un segundo click.</p>
+     */
     private void lanzarLote() {
         if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()) return;
 
-        List<MaterialLoteItem> pendientes = pendientesPorAutoclave
-                .getOrDefault(autoclaveSeleccionado.getNombre(), List.of());
-        if (pendientes.isEmpty()) {
+        String nombreAutoclave = autoclaveSeleccionado.getNombre();
+        if (pendientesPorAutoclave.getOrDefault(nombreAutoclave, List.of()).isEmpty()) {
             panel.mostrarAdvertencia("Debe cargar materiales antes de lanzar el lote.");
             return;
         }
+
+        TareaUI.<String>nueva()
+            .nombre("prever-id-lote")
+            .leer(loteService::preverIdNegocio)
+            .pintar(idPrevisto -> SwingUtilities.invokeLater(
+                    () -> confirmarYLanzar(nombreAutoclave, idPrevisto)))
+            .siFalla(e -> panel.mostrarError(Constantes.Mensajes.ERROR_CREAR_LOTE))
+            .antes(()  -> setBotonesAccionLoteEnabled(false))
+            .despues(() -> onAutoclaveSeleccionado(autoclaveSeleccionado))
+            .lanzar();
+    }
+
+    /**
+     * Segundo paso: confirmación y lanzamiento. Relee el staging porque, mientras se leía el id,
+     * el operador pudo cambiar de autoclave o devolver materiales por arrastre; si el autoclave
+     * ya no es el mismo o quedó vacío, no se lanza nada.
+     */
+    private void confirmarYLanzar(String nombreAutoclave, String idPrevisto) {
+        if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()
+                || !autoclaveSeleccionado.getNombre().equals(nombreAutoclave)) return;
+
+        List<MaterialLoteItem> pendientes = pendientesPorAutoclave.getOrDefault(nombreAutoclave, List.of());
+        if (pendientes.isEmpty()) return;
 
         int capacidadTotal = autoclaveSeleccionado.getCapacidad();
         Map<Integer, Integer> volumenesPorIngreso;
@@ -468,6 +500,7 @@ public class LotesController {
             Optional<DialogoVolumenesIngreso.ResultadoLanzamiento> resultado =
                     DialogoVolumenesIngreso.mostrar(
                             panel,
+                            idPrevisto,
                             AgrupadorIngresosLote.agrupar(pendientes, equiposOtrosPorId),
                             resumenMateriales(pendientes),
                             reconciliador.capacidadUsada(pendientes),
@@ -478,7 +511,7 @@ public class LotesController {
         } else {
             volumenesPorIngreso = Map.of();
             volumenFinal        = panel.getVolumenManual();
-            if (!confirmarLanzamientoOrtopedia(pendientes, volumenFinal, capacidadTotal)) return;
+            if (!confirmarLanzamientoOrtopedia(idPrevisto, pendientes, volumenFinal, capacidadTotal)) return;
         }
 
         List<LoteMovimiento> movimientos = new ArrayList<>();
@@ -488,22 +521,32 @@ public class LotesController {
                     item.isEsOtros(), item.getEstadoOrigen()));
         }
 
-        String nombreAutoclave     = autoclaveSeleccionado.getNombre();
         Map<Integer, Integer> vols = volumenesPorIngreso;
         int volFinal               = volumenFinal;
 
         ejecutarAccionDeLote("lanzar-lote",
-            () -> loteService.lanzarLote(nombreAutoclave, capacidadTotal, volFinal, movimientos, vols) != null,
-            "Error al lanzar el lote.",
-            () -> pendientesPorAutoclave.remove(nombreAutoclave),
+            () -> loteService.lanzarLote(nombreAutoclave, capacidadTotal, volFinal, movimientos, vols),
+            Constantes.Mensajes.ERROR_CREAR_LOTE,
+            lote -> {
+                pendientesPorAutoclave.remove(nombreAutoclave);
+                avisarSiCambioElId(idPrevisto, lote);
+            },
             // Choque: el snapshot con el que se armó el staging ya no vale. Descartarlo entero
             // (medio staging puede haber cambiado y el operador no sabe qué mitad) y recargar
             // disponibles de la base — lo hace solo el refresco global.
             pendientesPorAutoclave::clear);
     }
 
+    /** La confirmación mostró un id previsto; si el real salió otro, el operador tiene que saberlo. */
+    private void avisarSiCambioElId(String idPrevisto, Lote lote) {
+        if (!Objects.equals(idPrevisto, lote.getIdNegocio())) {
+            panel.mostrarInfo(String.format(Constantes.Mensajes.LOTE_LANZADO_CON_OTRO_ID,
+                    lote.getIdNegocio(), idPrevisto));
+        }
+    }
+
     /** Confirmación previa al refactor, vigente para lotes sin materiales "otros". */
-    private boolean confirmarLanzamientoOrtopedia(List<MaterialLoteItem> pendientes,
+    private boolean confirmarLanzamientoOrtopedia(String idPrevisto, List<MaterialLoteItem> pendientes,
                                                   int volumenManual, int capacidadTotal) {
         if (volumenManual < 0) {
             panel.mostrarError("El campo \"Volumen final\" contiene un valor inválido.\n" +
@@ -524,7 +567,7 @@ public class LotesController {
         int volumenCalculado = reconciliador.capacidadUsada(pendientes);
 
         StringBuilder mensaje = new StringBuilder();
-        mensaje.append("Se lanzará el lote con los siguientes materiales:\n\n");
+        mensaje.append(String.format(Constantes.Mensajes.ENCABEZADO_LANZAR_LOTE, idPrevisto)).append("\n\n");
         for (String linea : resumenMateriales(pendientes)) {
             mensaje.append("• ").append(linea).append("\n");
         }
@@ -595,7 +638,7 @@ public class LotesController {
         ejecutarAccionDeLote("finalizar-lote",
             () -> loteService.finalizarLote(loteId),
             Constantes.Mensajes.ERROR_FINALIZAR_LOTE,
-            () -> { },
+            aplicado -> { },
             () -> { });
     }
 
@@ -609,7 +652,7 @@ public class LotesController {
         ejecutarAccionDeLote("marcar-lote-fallo",
             () -> loteService.marcarLoteFallo(loteId),
             Constantes.Mensajes.ERROR_MARCAR_LOTE_FALLO,
-            () -> panel.mostrarInfo(Constantes.Mensajes.LOTE_FALLO_OK),
+            aplicado -> panel.mostrarInfo(Constantes.Mensajes.LOTE_FALLO_OK),
             () -> { });
     }
 
@@ -619,21 +662,22 @@ public class LotesController {
      * ya ocurrieron en el hilo de UI; acá solo va la llamada al service. El éxito, el
      * refresco global y la notificación se pintan de vuelta en el hilo de UI.
      *
-     * @param accion       llamada al service; {@code false} = no se aplicó el cambio
+     * @param accion       llamada al service; {@code null} o {@code false} = no se aplicó el cambio
      * @param mensajeError qué mostrar si el service devuelve que no se aplicó o si falla
-     * @param alExito      efectos en el hilo de UI tras un service OK (además del refresco)
+     * @param alExito      efectos en el hilo de UI tras un service OK (además del refresco);
+     *                     recibe lo que devolvió el service
      * @param alConflicto  efectos en el hilo de UI si el service lanza
      *                     {@link ConflictoConcurrenciaException} (típicamente descartar el staging);
      *                     además siempre se muestra el mensaje del conflicto y se dispara el refresco
      */
-    private void ejecutarAccionDeLote(String nombreTarea, Callable<Boolean> accion,
-                                      String mensajeError, Runnable alExito, Runnable alConflicto) {
-        TareaUI.<Boolean>nueva()
+    private <T> void ejecutarAccionDeLote(String nombreTarea, Callable<T> accion,
+                                          String mensajeError, Consumer<T> alExito, Runnable alConflicto) {
+        TareaUI.<T>nueva()
             .nombre(nombreTarea)
             .leer(accion)
-            .pintar(aplicado -> {
-                if (Boolean.TRUE.equals(aplicado)) {
-                    alExito.run();
+            .pintar(resultado -> {
+                if (resultado != null && !Boolean.FALSE.equals(resultado)) {
+                    alExito.accept(resultado);
                     solicitarRefresco.run();
                     notificarEstadosActualizados();
                 } else {

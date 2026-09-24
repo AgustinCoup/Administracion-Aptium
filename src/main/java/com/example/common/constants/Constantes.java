@@ -179,6 +179,16 @@ public final class Constantes {
         public static final String LOTE_NO_ENCONTRADO             = "No se encontró el lote en el autoclave.";
         public static final String LOTE_NO_ESTERILIZADO           = "El lote aún no ha sido esterilizado. Estado actual: %s";
         public static final String CONFIRMAR_LANZAR_LOTE          = "¿Lanzar este lote al autoclave?";
+        /** Encabezado de los dos diálogos de lanzamiento; recibe el id de negocio previsto. */
+        public static final String ENCABEZADO_LANZAR_LOTE         = "Se lanzará el lote %s con los siguientes materiales:";
+        /**
+         * El id de negocio se asigna al lanzar, así que el que mostró la confirmación puede no ser
+         * el real. Recibe el real y el mostrado. Nombra las dos causas posibles, porque las dos
+         * pueden haber sido.
+         */
+        public static final String LOTE_LANZADO_CON_OTRO_ID       =
+            "El lote se lanzó con el ID %s, no con el %s que se mostró al confirmar.\n" +
+            "El ID se asigna al lanzar, y mientras se confirmaba otro puesto lanzó un lote (o cambió el año).";
         public static final String CONFIRMAR_FINALIZAR_LOTE       = "¿Marcar este lote como finalizado?";
         public static final String CONFIRMAR_MARCAR_LOTE_FALLO    = "¿Marcar este lote como fallido? Los equipos volverán a su estado anterior.";
 
