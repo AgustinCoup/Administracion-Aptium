@@ -183,6 +183,33 @@ public class EquipoOtros implements EquipoRegistrableInterface {
         unificarEnMemoria(m.getDescripcion(), estadoDestino);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Copia también los datos del REMITO: {@code tipoIngreso} y {@code remitoCantidad}
+     * alimentan el material sintético de {@link #getMaterialesRegistrables()}, y sin ellos la
+     * copia de un remito sin filas perdería la única fila que tiene para avanzar.
+     */
+    @Override
+    public EquipoOtros copiarParaPreview() {
+        EquipoOtros copia = new EquipoOtros();
+        copia.id                  = id;
+        copia.nroCliente          = nroCliente;
+        copia.clienteNombre       = clienteNombre;
+        copia.estado              = estado;
+        copia.requiereLavado      = requiereLavado;
+        copia.requiereEmpaque     = requiereEmpaque;
+        copia.tipoIngreso         = tipoIngreso;
+        copia.remitoId            = remitoId;
+        copia.remitoCantidad      = remitoCantidad;
+        copia.remitoObservaciones = remitoObservaciones;
+        copia.volumenEquipo       = volumenEquipo;
+        copia.fechaIngreso        = fechaIngreso;
+        copia.version             = version;
+        for (MaterialOtros m : materiales) copia.materiales.add(m.copiar());
+        return copia;
+    }
+
     // ── Helpers privados ──────────────────────────────────────────────────────
 
     private MaterialOtros buscarMaterialConDescripcionYEstado(String descripcion,

@@ -122,6 +122,26 @@ public class Equipo implements EquipoRegistrableInterface {
     }
 
     @Override
+    public Equipo copiarParaPreview() {
+        Equipo copia = new Equipo();
+        copia.id                = id;
+        copia.nroCliente        = nroCliente;
+        copia.clienteNombre     = clienteNombre;
+        copia.nroProfesional    = nroProfesional;
+        copia.profesionalNombre = profesionalNombre;
+        copia.pacienteNombre    = pacienteNombre;
+        copia.nroInstitucion    = nroInstitucion;
+        copia.institucionNombre = institucionNombre;
+        copia.estado            = estado;
+        copia.fechaIngreso      = fechaIngreso;
+        copia.requiereLavado    = requiereLavado;
+        copia.requiereEmpaque   = requiereEmpaque;
+        copia.version           = version;
+        for (Material m : materiales) copia.materiales.add(m.copiar());
+        return copia;
+    }
+
+    @Override
     public EstadoEquipo calcularEstado() {
         if (materiales.isEmpty()) {
             return EstadoEquipo.NUEVO;

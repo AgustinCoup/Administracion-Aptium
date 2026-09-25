@@ -48,6 +48,14 @@ public class MaterialOtros implements MaterialRegistrableInterface {
         this.ultimoMovimiento = ultimoMovimiento;
     }
 
+    /** Copia independiente, para {@link EquipoOtros#copiarParaPreview()}. */
+    public MaterialOtros copiar() {
+        MaterialOtros copia = new MaterialOtros(
+            id, catalogoOtrosId, descripcion, cantidad, estado, ultimoMovimiento);
+        copia.setLoteIdNegocio(loteIdNegocio);
+        return copia;
+    }
+
     // ── IMaterialRegistrable ──────────────────────────────────────────────────
 
     @Override public Integer      getId()                { return id; }

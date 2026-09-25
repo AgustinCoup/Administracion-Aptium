@@ -120,6 +120,7 @@ public class PantallaRegistrarEstado extends JPanel {
 
     public void recargarMateriales()       { panelTablas.recargarMateriales(); }
     public void refrescarEstadosEquipos()  { panelTablas.refrescarEstadosEquipos(); }
+    public void reemplazarEquipo(EquipoRegistrableInterface equipo) { panelTablas.reemplazarEquipo(equipo); }
 
     public void setOnEquipoSeleccionado(Consumer<EquipoRegistrableInterface> listener) {
         panelTablas.setOnEquipoSeleccionado(listener);

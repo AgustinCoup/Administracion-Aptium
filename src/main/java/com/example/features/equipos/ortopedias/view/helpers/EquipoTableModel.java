@@ -7,6 +7,7 @@ import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Modelo para la tabla de equipos.
@@ -78,6 +79,24 @@ public class EquipoTableModel extends AbstractTableModel {
         }
 
         fireTableDataChanged();
+    }
+
+    /**
+     * Cambia el equipo de la fila del mismo tipo e id por {@code equipo}, sin reordenar ni tocar la
+     * selección. Es cómo Registrar Estado pasa a mostrar la copia de preview de un equipo.
+     */
+    public void reemplazarEquipo(EquipoRegistrableInterface equipo) {
+        for (int i = 0; i < equipos.size(); i++) {
+            EquipoRegistrableInterface actual = equipos.get(i);
+            if (actual.getTipo() == equipo.getTipo() && Objects.equals(actual.getId(), equipo.getId())) {
+                equipos.set(i, equipo);
+                EstadoEquipo ec = equipo.calcularEstado();
+                filas.get(i)[2] = ec.getNombre();
+                estados.set(i, ec);
+                fireTableRowsUpdated(i, i);
+                return;
+            }
+        }
     }
 
     /** Recalcula el estado mostrado sin reordenar filas (usado en previews en memoria). */

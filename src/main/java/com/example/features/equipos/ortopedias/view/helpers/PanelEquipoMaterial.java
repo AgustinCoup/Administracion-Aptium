@@ -132,6 +132,11 @@ public class PanelEquipoMaterial extends JPanel {
         modeloEquipos.refrescarEstados();
     }
 
+    /** Ver {@link EquipoTableModel#reemplazarEquipo}: no reordena ni pierde la selección. */
+    public void reemplazarEquipo(EquipoRegistrableInterface equipo) {
+        modeloEquipos.reemplazarEquipo(equipo);
+    }
+
     public void setOnEquipoSeleccionado(Consumer<EquipoRegistrableInterface> listener) {
         this.onEquipoSeleccionado = listener;
     }

@@ -6,6 +6,7 @@ import com.example.common.model.EquipoKey;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
 import com.example.features.equipos.common.controller.helpers.AplicadorMovimientosPendientes;
+import com.example.features.equipos.common.controller.helpers.SuperposicionPreviews;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
@@ -52,6 +53,12 @@ public class RegistrarEstadoController {
     // Buffer de cambios pendientes indexado por EquipoKey (tipo + id).
     // Necesario porque equipos y equipo_otros tienen auto-increment independientes.
     private final Map<EquipoKey, Map<Integer, MovimientoMaterial>> cambiosPendientes = new HashMap<>();
+
+    /**
+     * Copia de preview de cada equipo con cambios: los previews se aplican acá y nunca sobre
+     * {@link #ultimoSnapshot}, que es de sólo lectura y compartido con Para Entregar y Lotes.
+     * Vaciarla es lo que hace que Cancelar vuelva al estado real sin releer.
+     */
     private final Map<EquipoKey, EquipoRegistrableInterface>       equiposPendientes = new HashMap<>();
 
     /**
@@ -125,13 +132,16 @@ public class RegistrarEstadoController {
         panel.marcarActualizado();
     }
 
-    /** Repinta desde el último snapshot, sin volver a la base. */
+    /**
+     * Repinta desde el último snapshot, sin volver a la base, con las copias de preview encima.
+     * Sin copias, es el snapshot tal cual: por eso vaciarlas alcanza para descartar.
+     */
     private void repintar() {
         List<EquipoRegistrableInterface> todos = new ArrayList<>();
         todos.addAll(ultimoSnapshot.equipos());
         todos.addAll(ultimoSnapshot.equiposOtros());
 
-        panel.actualizarEquipos(todos);
+        panel.actualizarEquipos(SuperposicionPreviews.superponer(todos, equiposPendientes));
         actualizarTextoAvanzar();
     }
 
@@ -218,19 +228,35 @@ public class RegistrarEstadoController {
         }
 
         cambiosPendientes.putIfAbsent(key, new HashMap<>());
-        equiposPendientes.put(key, equipo);
+        // El primer avance sobre un equipo lo copia; los siguientes ya ven la copia en la tabla,
+        // y computeIfAbsent la devuelve tal cual.
+        EquipoRegistrableInterface copia = equiposPendientes.computeIfAbsent(
+            key, k -> equipo.copiarParaPreview());
 
         MovimientoMaterial movimiento = new MovimientoMaterial(
             material.getId(), cantidad, material.getEstado(), siguienteEstado);
         cambiosPendientes.get(key).put(material.getId(), movimiento);
 
-        equipo.aplicarMovimientoPreview(material, cantidad, siguienteEstado);
+        copia.aplicarMovimientoPreview(materialPorId(copia, material.getId()), cantidad, siguienteEstado);
+        panel.reemplazarEquipo(copia);
         panel.recargarMateriales();
         panel.refrescarEstadosEquipos();
         actualizarTextoAvanzar();
         actualizarContadorCambios();
         panel.setConfirmarEnabled(true);
         panel.setCancelarEnabled(true);
+    }
+
+    /**
+     * El material de la copia con ese id. La selección puede venir del original (primer avance
+     * sobre el equipo) o de la copia (los siguientes): el id es lo único que vale en las dos.
+     */
+    private static MaterialRegistrableInterface materialPorId(EquipoRegistrableInterface copia, Integer id) {
+        return copia.getMaterialesRegistrables().stream()
+            .filter(m -> Objects.equals(m.getId(), id))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException(
+                "El material " + id + " no está en la copia de preview del equipo " + copia.getId()));
     }
 
     // ── Confirmar / Cancelar ──────────────────────────────────────────────────
@@ -255,7 +281,8 @@ public class RegistrarEstadoController {
     private void resetearCambios() {
         cambiosPendientes.clear();
         equiposPendientes.clear();
-        // Solo se descartó el buffer local: la base no cambió, alcanza con repintar.
+        // Solo se descartó el buffer local: la base no cambió, alcanza con repintar. Sin las
+        // copias, repintar muestra el snapshot intacto.
         repintar();
         actualizarContadorCambios();
         sincronizarBotonesConBuffer();

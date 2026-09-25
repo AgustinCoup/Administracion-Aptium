@@ -36,6 +36,13 @@ public class Material implements MaterialRegistrableInterface {
         this.ultimoMovimiento = ultimoMovimiento;
     }
 
+    /** Copia independiente, para {@link Equipo#copiarParaPreview()}. */
+    public Material copiar() {
+        Material copia = new Material(id, codigo, descripcion, cantidad, estado, ultimoMovimiento);
+        copia.setLoteIdNegocio(loteIdNegocio);
+        return copia;
+    }
+
     // ── MaterialRegistrableInterface ──────────────────────────────────────────
 
     @Override public Integer       getId()                    { return id; }

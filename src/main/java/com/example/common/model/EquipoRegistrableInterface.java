@@ -81,4 +81,16 @@ public interface EquipoRegistrableInterface {
      */
     void aplicarMovimientoPreview(MaterialRegistrableInterface material, int cantidad,
                                   EstadoEquipo estadoDestino);
+
+    /**
+     * Copia <b>profunda</b> sobre la que aplicar previews: el equipo y cada uno de sus
+     * materiales son objetos nuevos, con ids, cantidades, estados y {@code ultimoMovimiento}
+     * idénticos.
+     *
+     * <p>Existe porque el equipo que llega en {@code DatosOperativos} es de sólo lectura y lo
+     * comparten tres pantallas: {@link #aplicarMovimientoPreview} parte, agrega y unifica filas,
+     * y hacerlo sobre el original deja a Cancelar sin nada a qué volver. Una copia superficial
+     * compila igual y comparte los materiales, o sea que vuelve a mutar el snapshot.
+     */
+    EquipoRegistrableInterface copiarParaPreview();
 }
