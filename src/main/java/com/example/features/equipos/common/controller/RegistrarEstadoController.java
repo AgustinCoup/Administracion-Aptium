@@ -198,18 +198,7 @@ public class RegistrarEstadoController {
             return;
         }
 
-        Integer cantidad = panel.pedirCantidadParaAvanzar(
-            material.getDescripcion(),
-            material.getCantidad(),
-            (chkTodos, spinner) -> chkTodos.addActionListener(e -> {
-                if (chkTodos.isSelected()) {
-                    spinner.setValue(material.getCantidad());
-                    spinner.setEnabled(false);
-                } else {
-                    spinner.setEnabled(true);
-                }
-            })
-        );
+        Integer cantidad = panel.pedirCantidadParaAvanzar(material.getDescripcion(), material.getCantidad());
         if (cantidad == null) return;
 
         EquipoKey key = new EquipoKey(equipo.getTipo(), equipo.getId());

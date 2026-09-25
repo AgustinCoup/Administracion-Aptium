@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.function.Consumer;
 import com.example.ui.common.LabelFactory;
 import com.example.ui.common.TableStyler;
+import com.example.ui.common.dnd.TableSelectionSupport;
+import com.example.ui.common.seleccion.SeleccionAcumulativaTabla;
 
 /**
  * Panel reutilizable que muestra dos tablas (equipos y materiales) en un JSplitPane.
@@ -121,6 +123,26 @@ public class PanelEquipoMaterial extends JPanel {
     public MaterialRegistrableInterface getMaterialSeleccionado() {
         int row = tablaMateriales.getSelectedRow();
         return row >= 0 ? modeloMateriales.getMaterialAt(row) : null;
+    }
+
+    /**
+     * Materiales seleccionados, en el orden de la tabla. Son los <b>objetos</b> de las filas, no
+     * índices: un preview parte filas y unifica otras, y el índice deja de apuntar al mismo material.
+     */
+    public List<MaterialRegistrableInterface> getMaterialesSeleccionados() {
+        return TableSelectionSupport.selectedItems(tablaMateriales, modeloMateriales::getMaterialAt);
+    }
+
+    /**
+     * Prende la selección múltiple de materiales. Es opt-in: Correcciones comparte este panel y
+     * opera por {@link #getMaterialSeleccionadoIndex()}, que con varias filas devolvería sólo la
+     * primera (Eliminar borraría el material equivocado). Sólo Registrar Estado lo llama.
+     *
+     * @param exentos componentes que no vacían la selección al recibir el foco (ver
+     *                {@link SeleccionAcumulativaTabla})
+     */
+    public void habilitarSeleccionMultipleMateriales(JComponent... exentos) {
+        SeleccionAcumulativaTabla.instalar(tablaMateriales, exentos);
     }
 
     public void recargarMateriales() {

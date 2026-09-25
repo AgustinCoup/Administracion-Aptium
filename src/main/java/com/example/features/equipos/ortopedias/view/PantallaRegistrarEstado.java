@@ -4,12 +4,13 @@ import javax.swing.*;
 import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.util.List;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoRegistrableInterface;
+import com.example.common.model.MaterialRegistrableInterface;
+import com.example.features.equipos.common.model.RespuestaAvanceCompleto;
 import com.example.ui.dialogs.CantidadDialogHelper;
 import com.example.ui.common.Estilos;
 import com.example.features.equipos.ortopedias.view.helpers.PanelEquipoMaterial;
@@ -55,6 +56,8 @@ public class PantallaRegistrarEstado extends JPanel {
         );
         add(panelTablas, BorderLayout.CENTER);
         add(crearPanelBotones(), BorderLayout.SOUTH);
+        // Después de crearPanelBotones(): btnAvanzar tiene que existir, y es el exento.
+        panelTablas.habilitarSeleccionMultipleMateriales(btnAvanzar);
     }
 
     private JPanel crearPanelBotones() {
@@ -118,6 +121,10 @@ public class PantallaRegistrarEstado extends JPanel {
         return panelTablas.getMaterialSeleccionadoIndex();
     }
 
+    public List<MaterialRegistrableInterface> getMaterialesSeleccionados() {
+        return panelTablas.getMaterialesSeleccionados();
+    }
+
     public void recargarMateriales()       { panelTablas.recargarMateriales(); }
     public void refrescarEstadosEquipos()  { panelTablas.refrescarEstadosEquipos(); }
     public void reemplazarEquipo(EquipoRegistrableInterface equipo) { panelTablas.reemplazarEquipo(equipo); }
@@ -160,9 +167,23 @@ public class PantallaRegistrarEstado extends JPanel {
                == JOptionPane.YES_OPTION;
     }
 
-    public Integer pedirCantidadParaAvanzar(String descripcion, int disponible,
-                                             BiConsumer<JCheckBox, JSpinner> cfg) {
-        return CantidadDialogHelper.pedirCantidad(this, descripcion, disponible, cfg);
+    public Integer pedirCantidadParaAvanzar(String descripcion, int disponible) {
+        return CantidadDialogHelper.pedirCantidadConTodos(this, descripcion, disponible);
+    }
+
+    /** Pregunta si los materiales seleccionados pasan completos; cerrar el diálogo es cancelar. */
+    public RespuestaAvanceCompleto preguntarAvanceCompleto(int cantidadMateriales, String estadoDestino) {
+        int opcion = JOptionPane.showConfirmDialog(
+            this,
+            String.format(Constantes.Mensajes.AVANCE_MULTIPLE_PREGUNTA, cantidadMateriales, estadoDestino),
+            Constantes.Mensajes.TITULO_AVANCE_MULTIPLE,
+            JOptionPane.YES_NO_CANCEL_OPTION,
+            JOptionPane.QUESTION_MESSAGE);
+        return switch (opcion) {
+            case JOptionPane.YES_OPTION -> RespuestaAvanceCompleto.TODOS_COMPLETOS;
+            case JOptionPane.NO_OPTION  -> RespuestaAvanceCompleto.ELEGIR_CANTIDADES;
+            default                     -> RespuestaAvanceCompleto.CANCELAR;
+        };
     }
 
     public void navegarALotes()       { navegador.show(contenedor, Constantes.Pantallas.LOTES); }

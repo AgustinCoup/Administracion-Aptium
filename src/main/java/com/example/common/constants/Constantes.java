@@ -143,6 +143,11 @@ public final class Constantes {
         public static final String CANTIDAD_AVANZAR_NUMERO = "La cantidad debe ser un número entero.";
         public static final String CANTIDAD_AVANZAR_TODOS  = "Todos";
 
+        public static final String TITULO_AVANCE_MULTIPLE   = "Avanzar materiales";
+        public static final String AVANCE_MULTIPLE_PREGUNTA =
+            "¿Pasar los %d materiales completos a %s?"
+            + "\n\nSí: todas sus unidades.\nNo: elegir la cantidad de cada uno.";
+
         public static final String CONFIRMAR_ENTREGA_EQUIPO = "¿Marcar este equipo como entregado?\nEsta acción actualizará todos sus materiales.";
         public static final String ENTREGA_EQUIPO_OK        = "Equipo entregado correctamente.";
         public static final String ENTREGA_EQUIPO_ERROR     = "No se pudo marcar el equipo como entregado.";

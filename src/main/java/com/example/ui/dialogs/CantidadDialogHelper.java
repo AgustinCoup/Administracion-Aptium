@@ -28,6 +28,24 @@ public class CantidadDialogHelper {
     }
 
     /**
+     * Diálogo de cantidad con el check "Todos": tildarlo pone el spinner en el máximo y lo
+     * deshabilita; destildarlo lo rehabilita.
+     *
+     * @return Cantidad seleccionada, o null si canceló
+     */
+    public static Integer pedirCantidadConTodos(JPanel parent, String descripcion, int cantidadDisponible) {
+        return pedirCantidad(parent, descripcion, cantidadDisponible, (chkTodos, spinner) ->
+            chkTodos.addActionListener(e -> {
+                if (chkTodos.isSelected()) {
+                    spinner.setValue(cantidadDisponible);
+                    spinner.setEnabled(false);
+                } else {
+                    spinner.setEnabled(true);
+                }
+            }));
+    }
+
+    /**
      * Abre un diálogo para que el usuario ingrese una cantidad con opción de "Todos".
      * 
      * @param parent Componente padre para centrar el diálogo

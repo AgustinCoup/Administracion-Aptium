@@ -405,19 +405,8 @@ public class LotesController {
 
     /** Diálogo de cantidad (Swing) con checkbox "Todos"; null = cancelado. */
     private Integer pedirCantidad(MaterialLoteItem item) {
-        return CantidadDialogHelper.pedirCantidad(
-                panel,
-                item.getDescripcion(),
-                item.getCantidad(),
-                (chkTodos, spinner) -> chkTodos.addActionListener(e -> {
-                    if (chkTodos.isSelected()) {
-                        spinner.setValue(item.getCantidad());
-                        spinner.setEnabled(false);
-                    } else {
-                        spinner.setEnabled(true);
-                    }
-                })
-        );
+        return CantidadDialogHelper.pedirCantidadConTodos(
+                panel, item.getDescripcion(), item.getCantidad());
     }
 
     private void quitarMaterial() {
