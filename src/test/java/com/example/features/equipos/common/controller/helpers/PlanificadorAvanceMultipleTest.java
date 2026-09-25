@@ -192,6 +192,16 @@ class PlanificadorAvanceMultipleTest {
     }
 
     @Test
+    @DisplayName("la descripcion de una fila tocada se acota en el texto del boton")
+    void filaTocadaConDescripcionLarga_textoAcotado() {
+        String larga = "X".repeat(255);
+        String esperado = "X".repeat(PlanificadorAvanceMultiple.MAX_DESCRIPCION_EN_BOTON) + "…";
+
+        assertEquals(esperado, PlanificadorAvanceMultiple.acotar(larga));
+        assertEquals("Placa", PlanificadorAvanceMultiple.acotar("Placa"));
+    }
+
+    @Test
     @DisplayName("tocada va antes que estados distintos: se nombra la fila, no se habla de estados")
     void noPersistidoYEstadosDistintos_ganaElNoPersistido() {
         MaterialRegistrableInterface persistida = material(1, "Placa", 3, EstadoEquipo.NUEVO);

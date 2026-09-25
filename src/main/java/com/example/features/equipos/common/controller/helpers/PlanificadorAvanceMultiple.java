@@ -44,6 +44,9 @@ import java.util.Set;
  */
 public final class PlanificadorAvanceMultiple {
 
+    /** Largo máximo de la descripción en el texto de Avanzar: un botón ancho empuja a Confirmar fuera del WrapLayout. */
+    static final int MAX_DESCRIPCION_EN_BOTON = 30;
+
     /**
      * Lo que el planificador necesita saber de la pantalla, leído en el EDT.
      *
@@ -170,6 +173,12 @@ public final class PlanificadorAvanceMultiple {
         this.estadoValidator = Objects.requireNonNull(estadoValidator, "estadoValidator");
     }
 
+    static String acotar(String descripcion) {
+        return descripcion == null || descripcion.length() <= MAX_DESCRIPCION_EN_BOTON
+            ? descripcion
+            : descripcion.substring(0, MAX_DESCRIPCION_EN_BOTON) + "…";
+    }
+
     /**
      * Evalúa la selección. Las reglas van <b>en este orden</b>, que decide qué motivo ve el operador
      * cuando fallan varias: vacía → escritura en curso → tocada por un preview → estados distintos →
@@ -191,7 +200,7 @@ public final class PlanificadorAvanceMultiple {
         for (MaterialRegistrableInterface material : seleccion) {
             if (estaTocado(material, entrada)) {
                 return new EvaluacionAvance.Bloqueado(
-                    String.format(Constantes.Textos.AVANCE_BLOQUEADO_TOCADO, material.getDescripcion()));
+                    String.format(Constantes.Textos.AVANCE_BLOQUEADO_TOCADO, acotar(material.getDescripcion())));
             }
         }
 

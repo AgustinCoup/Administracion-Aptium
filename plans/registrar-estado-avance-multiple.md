@@ -14,9 +14,8 @@
 >   inconsistente (el preview se perdía con el contador en pie). Si se decide arreglar: descartar el
 >   buffer en `pintar` cuando cambia el snapshot, lo que cambia la asimetría documentada en CLAUDE.md
 >   y requiere decisión de diseño.
-> - **MEDIUM — el texto de Avanzar incluye la descripción del material sin acotar el largo**
->   (`AVANCE_BLOQUEADO_TOCADO`): puede llegar a 255 caracteres y empujar Confirmar/Cancelar fuera del
->   WrapLayout. No se toca: es una decisión de UI (truncar vs. tooltip) que conviene ver en pantalla.
+> - ~~**MEDIUM — el texto de Avanzar incluye la descripción sin acotar**~~ — resuelto: se trunca a 30
+>   caracteres con «…» (`PlanificadorAvanceMultiple.acotar`), decisión del usuario.
 > - ~~**LOW — `refrescarEstadosEquipos()` redundante tras `reemplazarEquipo`**~~ — resuelto: se quitó la
 >   llamada y el código que quedó muerto (`refrescarEstados` del modelo y sus pasarelas).
 
