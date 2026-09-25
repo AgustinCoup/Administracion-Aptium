@@ -193,6 +193,18 @@ lo dice con `Mensajes.STAGING_DESCARTADO_POR_OCUPACION`. Enterarse por ausencia 
   del grupo `operativo` con el buffer vivo deja el contador y los botones Confirmar/Cancelar
   mintiendo sobre movimientos que ya no se ven, y confirmarlos pasaría en silencio (la guarda de esa
   pantalla es CAS sobre `estado` del material, no sobre `version`).
+- **Los previews de Registrar Estado van sobre copias, nunca sobre el `DatosOperativos`.**
+  `EquipoRegistrableInterface.copiarParaPreview()` da la copia profunda; el controller guarda la de
+  cada equipo con cambios en `equiposPendientes` y `repintar()` la superpone al snapshot por
+  `EquipoKey` (`SuperposicionPreviews`). Antes el preview mutaba el snapshot, que es compartido con
+  Para Entregar y Lotes: Cancelar no revertía y esas pantallas veían estados que no existen. **No se
+  arregla releyendo en `resetearCambios`**: cambia la asimetría de arriba y sigue mutando lo compartido.
+- **El avance múltiple aborta si la pantalla se repintó con un diálogo abierto**, y lo chequea
+  (`ultimoSnapshot` por referencia) **después de cada diálogo**, no al final de la cascada. Un modal
+  sigue despachando el EDT: el `done()` de una `TareaUI` en vuelo corre igual, y los materiales
+  capturados serían de un equipo que ya no está en la tabla (buffer zombi). Chequear sólo al final
+  le haría tipear N cantidades para descartarlas. **La cascada de cantidades aborta
+  todo** si se cancela una (decisión del usuario): saltear el cancelado dejaría un avance a medias.
 - `ClasificacionController` y `SalidasLavaderoController` guardan la `TareaUI.Ejecucion` en vuelo y
   la cancelan antes de lanzar otra (`cargaEnCurso`, calcado de `CiclosController`). No pasan por
   `RefrescadorPantallas`, así que no tienen debounce: sin eso, F5 mantenido apretado da N lecturas
@@ -489,6 +501,17 @@ morir por el techo de consulta.
 **Estado mutable de un controller:** se lee y escribe **sólo en el EDT** (`pintar`, diálogos, DnD).
 Nada de eso puede tocarse desde el hilo de fondo.
 
+**Selección acumulativa (`ui/common/seleccion/`).** `ReglasSeleccionAcumulativa` (plana, sin Swing) y
+`SeleccionAcumulativaTabla` (instalación en la `JTable`) agregan un gesto: **Ctrl+↓ / Ctrl+↑ suman**
+la fila vecina de la última tocada y nunca quitan (el binding de Swing sólo mueve el foco de fila sin
+seleccionar). Ctrl+click, Shift y arrastre quedan como en Swing. **Regla de foco:** la selección se
+vacía cuando el foco sale de la zona (tabla + componentes exentos) en forma **no temporal**
+(`FocusEvent.isTemporary()`: modales, Alt+Tab). Se escucha **también a los exentos**: tras pasar por
+Avanzar la tabla ya no tiene el foco y ningún click posterior le dispararía `focusLost`. Es **opt-in**:
+`PanelEquipoMaterial.habilitarSeleccionMultipleMateriales` sólo lo llama Registrar Estado;
+Correcciones opera por `getMaterialSeleccionadoIndex()` (con varias filas devolvería la primera y
+Eliminar borraría el material equivocado).
+
 **Jerarquía de excepciones:** `AptiumException` → `BusinessException`, `DataAccessException`, `ValidationException` (con builder), `ResourceNotFoundException`, `DatabaseException`.
 
 ## Concurrencia — bloqueo optimista
@@ -656,11 +679,12 @@ lo es: un test de deadlock pasaría en H2 y mentiría sobre producción.
 
 ## Tests
 
-JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1503 tests en `src/test/java`,
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1582 tests en `src/test/java`,
 reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
 DAO/Service/Controller/helper relevante).
 
 Para lógica de negocio embebida en clases de Swing (diálogos, paneles), el
 patrón del repo es extraerla a una clase plana sin dependencias de Swing y
 testearla en aislamiento — ver `AgrupadorIngresosLote`, `DuplicadoHighlighter`,
-`SincronizadorVolumenFinal`, `ConstructorVistaCiclos` y `AgrupadorInstanciasSalida` como ejemplos.
+`SincronizadorVolumenFinal`, `ConstructorVistaCiclos`, `AgrupadorInstanciasSalida`,
+`PlanificadorAvanceMultiple`, `SuperposicionPreviews` y `ReglasSeleccionAcumulativa` como ejemplos.
