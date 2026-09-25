@@ -17,8 +17,8 @@
 > - **MEDIUM — el texto de Avanzar incluye la descripción del material sin acotar el largo**
 >   (`AVANCE_BLOQUEADO_TOCADO`): puede llegar a 255 caracteres y empujar Confirmar/Cancelar fuera del
 >   WrapLayout. No se toca: es una decisión de UI (truncar vs. tooltip) que conviene ver en pantalla.
-> - **LOW — `refrescarEstadosEquipos()` redundante tras `reemplazarEquipo`** en `encolarConPreview`:
->   costo menor, sin efecto observable.
+> - ~~**LOW — `refrescarEstadosEquipos()` redundante tras `reemplazarEquipo`**~~ — resuelto: se quitó la
+>   llamada y el código que quedó muerto (`refrescarEstados` del modelo y sus pasarelas).
 
 
 **Objetivo:** en la tabla de materiales de Registrar Estado se pueden seleccionar varios materiales

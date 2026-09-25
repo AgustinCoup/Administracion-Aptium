@@ -99,14 +99,4 @@ public class EquipoTableModel extends AbstractTableModel {
         }
     }
 
-    /** Recalcula el estado mostrado sin reordenar filas (usado en previews en memoria). */
-    public void refrescarEstados() {
-        if (equipos.isEmpty()) return;
-        for (int i = 0; i < equipos.size(); i++) {
-            EstadoEquipo ec = equipos.get(i).calcularEstado();
-            filas.get(i)[2] = ec.getNombre();
-            if (i < estados.size()) estados.set(i, ec);
-        }
-        fireTableRowsUpdated(0, filas.size() - 1);
-    }
 }

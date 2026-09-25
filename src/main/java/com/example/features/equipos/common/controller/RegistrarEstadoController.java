@@ -293,7 +293,6 @@ public class RegistrarEstadoController {
 
         panel.reemplazarEquipo(copia);
         panel.recargarMateriales();
-        panel.refrescarEstadosEquipos();
         actualizarTextoAvanzar();
         actualizarContadorCambios();
         panel.setConfirmarEnabled(true);

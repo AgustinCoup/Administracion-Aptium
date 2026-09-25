@@ -150,10 +150,6 @@ public class PanelEquipoMaterial extends JPanel {
         if (eq != null) modeloMateriales.cargarMateriales(eq);
     }
 
-    public void refrescarEstadosEquipos() {
-        modeloEquipos.refrescarEstados();
-    }
-
     /** Ver {@link EquipoTableModel#reemplazarEquipo}: no reordena ni pierde la selección. */
     public void reemplazarEquipo(EquipoRegistrableInterface equipo) {
         modeloEquipos.reemplazarEquipo(equipo);
