@@ -627,6 +627,12 @@ public final class Constantes {
         public static final String BOTON_PASAR_A                         = "Pasar a %s";
         public static final String BOTON_SELECCIONE_MATERIAL             = "Seleccione un material";
         public static final String BOTON_ESTADO_FINAL                    = "Material en estado final";
+        /** Avanzar con más de un material: cantidad de materiales y nombre del estado siguiente. */
+        public static final String BOTON_PASAR_N_A                       = "Pasar %d a %s";
+        public static final String AVANCE_BLOQUEADO_ESTADOS_DISTINTOS    = "Seleccione materiales en el mismo estado";
+        /** Nombra el material que bloquea el avance: el primero de la selección con un cambio sin confirmar. */
+        public static final String AVANCE_BLOQUEADO_TOCADO               = "«%s» ya tiene un cambio sin confirmar";
+        public static final String AVANCE_BLOQUEADO_GUARDANDO            = "Guardando…";
         public static final String BOTON_ESTERILIZAR_DESDE_LOTES         = "Esterilizar desde Lotes";
         public static final String COLUMNA_LOTE_ID                       = "ID";
         public static final String COLUMNA_LOTE_EQUIPO                   = "Equipo";
