@@ -6,7 +6,7 @@
 > `SuperposicionPreviews` 100 %, `ReglasSeleccionAcumulativa` 91 %, `SeleccionAcumulativaTabla` 95 %.
 >
 > **`/code-review high`: 0 CRITICAL, 0 HIGH. Hallazgos que no se tocaron:**
-> - **MEDIUM — `pintar` con el buffer vivo superpone copias viejas sobre un snapshot nuevo**
+> - **MEDIUM (decisión del usuario, 2026-09-25: se deja como está) — `pintar` con el buffer vivo superpone copias viejas sobre un snapshot nuevo**
 >   (`RegistrarEstadoController.pintar`/`repintar`): un cambio ajeno en ese equipo no se ve, y
 >   `estaTocado` puede bloquear filas con un motivo engañoso. No se toca porque Confirmar sigue
 >   protegido por el CAS sobre `estado` (nada se escribe mal), los caminos habituales (F5, `componentShown`)
