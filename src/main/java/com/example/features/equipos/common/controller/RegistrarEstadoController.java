@@ -6,8 +6,11 @@ import com.example.common.model.EquipoKey;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
 import com.example.features.equipos.common.controller.helpers.AplicadorMovimientosPendientes;
+import com.example.features.equipos.common.controller.helpers.PlanificadorAvanceMultiple;
+import com.example.features.equipos.common.controller.helpers.PlanificadorAvanceMultiple.EntradaAvance;
+import com.example.features.equipos.common.controller.helpers.PlanificadorAvanceMultiple.EvaluacionAvance;
 import com.example.features.equipos.common.controller.helpers.SuperposicionPreviews;
-import com.example.features.equipos.ortopedias.model.EstadoEquipo;
+import com.example.features.equipos.common.model.RespuestaAvanceCompleto;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.ortopedias.service.IEstadoValidator;
 import com.example.features.equipos.ortopedias.service.MaterialService;
@@ -24,6 +27,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Controlador para {@link PantallaRegistrarEstado}.
@@ -40,7 +45,7 @@ public class RegistrarEstadoController {
     private final PantallaRegistrarEstado     panel;
     private final EquipoOtrosService          equipoOtrosService;
     private final MaterialService             materialService;
-    private final IEstadoValidator            estadoValidator;
+    private final PlanificadorAvanceMultiple  planificador;
     private final Runnable                    solicitarRefresco;
     private OnEstadosActualizadosListener     onEstadosActualizadosListener;
 
@@ -62,6 +67,13 @@ public class RegistrarEstadoController {
     private final Map<EquipoKey, EquipoRegistrableInterface>       equiposPendientes = new HashMap<>();
 
     /**
+     * {@code true} mientras Confirmar guarda. Sin esto, cualquier cambio de selección volvía a
+     * prender Avanzar en medio de la escritura, y lo que se avanzara ahí lo borraba el
+     * {@code clear()} de {@link #finalizarConfirmacion} sin avisar.
+     */
+    private boolean escrituraEnCurso;
+
+    /**
      * Alcance: lectura de equipos (ortopedia + otros), avance de estado de sus
      * materiales y la regla de qué transición es manual.
      */
@@ -74,7 +86,7 @@ public class RegistrarEstadoController {
         this.panel              = panel;
         this.equipoOtrosService = equipoOtrosService;
         this.materialService    = materialService;
-        this.estadoValidator    = estadoValidator;
+        this.planificador       = new PlanificadorAvanceMultiple(estadoValidator);
         this.onEstadosActualizadosListener = onEstadosActualizadosListener;
         this.solicitarRefresco  = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
 
@@ -97,7 +109,7 @@ public class RegistrarEstadoController {
             if (e.getValueIsAdjusting()) return;
             actualizarTextoAvanzar();
         });
-        panel.setOnAvanzar(e -> avanzarMaterialSeleccionado());
+        panel.setOnAvanzar(e -> avanzarSeleccion());
         panel.setOnCancelar(e -> cancelarCambios());
         panel.setOnConfirmar(e -> confirmarCambios());
         panel.setOnGestionarLotes(e -> navegarConGuard(panel::navegarALotes));
@@ -152,81 +164,133 @@ public class RegistrarEstadoController {
     }
 
     private void actualizarTextoAvanzar() {
-        EquipoRegistrableInterface equipo   = panel.getEquipoSeleccionado();
-        int materialIndex           = panel.getMaterialSeleccionadoIndex();
-
-        if (equipo == null || materialIndex < 0) {
-            panel.setAvanzarTexto(Constantes.Textos.BOTON_SELECCIONE_MATERIAL);
-            panel.setAvanzarEnabled(false);
-            panel.setAvanzarVisible(false);
-            return;
-        }
-
-        MaterialRegistrableInterface material = equipo.getMaterialesRegistrables().get(materialIndex);
-        EstadoEquipo siguienteEstado  = equipo.getSiguienteEstado(material.getEstado());
-
-        if (!estadoValidator.esAvanzableManualmente(material.getEstado(), siguienteEstado)) {
-            panel.setAvanzarEnabled(false);
-            panel.setAvanzarVisible(false);
-            return;
-        }
-
-        if (siguienteEstado == null) {
-            panel.setAvanzarTexto(Constantes.Textos.BOTON_ESTADO_FINAL);
-            panel.setAvanzarEnabled(false);
-            panel.setAvanzarVisible(false);
-            return;
-        }
-
-        panel.setAvanzarTexto(String.format(Constantes.Textos.BOTON_PASAR_A, siguienteEstado.getNombre()));
-        panel.setAvanzarEnabled(true);
-        panel.setAvanzarVisible(true);
+        EvaluacionAvance evaluacion = evaluarSeleccion();
+        panel.setAvanzarTexto(evaluacion.textoBoton());
+        panel.setAvanzarEnabled(evaluacion.botonHabilitado());
+        panel.setAvanzarVisible(evaluacion.botonVisible());
     }
 
-    private void avanzarMaterialSeleccionado() {
+    /** Lo que decide el planificador sobre la selección actual. Sólo lee estado del EDT. */
+    private EvaluacionAvance evaluarSeleccion() {
+        EquipoRegistrableInterface visible = panel.getEquipoSeleccionado();
+        if (visible == null) {
+            return planificador.evaluar(new EntradaAvance(null, null, List.of(), Set.of(), escrituraEnCurso));
+        }
+        EquipoKey key = new EquipoKey(visible.getTipo(), visible.getId());
+        Set<Integer> idsEnBuffer = cambiosPendientes.getOrDefault(key, Map.of()).keySet();
+        return planificador.evaluar(new EntradaAvance(
+            originalDe(key, visible), visible, panel.getMaterialesSeleccionados(), idsEnBuffer, escrituraEnCurso));
+    }
+
+    /**
+     * El equipo tal como vino en el snapshot, sin previews: contra él detecta el planificador las
+     * filas que un preview infló. Lo que muestra la tabla sale siempre del snapshot (con copias
+     * encima), así que está; si no estuviera, el visible es lo único que hay.
+     */
+    private EquipoRegistrableInterface originalDe(EquipoKey key, EquipoRegistrableInterface visible) {
+        List<? extends EquipoRegistrableInterface> lista =
+            key.getTipo() == EquipoRegistrableInterface.TipoEquipo.OTROS
+                ? ultimoSnapshot.equiposOtros()
+                : ultimoSnapshot.equipos();
+        for (EquipoRegistrableInterface equipo : lista) {
+            if (Objects.equals(equipo.getId(), key.getId())) return equipo;
+        }
+        return visible;
+    }
+
+    /**
+     * Avanza los materiales seleccionados. El orden es lo que no se puede tocar: se piden todas las
+     * cantidades, se arman <b>todos</b> los movimientos con los ids que el operador vio, se encola
+     * <b>todo</b>, y recién después se aplican los previews, sobre la copia. Cancelar cualquier
+     * diálogo aborta la operación entera: nada entra al buffer.
+     */
+    private void avanzarSeleccion() {
         EquipoRegistrableInterface equipo = panel.getEquipoSeleccionado();
-        int materialIndex         = panel.getMaterialSeleccionadoIndex();
-
-        if (equipo == null || materialIndex < 0) {
-            panel.mostrarAdvertencia(Constantes.Mensajes.SELECCIONE_MATERIAL_AVANZAR);
+        EvaluacionAvance evaluacion = evaluarSeleccion();
+        // Defensa: con la selección bloqueada el botón ya estaba apagado u oculto.
+        if (!(evaluacion instanceof EvaluacionAvance.Avanzable avance)) {
+            panel.mostrarAdvertencia(evaluacion.textoBoton());
             return;
         }
+        pedirCantidades(avance, ultimoSnapshot)
+            .ifPresent(movimientos -> encolarConPreview(equipo, movimientos));
+    }
 
-        MaterialRegistrableInterface material = equipo.getMaterialesRegistrables().get(materialIndex);
-        if (!material.esPersistido()) {
-            panel.mostrarAdvertencia(Constantes.Mensajes.MATERIAL_CAMBIOS_PENDIENTES);
-            return;
+    /**
+     * La cascada de diálogos. Vacío si el operador canceló cualquiera, o si la pantalla se repintó
+     * con un diálogo abierto: un modal sigue despachando el EDT, y el {@code done()} de una
+     * {@code TareaUI} en vuelo (un F5 justo antes, el debounce del refresco) corre {@link #pintar}
+     * igual. Los materiales capturados serían de un snapshot que ya no está en la tabla, así que se
+     * aborta en ese mismo diálogo, sin hacerle tipear el resto al operador.
+     */
+    private Optional<List<MovimientoMaterial>> pedirCantidades(EvaluacionAvance.Avanzable avance,
+                                                               DatosOperativos snapshotAntes) {
+        return switch (avance.modoCantidades()) {
+            case UN_MATERIAL             -> pedirCantidadPorMaterial(avance, snapshotAntes);
+            case COMPLETOS_SIN_PREGUNTAR -> Optional.of(planificador.movimientosCompletos(avance));
+            case PREGUNTAR_SI_COMPLETOS  -> preguntarSiCompletos(avance, snapshotAntes);
+        };
+    }
+
+    /** "¿Todos completos?": Sí los pasa enteros, No abre la cascada, Cancelar aborta. */
+    private Optional<List<MovimientoMaterial>> preguntarSiCompletos(EvaluacionAvance.Avanzable avance,
+                                                                    DatosOperativos snapshotAntes) {
+        RespuestaAvanceCompleto respuesta = panel.preguntarAvanceCompleto(
+            avance.materiales().size(), avance.siguiente().getNombre());
+        if (respuesta == RespuestaAvanceCompleto.CANCELAR || pantallaReleida(snapshotAntes)) {
+            return Optional.empty();
         }
+        return respuesta == RespuestaAvanceCompleto.TODOS_COMPLETOS
+            ? Optional.of(planificador.movimientosCompletos(avance))
+            : pedirCantidadPorMaterial(avance, snapshotAntes);
+    }
 
-        Integer cantidad = panel.pedirCantidadParaAvanzar(material.getDescripcion(), material.getCantidad());
-        if (cantidad == null) return;
+    /** Un diálogo de cantidad por material; el primero que se cancela aborta todo. */
+    private Optional<List<MovimientoMaterial>> pedirCantidadPorMaterial(EvaluacionAvance.Avanzable avance,
+                                                                        DatosOperativos snapshotAntes) {
+        Map<Integer, Integer> cantidades = new HashMap<>();
+        for (MaterialRegistrableInterface material : avance.materiales()) {
+            Integer cantidad = panel.pedirCantidadParaAvanzar(material.getDescripcion(), material.getCantidad());
+            if (cantidad == null || pantallaReleida(snapshotAntes)) {
+                return Optional.empty();
+            }
+            cantidades.put(material.getId(), cantidad);
+        }
+        return Optional.of(planificador.movimientosConCantidades(avance, cantidades));
+    }
 
+    /**
+     * {@code true} (y avisa) si {@link #pintar} corrió desde que se abrió la cascada. Compara
+     * referencias: {@code pintar} siempre recibe un {@code DatosOperativos} nuevo, y
+     * {@code resetearCambios} —que repinta sin cambiarlo— no puede correr con un modal abierto.
+     */
+    private boolean pantallaReleida(DatosOperativos snapshotAntes) {
+        if (ultimoSnapshot == snapshotAntes) return false;
+        panel.mostrarAdvertencia(Constantes.Mensajes.AVANCE_PANTALLA_RELEIDA);
+        return true;
+    }
+
+    /**
+     * Encola todos los movimientos y recién después aplica los previews, sobre la copia. Al revés,
+     * el preview del primero cambiaría la lista que el segundo todavía necesita: parte filas, agrega
+     * filas sin id y saca filas al unificar. Por eso cada preview busca su material por id.
+     */
+    private void encolarConPreview(EquipoRegistrableInterface equipo, List<MovimientoMaterial> movimientos) {
         EquipoKey key = new EquipoKey(equipo.getTipo(), equipo.getId());
-
-        if (cambiosPendientes.containsKey(key) &&
-            cambiosPendientes.get(key).containsKey(material.getId())) {
-            panel.mostrarAdvertencia(Constantes.Mensajes.MATERIAL_CAMBIO_PENDIENTE_DUP);
-            return;
-        }
-
-        EstadoEquipo siguienteEstado = equipo.getSiguienteEstado(material.getEstado());
-        if (siguienteEstado == null) {
-            panel.mostrarAdvertencia(
-                String.format(Constantes.Mensajes.MATERIAL_ESTADO_FINAL, material.getEstado().getNombre()));
-            return;
-        }
-
-        cambiosPendientes.putIfAbsent(key, new HashMap<>());
         // El primer avance sobre un equipo lo copia; los siguientes ya ven la copia en la tabla,
         // y computeIfAbsent la devuelve tal cual.
         EquipoRegistrableInterface copia = equiposPendientes.computeIfAbsent(
             key, k -> equipo.copiarParaPreview());
+        Map<Integer, MovimientoMaterial> buffer = cambiosPendientes.computeIfAbsent(key, k -> new HashMap<>());
 
-        MovimientoMaterial movimiento = new MovimientoMaterial(
-            material.getId(), cantidad, material.getEstado(), siguienteEstado);
-        cambiosPendientes.get(key).put(material.getId(), movimiento);
+        for (MovimientoMaterial movimiento : movimientos) {
+            buffer.put(movimiento.getMaterialId(), movimiento);
+        }
+        for (MovimientoMaterial movimiento : movimientos) {
+            copia.aplicarMovimientoPreview(materialPorId(copia, movimiento.getMaterialId()),
+                movimiento.getCantidad(), movimiento.getEstadoDestino());
+        }
 
-        copia.aplicarMovimientoPreview(materialPorId(copia, material.getId()), cantidad, siguienteEstado);
         panel.reemplazarEquipo(copia);
         panel.recargarMateriales();
         panel.refrescarEstadosEquipos();
@@ -307,11 +371,15 @@ public class RegistrarEstadoController {
             .pintar(this::finalizarConfirmacion)
             .siFalla(e -> panel.mostrarError("No se pudieron guardar los cambios: " + e.getMessage()))
             .antes(() -> {
+                escrituraEnCurso = true;
                 panel.setConfirmarEnabled(false);
                 panel.setCancelarEnabled(false);
-                panel.setAvanzarEnabled(false);
+                actualizarTextoAvanzar();
             })
-            .despues(this::sincronizarBotonesConBuffer)
+            .despues(() -> {
+                escrituraEnCurso = false;
+                sincronizarBotonesConBuffer();
+            })
             .lanzar();
     }
 

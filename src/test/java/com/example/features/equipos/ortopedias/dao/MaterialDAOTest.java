@@ -230,6 +230,50 @@ class MaterialDAOTest extends AbstractDAOTest {
             "A no llegó a splitear ni mover cantidades");
     }
 
+    // ── aplicarMovimientos con N materiales (avance múltiple de Registrar Estado) ──
+    //
+    // El avance múltiple no tiene ruta de escritura propia: Confirmar manda la lista de movimientos
+    // de cada equipo a este mismo método. Estos dos casos fijan que ya cubre N movimientos en una
+    // sola transacción, y que un choque en uno revierte los N.
+
+    @Test
+    void aplicarMovimientos_tresMaterialesDelMismoEquipo_escribeTresMovimientosEnUnaTransaccion() {
+        Equipo tres = equipoConTresMaterialesEnNuevo();
+        List<Integer> ids = idsDeMateriales(tres);
+        int movimientosAntes = contarMovimientos(tres.getId());
+
+        assertTrue(dao.aplicarMovimientos(tres.getId(), List.of(
+            new MovimientoMaterial(ids.get(0), 2, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO),
+            new MovimientoMaterial(ids.get(1), 1, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO),
+            new MovimientoMaterial(ids.get(2), 5, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO))));
+
+        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(tres.getId()));
+        assertTrue(cargado.getMateriales().stream().allMatch(m -> m.getEstado() == EstadoEquipo.LAVANDO),
+            "los tres pasaron");
+        assertEquals(3, cargado.getMateriales().size(), "completos: ni splits ni filas nuevas");
+        assertEquals(movimientosAntes + 3, contarMovimientos(tres.getId()), "un movimiento por material");
+    }
+
+    @Test
+    void aplicarMovimientos_variosMateriales_unoEnConflicto_noEscribeNinguno() {
+        Equipo tres = equipoConTresMaterialesEnNuevo();
+        List<Integer> ids = idsDeMateriales(tres);
+        int movimientosAntes = contarMovimientos(tres.getId());
+
+        // El segundo lleva un estadoOrigenEsperado viejo: la pantalla lo vio en LAVANDO, la base
+        // dice NUEVO. El primero, que va antes y sí matchea, tiene que revertirse igual.
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.aplicarMovimientos(tres.getId(), List.of(
+            new MovimientoMaterial(ids.get(0), 2, EstadoEquipo.NUEVO,   EstadoEquipo.LAVANDO),
+            new MovimientoMaterial(ids.get(1), 1, EstadoEquipo.LAVANDO, EstadoEquipo.LAVADO),
+            new MovimientoMaterial(ids.get(2), 5, EstadoEquipo.NUEVO,   EstadoEquipo.LAVANDO))));
+
+        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(tres.getId()));
+        assertTrue(cargado.getMateriales().stream().allMatch(m -> m.getEstado() == EstadoEquipo.NUEVO),
+            "los tres siguen en su estado original");
+        assertEquals(3, cargado.getMateriales().size(), "sin filas nuevas");
+        assertEquals(movimientosAntes, contarMovimientos(tres.getId()), "ningún movimiento registrado");
+    }
+
     // ── eliminarMaterialesPorCodigo ───────────────────────────────────────────
 
     @Test
@@ -264,5 +308,41 @@ class MaterialDAOTest extends AbstractDAOTest {
 
         Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
         assertEquals(EstadoEquipo.ENTREGADO, cargado.getMateriales().get(0).getEstado());
+    }
+
+    // ── Fixtures ──────────────────────────────────────────────────────────────
+
+    /** Códigos distintos: si compartieran código, la unificación de la base mezclaría las filas. */
+    private Equipo equipoConTresMaterialesEnNuevo() {
+        Equipo nuevo = new Equipo();
+        nuevo.setNroCliente(1);
+        nuevo.setNroInstitucion(1);
+        nuevo.agregarMaterial(new Material(400, "Tornillera", 2));
+        nuevo.agregarMaterial(new Material(401, "Placa", 1));
+        nuevo.agregarMaterial(new Material(402, "Tornillo", 5));
+        equipoDAO.guardarEquipo(nuevo);
+        return equipoDAO.obtenerPorId(String.valueOf(nuevo.getId()));
+    }
+
+    /** Ids en el orden de los códigos 400, 401, 402, que es el de las cantidades de la fixture. */
+    private static List<Integer> idsDeMateriales(Equipo equipo) {
+        return equipo.getMateriales().stream()
+            .sorted(java.util.Comparator.comparingInt(Material::getCodigo))
+            .map(Material::getId)
+            .toList();
+    }
+
+    private int contarMovimientos(int equipoId) {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM material_movimientos WHERE equipo_id = ?")) {
+            ps.setInt(1, equipoId);
+            try (var rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

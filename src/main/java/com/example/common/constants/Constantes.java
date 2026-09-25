@@ -80,10 +80,6 @@ public final class Constantes {
         public static final String ERROR_GUARDAR_ENTIDAD         = "Error al guardar %s. Por favor, intente de nuevo.";
         public static final String ERROR_GUARDAR_ENTIDAD_DETALLE = "Error al guardar %s: %s";
 
-        public static final String SELECCIONE_MATERIAL_AVANZAR  = "Por favor, seleccione un material para avanzar.";
-        public static final String MATERIAL_CAMBIOS_PENDIENTES  = "Este material tiene cambios pendientes. Confirme antes de continuar.";
-        public static final String MATERIAL_CAMBIO_PENDIENTE_DUP = "Este material ya tiene un cambio pendiente. Confirme antes de avanzar nuevamente.";
-        public static final String MATERIAL_ESTADO_FINAL        = "El material ya está en el estado final: %s";
         public static final String ESTERILIZAR_DESDE_LOTES      = "✓ Para procesar materiales a través de esterilización, use la pantalla de LOTES desde el menú Centro de Esterilización.";
         public static final String CONFIRMAR_CANCELACION        = "¿Está seguro de que desea cancelar todos los cambios pendientes?";
         public static final String CONFIRMAR_CAMBIOS            = "¿Confirmar cambios?\nEsta operación actualizará la base de datos.";
@@ -147,6 +143,9 @@ public final class Constantes {
         public static final String AVANCE_MULTIPLE_PREGUNTA =
             "¿Pasar los %d materiales completos a %s?"
             + "\n\nSí: todas sus unidades.\nNo: elegir la cantidad de cada uno.";
+        public static final String AVANCE_PANTALLA_RELEIDA  =
+            "La pantalla se actualizó mientras elegía las cantidades y no se avanzó nada."
+            + "\nVuelva a seleccionar los materiales.";
 
         public static final String CONFIRMAR_ENTREGA_EQUIPO = "¿Marcar este equipo como entregado?\nEsta acción actualizará todos sus materiales.";
         public static final String ENTREGA_EQUIPO_OK        = "Equipo entregado correctamente.";
@@ -631,7 +630,6 @@ public final class Constantes {
         public static final String ENTIDAD_CATALOGO_OTROS                = "material del catálogo";
         public static final String BOTON_PASAR_A                         = "Pasar a %s";
         public static final String BOTON_SELECCIONE_MATERIAL             = "Seleccione un material";
-        public static final String BOTON_ESTADO_FINAL                    = "Material en estado final";
         /** Avanzar con más de un material: cantidad de materiales y nombre del estado siguiente. */
         public static final String BOTON_PASAR_N_A                       = "Pasar %d a %s";
         public static final String AVANCE_BLOQUEADO_ESTADOS_DISTINTOS    = "Seleccione materiales en el mismo estado";

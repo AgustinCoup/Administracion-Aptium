@@ -117,10 +117,6 @@ public class PantallaRegistrarEstado extends JPanel {
         return panelTablas.getEquipoSeleccionado();
     }
 
-    public int getMaterialSeleccionadoIndex() {
-        return panelTablas.getMaterialSeleccionadoIndex();
-    }
-
     public List<MaterialRegistrableInterface> getMaterialesSeleccionados() {
         return panelTablas.getMaterialesSeleccionados();
     }

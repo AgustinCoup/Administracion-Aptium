@@ -187,6 +187,43 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
             "el movimiento de A no se registró");
     }
 
+    // ── Registrar Estado — avance múltiple ────────────────────────────────────
+
+    @Test
+    @DisplayName("Registrar Estado (avance múltiple): B avanza uno de tres y A no aplica ninguno")
+    void registrarEstadoAvanceMultipleChocaEnUnoYNoAplicaNinguno() {
+        // A lee: tres materiales del mismo equipo en NUEVO.
+        Equipo equipo = equipoOrtopediaConTresMateriales();
+        List<Integer> ids = equipo.getMateriales().stream()
+            .sorted(java.util.Comparator.comparingInt(Material::getCodigo))
+            .map(Material::getId)
+            .toList();
+        int movimientosAntes = escalar("SELECT COUNT(*) FROM material_movimientos");
+
+        // B avanza sólo el del medio y commitea.
+        materialDAO.aplicarMovimientos(equipo.getId(),
+            List.of(new MovimientoMaterial(ids.get(1), 1, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO)));
+
+        // A confirma los tres con lo que vio: los tres en NUEVO.
+        assertThrows(ConflictoConcurrenciaException.class, () -> materialDAO.aplicarMovimientos(
+            equipo.getId(),
+            ids.stream()
+                .map(id -> new MovimientoMaterial(id, 1, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO))
+                .toList()));
+
+        Map<Integer, EstadoEquipo> estadoPorId = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()))
+            .getMateriales().stream()
+            .collect(java.util.stream.Collectors.toMap(Material::getId, Material::getEstado));
+        assertEquals(Map.of(
+                ids.get(0), EstadoEquipo.NUEVO,
+                ids.get(1), EstadoEquipo.LAVANDO,
+                ids.get(2), EstadoEquipo.NUEVO),
+            estadoPorId,
+            "queda sólo el avance de B: el primero de A, que sí matcheaba, se revirtió con el resto");
+        assertEquals(movimientosAntes + 1, escalar("SELECT COUNT(*) FROM material_movimientos"),
+            "en la tabla sólo está el movimiento de B");
+    }
+
     // ── Lanzar Lote ───────────────────────────────────────────────────────────
 
     @Test
@@ -626,6 +663,18 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
         equipo.setNroCliente(nroCliente);
         equipo.setNroInstitucion(1);
         equipo.agregarMaterial(new Material(400, "Tornillera", cantidad));
+        equipoDAO.guardarEquipo(equipo);
+        return equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
+    }
+
+    /** Tres materiales de cantidad 1 con códigos distintos, para que la base no los unifique. */
+    private Equipo equipoOrtopediaConTresMateriales() {
+        Equipo equipo = new Equipo();
+        equipo.setNroCliente(1);
+        equipo.setNroInstitucion(1);
+        equipo.agregarMaterial(new Material(400, "Tornillera", 1));
+        equipo.agregarMaterial(new Material(401, "Placa", 1));
+        equipo.agregarMaterial(new Material(402, "Tornillo", 1));
         equipoDAO.guardarEquipo(equipo);
         return equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
     }

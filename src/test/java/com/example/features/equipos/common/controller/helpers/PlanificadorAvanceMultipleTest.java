@@ -285,6 +285,40 @@ class PlanificadorAvanceMultipleTest {
         assertEquals(12, movimientos.get(0).getCantidad());
     }
 
+    // ── Modo de cantidades ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("un material va directo al diálogo de cantidad, aunque tenga varias unidades")
+    void unMaterial_modoUnMaterial() {
+        MaterialRegistrableInterface placa = material(1, "Placa", 5, EstadoEquipo.NUEVO);
+
+        Avanzable avance = avanzable(equipo(true, placa), placa);
+
+        assertEquals(PlanificadorAvanceMultiple.ModoCantidades.UN_MATERIAL, avance.modoCantidades());
+    }
+
+    @Test
+    @DisplayName("varios, todos de cantidad 1: pasan completos sin ningún diálogo")
+    void variosUnitarios_completosSinPreguntar() {
+        MaterialRegistrableInterface uno = material(1, "Placa", 1, EstadoEquipo.NUEVO);
+        MaterialRegistrableInterface dos = material(2, "Tornillo", 1, EstadoEquipo.NUEVO);
+
+        Avanzable avance = avanzable(equipo(true, uno, dos), uno, dos);
+
+        assertEquals(PlanificadorAvanceMultiple.ModoCantidades.COMPLETOS_SIN_PREGUNTAR, avance.modoCantidades());
+    }
+
+    @Test
+    @DisplayName("varios y alguno con más de 1: se pregunta si pasan completos")
+    void variosConAlgunoMayorAUno_preguntar() {
+        MaterialRegistrableInterface uno = material(1, "Placa", 1, EstadoEquipo.NUEVO);
+        MaterialRegistrableInterface dos = material(2, "Tornillo", 3, EstadoEquipo.NUEVO);
+
+        Avanzable avance = avanzable(equipo(true, uno, dos), uno, dos);
+
+        assertEquals(PlanificadorAvanceMultiple.ModoCantidades.PREGUNTAR_SI_COMPLETOS, avance.modoCantidades());
+    }
+
     // ── Movimientos ──────────────────────────────────────────────────────────
 
     @Test

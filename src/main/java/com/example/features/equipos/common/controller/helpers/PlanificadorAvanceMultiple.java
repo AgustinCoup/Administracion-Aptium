@@ -128,6 +128,16 @@ public final class PlanificadorAvanceMultiple {
             @Override public boolean botonVisible()    { return true; }
             @Override public boolean botonHabilitado() { return true; }
 
+            /** Qué diálogos hacen falta para elegir las cantidades; ver {@link ModoCantidades}. */
+            public ModoCantidades modoCantidades() {
+                if (materiales.size() == 1) {
+                    return ModoCantidades.UN_MATERIAL;
+                }
+                return materiales.stream().allMatch(m -> m.getCantidad() == 1)
+                    ? ModoCantidades.COMPLETOS_SIN_PREGUNTAR
+                    : ModoCantidades.PREGUNTAR_SI_COMPLETOS;
+            }
+
             @Override
             public String textoBoton() {
                 return materiales.size() == 1
@@ -136,6 +146,20 @@ public final class PlanificadorAvanceMultiple {
             }
         }
     }
+
+    /**
+     * Cómo se eligen las cantidades de un {@link EvaluacionAvance.Avanzable}.
+     *
+     * <ul>
+     *   <li>{@link #UN_MATERIAL}: directo al diálogo de cantidad, como siempre. La pregunta "¿todos
+     *       completos?" sobraría: ese diálogo ya tiene el check "Todos".</li>
+     *   <li>{@link #COMPLETOS_SIN_PREGUNTAR}: varios, todos de cantidad 1. No hay nada que elegir,
+     *       igual que con un material de cantidad 1 hoy; la confirmación real es Confirmar.</li>
+     *   <li>{@link #PREGUNTAR_SI_COMPLETOS}: varios y alguno con más de 1. Primero "¿todos
+     *       completos?" y, con No, un diálogo de cantidad por material.</li>
+     * </ul>
+     */
+    public enum ModoCantidades { UN_MATERIAL, COMPLETOS_SIN_PREGUNTAR, PREGUNTAR_SI_COMPLETOS }
 
     private static final EvaluacionAvance SIN_SELECCION = new EvaluacionAvance.SinSeleccion();
     private static final EvaluacionAvance NO_AVANZABLE  = new EvaluacionAvance.NoAvanzable();
