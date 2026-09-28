@@ -9,7 +9,6 @@ import java.awt.Component;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.example.common.constants.Constantes;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 
 public final class TableStyler {
@@ -31,34 +30,6 @@ public final class TableStyler {
         for (int column : columns) {
             table.getColumnModel().getColumn(column).setCellRenderer(centerRenderer);
         }
-    }
-
-    public static DefaultTableCellRenderer createEntregadoRenderer() {
-        return new DefaultTableCellRenderer() {
-            @Override
-            public Component getTableCellRendererComponent(JTable table, Object value,
-                    boolean isSelected, boolean hasFocus, int row, int column) {
-                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-
-                boolean entregado = false;
-                if (value instanceof Boolean) {
-                    entregado = (Boolean) value;
-                } else if (value instanceof String) {
-                    entregado = Constantes.Textos.ENTREGADO_SI.equalsIgnoreCase(value.toString());
-                }
-
-                String texto = entregado
-                    ? Constantes.Textos.ENTREGADO_SI
-                    : Constantes.Textos.ENTREGADO_NO;
-                c.setBackground(entregado ? new Color(144, 238, 144) : new Color(255, 160, 122));
-                c.setForeground(Estilos.Colores.TEXTO_NORMAL);
-                setHorizontalAlignment(SwingConstants.CENTER);
-                setFont(Estilos.Fuentes.TABLA_ENFASIS);
-                setText(texto);
-
-                return c;
-            }
-        };
     }
 
     public static DefaultTableCellRenderer createEstadoRenderer() {

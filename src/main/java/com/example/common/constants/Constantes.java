@@ -158,6 +158,9 @@ public final class Constantes {
         public static final String ENTREGA_CONFIRMACION_DESTINO = "%s: %s";
         /** Una línea por ítem, sin fusionar por nombre: ingreso, material y cantidad. */
         public static final String ENTREGA_CONFIRMACION_ITEM    = "  • %s — %s × %d";
+        /** Resultado de la entrega por partes: cada categoría nombra sus destinos. */
+        public static final String ENTREGA_RESULTADO_OK         = "Entregado correctamente: %s.";
+        public static final String ENTREGA_RESULTADO_ERROR      = "No se pudo entregar por un error técnico: %s.";
 
         public static final String TITULO_EXITO                       = "Éxito";
         public static final String TITULO_ERROR                       = "Error";
@@ -617,7 +620,8 @@ public final class Constantes {
         public static final String COLUMNA_EQUIPO                        = "Equipo";
         public static final String COLUMNA_MATERIAL                      = "Material";
         public static final String COLUMNA_CANTIDAD                      = "Cantidad";
-        public static final String COLUMNA_ENTREGADO                     = "Entregado";
+        /** Columna Ingreso de la tabla de materiales de Para Entregar. */
+        public static final String COLUMNA_INGRESO                       = "Ingreso";
         public static final String COLUMNA_ULTIMO_MOVIMIENTO             = "Último movimiento";
         public static final String TOTAL_ELEMENTOS                       = "Total Elementos: %d";
         public static final String CODIGO_INVALIDO                       = "Código inválido";
@@ -638,8 +642,6 @@ public final class Constantes {
         public static final String INGRESO_REMITO                        = "Remito %s";
         /** Sufijo de la columna Ingreso cuando el equipo todavía tiene materiales en proceso. */
         public static final String INGRESO_INCOMPLETO                    = " · incompleto";
-        public static final String ENTREGADO_SI                          = "SI";
-        public static final String ENTREGADO_NO                          = "NO";
         public static final String TOOLTIP_ELIMINAR_FILA                 = "Eliminar esta fila";
         public static final String LABEL_CLIENTE                         = "Cliente / Empresa:";
         public static final String LABEL_PROFESIONAL                     = "Profesional a cargo:";

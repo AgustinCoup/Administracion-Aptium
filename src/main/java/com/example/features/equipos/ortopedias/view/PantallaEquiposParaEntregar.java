@@ -17,6 +17,8 @@ import com.example.ui.common.Estilos;
 import com.example.ui.common.LabelFactory;
 import com.example.ui.common.PanelHeader;
 import com.example.ui.common.TableStyler;
+import com.example.ui.common.dnd.TableSelectionSupport;
+import com.example.ui.common.seleccion.SeleccionAcumulativaTabla;
 
 public class PantallaEquiposParaEntregar extends JPanel {
     private PanelHeader header;
@@ -70,10 +72,7 @@ public class PantallaEquiposParaEntregar extends JPanel {
         modeloMateriales = new MaterialEntregaTableModel();
         tablaMateriales = new JTable(modeloMateriales);
         TableStyler.applyStandard(tablaMateriales);
-        tablaMateriales.getColumnModel().getColumn(2).setCellRenderer(TableStyler.createEntregadoRenderer());
-        TableStyler.centerColumns(tablaMateriales, 1);
-
-        tablaMateriales.setEnabled(false);
+        TableStyler.centerColumns(tablaMateriales, 2);
 
         JScrollPane scrollMateriales = new JScrollPane(tablaMateriales);
         gbc.gridy = 3;
@@ -100,6 +99,8 @@ public class PantallaEquiposParaEntregar extends JPanel {
         
         panelBotones.add(btnEntregarInstitucion);
         add(panelBotones, BorderLayout.SOUTH);
+
+        SeleccionAcumulativaTabla.instalar(tablaMateriales, btnEntregarInstitucion);
     }
 
     /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
@@ -160,6 +161,14 @@ public class PantallaEquiposParaEntregar extends JPanel {
         return result;
     }
 
+    /**
+     * Materiales seleccionados de la tabla, en el orden en que aparecen. Selección múltiple
+     * opt-in vía {@link SeleccionAcumulativaTabla}, cableada en el constructor.
+     */
+    public List<MaterialEntregaItem> getMaterialesSeleccionados() {
+        return TableSelectionSupport.selectedItems(tablaMateriales, modeloMateriales::getItemAt);
+    }
+
     public void mostrarAdvertencia(String mensaje) {
         JOptionPane.showMessageDialog(this, mensaje,
             Constantes.Mensajes.TITULO_ADVERTENCIA, JOptionPane.WARNING_MESSAGE);
@@ -175,8 +184,20 @@ public class PantallaEquiposParaEntregar extends JPanel {
             Constantes.Mensajes.TITULO_ERROR, JOptionPane.ERROR_MESSAGE);
     }
 
-    public boolean confirmar(String mensaje, String titulo) {
-        int respuesta = JOptionPane.showConfirmDialog(this, mensaje, titulo,
+    /**
+     * Confirmación con scroll: "varios destinos = todo" puede listar cientos de líneas, y un
+     * {@code JOptionPane} con un {@code String} suelto crece más que la pantalla y deja los
+     * botones afuera.
+     */
+    public boolean confirmarConDetalle(String detalle, String titulo) {
+        JTextArea area = new JTextArea(detalle);
+        area.setEditable(false);
+        area.setFont(Estilos.Fuentes.TABLA_CONTENIDO);
+        JScrollPane scroll = new JScrollPane(area);
+        scroll.setPreferredSize(new Dimension(
+            Estilos.Dimensiones.CONFIRMACION_ENTREGA_ANCHO, Estilos.Dimensiones.CONFIRMACION_ENTREGA_ALTO));
+
+        int respuesta = JOptionPane.showConfirmDialog(this, scroll, titulo,
             JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
         return respuesta == JOptionPane.YES_OPTION;
     }

@@ -119,6 +119,12 @@ public final class Estilos {
         // Con ANCHO_MENU (560) repartido en 3, cada botón queda en ~180 px y "Ver Ciclos" se
         // corta con Fuentes.BOTON.
         public static final int ANCHO_MENU_GRILLA = 840;
+
+        // Tamaño del scroll de la confirmación de entrega (Para Entregar): con "varios destinos
+        // = todo" puede haber cientos de líneas, y un JOptionPane con un String suelto crece más
+        // que la pantalla y deja los botones afuera.
+        public static final int CONFIRMACION_ENTREGA_ANCHO = 480;
+        public static final int CONFIRMACION_ENTREGA_ALTO  = 360;
         
         // Ancho de un TextFields pequeño (para números)
         public static int calcularAnchoNumero(int caracteres) {

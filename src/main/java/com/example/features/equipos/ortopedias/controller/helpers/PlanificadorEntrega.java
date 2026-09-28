@@ -5,12 +5,15 @@ import com.example.common.model.EntregaDestinoKey;
 import com.example.common.model.EntregaDestinoKey.TipoDestino;
 import com.example.common.model.FilaAEntregar;
 import com.example.common.model.RemitoAEntregar;
+import com.example.features.equipos.common.controller.helpers.AplicadorPorPartes;
 import com.example.features.equipos.ortopedias.view.helpers.InstitucionEntregaItem;
 import com.example.features.equipos.ortopedias.view.helpers.MaterialEntregaItem;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Decide qué se entrega con la selección de Para Entregar, y arma el texto de la confirmación.
@@ -53,6 +56,13 @@ public final class PlanificadorEntrega {
             solicitudes = Collections.unmodifiableMap(new LinkedHashMap<>(solicitudes));
         }
     }
+
+    /**
+     * Los textos del resultado de una entrega por partes. {@code null} en un campo significa que
+     * esa categoría no tiene nada que decir: {@code info} vacío si no hubo ninguna exitosa,
+     * {@code error} vacío si no hubo error ni conflicto.
+     */
+    public record ResultadoTexto(String info, String error) { }
 
     private PlanificadorEntrega() {
     }
@@ -111,5 +121,37 @@ public final class PlanificadorEntrega {
             sb.append('\n');
         }
         return sb.toString();
+    }
+
+    /**
+     * Los textos del resultado de {@code AplicadorPorPartes.aplicarTodos}, nombrando los destinos
+     * de cada categoría por su nombre (no por la clave). Exitosas y (error + conflicto) son
+     * independientes: pueden convivir en el mismo resultado si algunos destinos se entregaron y
+     * otros no.
+     */
+    public static ResultadoTexto describirResultado(AplicadorPorPartes.Resultado<EntregaDestinoKey> resultado,
+                                                     Map<EntregaDestinoKey, SolicitudEntrega> solicitudes) {
+        String info = resultado.exitosas().isEmpty() ? null
+            : String.format(Constantes.Mensajes.ENTREGA_RESULTADO_OK, nombres(resultado.exitosas(), solicitudes));
+
+        List<String> partesError = new ArrayList<>();
+        if (!resultado.conConflicto().isEmpty()) {
+            partesError.add(Constantes.Mensajes.CONFLICTO_ENTREGA + "\n"
+                + nombres(resultado.conConflicto(), solicitudes));
+        }
+        if (!resultado.conError().isEmpty()) {
+            partesError.add(String.format(Constantes.Mensajes.ENTREGA_RESULTADO_ERROR,
+                nombres(resultado.conError(), solicitudes)));
+        }
+        String error = partesError.isEmpty() ? null : String.join("\n\n", partesError);
+
+        return new ResultadoTexto(info, error);
+    }
+
+    private static String nombres(List<EntregaDestinoKey> destinos,
+                                  Map<EntregaDestinoKey, SolicitudEntrega> solicitudes) {
+        return destinos.stream()
+            .map(destino -> solicitudes.get(destino).nombreDestino())
+            .collect(Collectors.joining(", "));
     }
 }

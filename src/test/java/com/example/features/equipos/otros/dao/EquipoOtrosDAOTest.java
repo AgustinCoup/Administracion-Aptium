@@ -190,41 +190,6 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
         assertEquals(remito.getId(), todos.get(1).getId());
     }
 
-    // ── entregarClienteCompleto ───────────────────────────────────────────────
-
-    @Test
-    void entregarClienteCompleto_sinEquiposDelCliente_retornaTrue() {
-        assertTrue(dao.entregarClienteCompleto(999));
-    }
-
-    @Test
-    void entregarClienteCompleto_materialEsterilizado_actualizaAEntregado() throws SQLException {
-        ejecutarSQL("UPDATE equipo_otros_materiales SET estado = 'Esterilizado' WHERE id = " + materialId);
-        ejecutarSQL("UPDATE equipo_otros SET estado = 'Esterilizado' WHERE id = " + equipoDetalles.getId());
-
-        assertTrue(dao.entregarClienteCompleto(equipoDetalles.getNroCliente()));
-
-        EquipoOtros recargado = dao.obtenerTodos().stream()
-            .filter(e -> e.getId().equals(equipoDetalles.getId()))
-            .findFirst().orElseThrow();
-        assertEquals(EstadoEquipo.ENTREGADO,
-            recargado.getMateriales().get(0).getEstado());
-    }
-
-    @Test
-    void entregarClienteCompleto_remitoEsterilizadoSinFilas_actualizaEstadoEquipo() throws SQLException {
-        EquipoOtros remito = nuevoRemito(3);
-        dao.guardar(remito);
-        ejecutarSQL("UPDATE equipo_otros SET estado = 'Esterilizado' WHERE id = " + remito.getId());
-
-        dao.entregarClienteCompleto(remito.getNroCliente());
-
-        EquipoOtros recargado = dao.obtenerTodos().stream()
-            .filter(e -> e.getId().equals(remito.getId()))
-            .findFirst().orElseThrow();
-        assertEquals(EstadoEquipo.ENTREGADO, recargado.getEstado());
-    }
-
     // ── aplicarMovimientos ────────────────────────────────────────────────────
 
     @Test
@@ -351,19 +316,6 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
             new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVADO));
         assertThrows(ConflictoConcurrenciaException.class,
             () -> dao.aplicarMovimientos(equipoDetalles.getId(), movs));
-    }
-
-    @Test
-    void entregarClienteCompleto_remitoSinFilas_bumpeaLaVersion() throws SQLException {
-        EquipoOtros remito = nuevoRemito(3);
-        dao.guardar(remito);
-        ejecutarSQL("UPDATE equipo_otros SET estado = 'Esterilizado' WHERE id = " + remito.getId());
-        int versionAntes = versionDeEquipoOtros(remito.getId());
-
-        assertTrue(dao.entregarClienteCompleto(remito.getNroCliente()));
-
-        assertEquals(versionAntes + 1, versionDeEquipoOtros(remito.getId()),
-            "el camino REMITO escribe el estado fuera del recálculo: el bump va a mano");
     }
 
     // ── entregar ──────────────────────────────────────────────────────────────

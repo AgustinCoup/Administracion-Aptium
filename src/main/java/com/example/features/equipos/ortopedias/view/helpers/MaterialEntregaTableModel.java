@@ -8,9 +8,9 @@ import com.example.common.constants.Constantes;
 
 public class MaterialEntregaTableModel extends AbstractTableModel {
     private final String[] columnas = {
+        Constantes.Textos.COLUMNA_INGRESO,
         Constantes.Textos.COLUMNA_MATERIAL,
-        Constantes.Textos.COLUMNA_CANTIDAD,
-        Constantes.Textos.COLUMNA_ENTREGADO
+        Constantes.Textos.COLUMNA_CANTIDAD
     };
     private final List<MaterialEntregaItem> filas = new ArrayList<>();
 
@@ -34,11 +34,11 @@ public class MaterialEntregaTableModel extends AbstractTableModel {
         MaterialEntregaItem item = filas.get(row);
         switch (column) {
             case 0:
-                return item.material();
+                return item.ingreso();
             case 1:
-                return item.cantidad();
+                return item.material();
             case 2:
-                return false; // la columna Entregado se quita en el Paso 4: la tabla nunca muestra entregados
+                return item.cantidad();
             default:
                 return "";
         }
@@ -47,6 +47,10 @@ public class MaterialEntregaTableModel extends AbstractTableModel {
     @Override
     public boolean isCellEditable(int row, int column) {
         return false;
+    }
+
+    public MaterialEntregaItem getItemAt(int row) {
+        return filas.get(row);
     }
 
     public void actualizarDatos(List<MaterialEntregaItem> materiales) {

@@ -291,26 +291,6 @@ class MaterialDAOTest extends AbstractDAOTest {
             () -> dao.eliminarMaterialesPorCodigo(equipo.getId(), 9999, 0));
     }
 
-    // ── entregarInstitucionCompleta ───────────────────────────────────────────
-
-    @Test
-    void entregarInstitucionCompleta_sinEquiposEnInstitucion_retornaTrue() {
-        // nroInstitucion=999 no tiene equipos
-        assertTrue(dao.entregarInstitucionCompleta(999));
-    }
-
-    @Test
-    void entregarInstitucionCompleta_materialEsterilizado_actualizaAEntregado() throws SQLException {
-        // Pone el material en estado Esterilizado directamente en BD
-        ejecutarSQL("UPDATE equipo_materiales SET estado = 'Esterilizado' WHERE id = " + materialId);
-        ejecutarSQL("UPDATE equipos SET estado = 'Esterilizado' WHERE id = " + equipo.getId());
-
-        dao.entregarInstitucionCompleta(equipo.getNroInstitucion());
-
-        Equipo cargado = equipoDAO.obtenerPorId(String.valueOf(equipo.getId()));
-        assertEquals(EstadoEquipo.ENTREGADO, cargado.getMateriales().get(0).getEstado());
-    }
-
     // ── entregarMateriales ────────────────────────────────────────────────────
 
     @Test

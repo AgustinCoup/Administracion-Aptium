@@ -2,6 +2,7 @@ package com.example.features.equipos.ortopedias.controller.helpers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -10,9 +11,11 @@ import com.example.common.model.EntregaDestinoKey;
 import com.example.common.model.EntregaDestinoKey.TipoDestino;
 import com.example.common.model.FilaAEntregar;
 import com.example.common.model.RemitoAEntregar;
+import com.example.features.equipos.common.controller.helpers.AplicadorPorPartes;
 import com.example.features.equipos.ortopedias.controller.helpers.PlanificadorEntrega.Plan;
 import com.example.features.equipos.ortopedias.controller.helpers.PlanificadorEntrega.Rechazo;
 import com.example.features.equipos.ortopedias.controller.helpers.PlanificadorEntrega.ResultadoPlan;
+import com.example.features.equipos.ortopedias.controller.helpers.PlanificadorEntrega.ResultadoTexto;
 import com.example.features.equipos.ortopedias.controller.helpers.PlanificadorEntrega.SolicitudEntrega;
 import com.example.features.equipos.ortopedias.view.helpers.InstitucionEntregaItem;
 import com.example.features.equipos.ortopedias.view.helpers.MaterialEntregaItem;
@@ -168,6 +171,56 @@ class PlanificadorEntregaTest {
             () -> new MaterialEntregaItem("x", "y", 1, filas, remitos));
         assertThrows(IllegalArgumentException.class,
             () -> new MaterialEntregaItem("x", "y", 1, List.of(), List.of()));
+    }
+
+    @Test
+    @DisplayName("describirResultado nombra cada destino por categoría")
+    void describirResultado_nombraCadaDestinoPorCategoria() {
+        InstitucionEntregaItem farmacia =
+            new InstitucionEntregaItem(new EntregaDestinoKey(TipoDestino.INSTITUCION, 55), "Farmacia Sur", 1);
+        Map<EntregaDestinoKey, SolicitudEntrega> solicitudes = Map.of(
+            HOSPITAL.getKey(),  new SolicitudEntrega(HOSPITAL.getKey(),  HOSPITAL.getNombre(),  List.of(PLACA)),
+            CLINICA.getKey(),   new SolicitudEntrega(CLINICA.getKey(),   CLINICA.getNombre(),   List.of(REMITO)),
+            farmacia.getKey(),  new SolicitudEntrega(farmacia.getKey(),  farmacia.getNombre(),  List.of(TORNILLO)));
+
+        AplicadorPorPartes.Resultado<EntregaDestinoKey> resultado = new AplicadorPorPartes.Resultado<>(
+            List.of(HOSPITAL.getKey()), List.of(farmacia.getKey()), List.of(CLINICA.getKey()));
+
+        ResultadoTexto texto = PlanificadorEntrega.describirResultado(resultado, solicitudes);
+
+        assertEquals(String.format(Constantes.Mensajes.ENTREGA_RESULTADO_OK, "Hospital Central"), texto.info());
+        assertTrue(texto.error().contains(Constantes.Mensajes.CONFLICTO_ENTREGA));
+        assertTrue(texto.error().contains("Clínica Norte"));
+        assertTrue(texto.error().contains(
+            String.format(Constantes.Mensajes.ENTREGA_RESULTADO_ERROR, "Farmacia Sur")));
+    }
+
+    @Test
+    @DisplayName("describirResultado sin error ni conflicto deja error en null")
+    void describirResultado_todoExitoso_errorNulo() {
+        Map<EntregaDestinoKey, SolicitudEntrega> solicitudes = Map.of(
+            HOSPITAL.getKey(), new SolicitudEntrega(HOSPITAL.getKey(), HOSPITAL.getNombre(), List.of(PLACA)));
+        AplicadorPorPartes.Resultado<EntregaDestinoKey> resultado =
+            new AplicadorPorPartes.Resultado<>(List.of(HOSPITAL.getKey()), List.of(), List.of());
+
+        ResultadoTexto texto = PlanificadorEntrega.describirResultado(resultado, solicitudes);
+
+        assertEquals(String.format(Constantes.Mensajes.ENTREGA_RESULTADO_OK, "Hospital Central"), texto.info());
+        assertNull(texto.error());
+    }
+
+    @Test
+    @DisplayName("describirResultado sin ninguna exitosa deja info en null")
+    void describirResultado_sinExitosas_infoNulo() {
+        Map<EntregaDestinoKey, SolicitudEntrega> solicitudes = Map.of(
+            CLINICA.getKey(), new SolicitudEntrega(CLINICA.getKey(), CLINICA.getNombre(), List.of(REMITO)));
+        AplicadorPorPartes.Resultado<EntregaDestinoKey> resultado =
+            new AplicadorPorPartes.Resultado<>(List.of(), List.of(), List.of(CLINICA.getKey()));
+
+        ResultadoTexto texto = PlanificadorEntrega.describirResultado(resultado, solicitudes);
+
+        assertNull(texto.info());
+        assertTrue(texto.error().contains("Clínica Norte"));
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────

@@ -61,17 +61,6 @@ public class MaterialService {
     }
 
     /**
-     * Marca todos los materiales entregables de una institución como entregados.
-     * Solo afecta materiales que estén >= ESTERILIZADO y < ENTREGADO.
-     * 
-     * @param nroInstitucion Número de institución
-     * @return true si la operación fue exitosa
-     */
-    public boolean entregarInstitucionCompleta(int nroInstitucion) {
-        return materialDAO.entregarInstitucionCompleta(nroInstitucion);
-    }
-
-    /**
      * Entrega exactamente las filas que el operador vio de una institución, todo o nada. Ver
      * {@link MaterialDAO#entregarMateriales} para la guarda.
      *

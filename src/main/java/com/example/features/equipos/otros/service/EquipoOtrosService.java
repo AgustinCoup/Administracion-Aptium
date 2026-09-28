@@ -122,14 +122,6 @@ public class EquipoOtrosService {
     }
 
     /**
-     * Marca como entregados todos los materiales esterilizados de equipos_otros
-     * cuyo nro_cliente coincide.
-     */
-    public boolean entregarClienteCompleto(int nroCliente) {
-        return dao.entregarClienteCompleto(nroCliente);
-    }
-
-    /**
      * Entrega exactamente las filas y los remitos sin filas que el operador vio de un cliente, todo
      * o nada. Ver {@link EquipoOtrosDAO#entregar} para la guarda. Una lista {@code null} cuenta
      * como vacía.

@@ -125,14 +125,6 @@ class EquipoOtrosServiceTest {
         assertEquals(lista, service.obtenerTodos());
     }
 
-    // ── entregarClienteCompleto ───────────────────────────────────────────────
-
-    @Test
-    void entregarClienteCompleto_delegaADAO() {
-        when(dao.entregarClienteCompleto(3)).thenReturn(true);
-        assertTrue(service.entregarClienteCompleto(3));
-    }
-
     // ── entregar ─────────────────────────────────────────────────────────────
 
     @Test
