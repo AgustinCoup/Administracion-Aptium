@@ -4,6 +4,7 @@ import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.EquipoOtrosReporteDTO;
 import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
+import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperCompileManager;
 import net.sf.jasperreports.engine.JasperFillManager;
 import net.sf.jasperreports.engine.JasperPrint;
@@ -39,20 +40,7 @@ public class EquipoOtrosReporteService {
 
     public void generarYMostrarReporte(LocalDate desde, LocalDate hasta, Integer clienteId) {
         try {
-            List<EquipoOtrosReporteDTO> datos = construirDatos(desde, hasta, clienteId);
-
-            InputStream jrxmlStream = getClass().getResourceAsStream(JRXML_PATH);
-            if (jrxmlStream == null) {
-                throw new IllegalStateException("No se encontró el archivo de reporte: " + JRXML_PATH);
-            }
-
-            JasperReport jasperReport = JasperCompileManager.compileReport(jrxmlStream);
-
-            Map<String, Object> params = new HashMap<>();
-            params.put(JRParameter.REPORT_CLASS_LOADER, getClass().getClassLoader());
-
-            JasperPrint jasperPrint = JasperFillManager.fillReport(
-                jasperReport, params, new JRBeanCollectionDataSource(datos));
+            JasperPrint jasperPrint = llenar(construirDatos(desde, hasta, clienteId));
 
             JasperViewer viewer = new JasperViewer(jasperPrint, false);
             viewer.setTitle("Reporte Equipos Otros  —  " + desde.format(FMT) + "  al  " + hasta.format(FMT));
@@ -64,7 +52,29 @@ public class EquipoOtrosReporteService {
         }
     }
 
-    private List<EquipoOtrosReporteDTO> construirDatos(LocalDate desde, LocalDate hasta, Integer clienteId) {
+    /** Compila el JRXML y lo llena, sin mostrarlo. Package-private para testear el reporte sin viewer. */
+    JasperPrint llenar(List<EquipoOtrosReporteDTO> datos) throws JRException {
+        InputStream jrxmlStream = getClass().getResourceAsStream(JRXML_PATH);
+        if (jrxmlStream == null) {
+            throw new IllegalStateException("No se encontró el archivo de reporte: " + JRXML_PATH);
+        }
+
+        JasperReport jasperReport = JasperCompileManager.compileReport(jrxmlStream);
+
+        Map<String, Object> params = new HashMap<>();
+        params.put(JRParameter.REPORT_CLASS_LOADER, getClass().getClassLoader());
+
+        return JasperFillManager.fillReport(
+            jasperReport, params, new JRBeanCollectionDataSource(datos));
+    }
+
+    /**
+     * Litros: {@code volumen_equipo}, que acumula sólo los litros de <b>este</b> ingreso
+     * ({@code lote_otros_volumenes} es por lote e ingreso, así que un lote compartido no se
+     * cuenta entero) y sólo de lotes <b>finalizados OK</b> ({@code LoteDAO.acumularVolumenEquipoOtros}
+     * corre al finalizar; un lote fallido no suma). Decisión del usuario.
+     */
+    List<EquipoOtrosReporteDTO> construirDatos(LocalDate desde, LocalDate hasta, Integer clienteId) {
         List<EquipoOtros> equipos = equipoOtrosService.obtenerEntreFechas(desde, hasta, clienteId);
         List<EquipoOtrosReporteDTO> dtos = new ArrayList<>(equipos.size());
 
@@ -96,7 +106,8 @@ public class EquipoOtrosReporteService {
             String materiales = sb.length() > 0 ? sb.toString().stripTrailing() : "(sin materiales)";
             String lotes = lotesUnicos.isEmpty() ? "" : String.join("\n", lotesUnicos);
 
-            dtos.add(new EquipoOtrosReporteDTO(fecha, cliente, tipoIngreso, materiales, lotes));
+            dtos.add(new EquipoOtrosReporteDTO(fecha, cliente, tipoIngreso, materiales, lotes,
+                eq.getVolumenEquipo()));
         }
         return dtos;
     }

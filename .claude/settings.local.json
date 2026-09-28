@@ -66,7 +66,9 @@
       "Bash(mvn -o test -Dtest='ConstructorVistaCiclosTest,HistorialLavaderoDAOTest,ConcurrenciaOptimistaTest,DatabaseInitializerTest,CicloLavaderoDAOTest,SalidaLavaderoDAOTest,MaterialDAOTest' -Dsurefire.failIfNoSpecifiedTests=false)",
       "Bash(mvn -o test -Dtest=FusionClientesDAOTest)",
       "PowerShell(mvn -q test \"-Dtest=EquipoSubdivididoIntegracionTest+AgrupadorInstanciasSalidaTest+AgrupadorLineasHistorialTest+StagingCiclosTest+ConstructorVistaCiclosTest+CicloLavaderoDAOTest+SalidaLavaderoDAOTest+HistorialLavaderoDAOTest\" -DfailIfNoTests=false)",
-      "PowerShell(mvn -q test \"-Dtest=EquipoSubdivididoIntegracionTest,AgrupadorInstanciasSalidaTest,AgrupadorLineasHistorialTest,StagingCiclosTest,ConstructorVistaCiclosTest,CicloLavaderoDAOTest,SalidaLavaderoDAOTest,HistorialLavaderoDAOTest\" \"-Dsurefire.failIfNoSpecifiedTests=false\")"
+      "PowerShell(mvn -q test \"-Dtest=EquipoSubdivididoIntegracionTest,AgrupadorInstanciasSalidaTest,AgrupadorLineasHistorialTest,StagingCiclosTest,ConstructorVistaCiclosTest,CicloLavaderoDAOTest,SalidaLavaderoDAOTest,HistorialLavaderoDAOTest\" \"-Dsurefire.failIfNoSpecifiedTests=false\")",
+      "Bash(grep -n \"^diff --git\" \"C:\\\\Users\\\\AGUSTÍN\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Trabajo-Administracion-Aptium\\\\2aa2a198-2a3d-42d0-b9be-a93a0856e7a7\\\\scratchpad\\\\full.diff\")",
+      "Read(//c/Users/AGUSTÍN/AppData/Local/Temp/claude/c--Trabajo-Administracion-Aptium/2aa2a198-2a3d-42d0-b9be-a93a0856e7a7/scratchpad/**)"
     ]
   }
 }
