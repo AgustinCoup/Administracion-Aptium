@@ -14,6 +14,17 @@ plan **reusa su helper de selección** (`ui/common/seleccion/`, Paso 1 de aquél
 y su Paso 2 toca `RegistrarEstadoController` **después** del Paso 5 de aquél. El **Paso 1 de este
 plan no depende de nada del Plan 1** y puede correr en paralelo.
 
+> **✅ CERRADO — 2026-09-28.** Paso 1 `e0d3d1b` · Paso 2 `ac12e52` · Paso 3 `2742523` · Paso 4
+> `2d5c7a0` · Paso 5: el commit `docs:` que agrega este bloque.
+> `mvn verify` verde (1637 tests, 0 fallas/errores). Cobertura de instrucciones:
+> `PlanificadorEntrega` 100 %, `AgrupadorEntregas` 98,3 %, `AplicadorPorPartes` 100 %.
+>
+> **`/code-review high` sobre `34b6576..2d5c7a0`: 0 CRITICAL, 0 HIGH.** Un hallazgo (limpieza
+> incondicional del buffer de Registrar Estado tras una `DatabaseException` en una parte) se
+> verificó a fondo y resultó ser exactamente la decisión de diseño explícita del Paso 2, no una
+> regresión — detalle en la Tarea 1 del Paso 5, abajo. El resto de los hallazgos son MEDIUM/LOW de
+> reuse y eficiencia, anotados con su motivo en el mismo lugar.
+
 ---
 
 ## Decisiones tomadas con el usuario
@@ -557,11 +568,66 @@ mvn test
 1. `/code-review high` sobre el diff de este plan (desde el commit de cierre del Plan 1). Aplicar
    CRITICAL y HIGH; anotar acá el MEDIUM que se decida no tocar, con el motivo.
 
-   **Anotado en pasos anteriores (fuera de su alcance, resolver acá):**
+   **Anotado en pasos anteriores (fuera de su alcance, resolví acá):**
    - *(Paso 1, LOW)* `ControlConcurrencia`: el javadoc de `exigirFilasAfectadas` quedó **encima de
      `esContencionDeLock`**, así que éste aparece en el IDE con la documentación del otro y
-     `exigirFilasAfectadas` (al final de la clase) sin ninguna. Mover el bloque sobre su método;
-     cero cambio de comportamiento.
+     `exigirFilasAfectadas` (al final de la clase) sin ninguna. Movido el bloque sobre su método;
+     cero cambio de comportamiento. ✅
+
+   **Resultado de `/code-review high 34b6576..2d5c7a0` (el diff de los Pasos 1-4, sin el merge de
+   `main` ni los tres commits de cierre del Plan 1 que quedaron antes): 0 CRITICAL, 0 HIGH que
+   requieran cambio de código.**
+
+   Un hallazgo se verificó a fondo antes de descartarlo, porque a primera vista parecía un bug de
+   pérdida de datos:
+   - **`AplicadorPorPartes` + `RegistrarEstadoController.finalizarConfirmacion`: una
+     `DatabaseException` en un equipo se cuenta como error de esa parte, el loop sigue con los demás,
+     y al final `finalizarConfirmacion` limpia el buffer completo (`cambiosPendientes`,
+     `equiposPendientes`) igual, incluido el equipo que falló.** No es una regresión: es exactamente
+     lo que pide este mismo plan en el Paso 2, Tarea 2 ("**Nada más cambia**: sigue limpiando el
+     buffer y las copias, y pidiendo el refresco en los dos casos" — línea 329). Antes del Paso 2 el
+     buffer también se limpiaba sin condición en `finalizarConfirmacion`; lo único que cambió es que
+     ahora **sí llega** a ese código en vez de cortar en `siFalla` (que es justo el bug que el Paso 2
+     arregla: con el loop viejo, un fallo técnico en el equipo 2 de 3 dejaba el buffer con los tres,
+     y reintentar chocaba al equipo 1 contra sí mismo porque ya estaba escrito). El operador se entera
+     de qué equipo tuvo el error técnico (`ERROR_ACTUALIZAR_EQUIPO_ID`, con su id) y tiene que
+     rehacer sus movimientos ahí — no hay pérdida silenciosa, es la misma mecánica de "rehacer con
+     datos frescos" que ya usan los conflictos de concurrencia en todo el resto del código.
+
+   **MEDIUM/LOW no tocados (reuse, simplificación y eficiencia — no son bugs de correctitud), con el
+   motivo de por qué se dejan así en este cierre:**
+   - **MEDIUM** — el `INSERT` en `material_movimientos`/`otros_material_movimientos` y la
+     clasificación CAS/contención se repiten entre `aplicarMovimientos` (ya existente) y
+     `entregarMateriales`/`entregar` (nuevos), 3-4 veces por archivo. Extraer un helper compartido es
+     un refactor transversal a DAOs ya en producción, fuera del alcance de un paso de cierre; queda
+     anotado para una sesión aparte si vuelve a aparecer al tocar cualquiera de los dos DAOs.
+   - **MEDIUM** — `EquiposParaEntregarController` sostiene `materialesPorDestino` y
+     `volumenPorDestino` como dos `HashMap` que se vacían y rellenan (`clear()` + `putAll()`) en cada
+     `pintar()`, en vez de guardar directamente `AgrupadorEntregas.Resultado`. Cambiar el modelo del
+     controller ahora es tocar `pintar()` sin un test específico de ese refactor; no es incorrecto,
+     sólo más verboso de lo necesario.
+   - **MEDIUM** — `AgrupadorEntregas` declara su propio `DateTimeFormatter` `dd/MM/yyyy` y un
+     `fecha()` privado en vez de reusar `common/util/DateTimeDisplayUtils` (que a su vez ya está
+     duplicado en `AgrupadorIngresosLote`). Consolidar toca un archivo ajeno a este plan; se anota
+     para cuando se ordene el formateo de fechas en general.
+   - **LOW** — `Textos.SIN_DATO` (nuevo, `"-"`) duplica el valor de `Textos.SIN_MOVIMIENTO`
+     (mismo `"-"`). Cosmético: no vale una migración de callers por esto.
+   - **LOW** — `"No hay materiales para entregar."` está como literal en `MaterialService` y
+     `EquipoOtrosService` en vez de una constante compartida (a diferencia de `ENTREGA_SIN_PENDIENTES`,
+     que sí se centralizó). Mismo texto, dos lugares para editarlo si cambia.
+   - **LOW** — el `INSERT` de auditoría en `material_movimientos`/`otros_material_movimientos`
+     corre con `executeUpdate()` por fila dentro del loop de entrega en vez de `addBatch()`: es una
+     escritura sin guarda (no aplica el caveat de `SUCCESS_NO_INFO`), así que batchearla sería una
+     optimización válida. No se toca en un cierre.
+   - **LOW** — el `UPDATE` de remitos sin filas se hace uno por uno en vez de un solo
+     `UPDATE … WHERE id IN (…)`. Esa rama **sólo se alcanza con datos viejos** (documentado en el
+     Paso 1); no vale la complejidad de un `IN` dinámico para un caso que hoy no ocurre con los flujos
+     actuales.
+   - **LOW** (caller-específico, no global) — la rama `false` de `Operacion.aplicar` es código
+     muerto para los llamadores de Entrega (`MaterialService.entregarMateriales`/
+     `EquipoOtrosService.entregar` siempre devuelven `true` o lanzan), pero sigue viva para Registrar
+     Estado vía `EquipoOtrosDAO.aplicarMovimientos`. Es un artefacto de compartir la interfaz
+     genérica entre dos llamadores con formas de fallar distintas, no un bug.
 2. `mvn verify` + JaCoCo:
    - `PlanificadorEntrega`, `AgrupadorEntregas` y `AplicadorPorPartes` ≥ 90 %;
    - `MaterialDAO.entregarMateriales` y `EquipoOtrosDAO.entregar` cubiertos en cada rama: fila,
@@ -593,9 +659,9 @@ mvn test
 
 ### Criterio de salida
 
-- [ ] `mvn verify` en verde, cobertura según el punto 2
-- [ ] `CLAUDE.md` y memoria actualizados
-- [ ] Commit: `docs: entrega parcial en para entregar`
+- [x] `mvn verify` en verde (1637 tests, 0 fallas/errores), cobertura según el punto 2
+- [x] `CLAUDE.md` y memoria actualizados
+- [x] Commit: `docs: entrega parcial en para entregar`
 
 ---
 

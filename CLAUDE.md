@@ -49,7 +49,7 @@ Features: `equipos/ortopedias`, `equipos/otros`, `lavadero`, `lotes`, `autoclave
 - `UiCoordinator` — único punto de la UI que ve el `AppContext` completo: instancia todos los controllers pasándole a cada uno **solo los services de su alcance**, cablea listeners, y crea un `Runnable` global de refresh que todos disparan al guardar datos
 - **Regla de extensión:** un controller declara en su constructor los services que usa. No hay fachada intermedia — si necesita algo nuevo, se agrega un parámetro y `UiCoordinator` lo provee desde `AppContext`. Así el alcance de cada controller es visible en su firma y el compilador lo hace cumplir.
 - `Constantes` — todas las constantes de la app (nombres de pantallas para CardLayout, anchos de columnas, etc.)
-- `AptiumException` y subclases — jerarquía de excepciones del dominio
+- `ApplicationException` y subclases — jerarquía de excepciones del dominio
 
 **Navegación UI:** `PantallaPrincipal` usa `CardLayout`; los nombres de los paneles están en `Constantes.Pantallas.*`.
 
@@ -508,11 +508,14 @@ seleccionar). Ctrl+click, Shift y arrastre quedan como en Swing. **Regla de foco
 vacía cuando el foco sale de la zona (tabla + componentes exentos) en forma **no temporal**
 (`FocusEvent.isTemporary()`: modales, Alt+Tab). Se escucha **también a los exentos**: tras pasar por
 Avanzar la tabla ya no tiene el foco y ningún click posterior le dispararía `focusLost`. Es **opt-in**:
-`PanelEquipoMaterial.habilitarSeleccionMultipleMateriales` sólo lo llama Registrar Estado;
-Correcciones opera por `getMaterialSeleccionadoIndex()` (con varias filas devolvería la primera y
-Eliminar borraría el material equivocado).
+lo instalan `PanelEquipoMaterial.habilitarSeleccionMultipleMateriales` (Registrar Estado) y
+`PantallaEquiposParaEntregar` sobre `tablaMateriales` (Para Entregar, con el botón Entregar
+Institución como componente exento); Correcciones opera por `getMaterialSeleccionadoIndex()` (con
+varias filas devolvería la primera y Eliminar borraría el material equivocado).
 
-**Jerarquía de excepciones:** `AptiumException` → `BusinessException`, `DataAccessException`, `ValidationException` (con builder), `ResourceNotFoundException`, `DatabaseException`.
+**Jerarquía de excepciones:** la raíz es `ApplicationException` (no `AptiumException`, y
+`DataAccessException` no existe) → `BusinessException` (→ `ConflictoConcurrenciaException` y sus
+tres subtipos de lanzamiento de tandas), `ValidationException` (con builder), `ResourceNotFoundException`, `DatabaseException`.
 
 ## Concurrencia — bloqueo optimista
 
@@ -617,12 +620,26 @@ viejo escribe sin guardas y sin bumpear `version` — el mismo bug, reintroducid
 Compara **máximos**, no continuidad: una migración atrasada que se aplica después (el
 `outOfOrder(true)` que existe porque dos ramas se pisaron los números) no es una base adelantada.
 
-**Dónde hay guarda hoy:** Registrar Estado (ortopedias y otros), Lanzar Lote, Clasificación de
-Lavadero, Lanzar Tanda (saldo de las líneas, lavarropas libre **y lavarropas activo**), Finalizar
-Ciclo, Salidas + derivación al CDE, las diez rutas de Correcciones (ortopedias y otros), fusionar
-clientes, eliminar cliente, el **ABM de lavarropas** (alta, baja con `FOR UPDATE` sobre el ciclo
-activo, reactivación) y las **bajas/reactivaciones de los cuatro catálogos** (elementos, jabones e
-insumos de Lavadero; descripciones de Ortopedias vía `vigente`).
+**Dónde hay guarda hoy:** Registrar Estado (ortopedias y otros), **Entrega** (ortopedias, otros y
+remito), Lanzar Lote, Clasificación de Lavadero, Lanzar Tanda (saldo de las líneas, lavarropas libre
+**y lavarropas activo**), Finalizar Ciclo, Salidas + derivación al CDE, las diez rutas de
+Correcciones (ortopedias y otros), fusionar clientes, eliminar cliente, el **ABM de lavarropas**
+(alta, baja con `FOR UPDATE` sobre el ciclo activo, reactivación) y las **bajas/reactivaciones de
+los cuatro catálogos** (elementos, jabones e insumos de Lavadero; descripciones de Ortopedias vía
+`vigente`).
+
+**Entrega recibe lo que el operador vio, nunca "lo que haya esterilizado".**
+`MaterialDAO.entregarMateriales`/`EquipoOtrosDAO.entregar` toman `List<FilaAEntregar>` (ids +
+cantidad vista) y el CAS es sobre `estado`, con `cantidad` como **defensa**: hoy ninguna ruta cambia
+la cantidad de una fila `ESTERILIZADO` (Correcciones sólo toca equipos `NUEVO`), pero la columna fija
+el contrato "se entrega exactamente la fila que se vio". No va sobre `version`, por la misma razón
+que las demás tablas de detalle. El camino viejo (`entregarInstitucionCompleta`/
+`entregarClienteCompleto`, borrados) releía `WHERE estado = 'Esterilizado'` en el momento de escribir
+y entregaba lo que encontrara — un material esterilizado después de que la pantalla lo leyó se
+entregaba sin haber aparecido en la confirmación. También entregaba materiales de equipos
+incompletos que la pantalla no mostraba; ahora esas filas **se muestran**, marcadas como de un
+ingreso incompleto (`AgrupadorEntregas`). La contención de locks (escritura ordenada por
+`(equipoId, materialId)`) sale como `ConflictoConcurrenciaException`, no como error técnico.
 
 **Cuatro guardas del lavadero que no son CAS sobre una columna, sino `SELECT … FOR UPDATE` previo:**
 `CicloLavaderoDAO.SQL_BLOQUEAR_LINEA` (saldo de la línea de clasificación),
@@ -677,9 +694,19 @@ forma — *A lee → B modifica y commitea → A escribe → conflicto, y el est
 de B*. Verifica **la guarda**, que es idéntica en H2 y MySQL, no el comportamiento del lock, que no
 lo es: un test de deadlock pasaría en H2 y mentiría sobre producción.
 
+**`AplicadorPorPartes<K, V>`** (`equipos/common/controller/helpers/`) es el loop compartido de
+"escribir por partes" de Registrar Estado y de Entrega: corre una operación por parte (equipo o
+destino) y no corta ante el primer fallo, porque las partes que ya se escribieron ya modificaron la
+base. Clasifica cada resultado en tres categorías — `exitosas`, `conError` y `conConflicto` — con
+tres reglas fijas: `false` es error de esa parte; una `ConflictoConcurrenciaException` es conflicto
+(otro se adelantó, no un bug); una `DatabaseException` **también** se cuenta como error de esa parte
+y el loop **sigue** con las demás (antes cortaba entero y dejaba las partes ya escritas sin informar
+ni releer). Cualquier otra `RuntimeException` (`ValidationException`, un NPE) **propaga**: no es "una
+parte que falló", es un bug.
+
 ## Tests
 
-JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1582 tests en `src/test/java`,
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1637 tests en `src/test/java`,
 reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
 DAO/Service/Controller/helper relevante).
 

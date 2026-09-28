@@ -56,24 +56,6 @@ public final class ControlConcurrencia {
     }
 
     /**
-     * Variante para escrituras de varias filas, donde se sabe de antemano cuántas tienen que
-     * moverse.
-     *
-     * <p>Cualquier desvío es un conflicto, en los dos sentidos: menos filas significa que
-     * alguna guarda no matcheó, y más filas significa que se alcanzó algo que no era suyo. No se
-     * puede saber <em>cuál</em> de las filas falló, así que la operación se aborta completa y el
-     * operador rehace con datos frescos.</p>
-     *
-     * <p><b>El total tiene que venir de {@code executeUpdate()}, no de {@code executeBatch()}</b>:
-     * un batch puede devolver {@code SUCCESS_NO_INFO} ({@code -2}) por sentencia cuando el driver
-     * no sabe cuántas filas tocó, y sumar eso da un total que no significa nada.</p>
-     *
-     * @param esperadas      cuántas filas tenía que tocar la operación
-     * @param reales         la suma de lo que devolvieron los {@code executeUpdate()}
-     * @param mensajeUsuario texto para el operador
-     * @throws ConflictoConcurrenciaException si {@code reales != esperadas}
-     */
-    /**
      * ¿La base cortó esta transacción porque otro la tenía trabada?
      *
      * <p>Existe porque <b>no alcanza con {@code catch (SQLTransactionRollbackException)}</b>, que
@@ -103,6 +85,24 @@ public final class ControlConcurrencia {
     /** {@code LOCK_TIMEOUT_1} de H2, para que la traducción sea la misma en los dos motores. */
     private static final int H2_LOCK_TIMEOUT = 50200;
 
+    /**
+     * Variante para escrituras de varias filas, donde se sabe de antemano cuántas tienen que
+     * moverse.
+     *
+     * <p>Cualquier desvío es un conflicto, en los dos sentidos: menos filas significa que
+     * alguna guarda no matcheó, y más filas significa que se alcanzó algo que no era suyo. No se
+     * puede saber <em>cuál</em> de las filas falló, así que la operación se aborta completa y el
+     * operador rehace con datos frescos.</p>
+     *
+     * <p><b>El total tiene que venir de {@code executeUpdate()}, no de {@code executeBatch()}</b>:
+     * un batch puede devolver {@code SUCCESS_NO_INFO} ({@code -2}) por sentencia cuando el driver
+     * no sabe cuántas filas tocó, y sumar eso da un total que no significa nada.</p>
+     *
+     * @param esperadas      cuántas filas tenía que tocar la operación
+     * @param reales         la suma de lo que devolvieron los {@code executeUpdate()}
+     * @param mensajeUsuario texto para el operador
+     * @throws ConflictoConcurrenciaException si {@code reales != esperadas}
+     */
     public static void exigirFilasAfectadas(int esperadas, int reales, String mensajeUsuario) {
         if (reales != esperadas) {
             log.warn("Batch guardado por concurrencia: se esperaban {} filas y se afectaron {}.",
