@@ -124,10 +124,7 @@ public class EquiposParaEntregarController {
         Map<InstitucionEntregaItem, List<MaterialEntregaItem>> materialesPorInstitucion = new LinkedHashMap<>();
         for (InstitucionEntregaItem institucion : seleccionadas) {
             List<MaterialEntregaItem> pendientes = materialesPorDestino
-                .getOrDefault(institucion.getKey(), List.of())
-                .stream()
-                .filter(m -> !m.isEntregado())
-                .toList();
+                .getOrDefault(institucion.getKey(), List.of());
             if (!pendientes.isEmpty()) {
                 materialesPorInstitucion.put(institucion, pendientes);
             }
@@ -194,7 +191,7 @@ public class EquiposParaEntregarController {
             sb.append("Institución: ").append(entry.getKey().getNombre()).append("\n");
             Map<String, Integer> resumen = new LinkedHashMap<>();
             for (MaterialEntregaItem item : entry.getValue()) {
-                resumen.merge(item.getMaterial(), item.getCantidad(), Integer::sum);
+                resumen.merge(item.material(), item.cantidad(), Integer::sum);
             }
             for (Map.Entry<String, Integer> mat : resumen.entrySet()) {
                 sb.append("  • ").append(mat.getKey()).append(" x ").append(mat.getValue()).append("\n");

@@ -151,6 +151,14 @@ public final class Constantes {
         public static final String ENTREGA_EQUIPO_OK        = "Equipo entregado correctamente.";
         public static final String ENTREGA_EQUIPO_ERROR     = "No se pudo marcar el equipo como entregado.";
 
+        public static final String ENTREGA_SELECCIONE_DESTINO   = "Debe seleccionar al menos una institución antes de entregar.";
+        public static final String ENTREGA_SIN_PENDIENTES       = "Las instituciones seleccionadas no tienen materiales pendientes de entrega.";
+        public static final String ENTREGA_CONFIRMAR_PREGUNTA   = "¿Confirmar entrega de los siguientes materiales?";
+        /** Encabezado de un destino en la confirmación: tipo ("Institución"/"Cliente") y nombre. */
+        public static final String ENTREGA_CONFIRMACION_DESTINO = "%s: %s";
+        /** Una línea por ítem, sin fusionar por nombre: ingreso, material y cantidad. */
+        public static final String ENTREGA_CONFIRMACION_ITEM    = "  • %s — %s × %d";
+
         public static final String TITULO_EXITO                       = "Éxito";
         public static final String TITULO_ERROR                       = "Error";
         public static final String TITULO_ADVERTENCIA                 = "Advertencia";
@@ -525,6 +533,7 @@ public final class Constantes {
         public static final String FORMATO_CODIGO_EQUIPO    = "%d%d";
         public static final String FORMATO_SPINNER_CANTIDAD = "#0.##";
         public static final String FORMATO_FECHA_HORA       = "dd/MM/yyyy HH:mm";
+        public static final String FORMATO_FECHA            = "dd/MM/yyyy";
 
         /** Límite de caracteres para el campo Observaciones del remito. */
         public static final int    REMITO_OBS_MAX_CHARS     = 2000;
@@ -614,6 +623,21 @@ public final class Constantes {
         public static final String CODIGO_INVALIDO                       = "Código inválido";
         public static final String SIN_MOVIMIENTO                        = "-";
         public static final String SIN_INSTITUCION                       = "Sin institucion";
+        public static final String SIN_CLIENTE                           = "Sin cliente";
+        public static final String SIN_DATO                              = "-";
+        /**
+         * Material con que se muestra un REMITO. Es el mismo literal que persisten
+         * {@code materializarRemitoSplit}, {@code LoteDAO} y {@code EquipoOtrosDAO} en su SQL, que
+         * NO usan esta constante: son datos ya escritos, y cambiarlos en un solo lado dejaría filas
+         * viejas que no coinciden.
+         */
+        public static final String MATERIAL_REMITO                       = "Elementos";
+        /** Columna Ingreso de Para Entregar (ortopedias): paciente y fecha de ingreso. */
+        public static final String INGRESO_PACIENTE_FECHA                = "%s · %s";
+        /** Columna Ingreso de Para Entregar (REMITO): el ID del remito. */
+        public static final String INGRESO_REMITO                        = "Remito %s";
+        /** Sufijo de la columna Ingreso cuando el equipo todavía tiene materiales en proceso. */
+        public static final String INGRESO_INCOMPLETO                    = " · incompleto";
         public static final String ENTREGADO_SI                          = "SI";
         public static final String ENTREGADO_NO                          = "NO";
         public static final String TOOLTIP_ELIMINAR_FILA                 = "Eliminar esta fila";

@@ -1,5 +1,6 @@
 package com.example.features.equipos.otros.model;
 
+import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
 import com.example.features.equipos.ortopedias.model.Equipo;
@@ -121,7 +122,7 @@ public class EquipoOtros implements EquipoRegistrableInterface {
     public List<MaterialRegistrableInterface> getMaterialesRegistrables() {
         if (tipoIngreso == TipoIngresoOtros.REMITO && materiales.isEmpty()) {
             MaterialOtros sintetico = new MaterialOtros(
-                0, null, "Elementos",
+                0, null, Constantes.Textos.MATERIAL_REMITO,
                 remitoCantidad != null ? remitoCantidad : 1,
                 estado, null
             );
@@ -144,11 +145,11 @@ public class EquipoOtros implements EquipoRegistrableInterface {
             int total = remitoCantidad != null ? remitoCantidad : 1;
             if (cantidad >= total) {
                 // Avanza todo: una sola fila sintética en el nuevo estado
-                materiales.add(new MaterialOtros(0, null, "Elementos", total, estadoDestino, null));
+                materiales.add(new MaterialOtros(0, null, Constantes.Textos.MATERIAL_REMITO, total, estadoDestino, null));
             } else {
                 // Split: fila restante en estado actual + fila nueva en estado destino
-                materiales.add(new MaterialOtros(0,    null, "Elementos", total - cantidad, estado,       null));
-                materiales.add(new MaterialOtros(null, null, "Elementos", cantidad,         estadoDestino, null));
+                materiales.add(new MaterialOtros(0,    null, Constantes.Textos.MATERIAL_REMITO, total - cantidad, estado,       null));
+                materiales.add(new MaterialOtros(null, null, Constantes.Textos.MATERIAL_REMITO, cantidad,         estadoDestino, null));
             }
             return;
         }

@@ -34,11 +34,11 @@ public class MaterialEntregaTableModel extends AbstractTableModel {
         MaterialEntregaItem item = filas.get(row);
         switch (column) {
             case 0:
-                return item.getMaterial();
+                return item.material();
             case 1:
-                return item.getCantidad();
+                return item.cantidad();
             case 2:
-                return item.isEntregado();
+                return false; // la columna Entregado se quita en el Paso 4: la tabla nunca muestra entregados
             default:
                 return "";
         }
