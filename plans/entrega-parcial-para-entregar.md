@@ -556,6 +556,12 @@ mvn test
 
 1. `/code-review high` sobre el diff de este plan (desde el commit de cierre del Plan 1). Aplicar
    CRITICAL y HIGH; anotar acá el MEDIUM que se decida no tocar, con el motivo.
+
+   **Anotado en pasos anteriores (fuera de su alcance, resolver acá):**
+   - *(Paso 1, LOW)* `ControlConcurrencia`: el javadoc de `exigirFilasAfectadas` quedó **encima de
+     `esContencionDeLock`**, así que éste aparece en el IDE con la documentación del otro y
+     `exigirFilasAfectadas` (al final de la clase) sin ninguna. Mover el bloque sobre su método;
+     cero cambio de comportamiento.
 2. `mvn verify` + JaCoCo:
    - `PlanificadorEntrega`, `AgrupadorEntregas` y `AplicadorPorPartes` ≥ 90 %;
    - `MaterialDAO.entregarMateriales` y `EquipoOtrosDAO.entregar` cubiertos en cada rama: fila,
