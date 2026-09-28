@@ -40,7 +40,7 @@ import java.util.Set;
  * {@link #movimientosConCantidades} devuelven <b>todos</b> los movimientos juntos, y el llamador
  * aplica los previews recién después.
  *
- * <p>Sin Swing: se testea en aislamiento, como {@link AplicadorMovimientosPendientes}.
+ * <p>Sin Swing: se testea en aislamiento, como {@link AplicadorPorPartes}.
  */
 public final class PlanificadorAvanceMultiple {
 

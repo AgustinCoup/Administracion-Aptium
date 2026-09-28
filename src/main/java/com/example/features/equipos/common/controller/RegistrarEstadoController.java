@@ -5,7 +5,7 @@ import com.example.common.constants.Constantes;
 import com.example.common.model.EquipoKey;
 import com.example.common.model.EquipoRegistrableInterface;
 import com.example.common.model.MaterialRegistrableInterface;
-import com.example.features.equipos.common.controller.helpers.AplicadorMovimientosPendientes;
+import com.example.features.equipos.common.controller.helpers.AplicadorPorPartes;
 import com.example.features.equipos.common.controller.helpers.PlanificadorAvanceMultiple;
 import com.example.features.equipos.common.controller.helpers.PlanificadorAvanceMultiple.EntradaAvance;
 import com.example.features.equipos.common.controller.helpers.PlanificadorAvanceMultiple.EvaluacionAvance;
@@ -364,9 +364,9 @@ public class RegistrarEstadoController {
         Map<EquipoKey, List<MovimientoMaterial>> aAplicar = new LinkedHashMap<>();
         cambiosPendientes.forEach((key, movs) -> aAplicar.put(key, new ArrayList<>(movs.values())));
 
-        TareaUI.<AplicadorMovimientosPendientes.Resultado>nueva()
+        TareaUI.<AplicadorPorPartes.Resultado<EquipoKey>>nueva()
             .nombre("registrar-estado-confirmar")
-            .leer(() -> AplicadorMovimientosPendientes.aplicarTodos(aAplicar, this::aplicarMovimientos))
+            .leer(() -> AplicadorPorPartes.aplicarTodos(aAplicar, this::aplicarMovimientos))
             .pintar(this::finalizarConfirmacion)
             .siFalla(e -> panel.mostrarError("No se pudieron guardar los cambios: " + e.getMessage()))
             .antes(() -> {
@@ -405,7 +405,7 @@ public class RegistrarEstadoController {
     }
 
     /** Hilo de UI: mensaje del resultado, limpieza del buffer y refresco global. */
-    private void finalizarConfirmacion(AplicadorMovimientosPendientes.Resultado resultado) {
+    private void finalizarConfirmacion(AplicadorPorPartes.Resultado<EquipoKey> resultado) {
         if (resultado.todosExitosos()) {
             panel.mostrarInfo(Constantes.Mensajes.CAMBIOS_GUARDADOS_OK);
         } else {
@@ -413,11 +413,11 @@ public class RegistrarEstadoController {
             // un error del operador, es que otro se le adelantó, y su trabajo sobre ese equipo
             // hay que rehacerlo con los datos recargados.
             StringBuilder detalle = new StringBuilder();
-            for (Integer id : resultado.idsConError()) {
-                detalle.append(String.format(Constantes.Mensajes.ERROR_ACTUALIZAR_EQUIPO_ID, id));
+            for (EquipoKey equipo : resultado.conError()) {
+                detalle.append(String.format(Constantes.Mensajes.ERROR_ACTUALIZAR_EQUIPO_ID, equipo.getId()));
             }
-            for (Integer id : resultado.idsConConflicto()) {
-                detalle.append(String.format(Constantes.Mensajes.CONFLICTO_ACTUALIZAR_EQUIPO_ID, id));
+            for (EquipoKey equipo : resultado.conConflicto()) {
+                detalle.append(String.format(Constantes.Mensajes.CONFLICTO_ACTUALIZAR_EQUIPO_ID, equipo.getId()));
             }
             panel.mostrarError(String.format(Constantes.Mensajes.CAMBIOS_GUARDADOS_ERROR, detalle));
         }
