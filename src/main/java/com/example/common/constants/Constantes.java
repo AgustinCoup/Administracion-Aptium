@@ -320,6 +320,10 @@ public final class Constantes {
         public static final String CONFLICTO_CLASIFICACION =
             "Otro usuario ya clasificó este ingreso mientras trabajabas.\n"
                 + "La clasificación no se guardó. La pantalla se actualizó: revisá lo que quedó cargado.";
+        /** La entrega se revierte entera por destino: "nada de este destino" es literal. */
+        public static final String CONFLICTO_ENTREGA =
+            "Otro usuario ya entregó o cambió alguno de estos materiales mientras preparabas la entrega.\n"
+                + "No se entregó nada de este destino. La pantalla se actualizó: revisá la lista y volvé a entregar.";
         public static final String CONFLICTO_CORRECCION =
             "Otro usuario modificó este equipo mientras preparabas la corrección.\n"
                 + "La corrección no se aplicó. La pantalla se actualizó: revisá el equipo y volvé a corregirlo.";

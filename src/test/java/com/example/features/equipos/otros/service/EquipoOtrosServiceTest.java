@@ -1,6 +1,8 @@
 package com.example.features.equipos.otros.service;
 
 import com.example.common.exception.ValidationException;
+import com.example.common.model.FilaAEntregar;
+import com.example.common.model.RemitoAEntregar;
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.MaterialOtros;
@@ -129,6 +131,33 @@ class EquipoOtrosServiceTest {
     void entregarClienteCompleto_delegaADAO() {
         when(dao.entregarClienteCompleto(3)).thenReturn(true);
         assertTrue(service.entregarClienteCompleto(3));
+    }
+
+    // ── entregar ─────────────────────────────────────────────────────────────
+
+    @Test
+    void entregar_sinNada_lanzaValidationException() {
+        assertThrows(ValidationException.class, () -> service.entregar(List.of(), List.of()));
+        assertThrows(ValidationException.class, () -> service.entregar(null, null));
+        verifyNoInteractions(dao);
+    }
+
+    @Test
+    void entregar_soloFilas_delegaYDevuelveTrue() {
+        List<FilaAEntregar> filas = List.of(new FilaAEntregar(1, 10, 3));
+
+        assertTrue(service.entregar(filas, List.of()));
+
+        verify(dao).entregar(filas, List.of());
+    }
+
+    @Test
+    void entregar_soloRemitos_delegaYDevuelveTrue() {
+        List<RemitoAEntregar> remitos = List.of(new RemitoAEntregar(7));
+
+        assertTrue(service.entregar(null, remitos));
+
+        verify(dao).entregar(List.of(), remitos);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

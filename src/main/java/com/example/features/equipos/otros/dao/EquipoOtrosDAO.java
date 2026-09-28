@@ -4,6 +4,8 @@ import com.example.common.constants.Constantes;
 import com.example.common.dao.ControlConcurrencia;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
+import com.example.common.model.FilaAEntregar;
+import com.example.common.model.RemitoAEntregar;
 import com.example.common.paginacion.CriteriosPagina;
 import com.example.common.paginacion.Pagina;
 import com.example.features.equipos.dao.FiltroEquiposSql;
@@ -566,6 +568,82 @@ public class EquipoOtrosDAO {
             return false;
         } finally {
             close(conn);
+        }
+    }
+
+    /**
+     * Entrega exactamente las filas y los remitos sin filas que el operador vio, en una sola
+     * transacción: o todo, o nada. El llamador arma una llamada por destino (cliente).
+     *
+     * <p>Las filas siguen las mismas reglas que
+     * {@link com.example.features.equipos.ortopedias.dao.MaterialDAO#entregarMateriales}: CAS sobre
+     * {@code estado} (más {@code cantidad}, defensiva) en un solo {@code UPDATE}, sin
+     * {@code FOR UPDATE} previo, escritas en {@link FilaAEntregar#ORDEN_DE_ESCRITURA}, y la
+     * contención de locks sale como conflicto. Ver su javadoc para el porqué de cada una.</p>
+     *
+     * <p><b>Remitos sin filas:</b> con los flujos actuales no se llega a uno esterilizado —todo
+     * movimiento de un remito lo materializa en filas—, así que la rama existe sólo por datos viejos
+     * y se mantiene mínima: CAS sobre el encabezado, con {@code NOT EXISTS} para que un remito que
+     * ya tiene filas no se entregue por encima de ellas. {@code 0} filas afectadas es conflicto
+     * (se entrega lo que se vio). Sin movimiento, porque no hay {@code material_id}. El bump de
+     * {@code version} va a mano porque esta rama no pasa por el recálculo.</p>
+     *
+     * <p>Orden de escritura: filas, remitos (por id) y recién después los recálculos.</p>
+     *
+     * @throws ConflictoConcurrenciaException si algo ya no está como se vio, o por contención
+     * @throws DatabaseException              ante cualquier otro error de base
+     */
+    public void entregar(List<FilaAEntregar> filas, List<RemitoAEntregar> remitosSinFilas) {
+        List<FilaAEntregar> ordenadas = filas.stream().sorted(FilaAEntregar.ORDEN_DE_ESCRITURA).toList();
+        List<Integer> remitos = remitosSinFilas.stream().map(RemitoAEntregar::equipoOtrosId).sorted().toList();
+        String sqlEntregar =
+            "UPDATE equipo_otros_materiales SET estado = ? " +
+            "WHERE id = ? AND equipo_otros_id = ? AND estado = ? AND cantidad = ?";
+        String sqlMov =
+            "INSERT INTO otros_material_movimientos " +
+            "(material_id, equipo_otros_id, cantidad, estado_origen, estado_destino) " +
+            "VALUES (?, ?, ?, ?, ?)";
+        String sqlEntregarRemito =
+            "UPDATE equipo_otros SET estado = ?, version = version + 1 " +
+            "WHERE id = ? AND estado = ? " +
+            "AND NOT EXISTS (SELECT 1 FROM equipo_otros_materiales WHERE equipo_otros_id = ?)";
+
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            for (FilaAEntregar fila : ordenadas) {
+                try (PreparedStatement ps = conn.prepareStatement(sqlEntregar)) {
+                    ps.setString(1, EstadoEquipo.ENTREGADO.getNombre());
+                    ps.setInt(2, fila.materialId());
+                    ps.setInt(3, fila.equipoId());
+                    ps.setString(4, EstadoEquipo.ESTERILIZADO.getNombre());
+                    ps.setInt(5, fila.cantidadVista());
+                    ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_ENTREGA);
+                }
+                registrarMovimiento(conn, sqlMov, fila.materialId(), fila.equipoId(), fila.cantidadVista(),
+                    EstadoEquipo.ESTERILIZADO.getNombre(), EstadoEquipo.ENTREGADO);
+            }
+            for (int remitoId : remitos) {
+                try (PreparedStatement ps = conn.prepareStatement(sqlEntregarRemito)) {
+                    ps.setString(1, EstadoEquipo.ENTREGADO.getNombre());
+                    ps.setInt(2, remitoId);
+                    ps.setString(3, EstadoEquipo.ESTERILIZADO.getNombre());
+                    ps.setInt(4, remitoId);
+                    ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_ENTREGA);
+                }
+            }
+            for (int equipoId : ordenadas.stream().map(FilaAEntregar::equipoId).distinct().toList()) {
+                recalcularEstadoEquipo(conn, equipoId);
+            }
+            tx.commit();
+        } catch (SQLException e) {
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("Entrega de {} fila(s) y {} remito(s) abortada por la base (contención de lock)",
+                    filas.size(), remitosSinFilas.size(), e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_ENTREGA);
+            }
+            log.error("Error al entregar {} fila(s) y {} remito(s) de otros",
+                filas.size(), remitosSinFilas.size(), e);
+            throw new DatabaseException("Error al entregar equipos otros", e);
         }
     }
 

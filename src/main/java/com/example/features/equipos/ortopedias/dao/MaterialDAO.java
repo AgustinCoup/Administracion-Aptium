@@ -4,6 +4,7 @@ import com.example.common.constants.Constantes;
 import com.example.common.dao.ControlConcurrencia;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
+import com.example.common.model.FilaAEntregar;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.infrastructure.db.ConnectionPool;
@@ -279,6 +280,81 @@ public class MaterialDAO {
 
         } catch (SQLException e) {
             throw new DatabaseException("Error al entregar institución completa: " + nroInstitucion, e);
+        }
+    }
+
+    /**
+     * Entrega exactamente las filas que el operador vio, en una sola transacción: o se entregan
+     * todas, o ninguna. El llamador arma una llamada por destino (institución), así que un
+     * conflicto revierte ese destino entero y no toca los demás.
+     *
+     * <p><b>Recibe lo que se vio, no el destino.</b> Nunca relee "lo que haya esterilizado": un
+     * material que se esterilizó después de la lectura de la pantalla no estaba en la confirmación
+     * y no se entrega.</p>
+     *
+     * <p><b>La guarda es CAS sobre {@code estado}</b> en el mismo {@code UPDATE}: {@code 0} filas
+     * es que otro ya la entregó (o la movió), y se aborta con {@link ConflictoConcurrenciaException}.
+     * {@code cantidad = cantidadVista} va como defensa: hoy ninguna ruta de la UI cambia la cantidad
+     * de una fila esterilizada, pero cuesta una columna y fija el contrato "se entrega la fila que se
+     * vio". No va sobre {@code version}: dos entregas de materiales distintos del mismo equipo
+     * chocarían sin pisarse en nada.</p>
+     *
+     * <p><b>Sin {@code SELECT … FOR UPDATE} previo:</b> no se compara nada en Java. El {@code UPDATE}
+     * con la condición en el {@code WHERE} hace una lectura actual y toma el lock de la fila en el
+     * mismo acto, también bajo el {@code REPEATABLE READ} de MySQL.</p>
+     *
+     * <p><b>Se escribe en {@link FilaAEntregar#ORDEN_DE_ESCRITURA}</b>, sin importar el orden de
+     * entrada: dos entregas con filas en común bloquean en el mismo orden y no se cruzan en un
+     * deadlock. H2 no lo delata. Si la base igual corta la espera (1205/1213), es que otro se
+     * adelantó, y sale como conflicto, no como error técnico.</p>
+     *
+     * <p>No unifica duplicados: fusionar filas {@code ENTREGADO} movería ids que ya referencia
+     * {@code material_movimientos}.</p>
+     *
+     * @throws ConflictoConcurrenciaException si alguna fila ya no está como se vio, o por contención
+     * @throws DatabaseException              ante cualquier otro error de base
+     */
+    public void entregarMateriales(List<FilaAEntregar> filas) {
+        List<FilaAEntregar> ordenadas = filas.stream().sorted(FilaAEntregar.ORDEN_DE_ESCRITURA).toList();
+        String sqlEntregar =
+            "UPDATE equipo_materiales SET estado = ? " +
+            "WHERE id = ? AND equipo_id = ? AND estado = ? AND cantidad = ?";
+        String sqlMovimiento =
+            "INSERT INTO material_movimientos " +
+            "(material_id, equipo_id, cantidad, estado_origen, estado_destino) " +
+            "VALUES (?, ?, ?, ?, ?)";
+
+        try (TransactionalConnection tx = TransactionalConnection.begin()) {
+            Connection conn = tx.get();
+            for (FilaAEntregar fila : ordenadas) {
+                try (PreparedStatement ps = conn.prepareStatement(sqlEntregar)) {
+                    ps.setString(1, EstadoEquipo.ENTREGADO.getNombre());
+                    ps.setInt(2, fila.materialId());
+                    ps.setInt(3, fila.equipoId());
+                    ps.setString(4, EstadoEquipo.ESTERILIZADO.getNombre());
+                    ps.setInt(5, fila.cantidadVista());
+                    ControlConcurrencia.exigirFilaAfectada(ps.executeUpdate(), Constantes.Mensajes.CONFLICTO_ENTREGA);
+                }
+                try (PreparedStatement ps = conn.prepareStatement(sqlMovimiento)) {
+                    ps.setInt(1, fila.materialId());
+                    ps.setInt(2, fila.equipoId());
+                    ps.setInt(3, fila.cantidadVista());
+                    ps.setString(4, EstadoEquipo.ESTERILIZADO.getNombre());
+                    ps.setString(5, EstadoEquipo.ENTREGADO.getNombre());
+                    ps.executeUpdate();
+                }
+            }
+            for (int equipoId : ordenadas.stream().map(FilaAEntregar::equipoId).distinct().toList()) {
+                EquipoMaterialHelper.recalcularEstadoEquipo(conn, equipoId);
+            }
+            tx.commit();
+        } catch (SQLException e) {
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("Entrega de {} fila(s) abortada por la base (contención de lock)", filas.size(), e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_ENTREGA);
+            }
+            log.error("Error al entregar {} fila(s) de materiales", filas.size(), e);
+            throw new DatabaseException("Error al entregar materiales", e);
         }
     }
 

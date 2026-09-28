@@ -2,6 +2,8 @@ package com.example.features.equipos.otros.dao;
 
 import com.example.AbstractDAOTest;
 import com.example.common.exception.ConflictoConcurrenciaException;
+import com.example.common.model.FilaAEntregar;
+import com.example.common.model.RemitoAEntregar;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
@@ -362,6 +364,213 @@ class EquipoOtrosDAOTest extends AbstractDAOTest {
 
         assertEquals(versionAntes + 1, versionDeEquipoOtros(remito.getId()),
             "el camino REMITO escribe el estado fuera del recálculo: el bump va a mano");
+    }
+
+    // ── entregar ──────────────────────────────────────────────────────────────
+
+    @Test
+    void entregar_filaEsterilizada_quedaEntregadaConSuMovimiento() throws SQLException {
+        esterilizar(materialId);
+        int movimientosAntes = contarMovimientos(equipoDetalles.getId());
+
+        dao.entregar(List.of(new FilaAEntregar(equipoDetalles.getId(), materialId, 3)), List.of());
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(), estadoDe(materialId));
+        assertEquals(movimientosAntes + 1, contarMovimientos(equipoDetalles.getId()));
+        assertEquals("3|Esterilizado|Entregado", ultimoMovimiento(materialId));
+    }
+
+    /** El bug que motiva la ruta: la escritura vieja entregaba todo lo esterilizado del cliente. */
+    @Test
+    void entregar_noTocaUnMaterialEsterilizadoQueNoEstabaEnLaSolicitud() throws SQLException {
+        EquipoOtros tres = equipoConTresMaterialesEnNuevo();
+        List<Integer> ids = idsPorDescripcion(tres);
+        esterilizar(ids.get(0));
+        esterilizar(ids.get(1));
+
+        dao.entregar(List.of(new FilaAEntregar(tres.getId(), ids.get(0), 2)), List.of());
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(),    estadoDe(ids.get(0)));
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(), estadoDe(ids.get(1)),
+            "no estaba en la solicitud: no se entrega aunque esté esterilizado");
+    }
+
+    @Test
+    void entregar_filaYaEntregada_conflictoYNoEscribeNada() throws SQLException {
+        ejecutarSQL("UPDATE equipo_otros_materiales SET estado = 'Entregado' WHERE id = " + materialId);
+        int movimientosAntes = contarMovimientos(equipoDetalles.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregar(
+            List.of(new FilaAEntregar(equipoDetalles.getId(), materialId, 3)), List.of()));
+
+        assertEquals(movimientosAntes, contarMovimientos(equipoDetalles.getId()), "sin movimiento duplicado");
+    }
+
+    /** Defensivo: hoy ninguna ruta de la UI cambia la cantidad de una fila esterilizada. */
+    @Test
+    void entregar_cantidadDistintaALaVista_conflicto() throws SQLException {
+        esterilizar(materialId);
+        ejecutarSQL("UPDATE equipo_otros_materiales SET cantidad = 2 WHERE id = " + materialId);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregar(
+            List.of(new FilaAEntregar(equipoDetalles.getId(), materialId, 3)), List.of()));
+
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(), estadoDe(materialId));
+    }
+
+    @Test
+    void entregar_segundaFilaEnConflicto_revierteLaPrimera() throws SQLException {
+        EquipoOtros tres = equipoConTresMaterialesEnNuevo();
+        List<Integer> ids = idsPorDescripcion(tres);
+        esterilizar(ids.get(0));
+        int movimientosAntes = contarMovimientos(tres.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregar(List.of(
+            new FilaAEntregar(tres.getId(), ids.get(1), 1),
+            new FilaAEntregar(tres.getId(), ids.get(0), 2)), List.of()));
+
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(), estadoDe(ids.get(0)),
+            "la primera se revirtió con la transacción entera");
+        assertEquals(movimientosAntes, contarMovimientos(tres.getId()), "ningún movimiento registrado");
+    }
+
+    @Test
+    void entregar_equipoIncompleto_entregaSoloLaFilaPedidaYElEquipoQuedaEnProceso() throws SQLException {
+        EquipoOtros tres = equipoConTresMaterialesEnNuevo();
+        List<Integer> ids = idsPorDescripcion(tres);
+        esterilizar(ids.get(0));
+
+        dao.entregar(List.of(new FilaAEntregar(tres.getId(), ids.get(0), 2)), List.of());
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(), estadoDe(ids.get(0)));
+        assertEquals(EstadoEquipo.NUEVO.getNombre(), estadoDe(ids.get(1)));
+        assertEquals(EstadoEquipo.NUEVO, recargar(tres.getId()).getEstado(),
+            "el equipo sigue en proceso: su material más atrasado está en NUEVO");
+    }
+
+    @Test
+    void entregar_recalculaElEstadoYBumpeaLaVersionDelEquipo() throws SQLException {
+        esterilizar(materialId);
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Esterilizado' WHERE id = " + equipoDetalles.getId());
+        int versionAntes = versionDeEquipoOtros(equipoDetalles.getId());
+
+        dao.entregar(List.of(new FilaAEntregar(equipoDetalles.getId(), materialId, 3)), List.of());
+
+        assertEquals(EstadoEquipo.ENTREGADO, recargar(equipoDetalles.getId()).getEstado());
+        assertEquals(versionAntes + 1, versionDeEquipoOtros(equipoDetalles.getId()));
+    }
+
+    @Test
+    void entregar_contencionDeLock_saleComoConflicto() throws SQLException {
+        esterilizar(materialId);
+        try (Connection otro = ConnectionPool.getConnection()) {
+            otro.setAutoCommit(false);
+            try (PreparedStatement ps = otro.prepareStatement(
+                    "SELECT id FROM equipo_otros_materiales WHERE id = ? FOR UPDATE")) {
+                ps.setInt(1, materialId);
+                ps.executeQuery().close();
+            }
+
+            assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregar(
+                List.of(new FilaAEntregar(equipoDetalles.getId(), materialId, 3)), List.of()));
+
+            otro.rollback();
+        }
+    }
+
+    @Test
+    void entregar_remitoSinFilas_entregaElEncabezadoYBumpea() throws SQLException {
+        EquipoOtros remito = nuevoRemito(3);
+        dao.guardar(remito);
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Esterilizado' WHERE id = " + remito.getId());
+        int versionAntes = versionDeEquipoOtros(remito.getId());
+
+        dao.entregar(List.of(), List.of(new RemitoAEntregar(remito.getId())));
+
+        assertEquals(EstadoEquipo.ENTREGADO, recargar(remito.getId()).getEstado());
+        assertEquals(versionAntes + 1, versionDeEquipoOtros(remito.getId()),
+            "el camino REMITO escribe el estado fuera del recálculo: el bump va a mano");
+    }
+
+    /** Hoy es un "skip" en la ruta vieja; acá la entrega es de lo que se vio, así que es conflicto. */
+    @Test
+    void entregar_remitoSinFilasYaEntregado_conflicto() throws SQLException {
+        EquipoOtros remito = nuevoRemito(3);
+        dao.guardar(remito);
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Entregado' WHERE id = " + remito.getId());
+        int versionAntes = versionDeEquipoOtros(remito.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.entregar(List.of(), List.of(new RemitoAEntregar(remito.getId()))));
+
+        assertEquals(versionAntes, versionDeEquipoOtros(remito.getId()));
+    }
+
+    @Test
+    void entregar_remitoConFilas_seEntreganSusFilas() throws SQLException {
+        EquipoOtros remito = nuevoRemito(3);
+        dao.guardar(remito);
+        int filaId = dao.insertarMaterial(remito.getId(), "Elementos", 3, 0);
+        esterilizar(filaId);
+
+        dao.entregar(List.of(new FilaAEntregar(remito.getId(), filaId, 3)), List.of());
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(), estadoDe(filaId));
+        assertEquals(EstadoEquipo.ENTREGADO, recargar(remito.getId()).getEstado());
+    }
+
+    /** Un remito que ya tiene filas no se puede entregar como encabezado: sus filas tienen su estado. */
+    @Test
+    void entregar_remitoConFilasPedidoComoSinFilas_conflicto() throws SQLException {
+        EquipoOtros remito = nuevoRemito(3);
+        dao.guardar(remito);
+        int filaId = dao.insertarMaterial(remito.getId(), "Elementos", 3, 0);
+        esterilizar(filaId);
+        ejecutarSQL("UPDATE equipo_otros SET estado = 'Esterilizado' WHERE id = " + remito.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> dao.entregar(List.of(), List.of(new RemitoAEntregar(remito.getId()))));
+
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(), estadoDe(filaId));
+    }
+
+    /** El conflicto del remito revierte también las filas del mismo destino, escritas antes. */
+    @Test
+    void entregar_remitoEnConflicto_revierteLasFilasDelMismoDestino() throws SQLException {
+        esterilizar(materialId);
+        EquipoOtros remito = nuevoRemito(3);
+        dao.guardar(remito);   // queda en NUEVO: la pantalla lo vio esterilizado
+        int movimientosAntes = contarMovimientos(equipoDetalles.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregar(
+            List.of(new FilaAEntregar(equipoDetalles.getId(), materialId, 3)),
+            List.of(new RemitoAEntregar(remito.getId()))));
+
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(), estadoDe(materialId));
+        assertEquals(movimientosAntes, contarMovimientos(equipoDetalles.getId()));
+    }
+
+    private void esterilizar(int id) throws SQLException {
+        ejecutarSQL("UPDATE equipo_otros_materiales SET estado = 'Esterilizado' WHERE id = " + id);
+    }
+
+    private String estadoDe(int id) throws SQLException {
+        return texto("SELECT estado FROM equipo_otros_materiales WHERE id = " + id);
+    }
+
+    /** {@code cantidad|origen|destino} del último movimiento del material. */
+    private String ultimoMovimiento(int id) throws SQLException {
+        return texto("SELECT CONCAT(cantidad, '|', estado_origen, '|', estado_destino) "
+            + "FROM otros_material_movimientos WHERE material_id = " + id + " ORDER BY id DESC LIMIT 1");
+    }
+
+    private String texto(String sql) throws SQLException {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getString(1);
+        }
     }
 
     private int versionDeEquipoOtros(int id) throws SQLException {

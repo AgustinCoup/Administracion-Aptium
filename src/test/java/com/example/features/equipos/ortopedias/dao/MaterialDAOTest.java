@@ -3,6 +3,7 @@ package com.example.features.equipos.ortopedias.dao;
 import com.example.AbstractDAOTest;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.DatabaseException;
+import com.example.common.model.FilaAEntregar;
 import com.example.features.equipos.ortopedias.model.*;
 import com.example.infrastructure.db.ConnectionPool;
 import org.junit.jupiter.api.BeforeEach;
@@ -310,7 +311,154 @@ class MaterialDAOTest extends AbstractDAOTest {
         assertEquals(EstadoEquipo.ENTREGADO, cargado.getMateriales().get(0).getEstado());
     }
 
+    // ── entregarMateriales ────────────────────────────────────────────────────
+
+    @Test
+    void entregarMateriales_filaEsterilizada_quedaEntregadaConSuMovimiento() throws SQLException {
+        esterilizar(materialId);
+        int movimientosAntes = contarMovimientos(equipo.getId());
+
+        dao.entregarMateriales(List.of(new FilaAEntregar(equipo.getId(), materialId, 3)));
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(), estadoDe(materialId));
+        assertEquals(movimientosAntes + 1, contarMovimientos(equipo.getId()));
+        assertEquals("3|Esterilizado|Entregado", ultimoMovimiento(materialId));
+    }
+
+    /** El bug que motiva la ruta: la escritura vieja entregaba todo lo esterilizado del destino. */
+    @Test
+    void entregarMateriales_noTocaUnMaterialEsterilizadoQueNoEstabaEnLaSolicitud() throws SQLException {
+        Equipo tres = equipoConTresMaterialesEnNuevo();
+        List<Integer> ids = idsDeMateriales(tres);
+        esterilizar(ids.get(0));
+        esterilizar(ids.get(1));
+
+        dao.entregarMateriales(List.of(new FilaAEntregar(tres.getId(), ids.get(0), 2)));
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(),    estadoDe(ids.get(0)));
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(), estadoDe(ids.get(1)),
+            "no estaba en la solicitud: no se entrega aunque esté esterilizado");
+    }
+
+    @Test
+    void entregarMateriales_filaYaEntregada_conflictoYNoEscribeNada() throws SQLException {
+        ejecutarSQL("UPDATE equipo_materiales SET estado = 'Entregado' WHERE id = " + materialId);
+        int movimientosAntes = contarMovimientos(equipo.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregarMateriales(
+            List.of(new FilaAEntregar(equipo.getId(), materialId, 3))));
+
+        assertEquals(movimientosAntes, contarMovimientos(equipo.getId()), "sin movimiento duplicado");
+    }
+
+    /** Defensivo: hoy ninguna ruta de la UI cambia la cantidad de una fila esterilizada. */
+    @Test
+    void entregarMateriales_cantidadDistintaALaVista_conflicto() throws SQLException {
+        esterilizar(materialId);
+        ejecutarSQL("UPDATE equipo_materiales SET cantidad = 2 WHERE id = " + materialId);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregarMateriales(
+            List.of(new FilaAEntregar(equipo.getId(), materialId, 3))));
+
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(), estadoDe(materialId));
+    }
+
+    @Test
+    void entregarMateriales_segundaFilaEnConflicto_revierteLaPrimera() throws SQLException {
+        Equipo tres = equipoConTresMaterialesEnNuevo();
+        List<Integer> ids = idsDeMateriales(tres);
+        esterilizar(ids.get(0));   // la primera en el orden de escritura: matchea y se escribe
+        int movimientosAntes = contarMovimientos(tres.getId());
+
+        // La segunda sigue en NUEVO: la pantalla la vio esterilizada, la base dice otra cosa.
+        assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregarMateriales(List.of(
+            new FilaAEntregar(tres.getId(), ids.get(1), 1),
+            new FilaAEntregar(tres.getId(), ids.get(0), 2))));
+
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(), estadoDe(ids.get(0)),
+            "la primera se revirtió con la transacción entera");
+        assertEquals(movimientosAntes, contarMovimientos(tres.getId()), "ningún movimiento registrado");
+    }
+
+    @Test
+    void entregarMateriales_equipoIncompleto_entregaSoloLaFilaPedidaYElEquipoQuedaEnProceso()
+            throws SQLException {
+        Equipo tres = equipoConTresMaterialesEnNuevo();
+        List<Integer> ids = idsDeMateriales(tres);
+        esterilizar(ids.get(0));
+
+        dao.entregarMateriales(List.of(new FilaAEntregar(tres.getId(), ids.get(0), 2)));
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(), estadoDe(ids.get(0)));
+        assertEquals(EstadoEquipo.NUEVO.getNombre(), estadoDe(ids.get(1)));
+        assertEquals(EstadoEquipo.NUEVO.getNombre(),
+            texto("SELECT estado FROM equipos WHERE id = " + tres.getId()),
+            "el equipo sigue en proceso: su material más atrasado está en NUEVO");
+    }
+
+    @Test
+    void entregarMateriales_recalculaElEstadoYBumpeaLaVersionDelEquipo() throws SQLException {
+        esterilizar(materialId);
+        ejecutarSQL("UPDATE equipos SET estado = 'Esterilizado' WHERE id = " + equipo.getId());
+        int versionAntes = versionDeEquipo(equipo.getId());
+
+        dao.entregarMateriales(List.of(new FilaAEntregar(equipo.getId(), materialId, 3)));
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(),
+            texto("SELECT estado FROM equipos WHERE id = " + equipo.getId()));
+        assertEquals(versionAntes + 1, versionDeEquipo(equipo.getId()));
+    }
+
+    @Test
+    void entregarMateriales_contencionDeLock_saleComoConflicto() throws SQLException {
+        esterilizar(materialId);
+        try (Connection otro = ConnectionPool.getConnection()) {
+            otro.setAutoCommit(false);
+            try (PreparedStatement ps = otro.prepareStatement(
+                    "SELECT id FROM equipo_materiales WHERE id = ? FOR UPDATE")) {
+                ps.setInt(1, materialId);
+                ps.executeQuery().close();
+            }
+
+            // Otra entrega tiene la fila tomada y la base corta la espera: es "otro se te
+            // adelantó", no un error técnico.
+            assertThrows(ConflictoConcurrenciaException.class, () -> dao.entregarMateriales(
+                List.of(new FilaAEntregar(equipo.getId(), materialId, 3))));
+
+            otro.rollback();
+        }
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────────────
+
+    private void esterilizar(int id) throws SQLException {
+        ejecutarSQL("UPDATE equipo_materiales SET estado = 'Esterilizado' WHERE id = " + id);
+    }
+
+    private String estadoDe(int id) {
+        return texto("SELECT estado FROM equipo_materiales WHERE id = " + id);
+    }
+
+    private int versionDeEquipo(int id) {
+        return Integer.parseInt(texto("SELECT version FROM equipos WHERE id = " + id));
+    }
+
+    /** {@code cantidad|origen|destino} del último movimiento del material. */
+    private String ultimoMovimiento(int id) {
+        return texto("SELECT CONCAT(cantidad, '|', estado_origen, '|', estado_destino) "
+            + "FROM material_movimientos WHERE material_id = " + id + " ORDER BY id DESC LIMIT 1");
+    }
+
+    private String texto(String sql) {
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             var rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getString(1);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     /** Códigos distintos: si compartieran código, la unificación de la base mezclaría las filas. */
     private Equipo equipoConTresMaterialesEnNuevo() {

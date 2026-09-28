@@ -6,6 +6,7 @@ import com.example.common.exception.BusinessException;
 import com.example.common.exception.LavarropasDeBajaException;
 import com.example.common.exception.LavarropasOcupadoException;
 import com.example.common.exception.SaldoConsumidoException;
+import com.example.common.model.FilaAEntregar;
 import com.example.features.catalogo.dao.CatalogoDAO;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.clientes.dao.ClienteDAO;
@@ -222,6 +223,76 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
             "queda sólo el avance de B: el primero de A, que sí matcheaba, se revirtió con el resto");
         assertEquals(movimientosAntes + 1, escalar("SELECT COUNT(*) FROM material_movimientos"),
             "en la tabla sólo está el movimiento de B");
+    }
+
+    // ── Entregar ──────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Entregar (ortopedias): B entrega primero, A choca y queda un solo movimiento a Entregado")
+    void entregaOrtopediasYaEntregadaPorOtro() {
+        // A lee: el material está esterilizado, con cantidad 3.
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+        ejecutarSinChecked("UPDATE equipo_materiales SET estado = 'Esterilizado' WHERE id = " + materialId);
+        FilaAEntregar vista = new FilaAEntregar(equipo.getId(), materialId, 3);
+
+        // B entrega la misma fila y commitea.
+        materialDAO.entregarMateriales(List.of(vista));
+
+        // A entrega con lo que vio.
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> materialDAO.entregarMateriales(List.of(vista)));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM material_movimientos WHERE material_id = "
+                + materialId + " AND estado_destino = 'Entregado'"),
+            "un solo movimiento a Entregado, el de B: sin la guarda A registraría un segundo");
+    }
+
+    @Test
+    @DisplayName("Entregar (otros): mismo choque, mismo resultado que en ortopedias")
+    void entregaOtrosYaEntregadaPorOtro() {
+        EquipoOtros equipo = equipoOtrosConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+        ejecutarSinChecked("UPDATE equipo_otros_materiales SET estado = 'Esterilizado' WHERE id = " + materialId);
+        FilaAEntregar vista = new FilaAEntregar(equipo.getId(), materialId, 3);
+
+        equipoOtrosDAO.entregar(List.of(vista), List.of());
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> equipoOtrosDAO.entregar(List.of(vista), List.of()));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM otros_material_movimientos WHERE material_id = "
+                + materialId + " AND estado_destino = 'Entregado'"),
+            "un solo movimiento a Entregado, el de B");
+    }
+
+    /**
+     * El bug que corrige la entrega por id, con la forma de los demás casos. No es un conflicto:
+     * lo que B esterilizó no estaba en lo que A vio, así que A no lo entrega. La ruta vieja
+     * ({@code entregarInstitucionCompleta}) releía "lo esterilizado" al escribir y se lo llevaba.
+     */
+    @Test
+    @DisplayName("Entregar: lo que se esterilizó después de leer no se entrega")
+    void entregaNoIncluyeLoEsterilizadoDespuesDeLeer() {
+        // A lee: de los tres materiales, sólo el primero está esterilizado.
+        Equipo equipo = equipoOrtopediaConTresMateriales();
+        List<Integer> ids = equipo.getMateriales().stream()
+            .sorted(java.util.Comparator.comparingInt(Material::getCodigo))
+            .map(Material::getId)
+            .toList();
+        ejecutarSinChecked("UPDATE equipo_materiales SET estado = 'Esterilizado' WHERE id = " + ids.get(0));
+
+        // B esteriliza otro material del mismo destino y commitea.
+        ejecutarSinChecked("UPDATE equipo_materiales SET estado = 'Esterilizado' WHERE id = " + ids.get(1));
+
+        // A entrega lo que vio.
+        materialDAO.entregarMateriales(List.of(new FilaAEntregar(equipo.getId(), ids.get(0), 1)));
+
+        assertEquals(EstadoEquipo.ENTREGADO.getNombre(),
+            texto("SELECT estado FROM equipo_materiales WHERE id = " + ids.get(0)));
+        assertEquals(EstadoEquipo.ESTERILIZADO.getNombre(),
+            texto("SELECT estado FROM equipo_materiales WHERE id = " + ids.get(1)),
+            "lo de B queda esterilizado: no apareció en la confirmación de A");
     }
 
     // ── Lanzar Lote ───────────────────────────────────────────────────────────

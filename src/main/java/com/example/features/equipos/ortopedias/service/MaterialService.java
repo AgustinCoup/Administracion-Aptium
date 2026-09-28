@@ -1,6 +1,7 @@
 package com.example.features.equipos.ortopedias.service;
 
 import com.example.common.exception.ValidationException;
+import com.example.common.model.FilaAEntregar;
 import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
@@ -68,6 +69,21 @@ public class MaterialService {
      */
     public boolean entregarInstitucionCompleta(int nroInstitucion) {
         return materialDAO.entregarInstitucionCompleta(nroInstitucion);
+    }
+
+    /**
+     * Entrega exactamente las filas que el operador vio de una institución, todo o nada. Ver
+     * {@link MaterialDAO#entregarMateriales} para la guarda.
+     *
+     * @return {@code true} al terminar; un choque sale como {@code ConflictoConcurrenciaException}
+     * @throws ValidationException si no hay nada para entregar
+     */
+    public boolean entregarMateriales(List<FilaAEntregar> filas) {
+        ValidationException.builder()
+            .addErrorIf(filas == null || filas.isEmpty(), "No hay materiales para entregar.")
+            .throwIfHasErrors();
+        materialDAO.entregarMateriales(filas);
+        return true;
     }
 }
 

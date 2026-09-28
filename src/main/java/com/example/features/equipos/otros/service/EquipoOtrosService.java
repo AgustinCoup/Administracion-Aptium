@@ -1,6 +1,8 @@
 package com.example.features.equipos.otros.service;
 
 import com.example.common.exception.ValidationException;
+import com.example.common.model.FilaAEntregar;
+import com.example.common.model.RemitoAEntregar;
 import com.example.common.paginacion.CriteriosPagina;
 import com.example.common.paginacion.Pagina;
 import com.example.features.equipos.model.FiltroEquipos;
@@ -125,6 +127,24 @@ public class EquipoOtrosService {
      */
     public boolean entregarClienteCompleto(int nroCliente) {
         return dao.entregarClienteCompleto(nroCliente);
+    }
+
+    /**
+     * Entrega exactamente las filas y los remitos sin filas que el operador vio de un cliente, todo
+     * o nada. Ver {@link EquipoOtrosDAO#entregar} para la guarda. Una lista {@code null} cuenta
+     * como vacía.
+     *
+     * @return {@code true} al terminar; un choque sale como {@code ConflictoConcurrenciaException}
+     * @throws ValidationException si no hay nada para entregar
+     */
+    public boolean entregar(List<FilaAEntregar> filas, List<RemitoAEntregar> remitosSinFilas) {
+        List<FilaAEntregar>   filasNoNulas   = filas == null ? List.of() : filas;
+        List<RemitoAEntregar> remitosNoNulos = remitosSinFilas == null ? List.of() : remitosSinFilas;
+        ValidationException.builder()
+            .addErrorIf(filasNoNulas.isEmpty() && remitosNoNulos.isEmpty(), "No hay materiales para entregar.")
+            .throwIfHasErrors();
+        dao.entregar(filasNoNulas, remitosNoNulos);
+        return true;
     }
 
     /**
