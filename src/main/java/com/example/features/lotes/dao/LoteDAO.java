@@ -540,6 +540,24 @@ public class LoteDAO {
         }
     }
 
+    /**
+     * El {@code id_negocio} que tendría un lote lanzado ahora, para mostrarlo en la confirmación.
+     *
+     * <p><b>Es una predicción, no una reserva.</b> El número real lo asigna {@link #lanzarLote}
+     * dentro de su transacción, y sale distinto si entre esta lectura y el lanzamiento otro puesto
+     * lanzó un lote, o si cambió el año. Reservarlo dejaría huecos en la numeración cada vez que el
+     * operador cancela; por eso quien lo muestra compara contra el {@link Lote} devuelto y avisa
+     * si difieren.</p>
+     */
+    public String preverIdNegocio() {
+        int anio = java.time.LocalDate.now().getYear();
+        try (Connection conn = ConnectionPool.getConnection()) {
+            return construirIdNegocio(anio, obtenerSiguienteSecuencia(conn, anio));
+        } catch (SQLException e) {
+            throw new DatabaseException("Error al prever el id de negocio del próximo lote", e);
+        }
+    }
+
     // ── Helpers privados de LoteDAO ──────────────────────────────────────────
 
     /**
@@ -549,8 +567,9 @@ public class LoteDAO {
      * El bucle de {@link #lanzarLote} sólo avanza si entre dos intentos aparece una fila que otro
      * operador committeó — y en un test secuencial la base no cambia sola, así que sin un punto
      * donde simular "A leyó el MAX antes de que B commiteara" el camino feliz del reintento no
-     * tiene test posible (ver {@code LoteDAOTest}). No la use ningún otro colaborador: la secuencia
-     * se calcula acá adentro, dentro de la transacción del intento.</p>
+     * tiene test posible (ver {@code LoteDAOTest}). No la use ningún colaborador externo: la
+     * secuencia que vale es la que se calcula dentro de la transacción del intento; la de
+     * {@link #preverIdNegocio} es sólo informativa.</p>
      */
     int obtenerSiguienteSecuencia(Connection conn, int anio) throws SQLException {
         try (PreparedStatement pstmt = conn.prepareStatement(

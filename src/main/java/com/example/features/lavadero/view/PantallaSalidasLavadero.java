@@ -25,6 +25,9 @@ import java.util.List;
  */
 public class PantallaSalidasLavadero extends JPanel {
 
+    /** Lo menos que el divisor puede dejarle a cada tabla: ancho de un botón con aire. */
+    private static final int ANCHO_MINIMO_PANEL = 250;
+
     private final ElementoLavadoTableModel modeloLavados = new ElementoLavadoTableModel();
     private final SalidaListaTableModel    modeloListos  = new SalidaListaTableModel();
 
@@ -89,17 +92,15 @@ public class PantallaSalidasLavadero extends JPanel {
         panel.add(scroll(tablaLavados), BorderLayout.CENTER);
 
         btnMarcarListo.setFont(Estilos.Fuentes.BOTON);
-        JLabel ayuda = new JLabel(Constantes.Textos.AYUDA_ARRASTRE_SALIDAS);
-        ayuda.setFont(Estilos.Fuentes.LABEL);
 
         JPanel south = new JPanel(new BorderLayout());
         south.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
-        south.add(ayuda, BorderLayout.NORTH);
+        south.add(LabelFactory.createHelpText(Constantes.Textos.AYUDA_ARRASTRE_SALIDAS), BorderLayout.NORTH);
         JPanel botones = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         botones.add(btnMarcarListo);
         south.add(botones, BorderLayout.CENTER);
         panel.add(south, BorderLayout.SOUTH);
-        return panel;
+        return conMinimoParaElDivisor(panel);
     }
 
     private JPanel panelListos() {
@@ -111,8 +112,6 @@ public class PantallaSalidasLavadero extends JPanel {
         for (JButton btn : new JButton[]{btnVolverALavado, btnSaleDelFlujo, btnIngresarACde}) {
             btn.setFont(Estilos.Fuentes.BOTON);
         }
-        JLabel ayuda = new JLabel(Constantes.Textos.AYUDA_SALIDA_ENTERA);
-        ayuda.setFont(Estilos.Fuentes.LABEL);
 
         // WrapLayout y no FlowLayout: los tres botones piden 624 px y a 1280×720 —el mínimo de
         // PantallaPrincipal— este panel recibe 526, así que "Ingresar al CDE" se envolvía a una
@@ -124,9 +123,21 @@ public class PantallaSalidasLavadero extends JPanel {
 
         JPanel south = new JPanel(new BorderLayout());
         south.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
-        south.add(ayuda, BorderLayout.NORTH);
+        south.add(LabelFactory.createHelpText(Constantes.Textos.AYUDA_SALIDA_ENTERA), BorderLayout.NORTH);
         south.add(botones, BorderLayout.CENTER);
         panel.add(south, BorderLayout.SOUTH);
+        return conMinimoParaElDivisor(panel);
+    }
+
+    /**
+     * El divisor del split no puede dejar a ningún lado por debajo de su mínimo, y el mínimo
+     * calculado de cada panel sale de su hijo más ancho (título, botones). Sumados superaban el
+     * ancho de la pantalla, así que el divisor no se movía. Un mínimo explícito le devuelve el
+     * control al operador; lo que no entra se parte (textos de ayuda, {@code WrapLayout}) o se
+     * recorta (el título), que es lo que se espera al achicar un panel a mano.
+     */
+    private static JPanel conMinimoParaElDivisor(JPanel panel) {
+        panel.setMinimumSize(new Dimension(ANCHO_MINIMO_PANEL, 0));
         return panel;
     }
 

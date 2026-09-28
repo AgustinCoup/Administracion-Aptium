@@ -55,6 +55,11 @@ public class LoteService {
         return loteDAO.obtenerMaterialesPorLote(loteId);
     }
 
+    /** Predicción del {@code id_negocio} del próximo lote; ver {@link LoteDAO#preverIdNegocio()}. */
+    public String preverIdNegocio() {
+        return loteDAO.preverIdNegocio();
+    }
+
     public Lote lanzarLote(String autoclaveNombre, int capacidadTotal, int capacidadUsada,
                            List<LoteMovimiento> movimientos,
                            Map<Integer, Integer> volumenesPorIngreso) {
