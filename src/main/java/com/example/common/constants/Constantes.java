@@ -417,6 +417,12 @@ public final class Constantes {
             "No se pegaron estos ítems porque fueron dados de baja: %s.\n"
                 + "Completá la configuración a mano.";
 
+        // ── Eliminar un ingreso ──────────────────────────────────────────────
+        public static final String MOTIVO_ELIMINACION_OBLIGATORIO =
+            "Escribí el motivo de la eliminación: queda guardado junto con la copia del ingreso.";
+        public static final String MOTIVO_ELIMINACION_LARGO =
+            "El motivo no puede tener más de %d caracteres. Resumilo y volvé a intentar.";
+
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y
         // dice QUÉ HACER, no qué falló: su build quedó atrás de la base compartida.
@@ -759,5 +765,15 @@ public final class Constantes {
         public static final long TIMEOUT_ESPERA_JVM_SEGUNDOS = 30;
 
         private Actualizaciones() {}
+    }
+
+    /**
+     * Eliminación de ingresos completos desde las pantallas de consulta.
+     */
+    public static final class Eliminacion {
+        /** Largo máximo del motivo: es el {@code VARCHAR(500)} de {@code ingresos_eliminados.motivo}. */
+        public static final int MOTIVO_MAX_LARGO = 500;
+
+        private Eliminacion() {}
     }
 }
