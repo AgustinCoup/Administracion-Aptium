@@ -171,6 +171,13 @@ Clasificación (`SQL_MARCAR_CLASIFICADO` → `CONFLICTO_CLASIFICACION`), `lanzar
 | `ClasificacionLavaderoDAO.guardar` | `ingresos_lavadero` (UPDATE CAS) → `INSERT` líneas |
 | `SalidaLavaderoDAO.marcarListo` | `elementos_ciclo` → `instancias` (ascendente) → `INSERT salidas` |
 | `SalidaLavaderoDAO.derivar` | `INSERT equipo_otros` → `salidas` (UPDATE CAS) → `ingresos_lavadero` (UPDATE) |
+| `SalidaLavaderoDAO.volverALavado` | `salidas` (DELETE CAS, en el orden de la lista). *Corrección 2026-09-29 (Paso 4): faltaba en la tabla.* |
+| `FusionClientesDAO.fusionar` | `clientes` → `equipos` → `equipo_otros` → `ingresos_lavadero` (UPDATE por cliente). *Corrección 2026-09-29 (Paso 4): faltaba en la tabla; se cruza con el borrado de Lavadero (`ingresos_lavadero` → … → `equipo_otros`).* |
+
+*Corrección 2026-09-29 (Paso 4): los órdenes de esta tabla son **entre tablas**. Dentro de una tabla,
+InnoDB bloquea en el orden en que recorre el índice, no en el del `ORDER BY`: `marcarListo` toma
+tandas e instancias por id ascendente, pero un `WHERE x IN (…) FOR UPDATE` las toma por `x`. Ver
+el caso residual (c) del Paso 4.*
 
 **Otros hechos:**
 - **Próxima migración libre: `V28`** (la última es `V27__lavarropas_sin_capacidad.sql`). Flyway
@@ -711,6 +718,18 @@ fases de `EliminadorEquipoOtros`).
        de Lavadero toma salidas (5) → materiales → cabecera (6) en el mismo orden relativo;
      - **Registrar Estado / entregas / `lanzarLote` sobre el derivado** (materiales → cabecera):
        mismo orden que (6).
+
+     *Corrección 2026-09-29 (Paso 4), decidida con el usuario: al escribir la matriz aparecieron tres
+     cruces más, y se **aceptaron y documentaron** en vez de cambiar el orden (todos son deadlocks que
+     MySQL resuelve abortando a uno, y el borrado lo informa como conflicto): **(c)** el orden dentro
+     de una tabla (ver la nota de la tabla de órdenes; afecta a `marcarListo`, `volverALavado`,
+     `derivar` y al borrado desde Ver Equipos, así que "`marcarListo` … Sin ciclo" no es exacto);
+     **(d)** `FusionClientesDAO` (`equipo_otros` → `ingresos_lavadero`); **(e)** el `NOT EXISTS` de
+     (16), que en MySQL toma locks compartidos sobre las tandas de **otros** ingresos del ciclo (el
+     usuario prefirió esto a decidir el vaciado con una lectura no bloqueante, que en la misma carrera
+     deja un ciclo vacío). Además, (5) va en **dos** sentencias, una por columna: con `OR`, MySQL
+     puede recorrer y bloquear todo `salidas_lavadero`. `DerivadoCde` lleva `unidades` (la suma de
+     las cantidades de sus materiales). Todo en el javadoc de `EliminadorIngresoLavadero.eliminar`.*
 3. **`Constantes.Mensajes`**: los bloqueos nuevos (`CicloEnCurso`: "Hay ropa de este ingreso en el
    lavarropas N, con el ciclo sin finalizar. Finalizá ese ciclo y volvé a intentar.";
    `DerivadoCompartido`: "El ingreso del CDE #X también tiene ropa de los ingresos de Lavadero #A,

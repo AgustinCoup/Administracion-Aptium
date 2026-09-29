@@ -3,7 +3,9 @@ package com.example.infrastructure.db;
 import com.example.AbstractDAOTest;
 import com.example.common.eliminacion.ArchivoIngresosDAO;
 import com.example.common.eliminacion.EliminacionBloqueadaException;
+import com.example.common.eliminacion.Bloqueo;
 import com.example.common.eliminacion.ResumenEquipo;
+import com.example.common.eliminacion.ResumenIngresoLavadero;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.BusinessException;
 import com.example.common.exception.LavarropasDeBajaException;
@@ -30,17 +32,25 @@ import com.example.features.equipos.otros.model.MaterialOtros;
 import com.example.features.equipos.otros.model.TipoIngresoOtros;
 import com.example.features.lavadero.dao.CicloLavaderoDAO;
 import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
+import com.example.features.lavadero.dao.EliminadorIngresoLavadero;
 import com.example.features.lavadero.dao.LavarropasDAO;
 import com.example.features.lavadero.dao.SalidaLavaderoDAO;
+import com.example.features.lavadero.dao.derivadores.AsignadorClienteCDE;
+import com.example.features.lavadero.dao.derivadores.ConstructorIngresoCDE;
+import com.example.features.lavadero.dao.derivadores.DerivadorIngresoCDE;
+import com.example.features.lavadero.model.AccionSalida;
 import com.example.features.lavadero.model.ConfiguracionCiclo;
 import com.example.features.lavadero.model.ElementoClasificacion;
 import com.example.features.lavadero.model.ElementoLavadoPendiente;
+import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.JabonCatalogo;
 import com.example.features.lavadero.model.LanzamientoCiclo;
 import com.example.features.lavadero.model.LineaLanzamiento;
 import com.example.features.lavadero.model.MarcaListo;
+import com.example.features.lavadero.model.SalidaLista;
 import com.example.features.lavadero.model.TipoLavado;
 import com.example.features.lotes.dao.LoteDAO;
+import com.example.features.lotes.model.Lote;
 import com.example.features.lotes.model.LoteMovimiento;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -113,6 +123,10 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
     private final EliminadorEquipoOrtopedia eliminadorOrtopedia =
         new EliminadorEquipoOrtopedia(new ArchivoIngresosDAO());
     private final EliminadorEquipoOtros eliminadorOtros = new EliminadorEquipoOtros(new ArchivoIngresosDAO());
+    private final EliminadorIngresoLavadero eliminadorLavadero =
+        new EliminadorIngresoLavadero(eliminadorOtros, new ArchivoIngresosDAO());
+    private final DerivadorIngresoCDE derivadorCdeCliente = new DerivadorIngresoCDE(AccionSalida.CDE_CLIENTE,
+        new ConstructorIngresoCDE(), AsignadorClienteCDE.CLIENTE_ORIGINAL, equipoOtrosDAO);
     private final ClienteDAO        clienteDAO = new ClienteDAO();
 
     /** Los ids de instancia del staging son locales a la tanda: cualquiera sirve. */
@@ -822,6 +836,109 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
         assertEquals("Motivo de B", texto("SELECT motivo FROM ingresos_eliminados"));
     }
 
+    // ── Eliminar un ingreso de Lavadero ───────────────────────────────────────
+    //
+    // Lo que viaja del resumen a la transacción es el estado MÁS el conjunto de derivados al CDE:
+    // `ingresos_lavadero` no tiene `version`. Un ciclo o un lote en curso es un bloqueo, no un
+    // conflicto.
+
+    @Test
+    @DisplayName("Eliminar (lavadero): B mete la ropa en un ciclo y A no borra nada")
+    void eliminarIngresoLavaderoQueOtroMetioEnUnCiclo() {
+        int ingresoId = ingresoDeLavadero("TestConcElimCiclo", "PENDIENTE");
+        clasificacionDAO.guardar(ingresoId, List.of(new ElementoClasificacion(catalogoElementoId(1), 5)));
+        int lineaId = escalar("SELECT id FROM elementos_clasificacion_lavadero WHERE ingreso_id = " + ingresoId);
+        ResumenIngresoLavadero vista = eliminadorLavadero.resumir(ingresoId);
+        assertFalse(vista.estaBloqueado());
+
+        // B lanza una tanda con la línea y commitea. El estado del ingreso no cambia: sigue CLASIFICADO.
+        cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(new LineaLanzamiento(lineaId, 5)))));
+        int cicloDeB = escalar("SELECT id FROM ciclos_lavadero");
+
+        EliminacionBloqueadaException e = assertThrows(EliminacionBloqueadaException.class,
+            () -> eliminarLavadero(vista));
+
+        assertEquals(List.of(new Bloqueo.CicloEnCurso(1)), e.getBloqueos());
+        assertEquals(1, escalar("SELECT COUNT(*) FROM ingresos_lavadero WHERE id = " + ingresoId));
+        assertEquals(cicloDeB, escalar("SELECT ciclo_id FROM elementos_ciclo_lavadero WHERE elemento_clasificacion_id = "
+            + lineaId), "queda el ciclo de B, con la ropa adentro");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"));
+    }
+
+    @Test
+    @DisplayName("Eliminar (lavadero): B mete el derivado al CDE en un lote y A no borra nada")
+    void eliminarIngresoLavaderoCuyoDerivadoOtroMetioEnUnLote() {
+        int ingresoId = ingresoDeLavadero("TestConcElimLote", "CLASIFICADO");
+        lavarYMarcarListo(1, insertarClasificacion(ingresoId, catalogoElementoId(1), 5));
+        int derivado = derivarAlCde(ingresoId);
+        ResumenIngresoLavadero vista = eliminadorLavadero.resumir(ingresoId);
+        assertFalse(vista.estaBloqueado());
+
+        // B lanza un lote con el material del derivado y commitea.
+        int materialId = escalar("SELECT id FROM equipo_otros_materiales WHERE equipo_otros_id = " + derivado);
+        Lote loteDeB = loteDAO.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, derivado, 5, true, EstadoEquipo.desdeBD(
+                texto("SELECT estado FROM equipo_otros_materiales WHERE id = " + materialId)))),
+            Map.of(derivado, 10));
+
+        EliminacionBloqueadaException e = assertThrows(EliminacionBloqueadaException.class,
+            () -> eliminarLavadero(vista));
+
+        assertEquals(List.of(new Bloqueo.DerivadoEnLoteEnCurso(derivado, loteDeB.getIdNegocio())), e.getBloqueos());
+        assertEquals(1, escalar("SELECT COUNT(*) FROM ingresos_lavadero WHERE id = " + ingresoId));
+        assertEquals(loteDeB.getId(), escalar("SELECT lote_id FROM equipo_otros_materiales WHERE id = " + materialId),
+            "el derivado sigue en el lote de B");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"));
+    }
+
+    /**
+     * La razón de que la guarda no sea sólo el estado: una derivación parcial crea un ingreso del CDE
+     * sin mover el estado del ingreso de Lavadero. Con el estado solo, A se llevaría el
+     * {@code equipo_otros} de B sin haberlo visto en la confirmación.
+     */
+    @Test
+    @DisplayName("Eliminar (lavadero): B deriva al CDE sin cambiar el estado y A choca igual")
+    void eliminarIngresoLavaderoQueOtroDerivoDespuesDeLeer() {
+        int ingresoId = ingresoDeLavadero("TestConcElimDeriva", "CLASIFICADO");
+        int derivable = insertarClasificacion(ingresoId, catalogoElementoId(1), 5);
+        int soloLavada = insertarClasificacion(ingresoId, catalogoElementoId(2), 3);
+        lavarYMarcarListo(1, derivable);
+        cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(2, config(), List.of(new LineaLanzamiento(soloLavada, 3)))));
+        cicloDAO.finalizarCiclo(escalar("SELECT id FROM ciclos_lavadero WHERE lavarropas_numero = 2"));
+        ResumenIngresoLavadero vista = eliminadorLavadero.resumir(ingresoId);
+        assertTrue(vista.derivados().isEmpty());
+
+        // B deriva lo que está listo y commitea: 5 de 8, el ingreso sigue LAVADO.
+        int derivadoDeB = derivarAlCde(ingresoId);
+        assertEquals(vista.estado(), EstadoIngresoLavadero.desdeBD(
+            texto("SELECT estado FROM ingresos_lavadero WHERE id = " + ingresoId)),
+            "precondición: el estado no cambió, así que lo único que delata a B es el derivado");
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> eliminarLavadero(vista));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM equipo_otros WHERE id = " + derivadoDeB), "queda lo de B");
+        assertEquals(derivadoDeB, escalar("SELECT equipo_otros_id FROM salidas_lavadero WHERE destino = 'CDE_OTROS'"));
+        assertEquals(1, escalar("SELECT COUNT(*) FROM ingresos_lavadero WHERE id = " + ingresoId));
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"));
+    }
+
+    @Test
+    @DisplayName("Eliminar (lavadero): B clasifica el ingreso PENDIENTE y A choca")
+    void eliminarIngresoLavaderoQueOtroClasifico() {
+        int ingresoId = ingresoDeLavadero("TestConcElimClasif", "PENDIENTE");
+        ResumenIngresoLavadero vista = eliminadorLavadero.resumir(ingresoId);
+        assertEquals(EstadoIngresoLavadero.PENDIENTE, vista.estado());
+
+        clasificacionDAO.guardar(ingresoId, List.of(new ElementoClasificacion(catalogoElementoId(1), 10)));
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> eliminarLavadero(vista));
+
+        assertEquals("CLASIFICADO", texto("SELECT estado FROM ingresos_lavadero WHERE id = " + ingresoId));
+        assertEquals(10, escalar("SELECT SUM(cantidad) FROM elementos_clasificacion_lavadero WHERE ingreso_id = "
+            + ingresoId), "queda la clasificación de B");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"));
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
     private Equipo equipoOrtopediaConMaterial(int cantidad) {
@@ -887,6 +1004,34 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
 
     private ConfiguracionCiclo config() {
         return new ConfiguracionCiclo(TipoLavado.SUCIO, jabon, new BigDecimal("1.50"), List.of());
+    }
+
+    private void eliminarLavadero(ResumenIngresoLavadero vista) {
+        eliminadorLavadero.eliminar(vista.ingreso().id(), vista.estado(), vista.idsDerivados(),
+            "Se cargó dos veces", "A@PC");
+    }
+
+    /** Lava la línea en ese lavarropas, finaliza el ciclo y marca Listo lo que lavó. */
+    private void lavarYMarcarListo(int lavarropas, int lineaId) {
+        int cantidad = escalar("SELECT cantidad FROM elementos_clasificacion_lavadero WHERE id = " + lineaId);
+        cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(lavarropas, config(), List.of(
+            new LineaLanzamiento(lineaId, cantidad)))));
+        int cicloId = escalar("SELECT id FROM ciclos_lavadero WHERE fecha_fin IS NULL AND lavarropas_numero = "
+            + lavarropas);
+        cicloDAO.finalizarCiclo(cicloId);
+        int tanda = escalar("SELECT id FROM elementos_ciclo_lavadero WHERE ciclo_id = " + cicloId);
+        ElementoLavadoPendiente pendiente = salidaDAO.obtenerLavadosPendientesDeListo().stream()
+            .filter(p -> Integer.valueOf(tanda).equals(p.elementoCicloId()))
+            .findFirst().orElseThrow();
+        salidaDAO.marcarListo(List.of(new MarcaListo(pendiente, cantidad)));
+    }
+
+    /** Deriva al CDE, con su cliente, todo lo listo del ingreso; devuelve el equipo_otros creado. */
+    private int derivarAlCde(int ingresoId) {
+        List<SalidaLista> listas = salidaDAO.obtenerListasSinDestino().stream()
+            .filter(s -> s.ingresoId() == ingresoId).toList();
+        salidaDAO.derivar(derivadorCdeCliente, listas);
+        return escalar("SELECT equipo_otros_id FROM salidas_lavadero WHERE id = " + listas.get(0).salidaId());
     }
 
     // ── Helpers de lectura ────────────────────────────────────────────────────
