@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -450,6 +451,36 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
         assertThrows(BusinessException.class, () -> dao.volverALavado(List.of()));
     }
 
+    /** Otro tiene la salida tomada (un borrado del ingreso, una derivación) y la base corta la espera. */
+    @Test
+    void volverALavado_contencionDeLock_saleComoConflicto() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+        int salidaId = dao.obtenerListasSinDestino().get(0).salidaId();
+
+        try (Connection otro = conSalidaTomada(salidaId)) {
+            assertThrows(ConflictoConcurrenciaException.class, () -> dao.volverALavado(salidaId));
+            otro.rollback();
+        }
+
+        assertEquals(1, contarFilas("salidas_lavadero WHERE id = " + salidaId));
+    }
+
+    @Test
+    void derivar_contencionDeLock_saleComoConflicto() throws SQLException {
+        lanzarYFinalizar(1, movimiento(clasifA, 10));
+        dao.marcarListo(List.of(new MarcaListo(unicoPendiente(), 4)));
+        SalidaLista salida = dao.obtenerListasSinDestino().get(0);
+
+        try (Connection otro = conSalidaTomada(salida.salidaId())) {
+            assertThrows(ConflictoConcurrenciaException.class,
+                () -> dao.derivar(new DerivadorFueraDeFlujo(), List.of(salida)));
+            otro.rollback();
+        }
+
+        assertNull(escalarString("SELECT destino FROM salidas_lavadero WHERE id = " + salida.salidaId()));
+    }
+
     // ── instancias de equipo (fracciones repartidas entre lavarropas) ─────────
 
     @Test
@@ -623,6 +654,18 @@ class SalidaLavaderoDAOTest extends AbstractDAOTest {
                 .filter(p -> String.valueOf(lavarropas).equals(p.lavarropas()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("no hay pendiente en el lavarropas " + lavarropas));
+    }
+
+    /** Una transacción abierta con la salida bloqueada; quien la recibe la cierra. */
+    private Connection conSalidaTomada(int salidaId) throws SQLException {
+        Connection otro = ConnectionPool.getConnection();
+        otro.setAutoCommit(false);
+        try (PreparedStatement ps = otro.prepareStatement(
+                "SELECT id FROM salidas_lavadero WHERE id = ? FOR UPDATE")) {
+            ps.setInt(1, salidaId);
+            ps.executeQuery().close();
+        }
+        return otro;
     }
 
     private void asignarDestino(int salidaId) throws SQLException {

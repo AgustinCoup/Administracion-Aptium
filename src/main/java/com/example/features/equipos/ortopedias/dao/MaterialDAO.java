@@ -129,8 +129,10 @@ public class MaterialDAO {
                     pstmt.setInt(1, materialId);
                     pstmt.setInt(2, equipoId);
                     try (ResultSet rs = pstmt.executeQuery()) {
+                        // Sin fila: otro operador borró el equipo (o el material) después de que
+                        // la pantalla lo leyó. Es un choque, no un error técnico.
                         if (!rs.next()) {
-                            throw new SQLException("No se encontró el lote a mover: " + materialId);
+                            throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
                         }
                         codigo        = rs.getInt("codigo_catalogo");
                         cantidadActual = rs.getInt("cantidad");

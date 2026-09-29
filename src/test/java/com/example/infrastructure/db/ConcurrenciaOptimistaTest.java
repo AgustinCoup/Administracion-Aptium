@@ -939,6 +939,217 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
         assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"));
     }
 
+    // ── Escribir sobre un ingreso que otro borró ──────────────────────────────
+    //
+    // Misma forma, con B borrando en vez de modificando. B borra con SQL directo —en el orden de
+    // las FKs— y no con los eliminadores: lo que se verifica es el escritor, no el borrado. Que la
+    // fila ya no exista es "la realidad ya no es la que viste", igual que un estado cambiado: sale
+    // como conflicto y no como error técnico, y no queda nada escrito.
+
+    @Test
+    @DisplayName("Registrar Estado (ortopedias): B borra el equipo y A choca sin dejar movimiento")
+    void registrarEstadoOrtopediasSobreEquipoBorrado() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+
+        ejecutarSinChecked("DELETE FROM equipos WHERE id = " + equipo.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> materialDAO.aplicarMovimientos(
+            equipo.getId(),
+            List.of(new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO))));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM equipo_materiales"));
+        assertEquals(0, escalar("SELECT COUNT(*) FROM material_movimientos"));
+    }
+
+    @Test
+    @DisplayName("Registrar Estado (otros): B borra el equipo y A choca sin dejar movimiento")
+    void registrarEstadoOtrosSobreEquipoBorrado() {
+        EquipoOtros equipo = equipoOtrosConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+
+        ejecutarSinChecked("DELETE FROM equipo_otros WHERE id = " + equipo.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> equipoOtrosDAO.aplicarMovimientos(
+            equipo.getId(),
+            List.of(new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO))));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM equipo_otros_materiales"));
+        assertEquals(0, escalar("SELECT COUNT(*) FROM otros_material_movimientos"));
+    }
+
+    /** El REMITO sin partir no tiene fila de material: lo que desaparece es la cabecera. */
+    @Test
+    @DisplayName("Registrar Estado (remito): B borra el remito y A choca sin materializar filas")
+    void registrarEstadoRemitoSobreEquipoBorrado() {
+        EquipoOtros remito = remitoSinPartir(5);
+
+        ejecutarSinChecked("DELETE FROM equipo_otros WHERE id = " + remito.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> equipoOtrosDAO.aplicarMovimientos(
+            remito.getId(),
+            List.of(new MovimientoMaterial(0, 2, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO))));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM equipo_otros_materiales"),
+            "el split del remito no dejó filas huérfanas");
+    }
+
+    @Test
+    @DisplayName("Lanzar Lote (ortopedias): B borra el equipo y A no deja la fila en `lotes`")
+    void lanzarLoteConMaterialDeEquipoBorrado() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+
+        ejecutarSinChecked("DELETE FROM equipos WHERE id = " + equipo.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> loteDAO.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)),
+            Map.of()));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM lotes"),
+            "el INSERT INTO lotes va antes que los materiales: se revirtió con ellos");
+    }
+
+    /**
+     * El material borrado va segundo a propósito: el primero, de otro equipo, ya se escribió en la
+     * transacción cuando aparece el choque, y tiene que revertirse con el lote.
+     */
+    @Test
+    @DisplayName("Lanzar Lote (otros): B borra el equipo y A no deja lote ni el material que sí movió")
+    void lanzarLoteConMaterialOtrosDeEquipoBorrado() {
+        Equipo sobreviviente = equipoOrtopediaConMaterial(3);
+        int materialSobreviviente = sobreviviente.getMateriales().get(0).getId();
+        EquipoOtros borrado = equipoOtrosConMaterial(3);
+        int materialBorrado = borrado.getMateriales().get(0).getId();
+        int movimientosAntes = escalar("SELECT COUNT(*) FROM material_movimientos");
+
+        ejecutarSinChecked("DELETE FROM equipo_otros WHERE id = " + borrado.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> loteDAO.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialSobreviviente, sobreviviente.getId(), 3, EstadoEquipo.NUEVO),
+                    new LoteMovimiento(materialBorrado, borrado.getId(), 3, true, EstadoEquipo.NUEVO)),
+            Map.of(borrado.getId(), 10)));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM lotes"));
+        assertEquals(EstadoEquipo.NUEVO.getNombre(),
+            texto("SELECT estado FROM equipo_materiales WHERE id = " + materialSobreviviente),
+            "el material del otro equipo volvió a NUEVO con el rollback");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM equipo_materiales WHERE lote_id IS NOT NULL"));
+        assertEquals(movimientosAntes, escalar("SELECT COUNT(*) FROM material_movimientos"),
+            "el movimiento a ESTERILIZANDO del otro equipo se revirtió");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM lote_otros_volumenes"));
+    }
+
+    @Test
+    @DisplayName("Lanzar Lote (remito): B borra el remito y A no deja la fila en `lotes`")
+    void lanzarLoteConRemitoBorrado() {
+        EquipoOtros remito = remitoSinPartir(5);
+
+        ejecutarSinChecked("DELETE FROM equipo_otros WHERE id = " + remito.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> loteDAO.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(-1, remito.getId(), 2, true, EstadoEquipo.NUEVO)),
+            Map.of()));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM lotes"));
+        assertEquals(0, escalar("SELECT COUNT(*) FROM equipo_otros_materiales"));
+    }
+
+    @Test
+    @DisplayName("Entregar: B borra el equipo y A choca sin registrar la entrega")
+    void entregaDeEquipoBorrado() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+        ejecutarSinChecked("UPDATE equipo_materiales SET estado = 'Esterilizado' WHERE id = " + materialId);
+        FilaAEntregar vista = new FilaAEntregar(equipo.getId(), materialId, 3);
+
+        ejecutarSinChecked("DELETE FROM equipos WHERE id = " + equipo.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> materialDAO.entregarMateriales(List.of(vista)));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM material_movimientos"));
+    }
+
+    @Test
+    @DisplayName("Correcciones: B borra el equipo y la corrección de A choca en la version")
+    void correccionSobreEquipoBorrado() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+
+        ejecutarSinChecked("DELETE FROM equipos WHERE id = " + equipo.getId());
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> materialDAO.actualizarCantidad(equipo.getId(), materialId, 5, 0));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM equipo_materiales"));
+    }
+
+    @Test
+    @DisplayName("Clasificación: B borra el ingreso y A no deja líneas huérfanas")
+    void clasificarIngresoBorrado() {
+        int ingresoId = ingresoDeLavadero("TestConcBorraClasif", "PENDIENTE");
+
+        borrarIngresoLavadero(ingresoId);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> clasificacionDAO.guardar(
+            ingresoId, List.of(new ElementoClasificacion(catalogoElementoId(1), 10))));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM elementos_clasificacion_lavadero"));
+    }
+
+    @Test
+    @DisplayName("Lanzar tanda: B borra el ingreso y la tanda de A choca por saldo, sin dejar ciclo")
+    void lanzarTandaConLineaDeIngresoBorrado() {
+        int ingresoId = ingresoDeLavadero("TestConcBorraTanda", "CLASIFICADO");
+        int lineaId = insertarClasificacion(ingresoId, catalogoElementoId(1), 10);
+
+        borrarIngresoLavadero(ingresoId);
+
+        // El subtipo importa: la ropa ya no existe, así que el staging se descarta.
+        assertThrows(SaldoConsumidoException.class,
+            () -> cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(
+                new LineaLanzamiento(lineaId, 5))))));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ciclos_lavadero"));
+        assertEquals(0, escalar("SELECT COUNT(*) FROM elementos_ciclo_lavadero"));
+    }
+
+    @Test
+    @DisplayName("Marcar Listo: B borra el ingreso y A choca sin insertar salidas")
+    void marcarListoDeIngresoBorrado() {
+        int ingresoId = ingresoDeLavadero("TestConcBorraListo", "CLASIFICADO");
+        int lineaId = insertarClasificacion(ingresoId, catalogoElementoId(1), 5);
+        cicloDAO.lanzarTanda(List.of(new LanzamientoCiclo(1, config(), List.of(
+            new LineaLanzamiento(lineaId, 5)))));
+        cicloDAO.finalizarCiclo(escalar("SELECT MAX(id) FROM ciclos_lavadero"));
+        ElementoLavadoPendiente pendiente = salidaDAO.obtenerLavadosPendientesDeListo().get(0);
+
+        borrarIngresoLavadero(ingresoId);
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> salidaDAO.marcarListo(List.of(new MarcaListo(pendiente, 5))));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM salidas_lavadero"));
+    }
+
+    @Test
+    @DisplayName("Derivar: B borra el ingreso y A choca sin crear el ingreso del CDE")
+    void derivarSalidaDeIngresoBorrado() {
+        int ingresoId = ingresoDeLavadero("TestConcBorraDeriva", "CLASIFICADO");
+        lavarYMarcarListo(1, insertarClasificacion(ingresoId, catalogoElementoId(1), 5));
+        List<SalidaLista> listas = salidaDAO.obtenerListasSinDestino().stream()
+            .filter(s -> s.ingresoId() == ingresoId).toList();
+
+        borrarIngresoLavadero(ingresoId);
+
+        assertThrows(ConflictoConcurrenciaException.class,
+            () -> salidaDAO.derivar(derivadorCdeCliente, listas));
+
+        assertEquals(0, escalar("SELECT COUNT(*) FROM equipo_otros"),
+            "el derivador no llegó a crear el ingreso del CDE");
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
     private Equipo equipoOrtopediaConMaterial(int cantidad) {
@@ -979,6 +1190,30 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
         return equipoOtrosDAO.obtenerTodos().stream()
             .filter(e -> e.getId().equals(equipo.getId()))
             .findFirst().orElseThrow();
+    }
+
+    private EquipoOtros remitoSinPartir(int cantidad) {
+        EquipoOtros remito = new EquipoOtros();
+        remito.setNroCliente(1);
+        remito.setTipoIngreso(TipoIngresoOtros.REMITO);
+        remito.setRemitoCantidad(cantidad);
+        equipoOtrosDAO.guardar(remito);
+        return remito;
+    }
+
+    /**
+     * Borra el ingreso como lo haría otro operador, en el orden que imponen las FKs {@code RESTRICT}:
+     * salidas → tandas → instancias → ingreso (clasificación y bolsas caen por {@code CASCADE}).
+     */
+    private void borrarIngresoLavadero(int ingresoId) {
+        String lineas = "SELECT id FROM elementos_clasificacion_lavadero WHERE ingreso_id = " + ingresoId;
+        String tandas = "SELECT id FROM elementos_ciclo_lavadero WHERE elemento_clasificacion_id IN (" + lineas + ")";
+        String instancias = "SELECT id FROM instancias_equipo_ciclo WHERE elemento_clasificacion_id IN (" + lineas + ")";
+        ejecutarSinChecked("DELETE FROM salidas_lavadero WHERE elemento_ciclo_id IN (" + tandas + ")");
+        ejecutarSinChecked("DELETE FROM salidas_lavadero WHERE instancia_equipo_id IN (" + instancias + ")");
+        ejecutarSinChecked("DELETE FROM elementos_ciclo_lavadero WHERE elemento_clasificacion_id IN (" + lineas + ")");
+        ejecutarSinChecked("DELETE FROM instancias_equipo_ciclo WHERE elemento_clasificacion_id IN (" + lineas + ")");
+        ejecutarSinChecked("DELETE FROM ingresos_lavadero WHERE id = " + ingresoId);
     }
 
     private int crearCliente(String nombre) {

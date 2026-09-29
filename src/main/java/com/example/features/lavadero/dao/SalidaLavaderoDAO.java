@@ -513,8 +513,9 @@ public class SalidaLavaderoDAO {
      *
      * @throws BusinessException             si la selección está vacía o trae una salida sin
      *                                       identificar
-     * @throws ConflictoConcurrenciaException si alguna salida ya se derivó o dejó de existir. En
-     *                                       los dos casos no se borra ninguna fila.
+     * @throws ConflictoConcurrenciaException si alguna salida ya se derivó o dejó de existir, o si
+     *                                       la base cortó la espera de un lock. En todos los casos
+     *                                       no se borra ninguna fila.
      */
     public void volverALavado(List<Integer> salidaIds) {
         if (salidaIds == null || salidaIds.isEmpty()) {
@@ -535,6 +536,15 @@ public class SalidaLavaderoDAO {
             }
             tx.commit();
         } catch (SQLException e) {
+            // Los DELETE toman las salidas en el orden de la lista, así que pueden cruzarse con el
+            // borrado de su ingreso o con una derivación (caso residual (c) del javadoc de
+            // EliminadorIngresoLavadero.eliminar). Si la base corta la espera es un choque, igual
+            // que en marcarListo, y nada quedó borrado.
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("Vuelta a Lavado de {} salida(s) abortada por la base (contención de lock)",
+                    salidaIds.size(), e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_SALIDA);
+            }
             throw new DatabaseException("Error al volver a Lavado las salidas de lavadero", e);
         }
     }
@@ -555,9 +565,10 @@ public class SalidaLavaderoDAO {
      * de nuevo lo que ya salió.</p>
      *
      * @throws BusinessException             si la selección está vacía
-     * @throws ConflictoConcurrenciaException si alguna salida ya tiene destino: alguien la derivó
-     *                                       entre que la pantalla la leyó y el operador confirmó.
-     *                                       No queda nada escrito.
+     * @throws ConflictoConcurrenciaException si alguna salida ya tiene destino o dejó de existir:
+     *                                       alguien la derivó (o borró su ingreso) entre que la
+     *                                       pantalla la leyó y el operador confirmó; o si la base
+     *                                       cortó la espera de un lock. No queda nada escrito.
      */
     public void derivar(DerivadorSalidas derivador, List<SalidaLista> salidas) {
         if (salidas == null || salidas.isEmpty()) {
@@ -576,6 +587,15 @@ public class SalidaLavaderoDAO {
 
             tx.commit();
         } catch (SQLException e) {
+            // derivar toma salidas → ingreso y el borrado de un ingreso de Lavadero, ingreso →
+            // salidas: se cruzan de frente (casos residuales (b) y (c) del javadoc de
+            // EliminadorIngresoLavadero.eliminar). El deadlock o el timeout son un choque, no una
+            // falla técnica, y el rollback se lleva también el ingreso del CDE que el derivador creó.
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("Derivación de {} salida(s) abortada por la base (contención de lock)",
+                    salidas.size(), e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_SALIDA);
+            }
             throw new DatabaseException("Error al derivar las salidas de lavadero", e);
         }
     }

@@ -810,6 +810,14 @@ las FKs, con un helper del test.
 3. **`SalidaLavaderoDAO.derivar`**: agregar al `catch (SQLException)` la misma traducción de
    `marcarListo`: `esContencionDeLock` → `ConflictoConcurrenciaException(CONFLICTO_SALIDA)`, con el
    `log.warn`. Es el cruce ingreso ↔ salidas con el borrado de Lavadero (ver Paso 4).
+
+   *Corrección 2026-09-29 (Paso 5), decidida con el usuario: `volverALavado` recibe la misma
+   traducción — el caso residual (c) del Paso 4 lo nombra junto a `derivar` como "hoy error
+   técnico". `aplicarMovimientos` (ortopedias y otros) y `lanzarLote`, que (c) también nombra,
+   **quedan** como error técnico ante la contención: en `lanzarLote` fue una decisión explícita de su
+   javadoc y no se reabre acá. Pendiente para el Paso 9. Además: `MaterialDAO.actualizarEstadoMaterial`
+   y `actualizarMultiplesMateriales` no tienen llamador en producción (sólo tests), así que su
+   `throw new SQLException` no es un flujo a corregir.*
 4. **Re-verificar los que ya chocan bien**: Clasificación, `lanzarTanda`, `marcarListo`,
    `volverALavado`, `estamparDestino`, entregas y Correcciones. Un test por flujo abajo. Si alguno
    **no** choca, arreglarlo acá.

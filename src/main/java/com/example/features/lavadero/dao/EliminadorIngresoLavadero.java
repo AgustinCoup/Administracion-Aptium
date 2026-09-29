@@ -375,7 +375,8 @@ public class EliminadorIngresoLavadero {
      *       conserva el staging.</li>
      *   <li><b>{@code derivar} se cruza de frente</b>: salidas → ingreso contra ingreso → salidas,
      *       cuando la derivación completa nuestro ingreso y quiere pasarlo a {@code FINALIZADO}. Si
-     *       pierde {@code derivar}, hoy sale como error técnico (lo corrige el Paso 5 del plan).</li>
+     *       pierde {@code derivar}, sale como {@code CONFLICTO_SALIDA} (traduce la contención igual
+     *       que {@code marcarListo}).</li>
      *   <li><b>El orden dentro de una tabla.</b> InnoDB bloquea en el orden en que recorre el índice
      *       —(3) y (4) por línea, (5) por tanda y por instancia—, no en el del {@code ORDER BY id}.
      *       {@code marcarListo} toma tandas e instancias por id ascendente, el {@code bloquear} de
@@ -385,8 +386,9 @@ public class EliminadorIngresoLavadero {
      *       el del índice (una línea lavada en un ciclo posterior a otra), los dos pueden tomárselas
      *       cruzadas. Ordenarlas por id exigiría conocer los ids antes de bloquear, o sea una
      *       lectura no bloqueante antes de terminar la Fase A: justo lo que no se puede. El otro, si
-     *       pierde, sale como lo traduzca su {@code catch}: {@code marcarListo} como conflicto,
-     *       {@code volverALavado} y {@code derivar} hoy como error técnico.</li>
+     *       pierde, sale como lo traduzca su {@code catch}: {@code marcarListo},
+     *       {@code volverALavado} y {@code derivar} como conflicto; {@code aplicarMovimientos} y
+     *       {@code lanzarLote}, todavía como error técnico.</li>
      *   <li><b>La fusión de clientes</b> ({@code FusionClientesDAO}: {@code equipo_otros} →
      *       {@code ingresos_lavadero}, al revés que acá) sobre el cliente de un ingreso con derivado
      *       mientras se lo borra. Si pierde la fusión, hoy sale como error técnico: no traduce la

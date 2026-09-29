@@ -769,7 +769,9 @@ public class LoteDAO {
             pstmt.setInt(1, materialId);
             pstmt.setInt(2, equipoId);
             try (ResultSet rs = pstmt.executeQuery()) {
-                if (!rs.next()) throw new SQLException("No se encontró el lote a mover: " + materialId);
+                // Sin fila: otro operador borró el equipo (o el material) mientras se armaba el lote.
+                // Choque, no error técnico; revierte el lote entero, incluida su fila en `lotes`.
+                if (!rs.next()) throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_LOTE);
                 codigo = rs.getInt("codigo_catalogo");
                 cantidadActual = rs.getInt("cantidad");
                 estadoActual = rs.getString("estado");
@@ -924,7 +926,8 @@ public class LoteDAO {
                     "SELECT estado, remito_cantidad FROM equipo_otros WHERE id = ? FOR UPDATE")) {
                 ps.setInt(1, equipoOtrosId);
                 try (ResultSet rs = ps.executeQuery()) {
-                    if (!rs.next()) throw new SQLException("equipo_otros no encontrado: " + equipoOtrosId);
+                    // Sin fila: otro operador borró el remito. Mismo choque que en DETALLES.
+                    if (!rs.next()) throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_LOTE);
                     estadoActual   = rs.getString("estado");
                     remitoCantidad = rs.getInt("remito_cantidad");
                 }
@@ -992,7 +995,8 @@ public class LoteDAO {
             ps.setInt(1, materialId);
             ps.setInt(2, equipoOtrosId);
             try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) throw new SQLException("No se encontró material otros para lote: " + materialId);
+                // Sin fila: otro operador borró el equipo (o el material). Mismo choque que en ortopedias.
+                if (!rs.next()) throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_LOTE);
                 catalogoId     = rs.getInt("catalogo_otros_id");
                 descripcion    = rs.getString("descripcion");
                 cantidadActual = rs.getInt("cantidad");
