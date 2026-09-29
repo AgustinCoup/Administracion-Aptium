@@ -423,6 +423,22 @@ public final class Constantes {
         public static final String MOTIVO_ELIMINACION_LARGO =
             "El motivo no puede tener más de %d caracteres. Resumilo y volvé a intentar.";
 
+        // ── Password de eliminación ──────────────────────────────────────────
+        // Texto fijo, sin la password ni nada derivado de ella. PASSWORD_INCORRECTA no distingue
+        // "vacía" de "distinta": no hay nada que ganar diciéndolo.
+        public static final String PASSWORD_INCORRECTA =
+            "La contraseña no es correcta. No se eliminó nada.";
+        public static final String PASSWORD_ACTUAL_INCORRECTA =
+            "La contraseña actual no es correcta. No se cambió nada.";
+        public static final String CONFLICTO_PASSWORD =
+            "Otro puesto cambió la contraseña mientras tanto. Volvé a intentar con la contraseña nueva.";
+        public static final String PASSWORD_NUEVA_NO_COINCIDE =
+            "La contraseña nueva y su repetición no coinciden. Escribilas de nuevo.";
+        public static final String PASSWORD_NUEVA_CORTA =
+            "La contraseña nueva tiene que tener al menos %d caracteres.";
+        public static final String PASSWORD_NUEVA_IGUAL_A_LA_ACTUAL =
+            "La contraseña nueva es igual a la actual. Elegí una distinta.";
+
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y
         // dice QUÉ HACER, no qué falló: su build quedó atrás de la base compartida.
@@ -773,6 +789,8 @@ public final class Constantes {
     public static final class Eliminacion {
         /** Largo máximo del motivo: es el {@code VARCHAR(500)} de {@code ingresos_eliminados.motivo}. */
         public static final int MOTIVO_MAX_LARGO = 500;
+        /** Largo mínimo de una password de eliminación nueva. */
+        public static final int PASSWORD_MIN_LARGO = 6;
 
         private Eliminacion() {}
     }

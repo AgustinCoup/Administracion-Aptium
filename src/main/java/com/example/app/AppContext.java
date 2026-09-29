@@ -60,6 +60,9 @@ import com.example.features.lavadero.service.LavaderoService;
 import com.example.features.lavadero.service.SalidaLavaderoService;
 import com.example.features.equipos.ortopedias.service.EquipoReporteService;
 import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
+import com.example.features.seguridad.HasherPbkdf2;
+import com.example.features.seguridad.dao.PasswordDAO;
+import com.example.features.seguridad.service.PasswordEliminacionService;
 import com.example.features.lotes.service.LoteReporteService;
 
 import java.util.List;
@@ -92,6 +95,7 @@ public class AppContext {
     private final EquipoReporteService equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
     private final ActualizacionService actualizacionService;
+    private final PasswordEliminacionService passwordEliminacionService;
     private final VersionInfo versionInfo;
 
     public AppContext(
@@ -121,6 +125,7 @@ public class AppContext {
         EquipoReporteService equipoReporteService,
         EquipoOtrosReporteService equipoOtrosReporteService,
         ActualizacionService actualizacionService,
+        PasswordEliminacionService passwordEliminacionService,
         VersionInfo versionInfo
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
@@ -138,7 +143,8 @@ public class AppContext {
             || historialLavaderoService == null
             || loteReporteService == null
             || equipoReporteService == null || equipoOtrosReporteService == null
-            || actualizacionService == null || versionInfo == null) {
+            || actualizacionService == null || passwordEliminacionService == null
+            || versionInfo == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -168,6 +174,7 @@ public class AppContext {
         this.equipoReporteService = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
         this.actualizacionService = actualizacionService;
+        this.passwordEliminacionService = passwordEliminacionService;
         this.versionInfo = versionInfo;
     }
 
@@ -248,6 +255,9 @@ public class AppContext {
         HistorialLavaderoService historialLavaderoService =
             new HistorialLavaderoService(historialLavaderoDAO);
 
+        PasswordEliminacionService passwordEliminacionService =
+            new PasswordEliminacionService(new PasswordDAO(), new HasherPbkdf2());
+
         return new AppContext(
             equipoService,
             catalogoService,
@@ -275,6 +285,7 @@ public class AppContext {
             equipoReporteService,
             equipoOtrosReporteService,
             actualizacionService,
+            passwordEliminacionService,
             versionInfo
         );
     }
@@ -381,6 +392,10 @@ public class AppContext {
 
     public ActualizacionService getActualizacionService() {
         return actualizacionService;
+    }
+
+    public PasswordEliminacionService getPasswordEliminacionService() {
+        return passwordEliminacionService;
     }
 
     public VersionInfo getVersionInfo() {
