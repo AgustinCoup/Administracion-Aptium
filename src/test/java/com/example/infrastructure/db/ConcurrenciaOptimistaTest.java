@@ -1,6 +1,9 @@
 package com.example.infrastructure.db;
 
 import com.example.AbstractDAOTest;
+import com.example.common.eliminacion.ArchivoIngresosDAO;
+import com.example.common.eliminacion.EliminacionBloqueadaException;
+import com.example.common.eliminacion.ResumenEquipo;
 import com.example.common.exception.ConflictoConcurrenciaException;
 import com.example.common.exception.BusinessException;
 import com.example.common.exception.LavarropasDeBajaException;
@@ -12,6 +15,7 @@ import com.example.features.catalogo.dao.CatalogoOtrosDAO;
 import com.example.features.clientes.dao.ClienteDAO;
 import com.example.features.clientes.dao.FusionClientesDAO;
 import com.example.features.equipos.ortopedias.dao.AuditoriaDAO;
+import com.example.features.equipos.ortopedias.dao.EliminadorEquipoOrtopedia;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.model.Equipo;
@@ -19,6 +23,7 @@ import com.example.features.equipos.ortopedias.model.EstadoEquipo;
 import com.example.features.equipos.ortopedias.model.Material;
 import com.example.features.equipos.ortopedias.model.MovimientoMaterial;
 import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
+import com.example.features.equipos.otros.dao.EliminadorEquipoOtros;
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.equipos.otros.model.EquipoOtros;
 import com.example.features.equipos.otros.model.MaterialOtros;
@@ -105,6 +110,9 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
     private final EquipoCorreccionService correccionService =
         new EquipoCorreccionService(equipoDAO, materialDAO, new AuditoriaDAO(), new CatalogoDAO());
     private final FusionClientesDAO fusionDAO  = new FusionClientesDAO();
+    private final EliminadorEquipoOrtopedia eliminadorOrtopedia =
+        new EliminadorEquipoOrtopedia(new ArchivoIngresosDAO());
+    private final EliminadorEquipoOtros eliminadorOtros = new EliminadorEquipoOtros(new ArchivoIngresosDAO());
     private final ClienteDAO        clienteDAO = new ClienteDAO();
 
     /** Los ids de instancia del staging son locales a la tanda: cualquiera sirve. */
@@ -119,6 +127,7 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
 
     @Override
     protected void limpiarTablas() throws SQLException {
+        ejecutarSQL("DELETE FROM ingresos_eliminados");
         ejecutarSQL("DELETE FROM salidas_lavadero");
         ejecutarSQL("DELETE FROM insumos_ciclo_lavadero");
         ejecutarSQL("DELETE FROM elementos_ciclo_lavadero");
@@ -721,6 +730,96 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
             () -> equipoOtrosDAO.eliminarMaterialesPorDescripcion(equipoOtros.getId(), "NoExiste", 0));
 
         assertEquals(0, escalar("SELECT version FROM equipo_otros WHERE id = " + equipoOtros.getId()));
+    }
+
+    // ── Eliminar un ingreso del CDE ───────────────────────────────────────────
+    //
+    // "A lee" es el resumen previo del diálogo de eliminación; lo que viaja a la transacción es su
+    // `version`. Un lote en curso no es un conflicto sino un bloqueo (EliminacionBloqueadaException):
+    // el operador tiene que finalizarlo, reintentar no alcanza.
+
+    @Test
+    @DisplayName("Eliminar (ortopedias): B mete un material en un lote y A no borra nada")
+    void eliminarOrtopediaQueOtroMetioEnUnLote() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+        ResumenEquipo vista = eliminadorOrtopedia.resumir(equipo.getId());
+        assertFalse(vista.estaBloqueado());
+
+        // B lanza un lote con el material y commitea.
+        loteDAO.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, EstadoEquipo.NUEVO)), Map.of());
+        int loteDeB = escalar("SELECT id FROM lotes");
+
+        // A confirma con el resumen viejo. El lote de B además bumpeó la version: gana el bloqueo,
+        // que es lo que le dice al operador qué hacer.
+        assertThrows(EliminacionBloqueadaException.class, () -> eliminadorOrtopedia.eliminar(
+            equipo.getId(), vista.version(), "Se cargó dos veces", "A@PC"));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM equipos WHERE id = " + equipo.getId()));
+        assertEquals(EstadoEquipo.ESTERILIZANDO.getNombre(),
+            texto("SELECT estado FROM equipo_materiales WHERE id = " + materialId), "queda lo de B");
+        assertEquals(loteDeB, escalar("SELECT lote_id FROM equipo_materiales WHERE id = " + materialId));
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"),
+            "sin archivo: el ingreso sigue vivo");
+    }
+
+    @Test
+    @DisplayName("Eliminar (otros): mismo bloqueo, mismo resultado que en ortopedias")
+    void eliminarOtrosQueOtroMetioEnUnLote() {
+        EquipoOtros equipo = equipoOtrosConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+        ResumenEquipo vista = eliminadorOtros.resumir(equipo.getId());
+
+        loteDAO.lanzarLote("E01", 120, 45,
+            List.of(new LoteMovimiento(materialId, equipo.getId(), 3, true, EstadoEquipo.NUEVO)),
+            Map.of(equipo.getId(), 10));
+        int loteDeB = escalar("SELECT id FROM lotes");
+
+        assertThrows(EliminacionBloqueadaException.class, () -> eliminadorOtros.eliminar(
+            equipo.getId(), vista.version(), "Se cargó dos veces", "A@PC"));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM equipo_otros WHERE id = " + equipo.getId()));
+        assertEquals(loteDeB, escalar("SELECT lote_id FROM equipo_otros_materiales WHERE id = " + materialId));
+        assertEquals(10, escalar("SELECT volumen FROM lote_otros_volumenes WHERE equipo_otros_id = "
+            + equipo.getId()), "los litros de B siguen en el lote");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"));
+    }
+
+    @Test
+    @DisplayName("Eliminar (ortopedias): B avanza un material y A choca con la versión vieja")
+    void eliminarOrtopediaQueOtroAvanzo() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        int materialId = equipo.getMateriales().get(0).getId();
+        ResumenEquipo vista = eliminadorOrtopedia.resumir(equipo.getId());
+
+        materialDAO.aplicarMovimientos(equipo.getId(),
+            List.of(new MovimientoMaterial(materialId, 3, EstadoEquipo.NUEVO, EstadoEquipo.LAVANDO)));
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> eliminadorOrtopedia.eliminar(
+            equipo.getId(), vista.version(), "Se cargó dos veces", "A@PC"));
+
+        assertEquals(EstadoEquipo.LAVANDO.getNombre(),
+            texto("SELECT estado FROM equipo_materiales WHERE id = " + materialId),
+            "queda el avance de B: A iba a archivar un equipo que ya no era el que confirmó");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"));
+    }
+
+    @Test
+    @DisplayName("Eliminar (ortopedias): B elimina primero y A choca; queda un solo archivo")
+    void eliminarOrtopediaYaEliminadaPorOtro() {
+        Equipo equipo = equipoOrtopediaConMaterial(3);
+        ResumenEquipo vistaDeA = eliminadorOrtopedia.resumir(equipo.getId());
+
+        ResumenEquipo vistaDeB = eliminadorOrtopedia.resumir(equipo.getId());
+        eliminadorOrtopedia.eliminar(equipo.getId(), vistaDeB.version(), "Motivo de B", "B@PC");
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> eliminadorOrtopedia.eliminar(
+            equipo.getId(), vistaDeA.version(), "Motivo de A", "A@PC"));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM ingresos_eliminados"),
+            "una sola copia: sin la guarda, A archivaría un segundo snapshot de un equipo que ya no existe");
+        assertEquals("Motivo de B", texto("SELECT motivo FROM ingresos_eliminados"));
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────────────

@@ -165,6 +165,7 @@ Clasificación (`SQL_MARCAR_CLASIFICADO` → `CONFLICTO_CLASIFICACION`), `lanzar
 | `LoteDAO.lanzarLote` | **lectura no bloqueante** (`MAX(secuencia)`) → `INSERT lotes` → materiales `FOR UPDATE` → cabecera |
 | `LoteDAO.finalizarLote` / `marcarLoteFallo` | `lotes` (UPDATE CAS) → materiales `FOR UPDATE` → cabecera |
 | Correcciones (`bumpVersionConGuarda`) | **cabecera → materiales** (el único al revés) |
+| REMITO sin partir en `EquipoOtrosDAO.aplicarMovimientos` / `LoteDAO.lanzarLote` | **cabecera `FOR UPDATE` → `INSERT` materiales** (no hay fila de material que bloquear). *Corrección 2026-09-29 (Paso 3): faltaba en la tabla. Mismo tipo de cruce residual que Correcciones, documentado en `EliminadorEquipoOtros.bloquear`.* |
 | `CicloLavaderoDAO.lanzarTanda` | `lavarropas` X → `ciclos_lavadero` (gap) → líneas de clasificación (ascendente) → `INSERT`s |
 | `CicloLavaderoDAO.finalizarCiclo` | `ciclos_lavadero` (UPDATE CAS) → `ingresos_lavadero` (UPDATE) |
 | `ClasificacionLavaderoDAO.guardar` | `ingresos_lavadero` (UPDATE CAS) → `INSERT` líneas |
@@ -483,6 +484,12 @@ archivarlo, (4) borrar la cabecera con CAS.** Los materiales, los movimientos y
      - `ResumenEquipo(IngresoAEliminar ingreso, String clienteNombre, LocalDateTime fechaIngreso,
        String estado, int version, List<LineaMaterial> materiales, List<Bloqueo> bloqueos,
        Integer ingresoLavaderoOrigen)`;
+       *Corrección 2026-09-29 (Paso 3): quedó `ResumenEquipo(ingreso, clienteNombre,
+       institucionNombre, pacienteNombre, fechaIngreso, estado, version, materiales, bloqueos,
+       List<Integer> ingresosLavaderoOrigen)`. Institución y paciente porque `resumir` de ortopedias
+       los lee y el record no tenía dónde ponerlos (null en Otros); una lista de ingresos de origen
+       porque un derivado compartido —justo el caso que se manda a eliminar desde Ver Equipos— viene
+       de varios.*
      - `LineaMaterial(String descripcion, int cantidad, String estado, String loteIdNegocio)`;
      - `ResumenIngresoLavadero` lo completa el Paso 4. Se puede dejar declarado con sus campos
        mínimos.
@@ -495,6 +502,10 @@ archivarlo, (4) borrar la cabecera con CAS.** Los materiales, los movimientos y
    - **`void eliminar(int equipoId, int versionVista, String motivo, String puesto)`** con
      `TransactionalConnection`, **en este orden y documentado en el javadoc**:
      1. `SELECT id, lote_id FROM equipo_materiales WHERE equipo_id = ? ORDER BY id FOR UPDATE`;
+     *Corrección 2026-09-29 (Paso 3): el bloqueo se informa antes que la versión. `lanzarLote`
+     bumpea la `version`, así que con el orden de abajo el test `eliminarOrtopediaQueOtroMetioEnUnLote`
+     daba conflicto en vez de `EliminacionBloqueadaException`. Los locks no cambian de orden: (2)
+     sólo lee la versión, y se compara después de (3). Ver el javadoc de `eliminar`.*
      2. `SELECT version FROM equipos WHERE id = ? FOR UPDATE`. Sin fila o con otra versión →
         `ConflictoConcurrenciaException(CONFLICTO_ELIMINACION)`;
      3. **recién acá, las lecturas no bloqueantes:** los lotes en curso entre los `lote_id` de (1)

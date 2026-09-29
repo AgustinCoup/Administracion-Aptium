@@ -422,6 +422,31 @@ public final class Constantes {
             "Escribí el motivo de la eliminación: queda guardado junto con la copia del ingreso.";
         public static final String MOTIVO_ELIMINACION_LARGO =
             "El motivo no puede tener más de %d caracteres. Resumilo y volvé a intentar.";
+        // El choque: la versión (CDE) o el estado y los derivados (Lavadero) cambiaron desde el
+        // resumen, o la base cortó la espera de un lock. NO se usa para un lote o un ciclo en
+        // curso: eso es un bloqueo (ELIMINAR_BLOQUEO_*), que el operador resuelve finalizándolo.
+        public static final String CONFLICTO_ELIMINACION =
+            "Otro operador modificó este ingreso mientras lo mirabas. No se eliminó nada: revisá "
+                + "la versión actualizada y volvé a intentar.";
+        public static final String INGRESO_YA_ELIMINADO =
+            "Este ingreso ya no existe: otro operador lo eliminó. Actualizá la pantalla.";
+        // Encabezado de EliminacionBloqueadaException; debajo va una línea por bloqueo.
+        public static final String ELIMINACION_BLOQUEADA =
+            "No se puede eliminar este ingreso todavía. No se eliminó nada.";
+        // Un texto por causa, armado en TextoBloqueos: el operador lee lo mismo si el bloqueo se
+        // vio en el resumen o apareció por una carrera dentro de la transacción.
+        public static final String ELIMINAR_BLOQUEO_LOTE_EN_CURSO =
+            "Hay materiales de este ingreso en el lote %s, todavía en curso. Finalizá ese lote y "
+                + "volvé a intentar.";
+        public static final String ELIMINAR_BLOQUEO_CICLO_EN_CURSO =
+            "Hay ropa de este ingreso en el lavarropas %d, con el ciclo sin finalizar. Finalizá ese "
+                + "ciclo y volvé a intentar.";
+        public static final String ELIMINAR_BLOQUEO_DERIVADO_COMPARTIDO =
+            "El ingreso del CDE #%d también tiene ropa de los ingresos de Lavadero %s. Eliminalo "
+                + "primero desde Ver Equipos → Otros y volvé a intentar.";
+        public static final String ELIMINAR_BLOQUEO_DERIVADO_EN_LOTE =
+            "El ingreso del CDE #%d, que se creó con ropa de este ingreso, está en el lote %s, "
+                + "todavía en curso. Finalizá ese lote y volvé a intentar.";
 
         // ── Password de eliminación ──────────────────────────────────────────
         // Texto fijo, sin la password ni nada derivado de ella. PASSWORD_INCORRECTA no distingue
@@ -791,6 +816,8 @@ public final class Constantes {
         public static final int MOTIVO_MAX_LARGO = 500;
         /** Largo mínimo de una password de eliminación nueva. */
         public static final int PASSWORD_MIN_LARGO = 6;
+        /** Cómo aparece en el resumen de eliminación un REMITO que todavía no tiene filas de material. */
+        public static final String DESCRIPCION_REMITO_SIN_DETALLE = "Remito %s (sin detallar)";
 
         private Eliminacion() {}
     }
