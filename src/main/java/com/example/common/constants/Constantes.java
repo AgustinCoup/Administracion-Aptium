@@ -494,6 +494,15 @@ public final class Constantes {
             "La contraseña nueva tiene que tener al menos %d caracteres.";
         public static final String PASSWORD_NUEVA_IGUAL_A_LA_ACTUAL =
             "La contraseña nueva es igual a la actual. Elegí una distinta.";
+        // Pestaña Seguridad de Ajustes.
+        public static final String PASSWORD_CAMPOS_VACIOS =
+            "Completá la contraseña actual, la nueva y su repetición.";
+        public static final String PASSWORD_CAMBIADA = "La contraseña de eliminación se cambió.";
+        public static final String PASSWORD_AVISO_INICIAL =
+            "La contraseña de eliminación es la inicial: cambiala.";
+        public static final String PASSWORD_CAMBIO_ERROR_TECNICO =
+            "No se pudo cambiar la contraseña por un error inesperado. No se cambió nada; "
+                + "volvé a intentar y, si se repite, avisá a soporte.";
 
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y
@@ -546,6 +555,7 @@ public final class Constantes {
         public static final String NO                     = "No";
         public static final String CANCELAR               = "Cancelar";
         public static final String CONFIRMAR              = "Confirmar";
+        public static final String CAMBIAR_PASSWORD       = "Cambiar contraseña";
         public static final String VER                    = "Ver";
         public static final String REGISTRAR              = "Registrar";
         public static final String INGRESAR               = "Ingresar";

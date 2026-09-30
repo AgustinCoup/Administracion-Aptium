@@ -9,9 +9,9 @@ import javax.swing.*;
 import java.awt.*;
 
 /**
- * Cuatro pestañas: Clientes (con la barra de actualizaciones, que no pertenece a ninguna, al
- * sur), Catálogos (con un {@link JTabbedPane} anidado Lavadero/Ortopedias/Otros), Lavarropas y
- * Jabones e insumos.
+ * Cinco pestañas: Clientes (con la barra de actualizaciones, que no pertenece a ninguna, al
+ * sur), Catálogos (con un {@link JTabbedPane} anidado Lavadero/Ortopedias/Otros), Lavarropas,
+ * Jabones e insumos y Seguridad (la password de eliminación).
  *
  * <p><b>La carga es por pestaña, no por pantalla.</b> Cada controller se suscribe con
  * {@link #setOnPestanaSeleccionada} (o, para las sub-pestañas de Catálogos,
@@ -28,6 +28,7 @@ public class PantallaAjustes extends JPanel {
     public static final int TAB_CATALOGOS         = 1;
     public static final int TAB_LAVARROPAS        = 2;
     public static final int TAB_JABONES_INSUMOS   = 3;
+    public static final int TAB_SEGURIDAD         = 4;
 
     public static final int SUBTAB_CATALOGO_LAVADERO    = 0;
     public static final int SUBTAB_CATALOGO_ORTOPEDIAS   = 1;
@@ -41,6 +42,7 @@ public class PantallaAjustes extends JPanel {
         ItemCatalogo::descripcion, ItemCatalogo::vigente, false);
     private final PanelGestionLavarropas panelLavarropas     = new PanelGestionLavarropas();
     private final PanelJabonesEInsumos   panelJabonesInsumos = new PanelJabonesEInsumos();
+    private final PanelPasswordEliminacion panelPasswordEliminacion = new PanelPasswordEliminacion();
 
     private final JTabbedPane tabsCatalogos = new JTabbedPane();
     private final JTabbedPane tabs          = new JTabbedPane();
@@ -71,6 +73,7 @@ public class PantallaAjustes extends JPanel {
         tabs.addTab("Catálogos", tabsCatalogos);
         tabs.addTab("Lavarropas", panelLavarropas);
         tabs.addTab("Jabones e insumos", panelJabonesInsumos);
+        tabs.addTab("Seguridad", panelPasswordEliminacion);
         add(tabs, BorderLayout.CENTER);
 
         // Listener cableado una sola vez (igual que PanelGestionClientes): setOnBuscarActualizaciones
@@ -103,6 +106,8 @@ public class PantallaAjustes extends JPanel {
     public PanelGestionLavarropas getPanelLavarropas() { return panelLavarropas; }
 
     public PanelJabonesEInsumos getPanelJabonesInsumos() { return panelJabonesInsumos; }
+
+    public PanelPasswordEliminacion getPanelPasswordEliminacion() { return panelPasswordEliminacion; }
 
     /** Índice de la sub-pestaña de Catálogos actualmente seleccionada. */
     public int getSubPestanaCatalogoSeleccionada() { return tabsCatalogos.getSelectedIndex(); }
