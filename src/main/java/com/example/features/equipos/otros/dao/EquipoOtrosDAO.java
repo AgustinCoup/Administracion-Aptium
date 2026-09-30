@@ -640,7 +640,10 @@ public class EquipoOtrosDAO {
                             "FROM equipo_otros WHERE id = ? FOR UPDATE")) {
                         ps.setInt(1, equipoId);
                         try (ResultSet rs = ps.executeQuery()) {
-                            if (!rs.next()) throw new SQLException("equipo_otros no encontrado: " + equipoId);
+                            // Sin fila: otro operador borró el remito. Choque, no error técnico.
+                            if (!rs.next()) {
+                                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+                            }
                             estadoActual = rs.getString("estado");
                             remitoCant   = rs.getInt("remito_cantidad");
                             if (dest == null) {
@@ -704,7 +707,10 @@ public class EquipoOtrosDAO {
                     ps.setInt(1, matId);
                     ps.setInt(2, equipoId);
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (!rs.next()) throw new SQLException("Material no encontrado: " + matId);
+                        // Sin fila: otro operador borró el equipo (o el material). Choque, no error técnico.
+                        if (!rs.next()) {
+                            throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+                        }
                         catalogoId     = rs.getInt("catalogo_otros_id");
                         descripcion    = rs.getString("descripcion");
                         cantidadActual = rs.getInt("cantidad");
@@ -775,6 +781,11 @@ public class EquipoOtrosDAO {
             throw e;
         } catch (SQLException e) {
             rollback(conn, e);
+            // Mismo cruce que MaterialDAO.aplicarMovimientos con la eliminación del equipo: la
+            // contención de locks es un choque, no un fallo técnico.
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+            }
             return false;
         } finally {
             close(conn);

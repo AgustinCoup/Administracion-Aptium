@@ -1,6 +1,7 @@
 package com.example.app;
 
 import com.example.common.VersionInfo;
+import com.example.common.eliminacion.ArchivoIngresosDAO;
 import com.example.features.actualizaciones.service.ActualizacionInstaller;
 import com.example.features.actualizaciones.service.ActualizacionService;
 import com.example.features.actualizaciones.service.DescargaService;
@@ -15,7 +16,9 @@ import com.example.features.profesionales.dao.ProfesionalDAO;
 import com.example.features.autoclaves.service.AutoclaveService;
 import com.example.features.catalogo.service.CatalogoService;
 import com.example.features.clientes.service.ClienteService;
+import com.example.features.eliminaciones.service.EliminacionIngresosService;
 import com.example.features.equipos.ortopedias.dao.AuditoriaDAO;
+import com.example.features.equipos.ortopedias.dao.EliminadorEquipoOrtopedia;
 import com.example.features.equipos.ortopedias.dao.EquipoDAO;
 import com.example.features.equipos.ortopedias.dao.MaterialDAO;
 import com.example.features.equipos.ortopedias.service.EquipoCorreccionService;
@@ -27,12 +30,14 @@ import com.example.features.instituciones.service.InstitucionService;
 import com.example.features.lotes.service.LoteService;
 import com.example.features.profesionales.service.ProfesionalService;
 import com.example.features.catalogo.dao.CatalogoOtrosDAO;
+import com.example.features.equipos.otros.dao.EliminadorEquipoOtros;
 import com.example.features.equipos.otros.dao.EquipoOtrosDAO;
 import com.example.features.catalogo.service.CatalogoOtrosService;
 import com.example.features.equipos.otros.service.EquipoOtrosCorreccionService;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
 import com.example.features.lavadero.dao.BolsaLavaderoDAO;
 import com.example.features.lavadero.dao.CatalogoElementosLavaderoDAO;
+import com.example.features.lavadero.dao.EliminadorIngresoLavadero;
 import com.example.features.lavadero.dao.ClasificacionLavaderoDAO;
 import com.example.features.lavadero.dao.HistorialLavaderoDAO;
 import com.example.features.lavadero.dao.IngresoLavaderoDAO;
@@ -60,6 +65,9 @@ import com.example.features.lavadero.service.LavaderoService;
 import com.example.features.lavadero.service.SalidaLavaderoService;
 import com.example.features.equipos.ortopedias.service.EquipoReporteService;
 import com.example.features.equipos.otros.service.EquipoOtrosReporteService;
+import com.example.features.seguridad.HasherPbkdf2;
+import com.example.features.seguridad.dao.PasswordDAO;
+import com.example.features.seguridad.service.PasswordEliminacionService;
 import com.example.features.lotes.service.LoteReporteService;
 
 import java.util.List;
@@ -92,6 +100,8 @@ public class AppContext {
     private final EquipoReporteService equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
     private final ActualizacionService actualizacionService;
+    private final PasswordEliminacionService passwordEliminacionService;
+    private final EliminacionIngresosService eliminacionIngresosService;
     private final VersionInfo versionInfo;
 
     public AppContext(
@@ -121,6 +131,8 @@ public class AppContext {
         EquipoReporteService equipoReporteService,
         EquipoOtrosReporteService equipoOtrosReporteService,
         ActualizacionService actualizacionService,
+        PasswordEliminacionService passwordEliminacionService,
+        EliminacionIngresosService eliminacionIngresosService,
         VersionInfo versionInfo
     ) {
         if (equipoService == null || catalogoService == null || clienteService == null
@@ -138,7 +150,9 @@ public class AppContext {
             || historialLavaderoService == null
             || loteReporteService == null
             || equipoReporteService == null || equipoOtrosReporteService == null
-            || actualizacionService == null || versionInfo == null) {
+            || actualizacionService == null || passwordEliminacionService == null
+            || eliminacionIngresosService == null
+            || versionInfo == null) {
             throw new IllegalArgumentException("AppContext requiere dependencias no nulas");
         }
 
@@ -168,6 +182,8 @@ public class AppContext {
         this.equipoReporteService = equipoReporteService;
         this.equipoOtrosReporteService = equipoOtrosReporteService;
         this.actualizacionService = actualizacionService;
+        this.passwordEliminacionService = passwordEliminacionService;
+        this.eliminacionIngresosService = eliminacionIngresosService;
         this.versionInfo = versionInfo;
     }
 
@@ -248,6 +264,19 @@ public class AppContext {
         HistorialLavaderoService historialLavaderoService =
             new HistorialLavaderoService(historialLavaderoDAO);
 
+        PasswordEliminacionService passwordEliminacionService =
+            new PasswordEliminacionService(new PasswordDAO(), new HasherPbkdf2());
+
+        // Un solo EliminadorEquipoOtros: el de Lavadero reusa sus fases dentro de su transaccion,
+        // asi que no puede recibir uno propio (habria dos lugares con las consultas de borrado).
+        ArchivoIngresosDAO archivoIngresosDAO = new ArchivoIngresosDAO();
+        EliminadorEquipoOtros eliminadorEquipoOtros = new EliminadorEquipoOtros(archivoIngresosDAO);
+        EliminacionIngresosService eliminacionIngresosService = new EliminacionIngresosService(
+            new EliminadorEquipoOrtopedia(archivoIngresosDAO),
+            eliminadorEquipoOtros,
+            new EliminadorIngresoLavadero(eliminadorEquipoOtros, archivoIngresosDAO),
+            passwordEliminacionService);
+
         return new AppContext(
             equipoService,
             catalogoService,
@@ -275,6 +304,8 @@ public class AppContext {
             equipoReporteService,
             equipoOtrosReporteService,
             actualizacionService,
+            passwordEliminacionService,
+            eliminacionIngresosService,
             versionInfo
         );
     }
@@ -381,6 +412,14 @@ public class AppContext {
 
     public ActualizacionService getActualizacionService() {
         return actualizacionService;
+    }
+
+    public PasswordEliminacionService getPasswordEliminacionService() {
+        return passwordEliminacionService;
+    }
+
+    public EliminacionIngresosService getEliminacionIngresosService() {
+        return eliminacionIngresosService;
     }
 
     public VersionInfo getVersionInfo() {

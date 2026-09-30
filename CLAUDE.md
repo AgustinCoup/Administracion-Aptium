@@ -366,10 +366,15 @@ del ingreso (elemento → lavarropas → fecha de lavado → fecha listo → des
 
 ## Lavadero → CDE
 
-Es el **único punto donde una feature escribe en las tablas de otra**, y está concentrado en una
-sola clase: `DerivadorIngresoCDE` (`lavadero/dao/derivadores/`). Crea un `equipo_otros` con
-`requiereLavado = false` vía `EquipoOtrosDAO.guardar(Connection, ...)` **dentro de la transacción de
-la derivación**: si la creación del ingreso falla, `salidas_lavadero` queda intacta.
+Hay **dos puntos donde una feature escribe en las tablas de otra**, y cada uno está concentrado en
+una sola clase de Lavadero que usa un DAO del CDE sobre **su** `Connection`:
+- **Crear:** `DerivadorIngresoCDE` (`lavadero/dao/derivadores/`). Crea un `equipo_otros` con
+  `requiereLavado = false` vía `EquipoOtrosDAO.guardar(Connection, ...)` **dentro de la transacción de
+  la derivación**: si la creación del ingreso falla, `salidas_lavadero` queda intacta.
+- **Borrar:** `EliminadorIngresoLavadero` borra los `equipo_otros` derivados del ingreso llamando a
+  las fases públicas de `EliminadorEquipoOtros` (`bloquear` / `verificar` / `archivarYBorrar`) dentro
+  de su propia transacción. Ninguna consulta de borrado del CDE está copiada en Lavadero. Ver
+  "Eliminar ingresos".
 
 **`AccionSalida` ≠ `DestinoSalida`.** La acción es lo que elige el operador; el destino es lo que se
 persiste, y no son 1:1 — `CDE_CLIENTE` y `CDE_APTIUM` guardan el mismo `CDE_OTROS`, y lo que las
@@ -477,7 +482,10 @@ diseño que no son opinables:
   falso. `FiltroTareaCancelada` (en el appender `ERROR_FILE` de `logback.xml`) los descarta si el
   hilo que loguea tiene su token marcado — criterio por token y no por clase de excepción, para no
   tapar el techo de 30 s de una tarea que nadie canceló. `app.log` los sigue mostrando. Exige
-  appender **sincrónico**: detrás de un `AsyncAppender` el filtro correría sin token.
+  appender **sincrónico**: detrás de un `AsyncAppender` el filtro correría sin token. Por la misma
+  razón, `TareaUI.registrarFallo` manda a WARN y sin stack toda `ValidationException` y toda
+  `BusinessException` (conflictos, bloqueos de eliminación, contraseña incorrecta): son desenlaces
+  esperados que el operador ya ve en pantalla, no fallos del sistema.
 
 **Techo de lecturas concurrentes.** `ConnectionPool.getConnection()` toma un permiso de un semáforo
 de `MAX_POOL − RESERVA_CONEXIONES` (8 − 3 = 5) antes de pedirle la conexión al pool, y lo devuelve en
@@ -515,7 +523,8 @@ varias filas devolvería la primera y Eliminar borraría el material equivocado)
 
 **Jerarquía de excepciones:** la raíz es `ApplicationException` (no `AptiumException`, y
 `DataAccessException` no existe) → `BusinessException` (→ `ConflictoConcurrenciaException` y sus
-tres subtipos de lanzamiento de tandas), `ValidationException` (con builder), `ResourceNotFoundException`, `DatabaseException`.
+tres subtipos de lanzamiento de tandas, `EliminacionBloqueadaException`, `PasswordIncorrectaException`),
+`ValidationException` (con builder), `ResourceNotFoundException`, `DatabaseException`.
 
 ## Concurrencia — bloqueo optimista
 
@@ -626,7 +635,9 @@ remito), Lanzar Lote, Clasificación de Lavadero, Lanzar Tanda (saldo de las lí
 Correcciones (ortopedias y otros), fusionar clientes, eliminar cliente, el **ABM de lavarropas**
 (alta, baja con `FOR UPDATE` sobre el ciclo activo, reactivación) y las **bajas/reactivaciones de
 los cuatro catálogos** (elementos, jabones e insumos de Lavadero; descripciones de Ortopedias vía
-`vigente`).
+`vigente`), la **eliminación de ingresos** (`version` en el CDE; `estado` + derivados vistos en
+Lavadero — ver "Eliminar ingresos") y el **cambio de la password de eliminación** (CAS sobre el hash y
+el salt verificados).
 
 **Entrega recibe lo que el operador vio, nunca "lo que haya esterilizado".**
 `MaterialDAO.entregarMateriales`/`EquipoOtrosDAO.entregar` toman `List<FilaAEntregar>` (ids +
@@ -704,9 +715,154 @@ y el loop **sigue** con las demás (antes cortaba entero y dejaba las partes ya 
 ni releer). Cualquier otra `RuntimeException` (`ValidationException`, un NPE) **propaga**: no es "una
 parte que falló", es un bug.
 
+## Eliminar ingresos
+
+Un ingreso completo se puede eliminar **en cualquier estado** (incluidos `ENTREGADO` y
+`FINALIZADO`) desde **Ver Equipos** (las dos grillas) y desde **Historial de Lavadero**, con
+**motivo obligatorio** (≤ 500) y **password**. Plan: `plans/eliminar-ingresos.md`.
+
+**Borrado físico, con archivo en la misma transacción. No hay baja lógica.** Una baja lógica
+obligaría a filtrar unas 30 consultas en 7 DAOs, más las que parten de tablas hijas (Disponibles lee
+la clasificación sin pasar por el ingreso), y cada filtro olvidado haría reaparecer un ingreso
+borrado —una fila que reaparece no se parece a un error—. Con el borrado físico las consultas
+existentes quedan intactas. Antes del `DELETE`, **con la misma `Connection`**, se escribe una fila en
+`ingresos_eliminados` (`V28`): columnas para buscar (`modulo`, `ingreso_id_original`, cliente, fecha,
+estado, motivo, `puesto` = `user.name@hostname`) y el árbol completo en `snapshot` (JSON, con
+`"formato": 1`). La copia **es** lo único que queda: un borrado sin archivo no puede existir. Es lo
+opuesto de Correcciones, que audita **después** del `DELETE` en `equipos_eliminados` y acepta la
+no-atomicidad; Correcciones no se tocó y **no** se reusa (`eliminarConVersion`/`eliminarEquipo`
+abren su propia conexión). `ingresos_eliminados` **no** lleva FK a `clientes` (la fusión la tendría
+que contemplar) ni aparece en Auditoría. No se puede deshacer desde la UI.
+
+| Módulo | Clase | Qué borra |
+|---|---|---|
+| Ortopedias | `EliminadorEquipoOrtopedia` | `equipos`; materiales y movimientos caen por `CASCADE` |
+| Otros | `EliminadorEquipoOtros` | `equipo_otros`; materiales, movimientos y su fila de `lote_otros_volumenes` por `CASCADE`. Si vino de Lavadero, `salidas_lavadero.equipo_otros_id` pasa a `NULL` (`V17`) y la salida conserva `destino = 'CDE_OTROS'`: el ingreso de Lavadero **no** se elimina |
+| Lavadero | `EliminadorIngresoLavadero` | salidas → tandas → instancias → ingreso (clasificación y bolsas por `CASCADE`) → ciclos **finalizados** que quedaron sin elementos (insumos por `CASCADE`), **y** cada `equipo_otros` derivado, vía las fases de `EliminadorEquipoOtros`. Una fila `LAVADERO` en el archivo más una `OTROS` por derivado, con `archivo_padre_id` |
+
+El orden de Lavadero lo dictan las tres FK `RESTRICT` (`V10`, `V17`, `V19`, `V20`). Un **lote
+finalizado** que queda vacío **queda vacío** (numeración y constancia del autoclave; su
+`capacidad_usada` no se recalcula). **Lavadero ahora sí se borra:** el comentario de `V17` ("Nada del
+lavadero se borra nunca") quedó desactualizado, y **no se toca** (nunca se modifica una migración).
+
+**Rechazo ≠ conflicto.** `EliminacionBloqueadaException extends BusinessException`, **no**
+`ConflictoConcurrenciaException`: un lote o un ciclo en curso no es "otro se te adelantó", es algo que
+el operador tiene que resolver. Se rechaza —nunca se desarma nada solo— si:
+- un material está en un lote con `fecha_fin IS NULL` (CDE, o el derivado de un ingreso de Lavadero);
+- un elemento del ingreso de Lavadero está en un ciclo sin finalizar;
+- el derivado es **compartido**: `ConstructorIngresoCDE` arma **un** `equipo_otros` por cliente
+  asignado y suma por nombre, así que con `AsignadorClienteAptium` un mismo ingreso del CDE junta ropa
+  de varios ingresos de Lavadero, y no hay vínculo material ↔ salida para "descontar sólo su parte".
+  El mensaje nombra los otros ingresos y manda a eliminar primero el del CDE desde Ver Equipos → Otros.
+
+`sealed interface Bloqueo` (`LoteEnCurso`, `CicloEnCurso`, `DerivadoCompartido`,
+`DerivadoEnLoteEnCurso`) se lista en el **resumen previo** (antes de pedir la password) y se re-verifica
+**dentro** de la transacción, que es la que manda; el texto sale de **una** función
+(`TextoBloqueos`), así que el operador lee lo mismo venga de donde venga. La transacción informa
+**todos** los bloqueos, no el primero.
+
+**Las guardas.** El diálogo se arma con un `ResumenEliminacion` leído de la base por `TareaUI` —no
+con la fila de la grilla—, y lo que confirmó el operador viaja como token:
+- **CDE: `version`** (la del resumen). Mismo criterio que Correcciones: el falso positivo (otro avanzó
+  un material distinto del mismo equipo) acá es **deseado**, porque lo que se archiva tiene que ser lo
+  que se confirmó. `DELETE … AND version = ?` con `exigirFilaAfectada`.
+- **Lavadero: `estado` + los `equipo_otros` derivados, cada uno con su `version`**
+  (`versionesDerivados()`). `ingresos_lavadero` sigue sin `version`. El `estado` solo no alcanza: una
+  derivación parcial crea un ingreso del CDE sin mover el estado, y se borraría uno que el operador no
+  vio. La `version` de cada derivado es el mismo criterio que borrarlo desde Ver Equipos: si otro lo
+  avanzó, lo entregó o lo corrigió, se borraría en un estado no confirmado.
+- **Las versiones se comparan después de los bloqueos, en los tres eliminadores**, sin cambiar el
+  orden de los locks: `lanzarLote` también bumpea la `version`, y un material que otro metió en un
+  lote tiene que salir como "finalizá el lote X", no como conflicto.
+- Sin fila, otra versión, otro estado u otros derivados, o la base cortando la espera de un lock →
+  `CONFLICTO_ELIMINACION`. Todo o nada: se aborta la transacción entera.
+
+**Órdenes de bloqueo.** Todos los `FOR UPDATE` van antes de la primera lectura no bloqueante (la vista
+de `REPEATABLE READ` se fija ahí: un lote o un ciclo lanzado mientras se esperaba sería invisible).
+**H2 no delata nada de esto**; el razonamiento completo está en los javadocs de los tres eliminadores.
+- **Ortopedias:** materiales (por `equipo_id`, así frena también el `INSERT` de un split) → cabecera →
+  recién ahí `lotes`, **sin bloquear**. Materiales → cabecera es el orden de Registrar Estado,
+  entregas, `lanzarLote` y `finalizarLote`. `lotes` no se bloquea a propósito: `finalizarLote` toma
+  `lotes` → materiales, y leerlo sin bloquear es conservador (un lote finalizándose se ve en curso).
+- **Otros:** **salidas de Lavadero del equipo** → materiales → cabecera. Las salidas van primero
+  porque el `SET NULL` de la FK las escribe al borrar la cabecera; así el orden es compatible con el
+  borrado de Lavadero, que llega a ellas desde su lado.
+- **Lavadero:** ingreso → líneas → tandas → instancias → salidas (dos sentencias, una por columna: con
+  `OR` MySQL puede bloquear toda la tabla) → cada derivado con `EliminadorEquipoOtros.bloquear`, en
+  orden ascendente. Nunca toma `lavarropas`, y `ciclos_lavadero` lo toca último (el `DELETE` de los
+  vacíos): respeta `lavarropas → ciclos_lavadero`.
+- **Casos residuales de deadlock, aceptados** (MySQL aborta a uno; si es el borrado, sale como
+  conflicto y no queda nada escrito): (a) el `DELETE` del ciclo vacío contra el gap lock de
+  `lanzarTanda`; (b) `derivar` (salidas → ingreso) de frente contra el borrado (ingreso → salidas);
+  (c) el orden **dentro** de una tabla —InnoDB bloquea en el orden del índice, no del `ORDER BY`—
+  contra `marcarListo`, `volverALavado`, `derivar`, `aplicarMovimientos`, `lanzarLote` y el borrado
+  desde Ver Equipos; (d) `FusionClientesDAO` (`equipo_otros` → `ingresos_lavadero`); (e) el
+  `NOT EXISTS` del borrado de ciclos vacíos, que toma locks compartidos sobre tandas de **otros**
+  ingresos; y en el CDE, Correcciones (cabecera → materiales, el único al revés). Del otro lado,
+  `marcarListo`, `volverALavado`, `derivar` y los dos `aplicarMovimientos` informan la contención
+  como conflicto; **`lanzarLote` y `FusionClientesDAO` todavía como error técnico** (en `lanzarLote`,
+  decisión explícita de su javadoc: un lock wait timeout no se reintenta y sale como
+  `DatabaseException`).
+
+**Quien escribe sobre un ingreso borrado choca, no falla.** Antes, lo único que borraba era
+Correcciones, y sólo en `NUEVO`. Seis escrituras trataban "la fila ya no existe" como
+`throw new SQLException` → error técnico, y ahora lanzan `ConflictoConcurrenciaException`:
+`MaterialDAO.aplicarMovimientos` (`CONFLICTO_MATERIAL`), `EquipoOtrosDAO.aplicarMovimientos`
+(cabecera de remito y material, `CONFLICTO_MATERIAL`) y `LoteDAO.lanzarLote` (material de ortopedias,
+remito y material de otros, `CONFLICTO_LOTE`; revierte también la fila de `lotes`). `derivar`,
+`volverALavado` y los dos `aplicarMovimientos` traducen además la contención. Los demás flujos ya chocaban bien, y hay un test por
+flujo en `ConcurrenciaOptimistaTest`.
+
+**Dónde vive cada cosa.** `common/eliminacion/` (modelo compartido, `ArchivoIngresosDAO`,
+`SnapshotJson`, `TextoBloqueos`): si el archivo viviera en `features/eliminaciones/`, que depende de
+los eliminadores, habría un ciclo entre features. Un eliminador por módulo en su feature;
+`features/eliminaciones/` tiene el service, `TextoEliminacion` y `DecisionDialogoEliminacion`
+(planas), `FlujoEliminacion` (el flujo compartido por las tres grillas) y el diálogo. La password
+vive en `features/seguridad/`.
+
+**No hay refresco global.** Después de eliminar (o de un conflicto, o de un ingreso que ya no existe)
+la pantalla publica su consulta **`recontando()`** y pide su grupo, y además pide **`operativo`**.
+Ninguno más: las otras pantallas de consulta releen al mostrarse, y no se pueden ver dos cards a la
+vez. Si tras recontar la página quedó más allá de la última, `reubicadaSi` de
+`ConsultaEquipos`/`ConsultaHistorial` la mueve a la última y se vuelve a pedir **sin pintar** la vacía
+(en Ver Equipos, cada grilla por separado).
+
+### La password de eliminación
+
+- **Dónde vive:** tabla `passwords` (`V29`), una fila por propósito (`ELIMINAR_INGRESO`): hash
+  **PBKDF2-HMAC-SHA256** (`HasherPbkdf2`, del JDK), salt aleatorio de 16 bytes, **600 000
+  iteraciones guardadas en la fila** (se pueden subir sin invalidar el hash vigente), comparación con
+  `MessageDigest.isEqual`, `PBEKeySpec.clearPassword()` en `finally`. Se cambia desde **Ajustes →
+  Seguridad** pidiendo la actual; el `UPDATE` es CAS sobre el hash y el salt verificados
+  (`CONFLICTO_PASSWORD` si otro puesto la cambió en el medio).
+- **Qué protege y qué no:** es una barrera contra borrados **accidentales o no autorizados de
+  operadores**, **no** un límite de seguridad contra quien tiene las credenciales de la base (están en
+  `config.properties` y permiten todo, incluido el reseteo). Por eso no hay rate limiting más allá del
+  costo de PBKDF2.
+- **`char[]` de punta a punta**, nunca un `String` (ni `getText()`); los limpia con `Arrays.fill` quien
+  los creó, en un `finally` **dentro del lambda de `leer`** (`FlujoEliminacion`,
+  `PasswordAjustesController`). Nunca va en un `record` (`EliminarIngresoDialog.Datos` es una clase
+  con `toString` enmascarado). Ningún log, mensaje, `toString`, nombre de `TareaUI` ni snapshot lleva
+  nada derivado de ella; "incorrecta" no distingue vacía de distinta. Se verifica **antes** y fuera de
+  la transacción del borrado, y nunca en el EDT (`EdtGuard` no lo detectaría: no es I/O).
+- **Password inicial: `aptium`.** No está en claro en ningún archivo de `src/main` ni en el JAR, pero
+  su hash viaja en la `V29`, que va en el JAR público: **es pública**. Se aceptó con la condición de
+  **avisar** mientras siga vigente (`es_inicial = TRUE`): el diálogo de eliminar y Ajustes lo muestran.
+  `PasswordDAOTest.semillaDeLaMigracion_verificaConLaPasswordInicialDocumentada` garantiza que este
+  párrafo no miente.
+- **Si se olvida**, este `UPDATE` la vuelve a la inicial (y el aviso vuelve a aparecer). Se acepta
+  porque quien puede correrlo ya tiene acceso a la base:
+  ```sql
+  UPDATE passwords
+     SET algoritmo = 'PBKDF2WithHmacSHA256', iteraciones = 600000,
+         salt = 'Q4vyghGQ19SmsJ1XTFDaiw==', hash = 'YrXrz108NVb5CY/uDPo4EX/ZVIJk8Yx4pxE7hqF1M0Q=',
+         es_inicial = TRUE, actualizado_en = CURRENT_TIMESTAMP
+   WHERE proposito = 'ELIMINAR_INGRESO';
+  ```
+
 ## Tests
 
-JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1637 tests en `src/test/java`,
+JUnit 5 (Jupiter) + Mockito + H2 en memoria. ~1830 tests en `src/test/java`,
 reflejando la estructura de paquetes de `src/main/java` (un `*Test.java` por
 DAO/Service/Controller/helper relevante).
 
@@ -714,4 +870,6 @@ Para lógica de negocio embebida en clases de Swing (diálogos, paneles), el
 patrón del repo es extraerla a una clase plana sin dependencias de Swing y
 testearla en aislamiento — ver `AgrupadorIngresosLote`, `DuplicadoHighlighter`,
 `SincronizadorVolumenFinal`, `ConstructorVistaCiclos`, `AgrupadorInstanciasSalida`,
-`PlanificadorAvanceMultiple`, `SuperposicionPreviews` y `ReglasSeleccionAcumulativa` como ejemplos.
+`PlanificadorAvanceMultiple`, `SuperposicionPreviews`, `ReglasSeleccionAcumulativa`,
+`TextoEliminacion`, `DecisionDialogoEliminacion`, `TextoBloqueos` y `ValidadorCambioPassword` como
+ejemplos.

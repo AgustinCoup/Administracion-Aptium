@@ -1,6 +1,7 @@
 package com.example.features.lavadero.controller;
 
 import com.example.common.paginacion.Pagina;
+import com.example.features.eliminaciones.service.EliminacionIngresosService;
 import com.example.features.lavadero.controller.helpers.ConsultaHistorial;
 import com.example.features.lavadero.model.EstadoIngresoLavadero;
 import com.example.features.lavadero.model.IngresoHistorial;
@@ -25,6 +26,7 @@ import java.util.Set;
 import java.util.function.IntConsumer;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,11 +44,13 @@ class HistorialLavaderoControllerTest {
 
     @Mock PantallaHistorialLavadero pantalla;
     @Mock HistorialLavaderoService  service;
+    @Mock EliminacionIngresosService eliminacionService;
 
     /** Real: el controller le instala su {@code MouseListener} al construirse. */
     private final JTable tablaIngresos = new JTable(new DefaultTableModel(3, 1));
 
     private int refrescosPedidos;
+    private int refrescosOperativosPedidos;
 
     private Runnable    alCambiarFiltros;
     private IntConsumer alCambiarPagina;
@@ -59,7 +63,8 @@ class HistorialLavaderoControllerTest {
         when(pantalla.getTablaIngresos()).thenReturn(tablaIngresos);
         filtrosDePantalla("", List.of("PENDIENTE"), null, null, "", null);
 
-        controller = new HistorialLavaderoController(pantalla, service, () -> refrescosPedidos++);
+        controller = new HistorialLavaderoController(pantalla, service, eliminacionService,
+            () -> refrescosPedidos++, () -> refrescosOperativosPedidos++);
 
         ArgumentCaptor<Runnable>    filtros  = ArgumentCaptor.forClass(Runnable.class);
         ArgumentCaptor<IntConsumer> paginas  = ArgumentCaptor.forClass(IntConsumer.class);
@@ -198,6 +203,37 @@ class HistorialLavaderoControllerTest {
         ConsultaHistorial conTotal = controller.consultaActual();
         conTotal.leer(service);
         verify(service).obtenerPagina(conTotal.filtro(), conTotal.criterios(), 80L);
+    }
+
+    @Test
+    void pintar_paginaMasAllaDeLaUltima_reubicaEnLaUltimaSinPintarLaVacia() {
+        estarEnLaPagina(3, 101);
+        int refrescosAntes = refrescosPedidos;
+        org.mockito.Mockito.clearInvocations(pantalla);
+
+        // Se eliminó la única fila de la página 3: quedan 100 (2 páginas).
+        controller.pintar(new Pagina<>(List.of(), 3, 50, 100));
+
+        verify(pantalla, never()).actualizarIngresos(org.mockito.ArgumentMatchers.any());
+        verify(pantalla, never()).mostrarPaginacion(org.mockito.ArgumentMatchers.any());
+        verify(pantalla, never()).marcarActualizado();
+        assertEquals(2, controller.consultaActual().criterios().numeroPagina());
+        assertEquals(100L, controller.consultaActual().totalConocido());
+        assertEquals(refrescosAntes + 1, refrescosPedidos, "reubicar publica y pide, juntos");
+    }
+
+    @Test
+    void alTerminarEliminacion_recuentaEstaPantallaYPideElGrupoOperativo() {
+        estarEnLaPagina(3, 500);
+        int refrescosAntes = refrescosPedidos;
+
+        controller.alTerminarEliminacion();
+
+        assertEquals(3, controller.consultaActual().criterios().numeroPagina(), "conserva la página");
+        assertNull(controller.consultaActual().totalConocido(),
+            "recuenta: el total arrastrado dejaría una página fantasma");
+        assertEquals(refrescosAntes + 1, refrescosPedidos);
+        assertEquals(1, refrescosOperativosPedidos);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

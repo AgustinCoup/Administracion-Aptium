@@ -2,6 +2,8 @@ package com.example.ui.common;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -313,6 +315,48 @@ class TareaUITest {
 
         assertEquals(Level.WARN, nivelDeLaLectura(eventos, "lectura-lenta"));
         assertEquals(Level.INFO, nivelDeLaLectura(eventos, "lectura-normal"));
+    }
+
+    /**
+     * Un conflicto, un bloqueo o una contraseña incorrecta son el desenlace esperado de una regla de
+     * negocio, no un fallo del sistema: a WARN y sin stack, como la validación. Un fallo técnico
+     * sigue yendo a ERROR con la traza (es lo que va a error.log).
+     */
+    @Test
+    @DisplayName("una BusinessException se loguea a WARN sin stack; un fallo técnico, a ERROR con stack")
+    void businessException_vaAWarnSinStack() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(TareaUI.class);
+        ListAppender<ILoggingEvent> eventos = new ListAppender<>();
+        eventos.start();
+        logger.addAppender(eventos);
+        try {
+            fallarYEsperar("falla-negocio", new com.example.common.exception.ConflictoConcurrenciaException("otro se adelantó"));
+            fallarYEsperar("falla-tecnica", new IllegalStateException("se rompió"));
+        } finally {
+            logger.detachAppender(eventos);
+        }
+
+        ILoggingEvent negocio = eventoDelFallo(eventos, "falla-negocio");
+        assertEquals(Level.WARN, negocio.getLevel());
+        assertNull(negocio.getThrowableProxy(), "sin stack: no es un fallo del sistema");
+        ILoggingEvent tecnica = eventoDelFallo(eventos, "falla-tecnica");
+        assertEquals(Level.ERROR, tecnica.getLevel());
+        assertNotNull(tecnica.getThrowableProxy());
+    }
+
+    private static void fallarYEsperar(String nombre, RuntimeException causa) throws InterruptedException {
+        CountDownLatch termino = new CountDownLatch(1);
+        TareaUI.<String>nueva().nombre(nombre).leer(() -> { throw causa; })
+            .siFalla(e -> { }).despues(termino::countDown).lanzar();
+        esperar(termino);
+    }
+
+    private static ILoggingEvent eventoDelFallo(ListAppender<ILoggingEvent> eventos, String nombre) {
+        return eventos.list.stream()
+            .filter(e -> e.getFormattedMessage().contains("'" + nombre + "'")
+                && e.getLevel().isGreaterOrEqual(Level.WARN))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no se logueó el fallo de " + nombre));
     }
 
     private static void lanzarYEsperar(String nombre) throws InterruptedException {

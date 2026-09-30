@@ -6,6 +6,8 @@ import com.example.features.lavadero.model.FiltroHistorial;
 import com.example.features.lavadero.model.IngresoHistorial;
 import com.example.features.lavadero.service.HistorialLavaderoService;
 
+import java.util.Optional;
+
 /**
  * Qué está mirando la pantalla de Historial: un filtro, una página y —si ya se sabe— el total que
  * ese filtro devuelve.
@@ -55,6 +57,24 @@ public record ConsultaHistorial(FiltroHistorial filtro, CriteriosPagina criterio
     /** La misma consulta con el total que acaba de traer la lectura. */
     public ConsultaHistorial conTotal(long total) {
         return new ConsultaHistorial(filtro, criterios, total);
+    }
+
+    /**
+     * Si la página que acaba de leerse quedó más allá de la última, la misma consulta pedida en la
+     * última —con el total recién leído, que ya es el bueno—; si no, vacío.
+     *
+     * <p>Pasa cuando alguien elimina filas y el refresco recuenta: borrar la única fila de la última
+     * página es un caso común. Pintar esa página vacía mostraría "no hay nada" sobre un resultado que
+     * sí tiene filas, así que el controller no la pinta y vuelve a pedir la última. Converge: si el
+     * total vuelve a bajar entre lecturas, se reubica otra vez.</p>
+     *
+     * @param leida la página que devolvió {@link #leer}, con el total actual
+     */
+    public Optional<ConsultaHistorial> reubicadaSi(Pagina<?> leida) {
+        if (leida.numeroPagina() <= leida.totalPaginas()) {
+            return Optional.empty();
+        }
+        return Optional.of(conTotal(leida.totalFilas()).enPagina(leida.totalPaginas()));
     }
 
     /**

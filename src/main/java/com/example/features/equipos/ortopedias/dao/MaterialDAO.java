@@ -129,8 +129,10 @@ public class MaterialDAO {
                     pstmt.setInt(1, materialId);
                     pstmt.setInt(2, equipoId);
                     try (ResultSet rs = pstmt.executeQuery()) {
+                        // Sin fila: otro operador borró el equipo (o el material) después de que
+                        // la pantalla lo leyó. Es un choque, no un error técnico.
                         if (!rs.next()) {
-                            throw new SQLException("No se encontró el lote a mover: " + materialId);
+                            throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
                         }
                         codigo        = rs.getInt("codigo_catalogo");
                         cantidadActual = rs.getInt("cantidad");
@@ -212,6 +214,13 @@ public class MaterialDAO {
             return true;
 
         } catch (SQLException e) {
+            // Los materiales se toman en el orden de la lista: pueden cruzarse con la eliminación del
+            // equipo (caso residual (c) de EliminadorIngresoLavadero.eliminar). Si la base corta la
+            // espera es un choque, no un fallo técnico, y la transacción ya revirtió.
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("Movimientos del equipo {} abortados por la base (contención de lock)", equipoId, e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+            }
             throw new DatabaseException("Error al aplicar movimientos de materiales", e);
         }
     }

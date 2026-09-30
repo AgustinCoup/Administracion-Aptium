@@ -4,11 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.common.paginacion.Pagina;
 import com.example.features.clientes.service.ClienteService;
+import com.example.features.eliminaciones.service.EliminacionIngresosService;
 import com.example.features.equipos.controller.helpers.ConsultaEquipos;
 import com.example.features.equipos.controller.helpers.PaginasEquipos;
 import com.example.features.equipos.ortopedias.model.Equipo;
@@ -61,6 +63,7 @@ class VerEquiposControllerTest {
     @Mock private InstitucionService        institucionService;
     @Mock private EquipoReporteService      equipoReporteService;
     @Mock private EquipoOtrosReporteService equipoOtrosReporteService;
+    @Mock private EliminacionIngresosService eliminacionService;
 
     @Mock private EquipoService      ortopediaServiceParaLeer;
     @Mock private EquipoOtrosService otrosServiceParaLeer;
@@ -82,6 +85,7 @@ class VerEquiposControllerTest {
     private final JDateChooser dateHasta      = new JDateChooser();
 
     private int refrescosPedidos;
+    private int refrescosOperativosPedidos;
 
     private Runnable    alCambiarFiltros;
     private IntConsumer alCambiarPaginaOrtopedias;
@@ -104,8 +108,8 @@ class VerEquiposControllerTest {
         when(panel.getDateHasta()).thenReturn(dateHasta);
 
         controller = new VerEquiposController(panel, equipoOtrosService, clienteService,
-            institucionService, equipoReporteService, equipoOtrosReporteService,
-            () -> refrescosPedidos++);
+            institucionService, equipoReporteService, equipoOtrosReporteService, eliminacionService,
+            () -> refrescosPedidos++, () -> refrescosOperativosPedidos++);
 
         ArgumentCaptor<Runnable>    filtros    = ArgumentCaptor.forClass(Runnable.class);
         ArgumentCaptor<IntConsumer> ortopedias = ArgumentCaptor.forClass(IntConsumer.class);
@@ -157,7 +161,7 @@ class VerEquiposControllerTest {
     @Test
     @DisplayName("cambiar un filtro devuelve LAS DOS grillas a la página 1 y recuenta las dos")
     void cambiarUnFiltro_devuelveLasDosGrillasALaPaginaUno() {
-        estarEnLasPaginas(4, 7, 500, 300);
+        estarEnLasPaginas(4, 7, 500, 400);
 
         txtCliente.setText("acme");
         alCambiarFiltros.run();
@@ -206,7 +210,7 @@ class VerEquiposControllerTest {
     @Test
     @DisplayName("F5 conserva las dos páginas y el filtro, pero recuenta")
     void elRefresco_conservaPaginasYFiltroPeroVuelveAContar() {
-        estarEnLasPaginas(4, 7, 500, 300);
+        estarEnLasPaginas(4, 7, 500, 400);
 
         accionRefrescar.run();
 
@@ -224,7 +228,7 @@ class VerEquiposControllerTest {
     @Test
     @DisplayName("pintar no resetea ninguna de las dos páginas")
     void pintar_noResetealaPagina() {
-        estarEnLasPaginas(4, 7, 500, 300);
+        estarEnLasPaginas(4, 7, 500, 400);
 
         assertEquals(4, controller.consultaActual().ortopedias().numeroPagina());
         assertEquals(7, controller.consultaActual().otros().numeroPagina());
@@ -282,6 +286,43 @@ class VerEquiposControllerTest {
         verify(ortopediaServiceParaLeer)
             .obtenerPagina(conTotales.filtro(), conTotales.ortopedias(), 80L);
         verify(otrosServiceParaLeer).obtenerPagina(conTotales.filtro(), conTotales.otros(), 40L);
+    }
+
+    @Test
+    @DisplayName("una página de ortopedias más allá de la última no se pinta: se pide la última")
+    void pintar_ortopediasMasAllaDeLaUltima_reubicaSinPintar() {
+        estarEnLasPaginas(3, 2, 500, 300);
+        int refrescosAntes = refrescosPedidos;
+        org.mockito.Mockito.clearInvocations(panel);
+
+        // Se eliminó la única fila de la página 3: quedan 100 (2 páginas). "Otros" sigue en rango.
+        controller.pintar(paginas(3, 2, 100, 300));
+
+        verify(panel, never()).setDatosOrtopedia(org.mockito.ArgumentMatchers.any());
+        verify(panel, never()).setDatosOtros(org.mockito.ArgumentMatchers.any());
+        verify(panel, never()).marcarActualizado();
+        ConsultaEquipos consulta = controller.consultaActual();
+        assertEquals(2, consulta.ortopedias().numeroPagina());
+        assertEquals(2, consulta.otros().numeroPagina(), "la grilla que estaba en rango no se mueve");
+        assertEquals(100L, consulta.totalOrtopedias());
+        assertEquals(refrescosAntes + 1, refrescosPedidos, "reubicar publica y pide, juntos");
+    }
+
+    @Test
+    @DisplayName("eliminar recuenta esta pantalla y pide el grupo operativo, y ningún otro")
+    void alTerminarEliminacion_recuentaYPideElOperativo() {
+        estarEnLasPaginas(4, 7, 500, 400);
+        int refrescosAntes = refrescosPedidos;
+
+        controller.alTerminarEliminacion();
+
+        ConsultaEquipos consulta = controller.consultaActual();
+        assertEquals(4, consulta.ortopedias().numeroPagina(), "conserva las páginas");
+        assertEquals(7, consulta.otros().numeroPagina());
+        assertNull(consulta.totalOrtopedias(), "recuenta: el total arrastrado dejaría una página fantasma");
+        assertNull(consulta.totalOtros());
+        assertEquals(refrescosAntes + 1, refrescosPedidos);
+        assertEquals(1, refrescosOperativosPedidos);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

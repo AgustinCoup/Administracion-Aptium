@@ -417,6 +417,99 @@ public final class Constantes {
             "No se pegaron estos ítems porque fueron dados de baja: %s.\n"
                 + "Completá la configuración a mano.";
 
+        // ── Eliminar un ingreso ──────────────────────────────────────────────
+        public static final String MOTIVO_ELIMINACION_OBLIGATORIO =
+            "Escribí el motivo de la eliminación: queda guardado junto con la copia del ingreso.";
+        public static final String MOTIVO_ELIMINACION_LARGO =
+            "El motivo no puede tener más de %d caracteres. Resumilo y volvé a intentar.";
+        // El choque: la versión (CDE) o el estado y los derivados (Lavadero) cambiaron desde el
+        // resumen, o la base cortó la espera de un lock. NO se usa para un lote o un ciclo en
+        // curso: eso es un bloqueo (ELIMINAR_BLOQUEO_*), que el operador resuelve finalizándolo.
+        public static final String CONFLICTO_ELIMINACION =
+            "Otro operador modificó este ingreso mientras lo mirabas. No se eliminó nada: revisá "
+                + "la versión actualizada y volvé a intentar.";
+        public static final String INGRESO_YA_ELIMINADO =
+            "Este ingreso ya no existe: otro operador lo eliminó. Actualizá la pantalla.";
+        // Encabezado de EliminacionBloqueadaException; debajo va una línea por bloqueo.
+        public static final String ELIMINACION_BLOQUEADA =
+            "No se puede eliminar este ingreso todavía. No se eliminó nada.";
+        // Un texto por causa, armado en TextoBloqueos: el operador lee lo mismo si el bloqueo se
+        // vio en el resumen o apareció por una carrera dentro de la transacción.
+        public static final String ELIMINAR_BLOQUEO_LOTE_EN_CURSO =
+            "Hay materiales de este ingreso en el lote %s, todavía en curso. Finalizá ese lote y "
+                + "volvé a intentar.";
+        public static final String ELIMINAR_BLOQUEO_CICLO_EN_CURSO =
+            "Hay ropa de este ingreso en el lavarropas %d, con el ciclo sin finalizar. Finalizá ese "
+                + "ciclo y volvé a intentar.";
+        public static final String ELIMINAR_BLOQUEO_DERIVADO_COMPARTIDO =
+            "El ingreso del CDE #%d también tiene ropa de los ingresos de Lavadero %s. Eliminalo "
+                + "primero desde Ver Equipos → Otros y volvé a intentar.";
+        public static final String ELIMINAR_BLOQUEO_DERIVADO_EN_LOTE =
+            "El ingreso del CDE #%d, que se creó con ropa de este ingreso, está en el lote %s, "
+                + "todavía en curso. Finalizá ese lote y volvé a intentar.";
+
+        // ── Texto del diálogo de confirmación de eliminación (TextoEliminacion) ──
+        public static final String ELIMINAR_TITULO_ORTOPEDIA = "Vas a eliminar el ingreso de Ortopedias #%d.";
+        public static final String ELIMINAR_TITULO_OTROS = "Vas a eliminar el ingreso de Otros #%d.";
+        public static final String ELIMINAR_TITULO_LAVADERO = "Vas a eliminar el ingreso de Lavadero #%d.";
+        public static final String ELIMINAR_LINEA_CLIENTE = "Cliente: %s";
+        public static final String ELIMINAR_LINEA_INSTITUCION = "Institución: %s";
+        public static final String ELIMINAR_LINEA_PACIENTE = "Paciente: %s";
+        public static final String ELIMINAR_LINEA_FECHA = "Ingreso: %s";
+        public static final String ELIMINAR_LINEA_ESTADO = "Estado: %s";
+        public static final String ELIMINAR_LINEA_PESO = "Peso declarado: %s kg";
+        public static final String ELIMINAR_ENCABEZADO_MATERIALES = "Se eliminan estos materiales:";
+        public static final String ELIMINAR_ENCABEZADO_ELEMENTOS = "Se eliminan estos elementos clasificados:";
+        public static final String ELIMINAR_LINEA_MATERIAL = "  • %d × %s (%s)";
+        public static final String ELIMINAR_LINEA_MATERIAL_EN_LOTE = "  • %d × %s (%s), lote %s";
+        public static final String ELIMINAR_LINEA_ELEMENTO = "  • %d × %s";
+        public static final String ELIMINAR_SIN_MATERIALES = "Todavía no tiene materiales cargados.";
+        public static final String ELIMINAR_SIN_CLASIFICAR =
+            "Todavía no se clasificó: sólo se eliminan las bolsas y el ingreso.";
+        public static final String ELIMINAR_DERIVADO_DEL_CDE =
+            "También se elimina el ingreso del CDE #%d, estado %s (%d unidades).";
+        public static final String ELIMINAR_VINO_DE_LAVADERO =
+            "Vino de Lavadero (ingreso %s); ese ingreso no se elimina.";
+        public static final String ELIMINAR_SE_ARCHIVA =
+            "Antes de borrar se guarda una copia completa, con el motivo.";
+        public static final String ELIMINAR_NO_SE_PUEDE_DESHACER = "No se puede deshacer.";
+        // Diálogo de confirmación (EliminarIngresoDialog) y avisos del flujo (FlujoEliminacion).
+        public static final String TITULO_ELIMINAR_INGRESO = "Eliminar ingreso";
+        public static final String ELIMINAR_ETIQUETA_MOTIVO = "Motivo (obligatorio):";
+        public static final String ELIMINAR_ETIQUETA_PASSWORD = "Contraseña de eliminación:";
+        public static final String ELIMINACION_EXITO =
+            "El ingreso se eliminó. Quedó guardada una copia con el motivo.";
+        // Lo que muestra el diálogo si el borrado falla por algo que no es de negocio: la
+        // transacción hizo rollback, así que no se eliminó nada.
+        public static final String ELIMINACION_ERROR_TECNICO =
+            "No se pudo eliminar el ingreso por un error inesperado. No se eliminó nada; "
+                + "volvé a intentar y, si se repite, avisá a soporte.";
+
+        // ── Password de eliminación ──────────────────────────────────────────
+        // Texto fijo, sin la password ni nada derivado de ella. PASSWORD_INCORRECTA no distingue
+        // "vacía" de "distinta": no hay nada que ganar diciéndolo.
+        public static final String PASSWORD_INCORRECTA =
+            "La contraseña no es correcta. No se eliminó nada.";
+        public static final String PASSWORD_ACTUAL_INCORRECTA =
+            "La contraseña actual no es correcta. No se cambió nada.";
+        public static final String CONFLICTO_PASSWORD =
+            "Otro puesto cambió la contraseña mientras tanto. Volvé a intentar con la contraseña nueva.";
+        public static final String PASSWORD_NUEVA_NO_COINCIDE =
+            "La contraseña nueva y su repetición no coinciden. Escribilas de nuevo.";
+        public static final String PASSWORD_NUEVA_CORTA =
+            "La contraseña nueva tiene que tener al menos %d caracteres.";
+        public static final String PASSWORD_NUEVA_IGUAL_A_LA_ACTUAL =
+            "La contraseña nueva es igual a la actual. Elegí una distinta.";
+        // Pestaña Seguridad de Ajustes.
+        public static final String PASSWORD_CAMPOS_VACIOS =
+            "Completá la contraseña actual, la nueva y su repetición.";
+        public static final String PASSWORD_CAMBIADA = "La contraseña de eliminación se cambió.";
+        public static final String PASSWORD_AVISO_INICIAL =
+            "La contraseña de eliminación es la inicial: cambiala.";
+        public static final String PASSWORD_CAMBIO_ERROR_TECNICO =
+            "No se pudo cambiar la contraseña por un error inesperado. No se cambió nada; "
+                + "volvé a intentar y, si se repite, avisá a soporte.";
+
         // ── Arranque: build más viejo que la base ────────────────────────────
         // El chequeo lo hace DatabaseInitializer después de migrar. Va dirigido al operador y
         // dice QUÉ HACER, no qué falló: su build quedó atrás de la base compartida.
@@ -468,6 +561,7 @@ public final class Constantes {
         public static final String NO                     = "No";
         public static final String CANCELAR               = "Cancelar";
         public static final String CONFIRMAR              = "Confirmar";
+        public static final String CAMBIAR_PASSWORD       = "Cambiar contraseña";
         public static final String VER                    = "Ver";
         public static final String REGISTRAR              = "Registrar";
         public static final String INGRESAR               = "Ingresar";
@@ -494,6 +588,8 @@ public final class Constantes {
         public static final String OTROS                  = "Otros";
         public static final String VER_LOTES              = "Ver Lotes";
         public static final String LIMPIAR_FILTROS        = "Limpiar filtros";
+        public static final String ELIMINAR_INGRESO       = "Eliminar ingreso…";
+        public static final String ELIMINAR_CONFIRMAR     = "Eliminar";
         public static final String IMPRIMIR               = "Imprimir";
         public static final String VER_EQUIPOS            = "Ver equipos";
         public static final String CERRAR                 = "Cerrar";
@@ -759,5 +855,19 @@ public final class Constantes {
         public static final long TIMEOUT_ESPERA_JVM_SEGUNDOS = 30;
 
         private Actualizaciones() {}
+    }
+
+    /**
+     * Eliminación de ingresos completos desde las pantallas de consulta.
+     */
+    public static final class Eliminacion {
+        /** Largo máximo del motivo: es el {@code VARCHAR(500)} de {@code ingresos_eliminados.motivo}. */
+        public static final int MOTIVO_MAX_LARGO = 500;
+        /** Largo mínimo de una password de eliminación nueva. */
+        public static final int PASSWORD_MIN_LARGO = 6;
+        /** Cómo aparece en el resumen de eliminación un REMITO que todavía no tiene filas de material. */
+        public static final String DESCRIPCION_REMITO_SIN_DETALLE = "Remito %s (sin detallar)";
+
+        private Eliminacion() {}
     }
 }

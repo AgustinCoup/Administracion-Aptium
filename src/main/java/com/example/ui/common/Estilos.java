@@ -125,6 +125,11 @@ public final class Estilos {
         // que la pantalla y deja los botones afuera.
         public static final int CONFIRMACION_ENTREGA_ANCHO = 480;
         public static final int CONFIRMACION_ENTREGA_ALTO  = 360;
+
+        // Tamaño del scroll con el detalle de lo que se elimina (EliminarIngresoDialog). Más bajo
+        // que el de entrega: el mismo diálogo lleva además el motivo y la contraseña.
+        public static final int CONFIRMACION_ELIMINACION_ANCHO = 520;
+        public static final int CONFIRMACION_ELIMINACION_ALTO  = 240;
         
         // Ancho de un TextFields pequeño (para números)
         public static int calcularAnchoNumero(int caracteres) {
@@ -148,6 +153,8 @@ public final class Estilos {
 
         public static final Color TEXTO_NORMAL  = Color.BLACK;
         public static final Color TEXTO_AYUDA   = Color.GRAY;
+        public static final Color TEXTO_ERROR   = new Color(0xB00020);
+        public static final Color TEXTO_AVISO   = new Color(0xB25E00);
         public static final Color FONDO_DEFECTO = Color.WHITE;
 
         private Colores() {}

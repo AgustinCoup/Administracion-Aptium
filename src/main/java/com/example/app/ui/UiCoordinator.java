@@ -25,6 +25,7 @@ import com.example.features.ajustes.controller.AjustesController;
 import com.example.features.ajustes.controller.CatalogosAjustesController;
 import com.example.features.ajustes.controller.JabonesInsumosAjustesController;
 import com.example.features.ajustes.controller.LavarropasAjustesController;
+import com.example.features.ajustes.controller.PasswordAjustesController;
 import com.example.features.lotes.controller.LotesController;
 import com.example.features.lotes.controller.VerLotesController;
 import com.example.ui.events.OnEquipoGuardadoListener;
@@ -129,7 +130,9 @@ public class UiCoordinator {
         HistorialLavaderoController historialLavaderoController = new HistorialLavaderoController(
             vista.getPantallaHistorialLavadero(),
             context.getHistorialLavaderoService(),
-            historialLavadero);
+            context.getEliminacionIngresosService(),
+            historialLavadero,
+            operativo::solicitar);
 
         VerEquiposController verEquiposController = new VerEquiposController(
             vista.getPantallaVerEquipos(),
@@ -138,7 +141,9 @@ public class UiCoordinator {
             context.getInstitucionService(),
             context.getEquipoReporteService(),
             context.getEquipoOtrosReporteService(),
-            verEquipos);
+            context.getEliminacionIngresosService(),
+            verEquipos,
+            operativo::solicitar);
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
         correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());
@@ -263,6 +268,11 @@ public class UiCoordinator {
             vista.getPantallaAjustes(), vista.getPantallaAjustes().getPanelJabonesInsumos(),
             context.getCatalogoJabonesService(), context.getCatalogoInsumosService(),
             context.getJabonPorTipoLavadoService(), operativo);
+
+        // La password de eliminacion no alimenta ninguna pantalla: no hay nada que refrescar.
+        new PasswordAjustesController(
+            vista.getPantallaAjustes(), vista.getPantallaAjustes().getPanelPasswordEliminacion(),
+            context.getPasswordEliminacionService());
 
         // Primer pintado: los controllers ya no leen en su constructor, así que la
         // UI aparece vacía y se puebla cuando llega esta primera lectura. Solo el
