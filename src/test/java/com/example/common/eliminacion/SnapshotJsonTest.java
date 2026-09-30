@@ -65,6 +65,52 @@ class SnapshotJsonTest extends AbstractDAOTest {
             filas.getJSONObject(0).keySet());
     }
 
+    /**
+     * Los tipos que el snapshot recibe de las tablas reales además de los de arriba: fechas sin hora
+     * ({@code fecha_lavado}), booleanos ({@code requiere_lavado}), {@code TEXT} (que H2 entrega como
+     * {@code Clob}) y cualquier otro, que va como su {@code toString}.
+     */
+    @Test
+    void filaActual_fechaBooleanoClobYOtroTipo() throws SQLException {
+        String sql = "SELECT DATE '2026-09-29' AS dia, TRUE AS activo, "
+            + "CAST('observación larga' AS CLOB) AS texto, "
+            + "CAST('123e4567-e89b-12d3-a456-426614174000' AS UUID) AS otro";
+        JSONObject fila;
+        try (Connection conn = ConnectionPool.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            assertTrue(rs.next());
+            fila = SnapshotJson.filaActual(rs);
+        }
+
+        assertEquals("2026-09-29", fila.getString("dia"));
+        assertTrue(fila.getBoolean("activo"));
+        assertEquals("observación larga", fila.getString("texto"));
+        assertEquals("123e4567-e89b-12d3-a456-426614174000", fila.getString("otro"));
+    }
+
+    /**
+     * H2 entrega {@code Timestamp} y {@code java.sql.Date}, pero Connector/J 8 puede entregar
+     * {@code LocalDateTime} y {@code LocalDate}: se archivan con el mismo formato. Con un mock porque
+     * H2 no produce esos tipos.
+     */
+    @Test
+    void filaActual_tiposJavaTime_mismoFormatoQueLosDeJdbc() throws SQLException {
+        java.sql.ResultSetMetaData meta = org.mockito.Mockito.mock(java.sql.ResultSetMetaData.class);
+        org.mockito.Mockito.when(meta.getColumnCount()).thenReturn(2);
+        org.mockito.Mockito.when(meta.getColumnLabel(1)).thenReturn("FECHA_FIN");
+        org.mockito.Mockito.when(meta.getColumnLabel(2)).thenReturn("DIA");
+        ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
+        org.mockito.Mockito.when(rs.getMetaData()).thenReturn(meta);
+        org.mockito.Mockito.when(rs.getObject(1)).thenReturn(java.time.LocalDateTime.of(2026, 9, 29, 10, 15));
+        org.mockito.Mockito.when(rs.getObject(2)).thenReturn(java.time.LocalDate.of(2026, 9, 29));
+
+        JSONObject fila = SnapshotJson.filaActual(rs);
+
+        assertEquals("2026-09-29T10:15:00", fila.getString("fecha_fin"));
+        assertEquals("2026-09-29", fila.getString("dia"));
+    }
+
     @Test
     void resultSetVacio_arrayVacio() throws SQLException {
         try (Connection conn = ConnectionPool.getConnection();

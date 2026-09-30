@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,7 +60,7 @@ class EliminacionIngresosServiceTest {
     private static ResumenIngresoLavadero resumenLavadero(int id, EstadoIngresoLavadero estado,
                                                           int... derivados) {
         List<ResumenIngresoLavadero.DerivadoCde> lista = java.util.Arrays.stream(derivados)
-            .mapToObj(d -> new ResumenIngresoLavadero.DerivadoCde(d, "NUEVO", 1)).toList();
+            .mapToObj(d -> new ResumenIngresoLavadero.DerivadoCde(d, "NUEVO", 1, d * 10)).toList();
         return new ResumenIngresoLavadero(new IngresoAEliminar(ModuloIngreso.LAVADERO, id), "Cliente",
             LocalDateTime.of(2026, 9, 1, 10, 0), estado, BigDecimal.TEN, List.of(), lista, List.of());
     }
@@ -179,7 +179,8 @@ class EliminacionIngresosServiceTest {
 
         service.eliminar(s, "clave".toCharArray());
 
-        verify(lavadero).eliminar(21, EstadoIngresoLavadero.LAVADO, Set.of(5, 6), "duplicado", PUESTO);
+        // Cada derivado viaja con la versión que mostró el resumen.
+        verify(lavadero).eliminar(21, EstadoIngresoLavadero.LAVADO, Map.of(5, 50, 6, 60), "duplicado", PUESTO);
         verifyNoInteractions(ortopedia, otros);
     }
 

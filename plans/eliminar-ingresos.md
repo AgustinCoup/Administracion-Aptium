@@ -1,5 +1,10 @@
 # Eliminar un ingreso completo, protegido con password, desde las pantallas de consulta
 
+> **✅ CERRADO (2026-09-30).** Commits: Paso 1 `bbc4168` · Paso 2 `c8841cf` · Paso 3 `993e9a9` ·
+> Paso 4 `5c003f1` · Paso 5 `a0f21ae` · Paso 6 `7088f4d` · Paso 7 `a57aac5` · Paso 8 `ba3ff41` ·
+> Paso 9: el commit `docs: eliminar ingresos y password de eliminacion`. Lo que cambió en el cierre,
+> en "Cierre (Paso 9)" al final del Paso 9.
+
 **Objetivo:** poder eliminar un ingreso completo, **en cualquier estado de avance** (incluidos
 `ENTREGADO` y `FINALIZADO`), desde **Historial de Lavadero** y desde **Ver Equipos** (las dos
 grillas: Ortopedias y Otros). Se pide una **password** y un **motivo obligatorio**. El ingreso
@@ -1136,7 +1141,93 @@ mvn test
 - [ ] `mvn verify` en verde; cobertura según el punto 3
 - [ ] Revisión de seguridad sin hallazgos abiertos
 - [ ] `CLAUDE.md` y memoria actualizados
-- [ ] Commit: `docs: eliminar ingresos y password de eliminacion`
+- [x] Commit: `docs: eliminar ingresos y password de eliminacion`
+
+### Cierre (Paso 9) — 2026-09-30
+
+**`/code-review high` sobre `main..EliminarIngresos`: diez hallazgos.**
+
+Aplicados:
+- **(HIGH) La versión de cada derivado no viajaba en la guarda de Lavadero.** `EliminadorIngresoLavadero`
+  archivaba y borraba cada `equipo_otros` derivado con la `version` que acababa de leer su `bloquear`,
+  no con la que vio el operador: si otro puesto avanzaba, entregaba o corregía el derivado entre el
+  resumen y la confirmación, se borraba igual. Borrado desde Ver Equipos, el mismo derivado habría
+  dado conflicto. *Decidido con el usuario:* `DerivadoCde` lleva `version`, y el token pasa a ser
+  `estado` + `versionesDerivados()` (id → version). La comparación va **después** de los bloqueos
+  (`exigirVersionesVistas`), igual que en ortopedias: `lanzarLote` bumpea la `version`, y el test
+  `eliminarIngresoLavaderoCuyoDerivadoOtroMetioEnUnLote` lo delató en cuanto se agregó la guarda.
+  Tests nuevos: `EliminadorIngresoLavaderoTest.eliminar_derivadoConOtraVersion_conflictoYNoBorraNada`
+  y `ConcurrenciaOptimistaTest.eliminarIngresoLavaderoCuyoDerivadoOtroAvanzo`.
+- **(HIGH) `CLAUDE.md` sin la sección que `V28`, `V29` y `PasswordDAOTest` citan**, y "Lavadero → CDE"
+  diciendo que había un único punto de escritura cruzada. Era la tarea 4 de este paso: resuelto.
+- **(HIGH, era el pendiente del Paso 5) La contención de locks en los dos `aplicarMovimientos`**
+  salía como error técnico, y el caso residual (c) los cruza con el borrado. Ahora sale como
+  `ConflictoConcurrenciaException(CONFLICTO_MATERIAL)`, como en `marcarListo`. Sin test: H2 no
+  reproduce el 1205/1213 (el mapeo lo cubre `ControlConcurrencia`). **`lanzarLote` no se tocó**:
+  que un lock wait timeout no se reintente y salga como `DatabaseException` es una decisión
+  explícita de su javadoc.
+- **(MEDIUM) Todo fallo de negocio iba a `error.log` con stack.** Una contraseña mal tipeada o un
+  "finalizá el lote" escribían una traza en ERROR, porque `TareaUI.registrarFallo` sólo bajaba a WARN
+  la `ValidationException`. *Decidido con el usuario:* toda `BusinessException` va a WARN sin stack
+  (cambio compartido: también los conflictos de las demás pantallas). Test:
+  `TareaUITest.businessException_vaAWarnSinStack`.
+
+MEDIUM y LOW que **no** se tocaron, con el motivo:
+- **Un `ResourceNotFoundException` de `PasswordDAO` (falta la fila de `passwords`) se trata como
+  "el ingreso ya no existe"** y relee. Sólo pasa con una instalación rota (la fila la siembra `V29`
+  y nada la borra); el operador vería un aviso impreciso, pero no se borra nada. No justifica otra
+  excepción ni otra rama en `DecisionDialogoEliminacion`.
+- **Si sólo una grilla de Ver Equipos queda fuera de rango, se releen las dos.** Pasa únicamente al
+  borrar la última fila de la última página, y la relectura es la misma que hace un F5. Partir
+  `ConsultaEquipos.leer` por grilla para ahorrar una lectura ocasional agrega complejidad a la
+  pantalla más delicada de paginar.
+- **El motivo se valida en el service y en `IngresoArchivado`.** Es a propósito (tarea 3 del Paso 1
+  y tarea 1 del Paso 6): el service da el mensaje al operador y el record es el invariante del
+  archivo, que no puede existir sin motivo aunque alguien llame al DAO directo. Usan la misma
+  constante de largo.
+- **Helpers repetidos** (`TextoEliminacion.numerales` / `TextoBloqueos.numeros`, el armado de
+  `IN (?, …)`, `aFecha`/`filas` en los tres eliminadores). Son pocas líneas cada uno y moverlos toca
+  los tres eliminadores ya cerrados; queda para cuando aparezca un cuarto uso.
+- **`ingresos_eliminados.estado` guarda `LAVADO` en Lavadero y `Lavado` en el CDE.** Cada módulo
+  archiva el estado **tal como lo persiste su tabla** (`ingresos_lavadero.estado` es el nombre del
+  enum; `equipos.estado`, el `getNombre()`), que es lo coherente para un archivo. Quien filtre por
+  estado filtra dentro de un `modulo`.
+
+**Revisión de seguridad de la password (a mano, con `grep` y el JAR): sin hallazgos abiertos.**
+- PBKDF2WithHmacSHA256, salt de 16 bytes de `SecureRandom` por hash, 600 000 iteraciones en la fila
+  y leídas del guardado al verificar (`HasherPbkdf2`).
+- `MessageDigest.isEqual` para comparar; `Arrays.equals` sólo compara la nueva con la repetida y con
+  la actual en `cambiar` (dos entradas del operador, no un secreto guardado).
+- `PBEKeySpec.clearPassword()` en `finally` (`HasherPbkdf2.derivar`); `Arrays.fill` en `finally`
+  dentro del `leer` en `FlujoEliminacion` (`datos.limpiar()`) y en `PasswordAjustesController`; el
+  hash derivado también se pisa con ceros.
+- `grep` de `new String(`, `String.valueOf(`, `copyValueOf` y `getText()` en `seguridad`,
+  `eliminaciones` y la pestaña de Ajustes: nada con la password (el diálogo mira el largo del
+  `Document`, no el texto).
+- `grep` de `log.*`/`throw new`/`toString` con password: sólo textos fijos y el `proposito`, que no
+  es secreto. `HashPassword.toString` y `EliminarIngresoDialog.Datos.toString` no exponen nada;
+  los nombres de `TareaUI` son fijos; ningún eliminador ni `SnapshotJson` recibe la password.
+- `PasswordDAO`: las tres sentencias con parámetros.
+- La inicial no está en claro en `src/main` (`grep` de `'aptium'`: sólo el cliente `APTIUM` de
+  `V18`, que no es la password) ni en el JAR: `unzip -p target/aptium.jar 'db/migration/V29*' |
+  grep -i aptium` → **nada**, ni siquiera el comentario (remite a `CLAUDE.md` sin nombrarla).
+- "Incorrecta" no distingue vacía de distinta (`PasswordEliminacionService.verificar`, mismo mensaje).
+- El límite honesto está en el javadoc del service y en el comentario de `V29`.
+- **No verificado:** el punto 12 del smoke (grep de `app.log`/`error.log` en MySQL tras eliminar con
+  la password tipeada). Requiere la app corriendo, y **el commit del Paso 8 no registra que el smoke
+  de 12 puntos se haya corrido** (su criterio de salida quedó sin marcar). Queda pendiente de correr
+  a mano antes de mergear a `main`.
+
+**`mvn verify`: verde.** JaCoCo, clases planas: `DecisionDialogoEliminacion`, `ValidadorCambioPassword`,
+`ConsultaEquipos`, `ConsultaHistorial`, `LotesEnCurso` al 100 %; `TextoEliminacion` 100 %/90 % de
+ramas; `TextoBloqueos` 93 %; `SnapshotJson` estaba en 78 % y quedó con todos sus tipos cubiertos gracias a
+`filaActual_fechaBooleanoClobYOtroTipo` (H2) y `filaActual_tiposJavaTime_mismoFormatoQueLosDeJdbc`
+(mock: `LocalDateTime`/`LocalDate`, que entrega Connector/J y H2 no). 1832 tests en verde.
+Eliminadores: `EliminadorIngresoLavadero` 95 %/92 %, `EliminadorEquipoOtros` 95 %/81 %,
+`EliminadorEquipoOrtopedia` 93 %/87 %, con ok, bloqueo, conflicto y atomicidad cubiertos; la rama de
+contención de locks no se puede provocar en H2. Por debajo y aceptado: `PuestoDeTrabajo` (la rama
+de hostname que falla), `HashPassword` (`equals`/`hashCode`, que no se usan para verificar) y
+`FlujoEliminacion`/`EliminarIngresoDialog` (Swing, cubiertos por el smoke del Paso 8).
 
 ---
 

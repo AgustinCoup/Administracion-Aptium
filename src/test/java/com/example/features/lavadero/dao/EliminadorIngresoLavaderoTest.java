@@ -132,7 +132,7 @@ class EliminadorIngresoLavaderoTest extends AbstractDAOTest {
         ResumenIngresoLavadero.DerivadoCde cde = resumen.derivados().get(0);
         assertEquals(derivado, cde.equipoOtrosId());
         assertEquals(5, cde.unidades());
-        assertEquals(Set.of(derivado), resumen.idsDerivados());
+        assertEquals(Map.of(derivado, versionEnBase(derivado)), resumen.versionesDerivados());
         assertEquals(List.of(new Bloqueo.CicloEnCurso(2)), resumen.bloqueos());
     }
 
@@ -384,11 +384,31 @@ class EliminadorIngresoLavaderoTest extends AbstractDAOTest {
         lavarYMarcarListo(1, clasificar(ingreso, 5)[0], 5);
         int derivado = derivar(cdeCliente, ingreso);
         EstadoIngresoLavadero estado = eliminador.resumir(ingreso).estado();
+        int version = versionEnBase(derivado);
 
         assertThrows(ConflictoConcurrenciaException.class,
-            () -> eliminador.eliminar(ingreso, estado, Set.of(), MOTIVO, PUESTO));
+            () -> eliminador.eliminar(ingreso, estado, Map.of(), MOTIVO, PUESTO));
         assertThrows(ConflictoConcurrenciaException.class,
-            () -> eliminador.eliminar(ingreso, estado, Set.of(derivado, derivado + 1), MOTIVO, PUESTO));
+            () -> eliminador.eliminar(ingreso, estado, Map.of(derivado, version, derivado + 1, 0), MOTIVO, PUESTO));
+
+        assertEquals(1, contar("ingresos_lavadero WHERE id = " + ingreso));
+        assertEquals(1, contar("equipo_otros WHERE id = " + derivado));
+        assertEquals(0, contar("ingresos_eliminados"));
+    }
+
+    /**
+     * El derivado cambió después del resumen (otro puesto lo avanzó, lo entregó o lo corrigió): se
+     * borraría en un estado que el operador no confirmó. Mismo criterio que borrarlo desde Ver Equipos.
+     */
+    @Test
+    void eliminar_derivadoConOtraVersion_conflictoYNoBorraNada() {
+        int ingreso = ingreso("TestElimLavVersionDerivado");
+        lavarYMarcarListo(1, clasificar(ingreso, 5)[0], 5);
+        int derivado = derivar(cdeCliente, ingreso);
+        ResumenIngresoLavadero resumen = eliminador.resumir(ingreso);
+        ejecutarSinChecked("UPDATE equipo_otros SET version = version + 1 WHERE id = " + derivado);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> eliminar(resumen));
 
         assertEquals(1, contar("ingresos_lavadero WHERE id = " + ingreso));
         assertEquals(1, contar("equipo_otros WHERE id = " + derivado));
@@ -427,7 +447,7 @@ class EliminadorIngresoLavaderoTest extends AbstractDAOTest {
         ResumenIngresoLavadero resumen = conArchivoRoto.resumir(ingreso);
 
         assertThrows(DatabaseException.class, () -> conArchivoRoto.eliminar(ingreso, resumen.estado(),
-            resumen.idsDerivados(), MOTIVO, PUESTO));
+            resumen.versionesDerivados(), MOTIVO, PUESTO));
 
         assertEquals(1, contar("ingresos_lavadero WHERE id = " + ingreso));
         assertEquals(1, contar("equipo_otros WHERE id = " + derivado));
@@ -462,7 +482,7 @@ class EliminadorIngresoLavaderoTest extends AbstractDAOTest {
     // ── Escenarios ────────────────────────────────────────────────────────────
 
     private void eliminar(ResumenIngresoLavadero resumen) {
-        eliminador.eliminar(resumen.ingreso().id(), resumen.estado(), resumen.idsDerivados(), MOTIVO, PUESTO);
+        eliminador.eliminar(resumen.ingreso().id(), resumen.estado(), resumen.versionesDerivados(), MOTIVO, PUESTO);
     }
 
     /** Un ingreso {@code PENDIENTE} de 7,5 kg en dos bolsas, de un cliente nuevo. */
@@ -578,6 +598,10 @@ class EliminadorIngresoLavaderoTest extends AbstractDAOTest {
 
     private EstadoIngresoLavadero estadoEnBase(int ingreso) {
         return EstadoIngresoLavadero.desdeBD(texto("SELECT estado FROM ingresos_lavadero WHERE id = " + ingreso));
+    }
+
+    private int versionEnBase(int equipoOtrosId) {
+        return escalar("SELECT version FROM equipo_otros WHERE id = " + equipoOtrosId);
     }
 
     private JSONObject snapshot(String modulo) {

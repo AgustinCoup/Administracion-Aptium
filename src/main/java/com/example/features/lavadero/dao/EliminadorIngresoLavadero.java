@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
@@ -250,7 +251,7 @@ public class EliminadorIngresoLavadero {
                 // equipo_otros_id NULL, así que tampoco es un derivado para la transacción.
                 continue;
             }
-            derivados.add(new DerivadoCde(equipoOtrosId, derivado.estado(), unidades(derivado)));
+            derivados.add(new DerivadoCde(equipoOtrosId, derivado.estado(), unidades(derivado), derivado.version()));
             List<Integer> otros = derivado.ingresosLavaderoOrigen().stream()
                 .filter(id -> id != ingresoId).toList();
             if (!otros.isEmpty()) {
@@ -279,7 +280,8 @@ public class EliminadorIngresoLavadero {
      *   <li>los derivados = los {@code equipo_otros_id} no nulos de (5). Si no son exactamente los
      *       vistos → conflicto. Para cada uno, en orden ascendente,
      *       {@link EliminadorEquipoOtros#bloquear} (sus salidas → materiales → cabecera). Si la
-     *       cabecera falta (otro lo borró desde Ver Equipos) → conflicto.</li>
+     *       cabecera falta (otro lo borró desde Ver Equipos) → conflicto. Su {@code version} se
+     *       compara con la vista recién después de (9).</li>
      * </ol>
      *
      * <h2>Fase B — verificar (acá empiezan las lecturas no bloqueantes)</h2>
@@ -288,7 +290,11 @@ public class EliminadorIngresoLavadero {
      *   <li>por derivado: las salidas que {@code bloquear} encontró y no son de (5) son de otro
      *       ingreso → {@link Bloqueo.DerivadoCompartido}, con esos ingresos. Después
      *       {@link EliminadorEquipoOtros#verificar} → {@link Bloqueo.DerivadoEnLoteEnCurso};</li>
-     *   <li>si hay bloqueos → {@link EliminacionBloqueadaException} con <b>todos</b>.</li>
+     *   <li>si hay bloqueos → {@link EliminacionBloqueadaException} con <b>todos</b>. Si no, la
+     *       {@code version} de cada derivado tiene que ser la vista (otro lo avanzó, lo entregó o lo
+     *       corrigió → conflicto: igual que desde Ver Equipos, se archiva lo que el operador
+     *       confirmó). Va después de los bloqueos porque {@code lanzarLote} también bumpea la
+     *       {@code version}, y un lote en curso se informa como bloqueo.</li>
      * </ol>
      *
      * <h2>Fase C — archivar y borrar (el orden lo dictan las FK {@code RESTRICT})</h2>
@@ -387,8 +393,8 @@ public class EliminadorIngresoLavadero {
      *       cruzadas. Ordenarlas por id exigiría conocer los ids antes de bloquear, o sea una
      *       lectura no bloqueante antes de terminar la Fase A: justo lo que no se puede. El otro, si
      *       pierde, sale como lo traduzca su {@code catch}: {@code marcarListo},
-     *       {@code volverALavado} y {@code derivar} como conflicto; {@code aplicarMovimientos} y
-     *       {@code lanzarLote}, todavía como error técnico.</li>
+     *       {@code volverALavado}, {@code derivar} y los dos {@code aplicarMovimientos} como
+     *       conflicto; {@code lanzarLote}, todavía como error técnico (decisión de su javadoc).</li>
      *   <li><b>La fusión de clientes</b> ({@code FusionClientesDAO}: {@code equipo_otros} →
      *       {@code ingresos_lavadero}, al revés que acá) sobre el cliente de un ingreso con derivado
      *       mientras se lo borra. Si pierde la fusión, hoy sale como error técnico: no traduce la
@@ -403,7 +409,7 @@ public class EliminadorIngresoLavadero {
      * (Correcciones, que toma cabecera → materiales).</p>
      *
      * @param estadoVisto     el estado del {@link ResumenIngresoLavadero} que confirmó el operador
-     * @param derivadosVistos sus {@link ResumenIngresoLavadero#idsDerivados()}
+     * @param derivadosVistos sus {@link ResumenIngresoLavadero#versionesDerivados()}: id → version
      * @throws ConflictoConcurrenciaException si el ingreso cambió de estado, ganó o perdió un
      *                                        derivado, o desapareció desde el resumen; o si la base
      *                                        cortó la espera de un lock
@@ -411,7 +417,7 @@ public class EliminadorIngresoLavadero {
      *                                        derivado en un lote en curso; no se borró nada
      * @throws DatabaseException              ante cualquier otro error de base; no se borró nada
      */
-    public void eliminar(int ingresoId, EstadoIngresoLavadero estadoVisto, Set<Integer> derivadosVistos,
+    public void eliminar(int ingresoId, EstadoIngresoLavadero estadoVisto, Map<Integer, Integer> derivadosVistos,
                          String motivo, String puesto) {
         Objects.requireNonNull(estadoVisto, "estadoVisto");
         Objects.requireNonNull(derivadosVistos, "derivadosVistos");
@@ -424,6 +430,7 @@ public class EliminadorIngresoLavadero {
             if (!bloqueos.isEmpty()) {
                 throw new EliminacionBloqueadaException(bloqueos);
             }
+            exigirVersionesVistas(afectados, derivadosVistos);
 
             archivarYBorrar(conn, afectados, motivo, puesto);                                  // Fase C
             tx.commit();
@@ -444,7 +451,7 @@ public class EliminadorIngresoLavadero {
 
     /** Pasos (1) a (6). Sólo {@code FOR UPDATE}: ninguna lectura común. */
     private Afectados bloquearTodo(Connection conn, int ingresoId, EstadoIngresoLavadero estadoVisto,
-                                   Set<Integer> derivadosVistos) throws SQLException {
+                                   Map<Integer, Integer> derivadosVistos) throws SQLException {
         String estadoBD = bloquearIngreso(conn, ingresoId);                                     // (1)
         if (estadoBD == null || EstadoIngresoLavadero.desdeBD(estadoBD) != estadoVisto) {
             throw new ConflictoConcurrenciaException(Mensajes.CONFLICTO_ELIMINACION);
@@ -469,7 +476,7 @@ public class EliminadorIngresoLavadero {
         bloquearSalidas(conn, SQL_BLOQUEAR_SALIDAS_DE_TANDAS, tandas, salidas, idsDerivados);
         bloquearSalidas(conn, SQL_BLOQUEAR_SALIDAS_DE_INSTANCIAS, instancias, salidas, idsDerivados);
 
-        if (!idsDerivados.equals(derivadosVistos)) {                                           // (6)
+        if (!idsDerivados.equals(derivadosVistos.keySet())) {                                  // (6)
             throw new ConflictoConcurrenciaException(Mensajes.CONFLICTO_ELIMINACION);
         }
         List<BloqueoEquipoOtros> derivados = new ArrayList<>();
@@ -542,6 +549,21 @@ public class EliminadorIngresoLavadero {
             }
         }
         return bloqueos;
+    }
+
+    /**
+     * La {@code version} de cada derivado, tomada {@code FOR UPDATE} en (6), contra la que vio el
+     * operador. Se compara <b>después</b> de los bloqueos, igual que en
+     * {@code EliminadorEquipoOrtopedia.eliminar}: {@code lanzarLote} bumpea la {@code version}, y un
+     * derivado que otro metió en un lote tiene que salir como "finalizá el lote", no como conflicto.
+     * No cambia ningún lock: sólo compara lo que (6) ya leyó.
+     */
+    private static void exigirVersionesVistas(Afectados afectados, Map<Integer, Integer> derivadosVistos) {
+        for (BloqueoEquipoOtros derivado : afectados.derivados()) {
+            if (derivado.version() != derivadosVistos.get(derivado.equipoOtrosId())) {
+                throw new ConflictoConcurrenciaException(Mensajes.CONFLICTO_ELIMINACION);
+            }
+        }
     }
 
     // ── Fase C ───────────────────────────────────────────────────────────────

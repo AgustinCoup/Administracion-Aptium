@@ -91,8 +91,8 @@ class TextoEliminacionTest {
     void lavaderoConDerivados_nombraCadaIngresoDelCde() {
         String texto = TextoEliminacion.confirmacion(lavadero(
             List.of(new ResumenIngresoLavadero.LineaElemento("Sábana", 20)),
-            List.of(new ResumenIngresoLavadero.DerivadoCde(31, "NUEVO", 12),
-                    new ResumenIngresoLavadero.DerivadoCde(32, "ENTREGADO", 8)),
+            List.of(new ResumenIngresoLavadero.DerivadoCde(31, "NUEVO", 12, 0),
+                    new ResumenIngresoLavadero.DerivadoCde(32, "ENTREGADO", 8, 0)),
             List.of()));
 
         assertTrue(texto.contains("Lavadero #7"));

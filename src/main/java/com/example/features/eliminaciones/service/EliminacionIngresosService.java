@@ -84,7 +84,7 @@ public class EliminacionIngresosService {
         if (resumen instanceof ResumenEquipo equipo) {
             eliminarEquipo(equipo, motivo, puesto);
         } else if (resumen instanceof ResumenIngresoLavadero ingreso) {
-            eliminadorLavadero.eliminar(ingreso.ingreso().id(), ingreso.estado(), ingreso.idsDerivados(),
+            eliminadorLavadero.eliminar(ingreso.ingreso().id(), ingreso.estado(), ingreso.versionesDerivados(),
                 motivo, puesto);
         }
     }

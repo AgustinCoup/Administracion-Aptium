@@ -1,5 +1,6 @@
 package com.example.ui.common;
 
+import com.example.common.exception.BusinessException;
 import com.example.common.exception.ValidationException;
 import com.example.infrastructure.db.ConexionesSupervisadas;
 import com.example.infrastructure.db.ConnectionPool;
@@ -252,11 +253,18 @@ public final class TareaUI<T> {
      * Una {@link ValidationException} es una regla de negocio que el usuario violó —el código de
      * catálogo no existe, falta un campo—, no un fallo del sistema: se loguea a WARN y sin stack,
      * porque el stack no aporta nada y ensucia el log de errores de producción con casos normales.
-     * Cualquier otra causa sí es un fallo y va a ERROR con la traza completa.
+     * Lo mismo una {@link BusinessException}: un conflicto de concurrencia ("otro se te
+     * adelantó"), un bloqueo ("finalizá el lote") o una contraseña incorrecta son desenlaces
+     * esperados que el operador ya ve en pantalla. Cualquier otra causa sí es un fallo y va a ERROR
+     * con la traza completa.
      */
     private void registrarFallo(Throwable causa) {
         if (causa instanceof ValidationException) {
             log.warn("Validación rechazada en la tarea '{}': {}", nombre, causa.getMessage());
+            return;
+        }
+        if (causa instanceof BusinessException) {
+            log.warn("Regla de negocio rechazó la tarea '{}': {}", nombre, causa.getMessage());
             return;
         }
         log.error("Fallo en la tarea de fondo '{}'", nombre, causa);

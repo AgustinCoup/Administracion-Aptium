@@ -781,6 +781,11 @@ public class EquipoOtrosDAO {
             throw e;
         } catch (SQLException e) {
             rollback(conn, e);
+            // Mismo cruce que MaterialDAO.aplicarMovimientos con la eliminación del equipo: la
+            // contención de locks es un choque, no un fallo técnico.
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+            }
             return false;
         } finally {
             close(conn);

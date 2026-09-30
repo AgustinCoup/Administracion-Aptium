@@ -892,6 +892,34 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
     }
 
     /**
+     * El derivado viaja con su {@code version}: si otro puesto lo avanzó después del resumen, A lo
+     * borraría en un estado que no confirmó. Mismo criterio que borrarlo desde Ver Equipos.
+     */
+    @Test
+    @DisplayName("Eliminar (lavadero): B avanza el derivado en el CDE y A choca")
+    void eliminarIngresoLavaderoCuyoDerivadoOtroAvanzo() {
+        int ingresoId = ingresoDeLavadero("TestConcElimAvanza", "CLASIFICADO");
+        lavarYMarcarListo(1, insertarClasificacion(ingresoId, catalogoElementoId(1), 5));
+        int derivado = derivarAlCde(ingresoId);
+        ResumenIngresoLavadero vista = eliminadorLavadero.resumir(ingresoId);
+
+        // B avanza el material del derivado y commitea (el recálculo bumpea la version).
+        int materialId = escalar("SELECT id FROM equipo_otros_materiales WHERE equipo_otros_id = " + derivado);
+        EstadoEquipo estadoVisto = EstadoEquipo.desdeBD(
+            texto("SELECT estado FROM equipo_otros_materiales WHERE id = " + materialId));
+        assertTrue(equipoOtrosDAO.aplicarMovimientos(derivado,
+            List.of(new MovimientoMaterial(materialId, 5, estadoVisto, EstadoEquipo.ESTERILIZADO))));
+        String estadoDeB = texto("SELECT estado FROM equipo_otros_materiales WHERE id = " + materialId);
+
+        assertThrows(ConflictoConcurrenciaException.class, () -> eliminarLavadero(vista));
+
+        assertEquals(1, escalar("SELECT COUNT(*) FROM ingresos_lavadero WHERE id = " + ingresoId));
+        assertEquals(estadoDeB, texto("SELECT estado FROM equipo_otros_materiales WHERE id = " + materialId),
+            "queda el estado de B");
+        assertEquals(0, escalar("SELECT COUNT(*) FROM ingresos_eliminados"));
+    }
+
+    /**
      * La razón de que la guarda no sea sólo el estado: una derivación parcial crea un ingreso del CDE
      * sin mover el estado del ingreso de Lavadero. Con el estado solo, A se llevaría el
      * {@code equipo_otros} de B sin haberlo visto en la confirmación.
@@ -1242,7 +1270,7 @@ class ConcurrenciaOptimistaTest extends AbstractDAOTest {
     }
 
     private void eliminarLavadero(ResumenIngresoLavadero vista) {
-        eliminadorLavadero.eliminar(vista.ingreso().id(), vista.estado(), vista.idsDerivados(),
+        eliminadorLavadero.eliminar(vista.ingreso().id(), vista.estado(), vista.versionesDerivados(),
             "Se cargó dos veces", "A@PC");
     }
 

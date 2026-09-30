@@ -214,6 +214,13 @@ public class MaterialDAO {
             return true;
 
         } catch (SQLException e) {
+            // Los materiales se toman en el orden de la lista: pueden cruzarse con la eliminación del
+            // equipo (caso residual (c) de EliminadorIngresoLavadero.eliminar). Si la base corta la
+            // espera es un choque, no un fallo técnico, y la transacción ya revirtió.
+            if (ControlConcurrencia.esContencionDeLock(e)) {
+                log.warn("Movimientos del equipo {} abortados por la base (contención de lock)", equipoId, e);
+                throw new ConflictoConcurrenciaException(Constantes.Mensajes.CONFLICTO_MATERIAL);
+            }
             throw new DatabaseException("Error al aplicar movimientos de materiales", e);
         }
     }
