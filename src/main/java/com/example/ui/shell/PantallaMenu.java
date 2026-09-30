@@ -18,8 +18,8 @@ public class PantallaMenu extends JPanel {
         lblBienvenida.setBorder(Estilos.Espaciados.BORDE_TITULO);
         add(lblBienvenida, BorderLayout.NORTH);
 
-        // Contenedor para los 4 botones principales
-        JPanel panelBotones = new JPanel(new GridLayout(2, 2, 15, 15));
+        // Contenedor para los botones principales
+        JPanel panelBotones = new JPanel(new GridLayout(1, 2, 15, 15));
         panelBotones.setBorder(Estilos.Espaciados.BORDE_PRINCIPAL);
 
         JButton btnEsterilizacion = new JButton(Constantes.Botones.CENTRO_ESTERILIZACION);
@@ -28,19 +28,11 @@ public class PantallaMenu extends JPanel {
         JButton btnLavadero = new JButton(Constantes.Botones.LAVADERO);
         btnLavadero.setFont(Estilos.Fuentes.BOTON);
 
-        JButton btnDesinfectadora = new JButton(Constantes.Botones.DESINFECTADORA);
-        btnDesinfectadora.setFont(Estilos.Fuentes.BOTON);
-
-        JButton btnDistribuidora = new JButton(Constantes.Botones.DISTRIBUIDORA);
-        btnDistribuidora.setFont(Estilos.Fuentes.BOTON);
-
         btnEsterilizacion.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.ESTERILIZACION));
         btnLavadero.addActionListener(e -> navegador.show(contenedor, Constantes.Pantallas.LAVADERO));
 
         panelBotones.add(btnEsterilizacion);
         panelBotones.add(btnLavadero);
-        panelBotones.add(btnDesinfectadora);
-        panelBotones.add(btnDistribuidora);
 
         add(panelBotones, BorderLayout.CENTER);
 

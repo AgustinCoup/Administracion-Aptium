@@ -582,8 +582,6 @@ public final class Constantes {
         public static final String ELIMINAR_FILA          = "X";
         public static final String CENTRO_ESTERILIZACION  = "Centro de Esterilización";
         public static final String LAVADERO               = "Lavadero";
-        public static final String DESINFECTADORA         = "Desinfectadora";
-        public static final String DISTRIBUIDORA          = "Distribuidora";
         public static final String ORTOPEDIA              = "Ortopedia";
         public static final String OTROS                  = "Otros";
         public static final String VER_LOTES              = "Ver Lotes";
