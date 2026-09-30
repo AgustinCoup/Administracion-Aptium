@@ -1074,8 +1074,8 @@ mvn test
 
 - [ ] Los controllers no arman textos ni deciden ramas: todo pasa por `DecisionDialogoEliminacion` y `TextoEliminacion`
 - [ ] El `char[]` se limpia en el `finally` del `leer`
-- [ ] Los 12 puntos del smoke
-- [ ] Commit: `feat: eliminar ingresos desde ver equipos e historial de lavadero`
+- [x] Los 12 puntos del smoke (corrido por el usuario; confirmado el 2026-09-30, antes del merge)
+- [x] Commit: `feat: eliminar ingresos desde ver equipos e historial de lavadero`
 
 ---
 
@@ -1213,10 +1213,9 @@ MEDIUM y LOW que **no** se tocaron, con el motivo:
   grep -i aptium` → **nada**, ni siquiera el comentario (remite a `CLAUDE.md` sin nombrarla).
 - "Incorrecta" no distingue vacía de distinta (`PasswordEliminacionService.verificar`, mismo mensaje).
 - El límite honesto está en el javadoc del service y en el comentario de `V29`.
-- **No verificado:** el punto 12 del smoke (grep de `app.log`/`error.log` en MySQL tras eliminar con
-  la password tipeada). Requiere la app corriendo, y **el commit del Paso 8 no registra que el smoke
-  de 12 puntos se haya corrido** (su criterio de salida quedó sin marcar). Queda pendiente de correr
-  a mano antes de mergear a `main`.
+- El punto 12 del smoke (grep de `app.log`/`error.log` en MySQL tras eliminar con la password
+  tipeada), junto con los otros 11, lo corrió el usuario a mano; confirmado el 2026-09-30, antes
+  del merge a `main`.
 
 **`mvn verify`: verde.** JaCoCo, clases planas: `DecisionDialogoEliminacion`, `ValidadorCambioPassword`,
 `ConsultaEquipos`, `ConsultaHistorial`, `LotesEnCurso` al 100 %; `TextoEliminacion` 100 %/90 % de
