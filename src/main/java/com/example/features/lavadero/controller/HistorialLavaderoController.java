@@ -1,6 +1,10 @@
 package com.example.features.lavadero.controller;
 
+import com.example.common.eliminacion.IngresoAEliminar;
+import com.example.common.eliminacion.ModuloIngreso;
 import com.example.common.paginacion.Pagina;
+import com.example.features.eliminaciones.controller.FlujoEliminacion;
+import com.example.features.eliminaciones.service.EliminacionIngresosService;
 import com.example.features.lavadero.controller.helpers.ConsultaHistorial;
 import com.example.features.lavadero.model.FiltroHistorial;
 import com.example.features.lavadero.model.IngresoHistorial;
@@ -18,6 +22,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Cablea la pantalla de Historial de Lavadero: paginación con los filtros resueltos en SQL y
@@ -67,6 +72,8 @@ public class HistorialLavaderoController {
     private final PantallaHistorialLavadero pantalla;
     private final HistorialLavaderoService  service;
     private final Runnable                  solicitarRefresco;
+    private final Runnable                  refrescarOperativo;
+    private final FlujoEliminacion          flujoEliminacion;
 
     /**
      * Lo que el lector de fondo tiene que leer. <b>Se escribe sólo en el EDT</b> y se lee desde el
@@ -75,16 +82,32 @@ public class HistorialLavaderoController {
     private volatile ConsultaHistorial consulta =
         ConsultaHistorial.primeraPagina(FiltroHistorial.sinFiltros());
 
-    /** Alcance: pintar la grilla desde el refresco y leer el detalle de un ingreso bajo demanda. */
+    /**
+     * Alcance: pintar la grilla desde el refresco, leer el detalle de un ingreso bajo demanda y
+     * eliminar un ingreso.
+     *
+     * <p><b>Eliminar</b> recibe el service y el disparador del grupo {@code operativo}, además del
+     * propio: eliminar un ingreso de Lavadero se lleva también el ingreso del CDE que se derivó de
+     * él, y ése puede estar en la cola activa. No existe un refresco global. Ver
+     * {@link #alTerminarEliminacion()}.</p>
+     */
     public HistorialLavaderoController(PantallaHistorialLavadero pantalla,
                                        HistorialLavaderoService service,
-                                       Runnable solicitarRefresco) {
+                                       EliminacionIngresosService eliminacionService,
+                                       Runnable solicitarRefresco,
+                                       Runnable refrescarOperativo) {
         this.pantalla          = Objects.requireNonNull(pantalla, "pantalla no puede ser null");
         this.service           = Objects.requireNonNull(service,  "service no puede ser null");
         this.solicitarRefresco = Objects.requireNonNull(solicitarRefresco,
             "solicitarRefresco no puede ser null");
+        this.refrescarOperativo = Objects.requireNonNull(refrescarOperativo,
+            "refrescarOperativo no puede ser null");
+        this.flujoEliminacion  = new FlujoEliminacion(
+            Objects.requireNonNull(eliminacionService, "eliminacionService no puede ser null"), pantalla,
+            this::alTerminarEliminacion);
 
         pantalla.setOnFiltrosChanged(this::alCambiarFiltros);
+        pantalla.setOnEliminar(this::eliminar);
         pantalla.setAlCambiarPagina(this::alCambiarPagina);
 
         // El botón "Actualizar" (y F5) releen lo mismo que se está mirando, con el total al día.
@@ -117,6 +140,13 @@ public class HistorialLavaderoController {
 
     /** Vuelca la página a la grilla y a la barra de paginación. Sin I/O. */
     public void pintar(Pagina<IngresoHistorial> pagina) {
+        // Una página más allá de la última (se eliminaron filas y el refresco recontó) no se pinta:
+        // se vuelve a pedir la última.
+        Optional<ConsultaHistorial> reubicada = consulta.reubicadaSi(pagina);
+        if (reubicada.isPresent()) {
+            publicarYPedir(reubicada.get());
+            return;
+        }
         // El total recién leído se arrastra: el próximo cambio de página no vuelve a contar.
         consulta = consulta.conTotal(pagina.totalFilas());
         pantalla.actualizarIngresos(pagina.contenido());
@@ -159,6 +189,27 @@ public class HistorialLavaderoController {
             pantalla.getFiltroHasta(),
             pantalla.getFiltroElemento(),
             pantalla.getFiltroLavarropas());
+    }
+
+    // ── Eliminación ───────────────────────────────────────────────────────────
+
+    private void eliminar() {
+        int viewRow = pantalla.getTablaIngresos().getSelectedRow();
+        if (viewRow < 0) return;
+        IngresoHistorial ingreso = pantalla.getIngresoAt(pantalla.getTablaIngresos().convertRowIndexToModel(viewRow));
+        if (ingreso == null) return;
+        flujoEliminacion.iniciar(new IngresoAEliminar(ModuloIngreso.LAVADERO, ingreso.id()));
+    }
+
+    /**
+     * Lo que hay que releer después de eliminar (o de un conflicto): esta pantalla, <b>recontando</b>
+     * —el total arrastrado dejaría una página fantasma— y el grupo operativo, que muestra la cola
+     * activa donde estaba el ingreso del CDE derivado. Ningún otro grupo: no existe un refresco
+     * global, y las pantallas de consulta releen al mostrarse.
+     */
+    void alTerminarEliminacion() {
+        publicarYPedir(consulta.recontando());
+        refrescarOperativo.run();
     }
 
     // ── Detalle ───────────────────────────────────────────────────────────────

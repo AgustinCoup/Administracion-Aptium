@@ -473,6 +473,12 @@ public final class Constantes {
         public static final String ELIMINAR_SE_ARCHIVA =
             "Antes de borrar se guarda una copia completa, con el motivo.";
         public static final String ELIMINAR_NO_SE_PUEDE_DESHACER = "No se puede deshacer.";
+        // Diálogo de confirmación (EliminarIngresoDialog) y avisos del flujo (FlujoEliminacion).
+        public static final String TITULO_ELIMINAR_INGRESO = "Eliminar ingreso";
+        public static final String ELIMINAR_ETIQUETA_MOTIVO = "Motivo (obligatorio):";
+        public static final String ELIMINAR_ETIQUETA_PASSWORD = "Contraseña de eliminación:";
+        public static final String ELIMINACION_EXITO =
+            "El ingreso se eliminó. Quedó guardada una copia con el motivo.";
         // Lo que muestra el diálogo si el borrado falla por algo que no es de negocio: la
         // transacción hizo rollback, así que no se eliminó nada.
         public static final String ELIMINACION_ERROR_TECNICO =
@@ -582,6 +588,8 @@ public final class Constantes {
         public static final String OTROS                  = "Otros";
         public static final String VER_LOTES              = "Ver Lotes";
         public static final String LIMPIAR_FILTROS        = "Limpiar filtros";
+        public static final String ELIMINAR_INGRESO       = "Eliminar ingreso…";
+        public static final String ELIMINAR_CONFIRMAR     = "Eliminar";
         public static final String IMPRIMIR               = "Imprimir";
         public static final String VER_EQUIPOS            = "Ver equipos";
         public static final String CERRAR                 = "Cerrar";

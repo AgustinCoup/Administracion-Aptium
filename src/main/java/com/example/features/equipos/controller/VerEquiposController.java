@@ -1,6 +1,10 @@
 package com.example.features.equipos.controller;
 
+import com.example.common.eliminacion.IngresoAEliminar;
+import com.example.common.eliminacion.ModuloIngreso;
 import com.example.features.clientes.service.ClienteService;
+import com.example.features.eliminaciones.controller.FlujoEliminacion;
+import com.example.features.eliminaciones.service.EliminacionIngresosService;
 import com.example.features.equipos.controller.helpers.ConsultaEquipos;
 import com.example.features.equipos.controller.helpers.PaginasEquipos;
 import com.example.features.equipos.model.FiltroEquipos;
@@ -27,6 +31,7 @@ import java.awt.event.MouseEvent;
 import java.time.LocalDate;
 import java.util.Date;
 import java.util.Objects;
+import java.util.Optional;
 
 
 /**
@@ -67,6 +72,8 @@ public class VerEquiposController {
     private final EquipoReporteService     equipoReporteService;
     private final EquipoOtrosReporteService equipoOtrosReporteService;
     private final Runnable                 solicitarRefresco;
+    private final Runnable                 refrescarOperativo;
+    private final FlujoEliminacion         flujoEliminacion;
 
     /**
      * Lo que el lector de fondo tiene que leer. <b>Se escribe sólo en el EDT</b> y se lee desde el
@@ -77,11 +84,17 @@ public class VerEquiposController {
 
     /**
      * Alcance: lectura paginada de equipos para las dos grillas y el detalle, autocompletado de
-     * cliente/institución en los diálogos de impresión, y los dos reportes.
+     * cliente/institución en los diálogos de impresión, los dos reportes y la eliminación de un
+     * ingreso.
      *
      * <p>La lectura de las páginas no pasa por acá: la arma {@code UiCoordinator} sobre
      * {@link #consultaActual()}, que es lo que hace que el lector corra en el hilo de fondo sin
      * tocar estado del EDT.
+     *
+     * <p><b>Eliminar</b> recibe el service y el disparador del grupo {@code operativo}, además del
+     * propio: lo que se elimina puede estar en la cola activa (Registrar Estado, Para Entregar,
+     * Lotes), y no existe un refresco global que cubra las dos cosas. Ver
+     * {@link #alTerminarEliminacion()}.
      */
     public VerEquiposController(PantallaVerEquipos panel,
                                 EquipoOtrosService equipoOtrosService,
@@ -89,7 +102,9 @@ public class VerEquiposController {
                                 InstitucionService institucionService,
                                 EquipoReporteService equipoReporteService,
                                 EquipoOtrosReporteService equipoOtrosReporteService,
-                                Runnable solicitarRefresco) {
+                                EliminacionIngresosService eliminacionService,
+                                Runnable solicitarRefresco,
+                                Runnable refrescarOperativo) {
         this.panel                   = Objects.requireNonNull(panel, "panel");
         this.equipoOtrosService      = Objects.requireNonNull(equipoOtrosService, "equipoOtrosService");
         this.clienteService          = Objects.requireNonNull(clienteService, "clienteService");
@@ -98,9 +113,15 @@ public class VerEquiposController {
         this.equipoOtrosReporteService =
             Objects.requireNonNull(equipoOtrosReporteService, "equipoOtrosReporteService");
         this.solicitarRefresco       = Objects.requireNonNull(solicitarRefresco, "solicitarRefresco");
+        this.refrescarOperativo      = Objects.requireNonNull(refrescarOperativo, "refrescarOperativo");
+        this.flujoEliminacion        = new FlujoEliminacion(
+            Objects.requireNonNull(eliminacionService, "eliminacionService"), panel,
+            this::alTerminarEliminacion);
 
         panel.setOnImprimirOrtopedias(this::abrirDialogoOrtopedias);
         panel.setOnImprimirOtros(this::abrirDialogoOtros);
+        panel.setOnEliminarOrtopedia(this::eliminarOrtopedia);
+        panel.setOnEliminarOtros(this::eliminarOtros);
         panel.configurarFiltros(this::alCambiarFiltros);
         panel.setAlCambiarPaginaOrtopedias(this::alCambiarPaginaOrtopedias);
         panel.setAlCambiarPaginaOtros(this::alCambiarPaginaOtros);
@@ -143,6 +164,13 @@ public class VerEquiposController {
 
     /** Vuelca las dos páginas a sus grillas y a sus barras de paginación. Sin I/O. */
     public void pintar(PaginasEquipos paginas) {
+        // Una página más allá de la última (se eliminaron filas y el refresco recontó) no se pinta:
+        // se vuelve a pedir la última de esa grilla. Cada grilla se decide por separado.
+        Optional<ConsultaEquipos> reubicada = consulta.reubicadaSi(paginas);
+        if (reubicada.isPresent()) {
+            publicarYPedir(reubicada.get());
+            return;
+        }
         // Los totales recién leídos se arrastran: el próximo cambio de página no vuelve a contar.
         consulta = consulta.conTotales(
             paginas.ortopedias().totalFilas(), paginas.otros().totalFilas());
@@ -208,6 +236,35 @@ public class VerEquiposController {
     private LocalDate toLocalDate(Date date) {
         if (date == null) return null;
         return date.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+    }
+
+    // ── Eliminación ───────────────────────────────────────────────────────────
+
+    private void eliminarOrtopedia() {
+        int viewRow = panel.getTablaOrtopedias().getSelectedRow();
+        if (viewRow < 0) return;
+        Equipo equipo = panel.getEquipoOrtopediaAt(panel.getTablaOrtopedias().convertRowIndexToModel(viewRow));
+        if (equipo == null) return;
+        flujoEliminacion.iniciar(new IngresoAEliminar(ModuloIngreso.ORTOPEDIA, equipo.getId()));
+    }
+
+    private void eliminarOtros() {
+        int viewRow = panel.getTablaOtros().getSelectedRow();
+        if (viewRow < 0) return;
+        EquipoOtros equipo = panel.getEquipoOtrosAt(panel.getTablaOtros().convertRowIndexToModel(viewRow));
+        if (equipo == null) return;
+        flujoEliminacion.iniciar(new IngresoAEliminar(ModuloIngreso.OTROS, equipo.getId()));
+    }
+
+    /**
+     * Lo que hay que releer después de eliminar (o de un conflicto): esta pantalla, <b>recontando</b>
+     * —el total arrastrado dejaría una página fantasma— y el grupo operativo, que muestra la cola
+     * activa de la que el ingreso pudo salir. Ningún otro grupo: no existe un refresco global, y las
+     * pantallas de consulta releen al mostrarse.
+     */
+    void alTerminarEliminacion() {
+        publicarYPedir(consulta.recontando());
+        refrescarOperativo.run();
     }
 
     // ── Detalle ───────────────────────────────────────────────────────────────

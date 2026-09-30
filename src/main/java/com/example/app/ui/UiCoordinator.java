@@ -130,7 +130,9 @@ public class UiCoordinator {
         HistorialLavaderoController historialLavaderoController = new HistorialLavaderoController(
             vista.getPantallaHistorialLavadero(),
             context.getHistorialLavaderoService(),
-            historialLavadero);
+            context.getEliminacionIngresosService(),
+            historialLavadero,
+            operativo::solicitar);
 
         VerEquiposController verEquiposController = new VerEquiposController(
             vista.getPantallaVerEquipos(),
@@ -139,7 +141,9 @@ public class UiCoordinator {
             context.getInstitucionService(),
             context.getEquipoReporteService(),
             context.getEquipoOtrosReporteService(),
-            verEquipos);
+            context.getEliminacionIngresosService(),
+            verEquipos,
+            operativo::solicitar);
 
         // ── Inyección en PantallaAuditoria ───────────────────────────────────
         correccionesController.inicializarPantallaAuditoria(vista.getPantallaAuditoria());

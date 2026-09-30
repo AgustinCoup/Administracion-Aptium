@@ -1,11 +1,13 @@
 package com.example.features.equipos.controller.helpers;
 
 import com.example.common.paginacion.CriteriosPagina;
+import com.example.common.paginacion.Pagina;
 import com.example.features.equipos.model.FiltroEquipos;
 import com.example.features.equipos.ortopedias.service.EquipoService;
 import com.example.features.equipos.otros.service.EquipoOtrosService;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Qué está mirando <b>Ver Equipos</b>: un filtro compartido por sus dos grillas, la página de cada
@@ -83,6 +85,35 @@ public record ConsultaEquipos(FiltroEquipos filtro,
     /** La misma consulta con los totales que acaba de traer la lectura. */
     public ConsultaEquipos conTotales(long deOrtopedias, long deOtros) {
         return new ConsultaEquipos(filtro, ortopedias, deOrtopedias, otros, deOtros);
+    }
+
+    /**
+     * Si alguna de las dos páginas que acaban de leerse quedó más allá de la última, esta consulta
+     * con esa grilla pedida en su última página —y con los dos totales recién leídos—; si ninguna,
+     * vacío. <b>Cada grilla se decide por separado</b>: borrar la única fila de la última página de
+     * ortopedias no mueve la página de "otros".
+     *
+     * <p>Pasa cuando alguien elimina filas y el refresco recuenta. Pintar la página vacía mostraría
+     * "no hay nada" sobre un resultado que sí tiene filas, así que el controller no pinta ninguna de
+     * las dos y vuelve a pedir. Converge: si un total vuelve a bajar, se reubica otra vez.
+     *
+     * @param leidas lo que devolvió {@link #leer}, con los totales actuales
+     */
+    public Optional<ConsultaEquipos> reubicadaSi(PaginasEquipos leidas) {
+        Pagina<?> ortopediasLeida = leidas.ortopedias();
+        Pagina<?> otrosLeida = leidas.otros();
+        boolean ortopediasFuera = ortopediasLeida.numeroPagina() > ortopediasLeida.totalPaginas();
+        boolean otrosFuera = otrosLeida.numeroPagina() > otrosLeida.totalPaginas();
+        if (!ortopediasFuera && !otrosFuera) {
+            return Optional.empty();
+        }
+        ConsultaEquipos conTotalesActuales = conTotales(ortopediasLeida.totalFilas(), otrosLeida.totalFilas());
+        ConsultaEquipos reubicada = ortopediasFuera
+            ? conTotalesActuales.ortopediasEnPagina(ortopediasLeida.totalPaginas())
+            : conTotalesActuales;
+        return Optional.of(otrosFuera
+            ? reubicada.otrosEnPagina(otrosLeida.totalPaginas())
+            : reubicada);
     }
 
     /**

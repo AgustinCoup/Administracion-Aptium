@@ -63,6 +63,7 @@ public class PantallaHistorialLavadero extends JPanel {
     private JTextField                txtElemento;
     private JTextField                txtLavarropas;
     private JButton                   btnLimpiar;
+    private final JButton             btnEliminar = new JButton(Constantes.Botones.ELIMINAR_INGRESO);
 
     private Runnable onFiltrosChanged;
 
@@ -106,8 +107,17 @@ public class PantallaHistorialLavadero extends JPanel {
         JLabel lblHint = new JLabel("Doble clic para ver el detalle del ingreso");
         lblHint.setFont(Estilos.Fuentes.LABEL);
         lblHint.setForeground(Estilos.Colores.TEXTO_AYUDA);
+        // Habilitado con exactamente una fila seleccionada. Repintar la página limpia la selección,
+        // y ese cambio también dispara el listener.
+        btnEliminar.setFont(Estilos.Fuentes.BOTON_PEQUENO);
+        btnEliminar.setEnabled(false);
+        tablaIngresos.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) btnEliminar.setEnabled(tablaIngresos.getSelectedRowCount() == 1);
+        });
+
         JPanel panelHint = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
         panelHint.add(lblHint);
+        panelHint.add(btnEliminar);
 
         JPanel panelSur = new JPanel(new BorderLayout());
         panelSur.add(panelPaginacion, BorderLayout.NORTH);
@@ -118,6 +128,11 @@ public class PantallaHistorialLavadero extends JPanel {
     /** Cablea el botón "Actualizar" (y F5) del header a la relectura de la pantalla. */
     public void setAccionRefrescar(Runnable accion) {
         header.setAccionRefrescar(accion);
+    }
+
+    /** Qué hacer cuando el operador pide eliminar el ingreso seleccionado. */
+    public void setOnEliminar(Runnable accion) {
+        btnEliminar.addActionListener(e -> accion.run());
     }
 
     /** Muestra la hora del último pintado en el header. */

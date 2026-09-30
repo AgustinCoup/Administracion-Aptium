@@ -69,6 +69,8 @@ public class PantallaVerEquipos extends JPanel {
     private final JLabel  lblConteoOtros;
     private final JButton btnImprimirOrtopedias;
     private final JButton btnImprimirOtros;
+    private final JButton btnEliminarOrtopedias;
+    private final JButton btnEliminarOtros;
 
     // ── Paginación ────────────────────────────────────────────────────────────
     // Una barra por grilla: las dos tablas paginan independientemente, así que pasar a la página 3
@@ -166,11 +168,13 @@ public class PantallaVerEquipos extends JPanel {
         lblConteoOrtopedias.setFont(Estilos.Fuentes.LABEL);
         btnImprimirOrtopedias = new JButton("Imprimir");
         btnImprimirOrtopedias.setFont(Estilos.Fuentes.BOTON_PEQUENO);
+        btnEliminarOrtopedias = crearBotonEliminar(tablaOrtopedias);
 
         JPanel panelTabOrtopedia = new JPanel(new BorderLayout(0, 4));
         panelTabOrtopedia.add(new JScrollPane(tablaOrtopedias), BorderLayout.CENTER);
         panelTabOrtopedia.add(
-            crearPanelSurTab(lblConteoOrtopedias, btnImprimirOrtopedias, paginacionOrtopedias),
+            crearPanelSurTab(lblConteoOrtopedias, btnEliminarOrtopedias, btnImprimirOrtopedias,
+                paginacionOrtopedias),
             BorderLayout.SOUTH);
 
         // ── Tab Otros ────────────────────────────────────────────────────────
@@ -190,11 +194,12 @@ public class PantallaVerEquipos extends JPanel {
         lblConteoOtros.setFont(Estilos.Fuentes.LABEL);
         btnImprimirOtros = new JButton("Imprimir");
         btnImprimirOtros.setFont(Estilos.Fuentes.BOTON_PEQUENO);
+        btnEliminarOtros = crearBotonEliminar(tablaOtros);
 
         JPanel panelTabOtros = new JPanel(new BorderLayout(0, 4));
         panelTabOtros.add(new JScrollPane(tablaOtros), BorderLayout.CENTER);
         panelTabOtros.add(
-            crearPanelSurTab(lblConteoOtros, btnImprimirOtros, paginacionOtros),
+            crearPanelSurTab(lblConteoOtros, btnEliminarOtros, btnImprimirOtros, paginacionOtros),
             BorderLayout.SOUTH);
 
         tabs = new JTabbedPane();
@@ -392,13 +397,14 @@ public class PantallaVerEquipos extends JPanel {
             .collect(Collectors.toList());
     }
 
-    private JPanel crearPanelSurTab(JLabel lblConteo, JButton btnImprimir,
+    private JPanel crearPanelSurTab(JLabel lblConteo, JButton btnEliminar, JButton btnImprimir,
                                     PanelPaginacion paginacion) {
         JLabel lblHint = new JLabel("Doble clic para ver detalle");
         lblHint.setFont(Estilos.Fuentes.LABEL);
         lblHint.setForeground(Color.GRAY);
         JPanel panelEste = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         panelEste.add(lblHint);
+        panelEste.add(btnEliminar);
         panelEste.add(btnImprimir);
         JPanel fila = new JPanel(new BorderLayout());
         fila.add(lblConteo, BorderLayout.WEST);
@@ -416,6 +422,30 @@ public class PantallaVerEquipos extends JPanel {
 
     public void setOnImprimirOtros(Runnable r) {
         btnImprimirOtros.addActionListener(e -> r.run());
+    }
+
+    /** Qué hacer cuando el operador pide eliminar el ingreso de ortopedias seleccionado. */
+    public void setOnEliminarOrtopedia(Runnable r) {
+        btnEliminarOrtopedias.addActionListener(e -> r.run());
+    }
+
+    /** Qué hacer cuando el operador pide eliminar el ingreso de "otros" seleccionado. */
+    public void setOnEliminarOtros(Runnable r) {
+        btnEliminarOtros.addActionListener(e -> r.run());
+    }
+
+    /**
+     * El botón "Eliminar ingreso…" de una grilla: habilitado con exactamente una fila seleccionada.
+     * Repintar la página limpia la selección, y ese cambio también dispara el listener.
+     */
+    private JButton crearBotonEliminar(JTable tabla) {
+        JButton boton = new JButton(Constantes.Botones.ELIMINAR_INGRESO);
+        boton.setFont(Estilos.Fuentes.BOTON_PEQUENO);
+        boton.setEnabled(false);
+        tabla.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) boton.setEnabled(tabla.getSelectedRowCount() == 1);
+        });
+        return boton;
     }
 
     private void agregarCursorMano(JTable tabla) {
