@@ -448,6 +448,37 @@ public final class Constantes {
             "El ingreso del CDE #%d, que se creó con ropa de este ingreso, está en el lote %s, "
                 + "todavía en curso. Finalizá ese lote y volvé a intentar.";
 
+        // ── Texto del diálogo de confirmación de eliminación (TextoEliminacion) ──
+        public static final String ELIMINAR_TITULO_ORTOPEDIA = "Vas a eliminar el ingreso de Ortopedias #%d.";
+        public static final String ELIMINAR_TITULO_OTROS = "Vas a eliminar el ingreso de Otros #%d.";
+        public static final String ELIMINAR_TITULO_LAVADERO = "Vas a eliminar el ingreso de Lavadero #%d.";
+        public static final String ELIMINAR_LINEA_CLIENTE = "Cliente: %s";
+        public static final String ELIMINAR_LINEA_INSTITUCION = "Institución: %s";
+        public static final String ELIMINAR_LINEA_PACIENTE = "Paciente: %s";
+        public static final String ELIMINAR_LINEA_FECHA = "Ingreso: %s";
+        public static final String ELIMINAR_LINEA_ESTADO = "Estado: %s";
+        public static final String ELIMINAR_LINEA_PESO = "Peso declarado: %s kg";
+        public static final String ELIMINAR_ENCABEZADO_MATERIALES = "Se eliminan estos materiales:";
+        public static final String ELIMINAR_ENCABEZADO_ELEMENTOS = "Se eliminan estos elementos clasificados:";
+        public static final String ELIMINAR_LINEA_MATERIAL = "  • %d × %s (%s)";
+        public static final String ELIMINAR_LINEA_MATERIAL_EN_LOTE = "  • %d × %s (%s), lote %s";
+        public static final String ELIMINAR_LINEA_ELEMENTO = "  • %d × %s";
+        public static final String ELIMINAR_SIN_MATERIALES = "Todavía no tiene materiales cargados.";
+        public static final String ELIMINAR_SIN_CLASIFICAR =
+            "Todavía no se clasificó: sólo se eliminan las bolsas y el ingreso.";
+        public static final String ELIMINAR_DERIVADO_DEL_CDE =
+            "También se elimina el ingreso del CDE #%d, estado %s (%d unidades).";
+        public static final String ELIMINAR_VINO_DE_LAVADERO =
+            "Vino de Lavadero (ingreso %s); ese ingreso no se elimina.";
+        public static final String ELIMINAR_SE_ARCHIVA =
+            "Antes de borrar se guarda una copia completa, con el motivo.";
+        public static final String ELIMINAR_NO_SE_PUEDE_DESHACER = "No se puede deshacer.";
+        // Lo que muestra el diálogo si el borrado falla por algo que no es de negocio: la
+        // transacción hizo rollback, así que no se eliminó nada.
+        public static final String ELIMINACION_ERROR_TECNICO =
+            "No se pudo eliminar el ingreso por un error inesperado. No se eliminó nada; "
+                + "volvé a intentar y, si se repite, avisá a soporte.";
+
         // ── Password de eliminación ──────────────────────────────────────────
         // Texto fijo, sin la password ni nada derivado de ella. PASSWORD_INCORRECTA no distingue
         // "vacía" de "distinta": no hay nada que ganar diciéndolo.
