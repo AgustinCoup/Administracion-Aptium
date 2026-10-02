@@ -447,6 +447,11 @@ public class LotesController {
      * {@code despues} de esta tarea corre <i>después</i> de {@code pintar} y rehabilita los
      * botones. Con el diálogo abierto adentro de {@code pintar}, ese {@code despues} llegaría
      * cuando el lanzamiento ya está en vuelo y dejaría "Lanzar" encendido para un segundo click.</p>
+     *
+     * <p>Ese {@code despues} sólo recalcula el botón Lanzar: <b>no</b> puede pasar por
+     * {@link #onAutoclaveSeleccionado}, que reescribe el campo "Volumen final" con el volumen de
+     * catálogo. Como corre antes de la confirmación, pisaría lo que el operador tipeó y el lote
+     * se lanzaría —o se rechazaría por sobrecarga— con un volumen que él ya había corregido.</p>
      */
     private void lanzarLote() {
         if (autoclaveSeleccionado == null || autoclaveSeleccionado.isOcupado()) return;
@@ -464,7 +469,7 @@ public class LotesController {
                     () -> confirmarYLanzar(nombreAutoclave, idPrevisto)))
             .siFalla(e -> panel.mostrarError(Constantes.Mensajes.ERROR_CREAR_LOTE))
             .antes(()  -> setBotonesAccionLoteEnabled(false))
-            .despues(() -> onAutoclaveSeleccionado(autoclaveSeleccionado))
+            .despues(this::actualizarBotonLanzarPorVolumen)
             .lanzar();
     }
 
